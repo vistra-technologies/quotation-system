@@ -16,3 +16,14 @@ model HealthCheck {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 }
+
+// Tenant root. Every tenant-scoped table will carry organizationId and filter
+// on it (row-level tenancy). `slug` backs the per-org login page.
+// See design-docs/04-data-model.md — Tenancy & identity.
+model Organization {
+  id        String   @id @default(uuid())
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
