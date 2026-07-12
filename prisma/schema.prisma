@@ -21,9 +21,160 @@ model HealthCheck {
 // on it (row-level tenancy). `slug` backs the per-org login page.
 // See design-docs/04-data-model.md — Tenancy & identity.
 model Organization {
+  id                String            @id @default(uuid())
+  slug              String            @unique
+  name              String
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  // Stage 2 relations
+  roles             Role[]
+  externalCompanies ExternalCompany[]
+  users             User[]
+}
+
+// ────────────────────────────────────────────────────────────
+// Enums
+// ────────────────────────────────────────────────────────────
+
+enum ExternalCompanyType {
+  DISTRIBUTOR
+  ARCHITECTURAL_FIRM
+}
+
+// ────────────────────────────────────────────────────────────
+// better-auth tables (hand-authored — do NOT run better-auth
+// CLI generate; it uses Kysely and doesn't understand Prisma 7's
+// prisma-client generator).  Prisma model names are PascalCase
+// (required by Prisma); @@map directives give lowercase table
+// names in the DB, which is the convention better-auth documents.
+// The prisma adapter accesses these via prisma.user, prisma.session,
+// prisma.account, prisma.verification — exactly what PascalCase
+// model names produce in the generated client.
+// ────────────────────────────────────────────────────────────
+
+model User {
+  // Standard better-auth core fields
+  id            String   @id @default(uuid())
+  name          String
+  // synthetic auth key {username}@{orgSlug}.internal — NOT a real email
+  // TODO: if enabling email features, migrate email field first
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Domain additionalFields (stored inline on the user table)
+  organizationId    String
+  username          String
+  active            Boolean @default(true)
+  roleId            String
+  externalCompanyId String?
+  // Real user email (if any) lives here — separate from the synthetic auth key above
+  profileEmail      String?
+
+  // Relations
+  organization    Organization     @relation(fields: [organizationId], references: [id])
+  role            Role             @relation(fields: [roleId], references: [id])
+  externalCompany ExternalCompany? @relation(fields: [externalCompanyId], references: [id])
+  sessions        Session[]
+  accounts        Account[]
+
+  // Per-org username uniqueness — the actual uniqueness guarantee;
+  // the synthetic email is only better-auth's carrier for it.
+  @@unique([organizationId, username])
+  @@map("user")
+}
+
+model Session {
   id        String   @id @default(uuid())
-  slug      String   @unique
-  name      String
+  userId    String
+  expiresAt DateTime
+  token     String   @unique
+  ipAddress String?
+  userAgent String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(uuid())
+  userId                String
+  providerId            String
+  accountId             String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("verification")
+}
+
+// ────────────────────────────────────────────────────────────
+// Domain models — Stage 2: permissions, roles, external companies
+// ────────────────────────────────────────────────────────────
+
+// Global permission catalog — not org-scoped (codes are shared across all orgs).
+model Permission {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  description String
+  roles       RolePermission[]
+}
+
+// Per-org roles. The same role name (e.g. "Admin") can exist in every org.
+model Role {
+  id             String           @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  organization   Organization     @relation(fields: [organizationId], references: [id])
+  permissions    RolePermission[]
+  users          User[]
+
+  @@unique([organizationId, name])
+}
+
+// Junction table: which permissions a role has.
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+}
+
+// External companies (distributors, architectural firms) that belong to an org.
+model ExternalCompany {
+  id             String              @id @default(uuid())
+  organizationId String
+  type           ExternalCompanyType
+  name           String
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  organization   Organization        @relation(fields: [organizationId], references: [id])
+  users          User[]
 }
