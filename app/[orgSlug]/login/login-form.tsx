@@ -13,7 +13,7 @@ interface LoginFormProps {
  * Client Component login form for a specific org.
  *
  * The orgSlug prop is passed from the Server Component parent (which reads it
- * from the x-org-slug proxy header).  The form constructs the synthetic email
+ * from the dynamic route segment).  The form constructs the synthetic email
  * via toAuthEmail(username, orgSlug) and calls authClient.signIn.email — all
  * email-construction is centralised in toAuthEmail (D1 guardrail).
  */
@@ -38,7 +38,7 @@ export function LoginForm({ orgSlug }: LoginFormProps) {
       if (signInError) {
         setError(signInError.message ?? "Sign in failed. Check your credentials.");
       } else {
-        router.push("/dashboard");
+        router.push(`/${orgSlug}/dashboard`);
       }
     } finally {
       setLoading(false);

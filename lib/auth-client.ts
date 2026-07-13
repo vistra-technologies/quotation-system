@@ -7,8 +7,7 @@ import { createAuthClient } from "better-auth/react";
  * logout button).
  *
  * No explicit baseURL: the default is "/api/auth" (relative to the current
- * origin).  Since each org lives on its own subdomain (acme-glass.localhost:3000),
- * relative URLs ensure auth requests go to the same host where the cookie will
- * be set — giving host-only per-org session isolation without crossSubDomainCookies.
+ * origin).  All orgs share the same host under path-based routing, so relative
+ * URLs ensure auth requests always go to the same origin where the cookie is set.
  */
 export const authClient = createAuthClient();

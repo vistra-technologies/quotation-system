@@ -19,6 +19,24 @@ import { prisma } from "@/lib/prisma";
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
 
+  // Allow browser requests from preview deployments in addition to the
+  // canonical baseURL origin (which covers production and localhost).
+  //
+  // Two preview origins must be trusted:
+  //   1. The raw per-deploy URL — Vercel auto-injects VERCEL_URL on every
+  //      build (no manual config needed); absent on local dev.
+  //   2. The stable QA alias https://v-quote-test.vercel.app — manually
+  //      re-pointed to the latest preview build after each deploy.
+  //
+  // trustedOrigins is a top-level BetterAuthOptions field (string[] |
+  // async-function). Strings are matched via matchesOriginPattern(); wildcard
+  // patterns like "https://*.vercel.app" are supported but deliberately
+  // avoided here — exact origins are tighter and correct for our two cases.
+  trustedOrigins: [
+    ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+    "https://v-quote-test.vercel.app",
+  ],
+
   // Synthetic-email field is NOT a real email — block all email flows.
   // TODO: if enabling email features, migrate email field first
   emailAndPassword: {
@@ -41,8 +59,8 @@ export const auth = betterAuth({
 
   advanced: {
     // Distinct cookie prefix so qs-* cookies don't collide with other tools.
-    // No crossSubDomainCookies — cookies are host-only by default; each
-    // subdomain gets its own session.
+    // No crossSubDomainCookies — cookies are host-only by default; all org paths
+    // share the same cookie jar on the single deployed host.
     cookiePrefix: "qs",
   },
 

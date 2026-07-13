@@ -11,13 +11,21 @@ export const dynamic = "force-dynamic";
  *
  * Verifies the session, then displays the authenticated user's identity and
  * effective permissions.  If no valid session exists (or user is inactive),
- * redirects to /login on the current subdomain.
+ * redirects to /{orgSlug}/login.
+ *
+ * getSession() still reads x-org-id from the proxy-injected header for the
+ * cross-org replay guard — no changes to lib/session.ts.
  */
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  params,
+}: {
+  params: Promise<{ orgSlug: string }>;
+}) {
+  const { orgSlug } = await params;
   const session = await getSession();
 
   if (!session) {
-    redirect("/login");
+    redirect(`/${orgSlug}/login`);
   }
 
   const [org, role, rolePermissions] = await Promise.all([
@@ -79,7 +87,7 @@ export default async function DashboardPage() {
         </div>
 
         <div className="mt-4">
-          <LogoutButton />
+          <LogoutButton orgSlug={orgSlug} />
         </div>
       </main>
     </div>

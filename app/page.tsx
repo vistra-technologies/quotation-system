@@ -1,19 +1,9 @@
-import { redirect } from "next/navigation";
-import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
-// Always render live — reads headers (org detection) and DB (org list).
+// Always render live — reads DB for org list.
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const headersList = await headers();
-  const orgSlug = headersList.get("x-org-slug");
-
-  // If the proxy attached x-org-slug (subdomain request), send straight to login.
-  if (orgSlug) {
-    redirect("/login");
-  }
-
   // Apex — render the organization selector.
   const orgs = await prisma.organization.findMany({
     orderBy: { name: "asc" },
@@ -34,7 +24,7 @@ export default async function Home() {
           {orgs.map((org) => (
             <a
               key={org.id}
-              href={`http://${org.slug}.localhost:3000/login`}
+              href={`/${org.slug}/login`}
               className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-5 py-4 text-sm font-medium text-zinc-900 transition-colors hover:border-zinc-300 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
             >
               {org.name}

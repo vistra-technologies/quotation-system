@@ -274,7 +274,7 @@ async function main() {
     `Users:              ${totalUsers}  (4×${allOrgs.length}=${4 * allOrgs.length} expected)`,
   );
   console.log(`\nSeeded password: ${SEED_PASSWORD}`);
-  console.log(`Login at e.g. http://acme-glass.localhost:3000/login`);
+  console.log(`Login at e.g. http://localhost:3000/acme-glass/login`);
   console.log(`========================`);
 }
 

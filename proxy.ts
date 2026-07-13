@@ -6,39 +6,30 @@ import { prisma } from "@/lib/prisma";
 // Do NOT set `export const runtime` here; it is not allowed in proxy files.
 //
 // On every non-static request:
-//   apex host (e.g. "localhost")    → pass through; the apex page shows the org selector.
-//   subdomain (e.g. "acme-glass")  → look up Organization by slug, attach x-org-id and
-//                                     x-org-slug headers so Server Components can read them.
-//   unknown subdomain               → 404.
+//   apex (pathname === "/")           → pass through; the apex page shows the org selector.
+//   /{orgSlug}/...  (org found in DB) → inject x-org-id and x-org-slug headers so Server
+//                                       Components can read them.
+//   /{orgSlug}/...  (org NOT found)   → 404 JSON.
 //
 // Performance note (out of scope Stage 2): the DB lookup on every request is fine for dev
 // load.  A future optimization is a short-lived in-process Map cache keyed on slug,
 // invalidated on Organization updates.
 
 export async function proxy(request: NextRequest) {
-  const host = request.headers.get("host") ?? "";
+  const orgSlug = request.nextUrl.pathname.split("/")[1] ?? "";
 
-  // Strip port: "acme-glass.localhost:3000" → "acme-glass.localhost"
-  const hostWithoutPort = host.split(":")[0];
-
-  // Find the first dot to separate subdomain from the rest.
-  const dotIndex = hostWithoutPort.indexOf(".");
-
-  if (dotIndex <= 0) {
-    // No subdomain (bare "localhost") — apex passthrough.
-    // Strip any client-supplied org headers so an authenticated user cannot
-    // spoof x-org-id / x-org-slug on the apex host to reach org-scoped pages.
+  if (orgSlug === "") {
+    // Apex passthrough. Strip any client-supplied org headers so an authenticated user
+    // cannot spoof x-org-id / x-org-slug on the apex page to reach org-scoped pages.
     const stripped = new Headers(request.headers);
     stripped.delete("x-org-id");
     stripped.delete("x-org-slug");
     return NextResponse.next({ request: { headers: stripped } });
   }
 
-  const subdomain = hostWithoutPort.substring(0, dotIndex);
-
   // Look up the organization by slug.
   const org = await prisma.organization.findUnique({
-    where: { slug: subdomain },
+    where: { slug: orgSlug },
     select: { id: true, slug: true },
   });
 
@@ -61,9 +52,10 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Run on all paths except static assets and the auth API.
-    // The auth API must work on subdomains without the org-check overhead because
-    // the session cookie is already the per-org isolation boundary.
-    "/((?!_next/static|_next/image|favicon\\.ico|api/auth).*)",
+    // Run on all paths except static assets, all /api/* routes, and the /organizations dev
+    // listing.  Excluding all of /api prevents "api" from being read as an org slug and
+    // avoids needless DB lookups on health checks, auth callbacks, etc.  The /organizations
+    // dev page is similarly excluded so "organizations" is never treated as a slug.
+    "/((?!_next/static|_next/image|favicon\\.ico|api|organizations).*)",
   ],
 };

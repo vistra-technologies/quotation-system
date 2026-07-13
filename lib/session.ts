@@ -51,15 +51,16 @@ export async function getSession(): Promise<SessionData | null> {
 
   // Cross-tenant session replay guard.
   //
-  // proxy.ts sets x-org-id on every subdomain request (e.g. acme-glass.localhost).
-  // Apex requests (bare localhost, no org subdomain) arrive without the header.
+  // proxy.ts sets x-org-id from the first URL path segment on every org-scoped
+  // request (e.g. /acme-glass/dashboard → x-org-id: <acme-glass uuid>).
+  // Apex requests (e.g. /, /login) have no org path segment and arrive without the header.
   //
   // Fail-closed on both cases:
   //   - Header absent  → no org context; reject (apex routes don't need auth).
   //   - Header present but mismatches session's organizationId → cross-org replay; reject.
   //
-  // This closes the gap where a session cookie minted on one org's subdomain could be
-  // replayed against a different org's subdomain and receive a 200 with the wrong data.
+  // This closes the gap where a session cookie (shared across all orgs on the one host)
+  // could be replayed against a different org's path and receive a 200 with the wrong data.
   const proxyOrgId = requestHeaders.get("x-org-id");
   if (!proxyOrgId || proxyOrgId !== (u.organizationId as string)) {
     return null;
