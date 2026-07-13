@@ -30,6 +30,9 @@ model Organization {
   roles             Role[]
   externalCompanies ExternalCompany[]
   users             User[]
+  // Stage 3 relations
+  catalogItems      CatalogItem[]
+  itemPrices        ItemPrice[]
 }
 
 // ────────────────────────────────────────────────────────────
@@ -177,4 +180,50 @@ model ExternalCompany {
   updatedAt      DateTime            @updatedAt
   organization   Organization        @relation(fields: [organizationId], references: [id])
   users          User[]
+}
+
+// ────────────────────────────────────────────────────────────
+// Domain models — Stage 3: catalog items and pricing
+// ────────────────────────────────────────────────────────────
+
+// Master catalog definitions behind every design option.
+// category is a plain String (not enum) — open-ended list per data-model.md.
+// attributes is untyped JSONB in Stage 3; typed contract deferred.
+// See design-docs/04-data-model.md — Catalog & pricing.
+model CatalogItem {
+  id             String       @id @default(uuid())
+  organizationId String
+  category       String       // WALL_TYPE | GLASS | DOOR_TYPE | PROFILE_STOP | FRAME |
+                              // HINGE | LOCKBOX | HANDLE | SEAL | RUBBER | FITTING | SCREW | …
+  code           String
+  name           String
+  unitOfMeasure  String
+  attributes     Json         // untyped JSONB — typed contract deferred to a later stage
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  prices         ItemPrice[]
+
+  // Upsert key for seed idempotency
+  @@unique([organizationId, code])
+}
+
+// Per-currency price for one catalog item within one org.
+// Unique on (catalogItemId, currency) — one price per item per currency.
+// See design-docs/04-data-model.md — ItemPrice notes.
+model ItemPrice {
+  id             String      @id @default(uuid())
+  organizationId String
+  catalogItemId  String
+  currency       String      // ISO code, e.g. "AED", "USD"
+  price          Decimal
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  catalogItem    CatalogItem  @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
+
+  @@unique([catalogItemId, currency])
 }

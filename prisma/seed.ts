@@ -256,10 +256,148 @@ async function main() {
     }
   }
 
-  // ── 4. Summary ──────────────────────────────────────────────────────────────
+  // ── 4. Catalog items and prices ─────────────────────────────────────────────
+  // Representative items covering all categories.
+  // PLACEHOLDER — replace with real client data before handover
+  const catalogItemDefs = [
+    {
+      category: "WALL_TYPE",
+      code: "WT-001",
+      name: "Standard Glass Wall",
+      uom: "M2",
+      attributes: {}, // PLACEHOLDER — replace with real client data before handover
+    },
+    {
+      category: "GLASS",
+      code: "GL-001",
+      name: "Clear Float 8mm",
+      uom: "M2",
+      attributes: { thicknessMm: 8 }, // PLACEHOLDER — replace with real client data before handover
+    },
+    {
+      category: "DOOR_TYPE",
+      code: "DT-001",
+      name: "Single Swing Door",
+      uom: "LEAF",
+      attributes: {}, // PLACEHOLDER — replace with real client data before handover
+    },
+    {
+      category: "PROFILE_STOP",
+      code: "PS-001",
+      name: "Aluminium U-Profile",
+      uom: "M",
+      attributes: {}, // PLACEHOLDER — replace with real client data before handover
+    },
+    {
+      category: "FRAME",
+      code: "FR-001",
+      name: "Standard Frame",
+      uom: "SET",
+      attributes: {}, // PLACEHOLDER — replace with real client data before handover
+    },
+    {
+      category: "HINGE",
+      code: "HG-001",
+      name: "Glass-to-Glass Hinge",
+      uom: "PC",
+      attributes: {}, // PLACEHOLDER — replace with real client data before handover
+    },
+    {
+      category: "LOCKBOX",
+      code: "LB-001",
+      name: "Standard Lock Box",
+      uom: "PC",
+      attributes: {}, // PLACEHOLDER — replace with real client data before handover
+    },
+    {
+      category: "HANDLE",
+      code: "HA-001",
+      name: "D-Handle",
+      uom: "PAIR",
+      attributes: {}, // PLACEHOLDER — replace with real client data before handover
+    },
+    {
+      category: "SEAL",
+      code: "SL-001",
+      name: "Bottom Seal",
+      uom: "M",
+      attributes: {}, // PLACEHOLDER — replace with real client data before handover
+    },
+    {
+      category: "RUBBER",
+      code: "RB-001",
+      name: "Edge Rubber Strip",
+      uom: "M",
+      attributes: {}, // PLACEHOLDER — replace with real client data before handover
+    },
+    {
+      category: "FITTING",
+      code: "FT-001",
+      name: "Panel Fitting Set",
+      uom: "SET",
+      attributes: {}, // PLACEHOLDER — replace with real client data before handover
+    },
+    {
+      category: "SCREW",
+      code: "SC-001",
+      name: "M6 Bolt Set",
+      uom: "SET",
+      attributes: {}, // PLACEHOLDER — replace with real client data before handover
+    },
+  ];
+
+  // Placeholder prices per item (two currencies).
+  // PLACEHOLDER — replace with real client data before handover
+  const priceDefs = [
+    { currency: "AED", amount: "100.00" }, // PLACEHOLDER — replace with real client data before handover
+    { currency: "USD", amount: "27.00" }, // PLACEHOLDER — replace with real client data before handover
+  ];
+
+  for (const org of allOrgs) {
+    for (const def of catalogItemDefs) {
+      const item = await prisma.catalogItem.upsert({
+        where: {
+          organizationId_code: { organizationId: org.id, code: def.code },
+        },
+        update: { name: def.name, unitOfMeasure: def.uom, attributes: def.attributes },
+        create: {
+          organizationId: org.id,
+          category: def.category,
+          code: def.code,
+          name: def.name,
+          unitOfMeasure: def.uom,
+          attributes: def.attributes,
+          active: true,
+        },
+      });
+
+      for (const p of priceDefs) {
+        await prisma.itemPrice.upsert({
+          where: {
+            catalogItemId_currency: {
+              catalogItemId: item.id,
+              currency: p.currency,
+            },
+          },
+          update: { price: p.amount, organizationId: org.id },
+          create: {
+            organizationId: org.id,
+            catalogItemId: item.id,
+            currency: p.currency,
+            price: p.amount, // PLACEHOLDER — replace with real client data before handover
+          },
+        });
+      }
+    }
+  }
+  console.log(`CatalogItems + ItemPrices seeded for ${allOrgs.length} orgs`);
+
+  // ── 5. Summary ──────────────────────────────────────────────────────────────
   const totalRoles = await prisma.role.count();
   const totalCompanies = await prisma.externalCompany.count();
   const totalUsers = await prisma.user.count();
+  const totalCatalogItems = await prisma.catalogItem.count();
+  const totalItemPrices = await prisma.itemPrice.count();
 
   console.log(`\n===== Seed summary =====`);
   console.log(`Organizations:      ${totalOrgs}  (4 expected)`);
@@ -272,6 +410,12 @@ async function main() {
   );
   console.log(
     `Users:              ${totalUsers}  (4×${allOrgs.length}=${4 * allOrgs.length} expected)`,
+  );
+  console.log(
+    `Catalog items:      ${totalCatalogItems}  (${catalogItemDefs.length}×${allOrgs.length}=${catalogItemDefs.length * allOrgs.length} expected)`,
+  );
+  console.log(
+    `Item prices:        ${totalItemPrices}  (${priceDefs.length * catalogItemDefs.length}×${allOrgs.length}=${priceDefs.length * catalogItemDefs.length * allOrgs.length} expected)`,
   );
   console.log(`\nSeeded password: ${SEED_PASSWORD}`);
   console.log(`Login at e.g. http://localhost:3000/acme-glass/login`);

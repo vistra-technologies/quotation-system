@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 
 // Always render live — reads DB for org list.
@@ -22,14 +23,14 @@ export default async function Home() {
 
         <nav className="mt-8 flex flex-col gap-3">
           {orgs.map((org) => (
-            <a
+            <Link
               key={org.id}
               href={`/${org.slug}/login`}
               className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-5 py-4 text-sm font-medium text-zinc-900 transition-colors hover:border-zinc-300 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
             >
               {org.name}
               <span className="font-mono text-xs text-zinc-400">{org.slug}</span>
-            </a>
+            </Link>
           ))}
         </nav>
 
@@ -39,18 +40,18 @@ export default async function Home() {
             Dev tools
           </p>
           <div className="flex flex-col gap-2">
-            <a
+            <Link
               href="/organizations"
               className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
             >
               /organizations
-            </a>
-            <a
+            </Link>
+            <Link
               href="/api/health"
               className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
             >
               /api/health
-            </a>
+            </Link>
           </div>
         </div>
       </main>

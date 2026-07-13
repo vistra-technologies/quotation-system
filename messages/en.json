@@ -1,0 +1,24 @@
+{
+  "pricing": {
+    "pageTitle": "Pricing Management",
+    "pageSubtitle": "Set and update product prices for your organization.",
+    "itemsTableHeading": "Catalog Items",
+    "colCategory": "Category",
+    "colCode": "Code",
+    "colName": "Name",
+    "colUOM": "Unit",
+    "colPrices": "Prices",
+    "editPrices": "Edit Prices",
+    "noPrices": "No prices set",
+    "editPageTitle": "Edit Prices",
+    "editPageSubtitle": "Set prices per currency for this item.",
+    "currency": "Currency",
+    "price": "Price",
+    "save": "Save",
+    "delete": "Delete",
+    "addPrice": "Add / Update Price",
+    "backToList": "Back to Pricing",
+    "forbiddenMessage": "You do not have permission to manage pricing.",
+    "deleteConfirm": "Delete this price?"
+  }
+}
