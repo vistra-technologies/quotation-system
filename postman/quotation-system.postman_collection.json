@@ -1,0 +1,261 @@
+{
+  "info": {
+    "name": "Quotation System API",
+    "_postman_id": "b6f2a3d4-5e1a-4c8a-9b2e-7a1c3d9e6f10",
+    "description": "API endpoints for the Vistra Quotation System (Stage 1 scaffold).\n\nTwo route groups exist today:\n- `/api/health` — infra health check (DB connectivity via Prisma). Always reachable, bypasses tenant resolution.\n- `/api/auth/*` — better-auth endpoints (email/password only, no social providers, no email delivery configured).\n\nTenancy note: this app resolves the organization from the request's Host subdomain (e.g. `acme-glass.localhost:3000`), but `/api/auth/*` is intentionally excluded from that host-based resolution (see `proxy.ts`) — the session cookie itself is the per-org isolation boundary. Instead, the org is encoded directly in the sign-in email as `{username}@{orgSlug}.internal` (see `lib/auth-utils.ts` → `toAuthEmail`). That means every request in this collection works against a single host (`baseUrl`) regardless of which org you're acting as — just change the `orgSlug`/`username`/`password` variables.\n\nSeeded test data (from `prisma/seed.ts`, password `Seed1234!` for all): orgs `vistra`, `acme-glass`, `nordic-walls`, `clearline`; usernames `admin`, `member`, `distributor`, `architect` per org.\n\nSession auth uses an httpOnly cookie (`qs.session_token`) set by Sign In — Postman's cookie jar handles this automatically for requests run from the app (not from a raw `curl` export) as long as they hit the same `baseUrl`.\n\nEndpoints NOT included: social sign-in/callback (no providers configured), password-reset-request/email-verification (no email delivery wired up — see `lib/auth.ts`), and account-linking endpoints (no social providers to link).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "https://v-quote.vercel.app", "description": "Swap to http://localhost:3000 for local dev (docker DB running, npm run dev)." },
+    { "key": "orgSlug", "value": "vistra", "description": "One of: vistra, acme-glass, nordic-walls, clearline (seeded)." },
+    { "key": "username", "value": "admin", "description": "One of: admin, member, distributor, architect (seeded)." },
+    { "key": "password", "value": "Seed1234!", "description": "Seeded password for all seeded users." },
+    { "key": "newPassword", "value": "NewSeed1234!", "description": "Used by the Change Password request." },
+    { "key": "sessionTokenToRevoke", "value": "", "description": "Fill in a session token (from List Sessions) before calling Revoke Session." }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "health"]
+            },
+            "description": "Queries the DB via Prisma. 200 with database: \"connected\" proves the app -> Prisma -> Postgres chain works. Always reachable regardless of host (bypasses tenant resolution)."
+          }
+        },
+        {
+          "name": "Auth service ok",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/ok",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "ok"]
+            },
+            "description": "better-auth's own built-in liveness endpoint — confirms the auth handler is mounted and responding, independent of the app's own /api/health."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth / Session",
+      "item": [
+        {
+          "name": "Sign in (email)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{username}}@{{orgSlug}}.internal\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/sign-in/email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "sign-in", "email"]
+            },
+            "description": "The synthetic email encodes the org: {username}@{orgSlug}.internal — NOT a real email address (see lib/auth-utils.ts). On success, sets the qs.session_token cookie used by every other request below."
+          }
+        },
+        {
+          "name": "Get session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/get-session",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "get-session"]
+            },
+            "description": "Returns the current session + user (including the domain additionalFields: organizationId, username, roleId, active, externalCompanyId) based on the session cookie. Requires Sign In to have run first."
+          }
+        },
+        {
+          "name": "List sessions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/list-sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "list-sessions"]
+            },
+            "description": "Lists all active sessions for the signed-in user. Copy a token from here into the sessionTokenToRevoke variable to test Revoke Session."
+          }
+        },
+        {
+          "name": "Revoke session",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{sessionTokenToRevoke}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/revoke-session",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "revoke-session"]
+            },
+            "description": "Revokes one specific session by token (see List Sessions)."
+          }
+        },
+        {
+          "name": "Revoke other sessions",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/revoke-other-sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "revoke-other-sessions"]
+            },
+            "description": "Revokes every session for the current user except the one making this request."
+          }
+        },
+        {
+          "name": "Revoke all sessions",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/revoke-sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "revoke-sessions"]
+            },
+            "description": "Revokes every session for the current user, including the one making this request (signs you out everywhere)."
+          }
+        },
+        {
+          "name": "Sign out",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/sign-out",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "sign-out"]
+            },
+            "description": "Clears the current session cookie."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth / User",
+      "item": [
+        {
+          "name": "List linked accounts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/list-accounts",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "list-accounts"]
+            },
+            "description": "Lists auth provider accounts linked to the current user. This app only uses the \"credential\" provider (no social sign-in configured), so expect exactly one entry."
+          }
+        },
+        {
+          "name": "Update user profile",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Updated Display Name\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/update-user",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "update-user"]
+            },
+            "description": "Updates the signed-in user's profile fields (e.g. display name)."
+          }
+        },
+        {
+          "name": "Change password",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{password}}\",\n  \"newPassword\": \"{{newPassword}}\",\n  \"revokeOtherSessions\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/change-password",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "change-password"]
+            },
+            "description": "Changes the signed-in user's password. Update the `password` collection variable afterward so subsequent Sign In requests still work."
+          }
+        },
+        {
+          "name": "Change email",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"newEmail\": \"{{username}}@{{orgSlug}}.internal\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/change-email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "change-email"]
+            },
+            "description": "Changes the synthetic auth email. Caution: this is the login key (see toAuthEmail) — changing it changes what you sign in with. requireEmailVerification is false, so this applies immediately with no confirmation step."
+          }
+        },
+        {
+          "name": "Delete user (DESTRUCTIVE)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/delete-user",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "delete-user"]
+            },
+            "description": "Permanently deletes the signed-in user. Destructive — only run against seeded/test data, and re-run `npx prisma db seed` to restore it afterward."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth / Sign Up (expected to fail)",
+      "item": [
+        {
+          "name": "Sign up (email) — disabled",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newuser@{{orgSlug}}.internal\",\n  \"password\": \"Seed1234!\",\n  \"name\": \"New User\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/auth/sign-up/email",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "auth", "sign-up", "email"]
+            },
+            "description": "This app sets disableSignUp: true (lib/auth.ts) — users are provisioned server-side only (via prisma/seed.ts or a future admin flow), not via public self-signup. Expect this to fail. Kept in the collection to make that boundary verifiable, not because it's meant to succeed."
+          }
+        }
+      ]
+    }
+  ]
+}
