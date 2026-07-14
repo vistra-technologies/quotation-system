@@ -101,6 +101,22 @@ export default async function DashboardPage({
           </div>
         )}
 
+        {(permissionCodes.includes(PERMISSIONS.MANAGE_USERS) ||
+          permissionCodes.includes(PERMISSIONS.MANAGE_FEATURES)) && (
+          <div className="mt-4">
+            <Link
+              href={
+                permissionCodes.includes(PERMISSIONS.MANAGE_USERS)
+                  ? `/${orgSlug}/admin/users`
+                  : `/${orgSlug}/admin/roles`
+              }
+              className="block w-full rounded-md border border-zinc-300 bg-white px-4 py-2 text-center text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              {t("manageAdmin")}
+            </Link>
+          </div>
+        )}
+
         <div className="mt-4">
           <LogoutButton orgSlug={orgSlug} />
         </div>

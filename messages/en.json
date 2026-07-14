@@ -1,6 +1,83 @@
 {
   "dashboard": {
-    "managePricing": "Manage Pricing"
+    "managePricing": "Manage Pricing",
+    "manageAdmin": "Admin"
+  },
+  "login": {
+    "crossOrgTitle": "You're already signed in",
+    "crossOrgMessage": "You are signed in to {sessionOrgName}. Sign out before accessing another organization.",
+    "crossOrgLogout": "Log out of {sessionOrgName}",
+    "crossOrgDashboard": "Go to my dashboard"
+  },
+  "admin": {
+    "navUsers": "Users",
+    "navRoles": "Roles",
+    "navPermissions": "Permissions",
+    "backToDashboard": "← Back to Dashboard"
+  },
+  "users": {
+    "pageTitle": "User Management",
+    "pageSubtitle": "Manage users in your organization.",
+    "colUsername": "Username",
+    "colRole": "Role",
+    "colStatus": "Status",
+    "colActions": "Actions",
+    "statusActive": "Active",
+    "statusInactive": "Inactive",
+    "createUser": "Create User",
+    "createPageTitle": "Create User",
+    "createPageSubtitle": "Add a new user to your organization.",
+    "fieldUsername": "Username",
+    "fieldRole": "Role",
+    "fieldExternalCompany": "External Company",
+    "fieldExternalCompanyNone": "None",
+    "fieldPassword": "Initial Password",
+    "submitCreate": "Create User",
+    "detailPageTitle": "User Detail",
+    "changeRoleLabel": "Change Role",
+    "changeRoleSubmit": "Update Role",
+    "setPasswordLabel": "New Password",
+    "setPasswordSubmit": "Set Password",
+    "activateAction": "Activate",
+    "deactivateAction": "Deactivate",
+    "backToList": "← Back to Users"
+  },
+  "roles": {
+    "pageTitle": "Roles",
+    "pageSubtitle": "Manage roles in your organization.",
+    "colName": "Name",
+    "colDescription": "Description",
+    "colActions": "Actions",
+    "createRole": "Create Role",
+    "createPageTitle": "Create Role",
+    "fieldName": "Name",
+    "fieldDescription": "Description (optional)",
+    "submitCreate": "Create Role",
+    "detailPageTitle": "Role Permissions",
+    "detailSubtitle": "Add or remove permissions for this role.",
+    "grantedPermissions": "Granted Permissions",
+    "availablePermissions": "Available Permissions",
+    "addPermission": "Add",
+    "removePermission": "Remove",
+    "noGranted": "No permissions granted.",
+    "backToList": "← Back to Roles"
+  },
+  "permissions": {
+    "pageTitle": "Permission Catalog",
+    "pageSubtitle": "All global permissions. Newly created permissions are inert until a developer wires them with requirePermission().",
+    "colCode": "Code",
+    "colDescription": "Description",
+    "createPermission": "Create Permission",
+    "createPageTitle": "Create Permission",
+    "createPageSubtitle": "Add a new permission to the global catalog.",
+    "fieldCode": "Permission Code",
+    "fieldDescription": "Description",
+    "submitCreate": "Create Permission",
+    "inertCaveat": "This permission is inert by design — granting it to a role has no effect until a developer adds a requirePermission() call for this code.",
+    "backToList": "← Back to Permissions"
+  },
+  "common": {
+    "loading": "Processing..."
   },
   "pricing": {
     "pageTitle": "Pricing Management",
