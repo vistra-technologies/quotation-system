@@ -1,9 +1,9 @@
 "use client";
 
+import { useActionState } from "react";
 import { useTranslations } from "next-intl";
-import { useTransition } from "react";
 import { LoadingOverlay } from "@/components/loading-overlay";
-import { createUser } from "../actions";
+import { createUser, type CreateUserState } from "../actions";
 
 interface CreateUserFormProps {
   orgSlug: string;
@@ -11,30 +11,29 @@ interface CreateUserFormProps {
   externalCompanies: { id: string; name: string }[];
 }
 
+const initialState: CreateUserState = { error: null };
+
 /**
  * Client Component form for creating a new user.
  *
- * Uses useTransition so the LoadingOverlay is shown while the server action
- * is in-flight. If the action throws, the overlay disappears and the error
- * bubbles up to the nearest error boundary — no zombie-overlay risk.
+ * Uses useActionState (React 19) so the server action can return a user-readable
+ * error (e.g. duplicate username) rather than crashing to an error boundary.
  */
 export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUserFormProps) {
   const t = useTranslations("users");
-  const [isPending, startTransition] = useTransition();
-
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const formData = new FormData(e.currentTarget);
-    startTransition(async () => {
-      await createUser(formData);
-    });
-  }
+  const [state, formAction, isPending] = useActionState(createUser, initialState);
 
   return (
     <>
       <LoadingOverlay visible={isPending} />
 
-      <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-5">
+      {state.error && (
+        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 dark:border-red-700 dark:bg-red-950">
+          <p className="text-sm text-red-700 dark:text-red-300">{state.error}</p>
+        </div>
+      )}
+
+      <form action={formAction} className="mt-6 flex flex-col gap-5">
         <input type="hidden" name="orgSlug" value={orgSlug} />
 
         {/* Username */}

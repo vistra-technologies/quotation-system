@@ -13,6 +13,19 @@ function PendingOverlay() {
   return <LoadingOverlay visible={pending} />;
 }
 
+function SubmitButton({ label }: { label: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+    >
+      {label}
+    </button>
+  );
+}
+
 interface CreateRoleFormProps {
   orgSlug: string;
   fieldNameLabel: string;
@@ -75,12 +88,7 @@ export function CreateRoleForm({
         />
       </div>
 
-      <button
-        type="submit"
-        className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-      >
-        {submitLabel}
-      </button>
+      <SubmitButton label={submitLabel} />
     </form>
   );
 }

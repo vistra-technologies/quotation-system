@@ -49,6 +49,8 @@ async function requireUserInOrg(userId: string, organizationId: string) {
 // createUser
 // ---------------------------------------------------------------------------
 
+export type CreateUserState = { error: string | null };
+
 /**
  * Create a new user within the session's org and wire up a better-auth
  * credential account using the canonical password-hashing pattern from
@@ -56,8 +58,14 @@ async function requireUserInOrg(userId: string, organizationId: string) {
  *
  * The user + account rows are created in a single $transaction so a partial
  * failure cannot leave a user with no way to log in.
+ *
+ * Uses the useActionState signature so the client form can surface errors
+ * (e.g. duplicate username) instead of crashing to an error boundary.
  */
-export async function createUser(formData: FormData): Promise<void> {
+export async function createUser(
+  prevState: CreateUserState,
+  formData: FormData
+): Promise<CreateUserState> {
   const orgSlug = formData.get("orgSlug") as string | null;
   const session = await getAuthenticatedSession(orgSlug);
   await enforceManageUsers(session);
@@ -68,7 +76,7 @@ export async function createUser(formData: FormData): Promise<void> {
   const password = formData.get("password") as string | null;
 
   if (!username || !roleId || !password) {
-    throw new Error("username, roleId, and password are required");
+    return { error: "Username, role, and password are required" };
   }
 
   // Ensure the chosen role belongs to the session's org (tenancy guard on FK).
@@ -92,7 +100,7 @@ export async function createUser(formData: FormData): Promise<void> {
     where: { organizationId: session.organizationId, username },
     select: { id: true },
   });
-  if (existing) throw new Error(`Username "${username}" is already taken in this organization`);
+  if (existing) return { error: `Username "${username}" is already taken in this organization` };
 
   // Fetch the org slug for the synthetic email.
   const org = await prisma.organization.findUnique({
@@ -231,4 +239,5 @@ export async function setUserPassword(formData: FormData): Promise<void> {
   });
 
   revalidatePath(`/${orgSlug}/admin/users/${userId}`);
+  redirect(`/${orgSlug}/admin/users/${userId}`);
 }
