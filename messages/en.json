@@ -1,4 +1,7 @@
 {
+  "dashboard": {
+    "managePricing": "Manage Pricing"
+  },
   "pricing": {
     "pageTitle": "Pricing Management",
     "pageSubtitle": "Set and update product prices for your organization.",

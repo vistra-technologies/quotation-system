@@ -1,6 +1,9 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { getSession } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { PERMISSIONS } from "@/lib/rbac";
 import { LogoutButton } from "./logout-button";
 
 // Always render live — reads session cookie and DB.
@@ -28,7 +31,7 @@ export default async function DashboardPage({
     redirect(`/${orgSlug}/login`);
   }
 
-  const [org, role, rolePermissions] = await Promise.all([
+  const [org, role, rolePermissions, t] = await Promise.all([
     prisma.organization.findUnique({
       where: { id: session.organizationId },
       select: { name: true, slug: true },
@@ -41,6 +44,7 @@ export default async function DashboardPage({
       where: { roleId: session.roleId },
       include: { permission: { select: { code: true } } },
     }),
+    getTranslations("dashboard"),
   ]);
 
   const permissionCodes = rolePermissions.map((rp) => rp.permission.code);
@@ -85,6 +89,17 @@ export default async function DashboardPage({
             </div>
           </dl>
         </div>
+
+        {permissionCodes.includes(PERMISSIONS.MANAGE_PRICING) && (
+          <div className="mt-4">
+            <Link
+              href={`/${orgSlug}/pricing`}
+              className="block w-full rounded-md border border-zinc-300 bg-white px-4 py-2 text-center text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            >
+              {t("managePricing")}
+            </Link>
+          </div>
+        )}
 
         <div className="mt-4">
           <LogoutButton orgSlug={orgSlug} />
