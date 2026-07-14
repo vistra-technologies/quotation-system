@@ -40,6 +40,8 @@
     "setPasswordSubmit": "Set Password",
     "activateAction": "Activate",
     "deactivateAction": "Deactivate",
+    "cannotDeactivateSelf": "You cannot deactivate your own account.",
+    "cannotDeactivateSelfTooltip": "You cannot deactivate your own account",
     "backToList": "← Back to Users"
   },
   "roles": {
@@ -71,6 +73,8 @@
     "createPageTitle": "Create Permission",
     "createPageSubtitle": "Add a new permission to the global catalog.",
     "fieldCode": "Permission Code",
+    "fieldCodePlaceholder": "e.g. MANAGE_REPORTS",
+    "fieldCodeHint": "Conventionally uppercase with underscores, e.g. MANAGE_REPORTS",
     "fieldDescription": "Description",
     "submitCreate": "Create Permission",
     "inertCaveat": "This permission is inert by design — granting it to a role has no effect until a developer adds a requirePermission() call for this code.",
