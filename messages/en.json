@@ -17,8 +17,6 @@
     "save": "Save",
     "delete": "Delete",
     "addPrice": "Add / Update Price",
-    "backToList": "Back to Pricing",
-    "forbiddenMessage": "You do not have permission to manage pricing.",
-    "deleteConfirm": "Delete this price?"
+    "backToList": "← Back to Pricing"
   }
 }

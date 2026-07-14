@@ -12,10 +12,10 @@ import { prisma } from "@/lib/prisma";
  * Tenancy guard: verifies the CatalogItem belongs to the session's org before writing.
  */
 export async function upsertItemPrice(formData: FormData): Promise<void> {
+  const orgSlug = formData.get("orgSlug") as string | null;
   const session = await getSession();
   if (!session) {
-    // No session — redirect to login (orgSlug not known here; use a safe fallback)
-    redirect("/");
+    redirect(orgSlug ? `/${orgSlug}/login` : "/");
   }
 
   try {
@@ -48,8 +48,6 @@ export async function upsertItemPrice(formData: FormData): Promise<void> {
   if (!catalogItem) {
     throw new Error("Catalog item not found or access denied");
   }
-
-  const orgSlug = formData.get("orgSlug") as string | null;
 
   await prisma.itemPrice.upsert({
     where: {

@@ -55,7 +55,7 @@ export default async function PricingItemPage({
           href={`/${orgSlug}/pricing`}
           className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
         >
-          ← {t("backToList")}
+          {t("backToList")}
         </Link>
 
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
