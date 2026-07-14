@@ -19,6 +19,11 @@
 
 import { test, expect } from "@playwright/test";
 
+// Run this file serially — auth-flow tests are flaky under concurrent Turbopack
+// compilation load on local dev. (On a pre-built Vercel preview this is not needed,
+// but serial is safe everywhere.)
+test.describe.configure({ mode: "serial" });
+
 // ---------------------------------------------------------------------------
 // Helper — extract org links from the apex org-selector page
 // ---------------------------------------------------------------------------
@@ -79,6 +84,16 @@ test("clicking an org link stays on the deployed domain, not localhost", async (
   page,
   baseURL,
 }) => {
+  // This assertion is only meaningful against a deployed environment.
+  // When baseURL is localhost the final URL will always contain "localhost" — a
+  // false failure, not a real regression.  The Stage 2 bug it guards (hardcoded
+  // localhost in org link hrefs) is already caught by the href-inspection test
+  // above, which passes correctly on localhost.
+  test.skip(
+    !baseURL || baseURL.includes("localhost"),
+    "Skipped on localhost — test targets deployed environments only (always false-fails locally).",
+  );
+
   const links = await getOrgLinks(page);
   expect(links.length).toBeGreaterThanOrEqual(1);
 
