@@ -91,7 +91,6 @@ export default async function LoginPage({
 
     return (
       <CrossOrgNotice
-        sessionOrgName={sessionOrgName}
         sessionOrgSlug={sessionOrgSlug}
         title={t("crossOrgTitle")}
         message={t("crossOrgMessage", { sessionOrgName })}

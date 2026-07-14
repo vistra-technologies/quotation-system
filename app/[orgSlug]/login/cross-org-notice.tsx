@@ -3,8 +3,6 @@
 import { authClient } from "@/lib/auth-client";
 
 interface CrossOrgNoticeProps {
-  /** Display name of the org the visitor is currently signed in to (org X). */
-  sessionOrgName: string;
   /** Slug of the org the visitor is currently signed in to (org X). */
   sessionOrgSlug: string;
   /** Pre-translated notice title (from login.crossOrgTitle). */
@@ -29,7 +27,6 @@ interface CrossOrgNoticeProps {
  * required on the login route.
  */
 export function CrossOrgNotice({
-  sessionOrgName,
   sessionOrgSlug,
   title,
   message,
