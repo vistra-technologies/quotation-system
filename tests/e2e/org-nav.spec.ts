@@ -269,9 +269,11 @@ test("cross-org session replay: vistra session rejected on acme-glass dashboard"
   // session → redirect to /{orgSlug}/login.
   await page.goto("/acme-glass/dashboard");
 
-  // Must redirect to acme-glass login — NOT render the dashboard with vistra's data
+  // Must redirect to acme-glass login — NOT render the dashboard with vistra's data.
+  // Stage 4 changed this path: a cross-org session now renders CrossOrgNotice
+  // (heading: "You're already signed in"), not the plain login form.
   await page.waitForURL(/\/acme-glass\/login/, { timeout: 10_000 });
   await expect(
-    page.getByRole("heading", { name: /Sign in to/i }),
+    page.getByRole("heading", { name: /already signed in/i }),
   ).toBeVisible({ timeout: 5_000 });
 });

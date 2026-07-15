@@ -1,4 +1,4 @@
-import { betterAuth } from "better-auth";
+import { betterAuth, APIError } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 import { prisma } from "@/lib/prisma";
@@ -106,6 +106,29 @@ export const auth = betterAuth({
     // Handles RSC / Server-Action cookie lifecycle in Next.js App Router.
     nextCookies(),
   ],
+
+  // Reject sign-in for deactivated users at the auth layer (defense-in-depth).
+  // The page-level guard in lib/session.ts also rejects them, but this hook
+  // ensures no valid session token is ever issued for an inactive account,
+  // even for callers that bypass getSession().
+  databaseHooks: {
+    session: {
+      create: {
+        before: async (session) => {
+          const user = await prisma.user.findUnique({
+            where: { id: session.userId },
+            select: { active: true },
+          });
+          if (user?.active === false) {
+            throw new APIError("UNAUTHORIZED", {
+              message: "Account is deactivated.",
+              code: "ACCOUNT_DEACTIVATED",
+            });
+          }
+        },
+      },
+    },
+  },
 });
 
 export type Auth = typeof auth;
