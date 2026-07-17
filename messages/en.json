@@ -108,7 +108,6 @@
     "fieldName": "Name",
     "fieldStatus": "Active",
     "fieldsSchemaLabel": "Fields Schema (JSON)",
-    "fieldsSchemaHint": "An array of field definitions. Each entry: { \"key\": \"...\", \"label\": \"...\", \"type\": \"text|number|boolean|select\", \"required\": true|false }",
     "fieldCategory": "Category",
     "addField": "Add Field",
     "removeField": "Remove",

@@ -27,46 +27,55 @@ async function getSessionWithManageFeatures(orgSlug: string) {
 
 /**
  * Parse the serialised fieldsSchema JSON string from FormData.
- * Returns an empty array on any parse failure — never throws.
- * Validates: 4 valid types; options must be a non-empty array for radio/dropdown.
+ * Returns an empty array if the raw value is absent or not valid JSON.
+ * Throws a descriptive Error if a radio/dropdown field has no options — this propagates
+ * to the page-level error boundary, matching the !code / !name / !category guards above.
  */
 function parseFieldsSchema(raw: string | null): FieldEntry[] {
   if (!raw) return [];
+
+  // Isolate JSON.parse errors from validation errors so that a validation throw
+  // can escape and propagate to the caller (instead of being swallowed by the catch).
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    const validTypes = new Set(["field", "radio", "dropdown", "checkbox"]);
-    const optionRequiredTypes = new Set(["radio", "dropdown"]);
-    return (parsed as unknown[])
-      .map((item) => {
-        if (typeof item !== "object" || item === null) return null;
-        const obj = item as Record<string, unknown>;
-        const type = (validTypes.has(obj.type as string) ? obj.type : "field") as FieldEntry["type"];
-        const entry: FieldEntry = {
-          key: String(obj.key ?? ""),
-          label: String(obj.label ?? ""),
-          type,
-          required: Boolean(obj.required),
-          basic: obj.basic !== undefined ? Boolean(obj.basic) : true,
-          core: Boolean(obj.core),
-        };
-        if (optionRequiredTypes.has(type)) {
-          const opts = Array.isArray(obj.options)
-            ? (obj.options as unknown[]).map(String).filter(Boolean)
-            : [];
-          // Drop fields where options are required but empty
-          if (opts.length === 0) return null;
-          entry.options = opts;
-        }
-        if (obj.hint) {
-          entry.hint = String(obj.hint);
-        }
-        return entry;
-      })
-      .filter((x): x is FieldEntry => x !== null);
+    parsed = JSON.parse(raw);
   } catch {
     return [];
   }
+
+  if (!Array.isArray(parsed)) return [];
+  const validTypes = new Set(["field", "radio", "dropdown", "checkbox"]);
+  const optionRequiredTypes = new Set(["radio", "dropdown"]);
+  return (parsed as unknown[])
+    .map((item) => {
+      if (typeof item !== "object" || item === null) return null;
+      const obj = item as Record<string, unknown>;
+      const type = (validTypes.has(obj.type as string) ? obj.type : "field") as FieldEntry["type"];
+      const entry: FieldEntry = {
+        key: String(obj.key ?? ""),
+        label: String(obj.label ?? ""),
+        type,
+        required: Boolean(obj.required),
+        basic: obj.basic !== undefined ? Boolean(obj.basic) : true,
+        core: Boolean(obj.core),
+      };
+      if (optionRequiredTypes.has(type)) {
+        const opts = Array.isArray(obj.options)
+          ? (obj.options as unknown[]).map(String).filter(Boolean)
+          : [];
+        if (opts.length === 0) {
+          throw new Error(
+            `Field "${String(obj.label ?? obj.key ?? type)}": ${type} type requires at least one option.`,
+          );
+        }
+        entry.options = opts;
+      }
+      if (obj.hint) {
+        entry.hint = String(obj.hint);
+      }
+      return entry;
+    })
+    .filter((x): x is FieldEntry => x !== null);
 }
 
 // ─── Server actions ───────────────────────────────────────────────────────────
