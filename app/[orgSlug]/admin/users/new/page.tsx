@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { getSession } from "@/lib/session";
-import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { prisma } from "@/lib/prisma";
+import { PERMISSIONS } from "@/lib/rbac";
+import { listRolesForDropdown, listExternalCompanies } from "@/lib/data/admin";
+import { requireSession, requirePermissionFor } from "@/lib/data/session";
 import { CreateUserForm } from "./create-user-form";
 
 // Always render live — reads session cookie and DB.
@@ -21,32 +20,12 @@ export default async function NewUserPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const session = await getSession();
-
-  if (!session) {
-    redirect(`/${orgSlug}/login`);
-  }
-
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_USERS);
-  } catch (e) {
-    if (e instanceof ForbiddenError) {
-      redirect(`/${orgSlug}/dashboard`);
-    }
-    throw e;
-  }
+  const session = await requireSession(orgSlug);
+  await requirePermissionFor(session, PERMISSIONS.MANAGE_USERS, orgSlug);
 
   const [roles, externalCompanies, t] = await Promise.all([
-    prisma.role.findMany({
-      where: { organizationId: session.organizationId },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
-    prisma.externalCompany.findMany({
-      where: { organizationId: session.organizationId },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
+    listRolesForDropdown(session),
+    listExternalCompanies(session),
     getTranslations("users"),
   ]);
 

@@ -2,8 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { getSession } from "@/lib/session";
-import { prisma } from "@/lib/prisma";
 import { PERMISSIONS } from "@/lib/rbac";
+import { getOrgById, getSessionRole, getSessionRolePermissions } from "@/lib/data/admin";
 import { LogoutButton } from "./logout-button";
 
 // Always render live — reads session cookie and DB.
@@ -15,9 +15,6 @@ export const dynamic = "force-dynamic";
  * Verifies the session, then displays the authenticated user's identity and
  * effective permissions.  If no valid session exists (or user is inactive),
  * redirects to /{orgSlug}/login.
- *
- * getSession() still reads x-org-id from the proxy-injected header for the
- * cross-org replay guard — no changes to lib/session.ts.
  */
 export default async function DashboardPage({
   params,
@@ -31,23 +28,12 @@ export default async function DashboardPage({
     redirect(`/${orgSlug}/login`);
   }
 
-  const [org, role, rolePermissions, t] = await Promise.all([
-    prisma.organization.findUnique({
-      where: { id: session.organizationId },
-      select: { name: true, slug: true },
-    }),
-    prisma.role.findUnique({
-      where: { id: session.roleId },
-      select: { name: true },
-    }),
-    prisma.rolePermission.findMany({
-      where: { roleId: session.roleId },
-      include: { permission: { select: { code: true } } },
-    }),
+  const [org, role, permissionCodes, t] = await Promise.all([
+    getOrgById(session.organizationId),
+    getSessionRole(session),
+    getSessionRolePermissions(session),
     getTranslations("dashboard"),
   ]);
-
-  const permissionCodes = rolePermissions.map((rp) => rp.permission.code);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-6 dark:bg-zinc-950">

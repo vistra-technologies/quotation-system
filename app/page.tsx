@@ -1,15 +1,12 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import { listOrganizationsForSelector } from "@/lib/data/admin";
 
 // Always render live — reads DB for org list.
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   // Apex — render the organization selector.
-  const orgs = await prisma.organization.findMany({
-    orderBy: { name: "asc" },
-    select: { id: true, slug: true, name: true },
-  });
+  const orgs = await listOrganizationsForSelector();
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-6 dark:bg-zinc-950">
