@@ -52,6 +52,14 @@ export async function createProject(
     ) {
       return { error: "A project number conflict occurred — please try again." };
     }
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as { code: string }).code === "INVALID_EXTERNAL_COMPANY"
+    ) {
+      return { error: "Selected company is invalid." };
+    }
     throw err;
   }
 

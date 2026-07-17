@@ -46,13 +46,17 @@ export async function getProjectById(session: SessionData, projectId: string) {
 /**
  * Create a new project scoped to the session org.
  *
- * `projectNumber` is assigned as MAX(projectNumber) + 1 within the org,
- * inside a serializable transaction so concurrent creates don't duplicate a number.
- * The @@unique([organizationId, projectNumber]) DB constraint is the backstop —
- * a P2002 on that pair is surfaced as a { code: "SEQUENCE_CONFLICT" } error.
+ * `projectNumber` is assigned as MAX(projectNumber) + 1 within the org, inside a
+ * transaction. The @@unique([organizationId, projectNumber]) DB constraint is the
+ * real guard against concurrent creates duplicating a number — a P2002 on that
+ * pair is surfaced as a { code: "SEQUENCE_CONFLICT" } error.
  *
- * Throws { code: "SEQUENCE_CONFLICT" } on a projectNumber race collision.
- * All other errors propagate to the caller.
+ * Also verifies `externalCompanyId` (if given) belongs to the session's org before
+ * inserting, to prevent cross-tenant references.
+ *
+ * Throws { code: "SEQUENCE_CONFLICT" } on a projectNumber race collision, or
+ * { code: "INVALID_EXTERNAL_COMPANY" } if externalCompanyId doesn't resolve within
+ * the org. All other errors propagate to the caller.
  */
 export async function createProject(
   session: SessionData,
@@ -60,6 +64,18 @@ export async function createProject(
 ) {
   try {
     return await prisma.$transaction(async (tx) => {
+      if (input.externalCompanyId) {
+        const company = await tx.externalCompany.findFirst({
+          where: { id: input.externalCompanyId, organizationId: session.organizationId },
+          select: { id: true },
+        });
+        if (!company) {
+          throw Object.assign(new Error("External company not found."), {
+            code: "INVALID_EXTERNAL_COMPANY",
+          });
+        }
+      }
+
       const max = await tx.project.aggregate({
         where: { organizationId: session.organizationId },
         _max: { projectNumber: true },
