@@ -156,7 +156,7 @@ test("company member can add, update, and delete an ItemPrice via the UI", async
   if (await existingEurRow.count() > 0) {
     const deleteBtn = existingEurRow.getByRole("button", { name: "Delete" });
     await deleteBtn.click();
-    await page.waitForLoadState("networkidle");
+    await expect(page.locator("li").filter({ hasText: testCurrency })).not.toBeVisible({ timeout: 15_000 });
   }
 
   // ── Step 1: Add a new price (EUR: 50.00) ──────────────────────────────────
@@ -165,7 +165,6 @@ test("company member can add, update, and delete an ItemPrice via the UI", async
   await page.getByRole("button", { name: "Save" }).click();
 
   // Wait for the page to revalidate and show the new price
-  await page.waitForLoadState("networkidle");
   const newPriceRow = page.locator("li").filter({ hasText: testCurrency });
   await expect(newPriceRow).toBeVisible({ timeout: 15_000 });
   await expect(newPriceRow).toContainText(initialPrice);
@@ -175,7 +174,6 @@ test("company member can add, update, and delete an ItemPrice via the UI", async
   await page.getByLabel("Price").fill(updatedPrice);
   await page.getByRole("button", { name: "Save" }).click();
 
-  await page.waitForLoadState("networkidle");
   const updatedPriceRow = page.locator("li").filter({ hasText: testCurrency });
   await expect(updatedPriceRow).toBeVisible({ timeout: 15_000 });
   await expect(updatedPriceRow).toContainText(updatedPrice);
@@ -187,7 +185,6 @@ test("company member can add, update, and delete an ItemPrice via the UI", async
   await deleteButton.click();
 
   // Wait for revalidation — the EUR row must disappear
-  await page.waitForLoadState("networkidle");
   await expect(page.locator("li").filter({ hasText: testCurrency })).not.toBeVisible({
     timeout: 20_000,
   });

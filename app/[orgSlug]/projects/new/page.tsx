@@ -1,38 +1,38 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { PERMISSIONS } from "@/lib/rbac";
-import { listRolesForDropdown, listExternalCompanies } from "@/lib/data/admin";
-import { requireSession, requirePermissionFor } from "@/lib/data/session";
-import { CreateUserForm } from "./create-user-form";
+import { listExternalCompanies } from "@/lib/data/admin";
+import { requireSession } from "@/lib/data/session";
+import { CreateProjectForm } from "./create-project-form";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
 
 /**
- * Create-user page (Server Component shell).
+ * Create-project page (Server Component shell).
  *
- * Fetches the org's roles and external companies for the form dropdowns,
- * then delegates the interactive form to the CreateUserForm Client Component.
+ * Any authenticated user in the org may create a project — no special
+ * RBAC permission is required beyond a valid session for this org.
+ *
+ * Fetches the org's external companies for the optional select dropdown,
+ * then delegates the interactive form to CreateProjectForm (Client Component).
  */
-export default async function NewUserPage({
+export default async function NewProjectPage({
   params,
 }: {
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
   const session = await requireSession(orgSlug);
-  await requirePermissionFor(session, PERMISSIONS.MANAGE_USERS, orgSlug);
 
-  const [roles, externalCompanies, t] = await Promise.all([
-    listRolesForDropdown(session),
+  const [externalCompanies, t] = await Promise.all([
     listExternalCompanies(session),
-    getTranslations("users"),
+    getTranslations("projects"),
   ]);
 
   return (
     <div className="mx-auto max-w-lg">
       <Link
-        href={`/${orgSlug}/admin/users`}
+        href={`/${orgSlug}/projects`}
         className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
       >
         {t("backToList")}
@@ -45,11 +45,7 @@ export default async function NewUserPage({
         {t("createPageSubtitle")}
       </p>
 
-      <CreateUserForm
-        orgSlug={orgSlug}
-        roles={roles}
-        externalCompanies={externalCompanies}
-      />
+      <CreateProjectForm orgSlug={orgSlug} externalCompanies={externalCompanies} />
     </div>
   );
 }

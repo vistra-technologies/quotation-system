@@ -2,9 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/session";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { prisma } from "@/lib/prisma";
+import {
+  createRole as dalCreateRole,
+  addRolePermission as dalAddRolePermission,
+  removeRolePermission as dalRemoveRolePermission,
+} from "@/lib/data/admin";
+import { requireSession } from "@/lib/data/session";
 
 /**
  * Create a new Role scoped to the session's organization.
@@ -13,8 +17,7 @@ import { prisma } from "@/lib/prisma";
  */
 export async function createRole(formData: FormData): Promise<void> {
   const orgSlug = formData.get("orgSlug") as string | null;
-  const session = await getSession();
-  if (!session) redirect(orgSlug ? `/${orgSlug}/login` : "/");
+  const session = await requireSession(orgSlug ?? "");
 
   try {
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
@@ -30,13 +33,7 @@ export async function createRole(formData: FormData): Promise<void> {
 
   if (!name) throw new Error("Role name is required");
 
-  const role = await prisma.role.create({
-    data: {
-      organizationId: session.organizationId,
-      name,
-      description,
-    },
-  });
+  const role = await dalCreateRole(session, { name, description });
 
   revalidatePath(`/${orgSlug}/admin/roles`);
   redirect(`/${orgSlug}/admin/roles/${role.id}`);
@@ -45,15 +42,14 @@ export async function createRole(formData: FormData): Promise<void> {
 /**
  * Grant a permission to a role (upsert — idempotent if already granted).
  * Gate: MANAGE_FEATURES.
- * Tenancy guard: verifies the target role belongs to the session's org before writing.
+ * Tenancy guard: delegated to lib/data/admin.ts assertRoleInOrg.
  */
 export async function addRolePermission(formData: FormData): Promise<void> {
   const orgSlug = formData.get("orgSlug") as string | null;
   const roleId = formData.get("roleId") as string | null;
   const permissionId = formData.get("permissionId") as string | null;
 
-  const session = await getSession();
-  if (!session) redirect(orgSlug ? `/${orgSlug}/login` : "/");
+  const session = await requireSession(orgSlug ?? "");
 
   try {
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
@@ -66,21 +62,7 @@ export async function addRolePermission(formData: FormData): Promise<void> {
 
   if (!roleId || !permissionId) throw new Error("roleId and permissionId are required");
 
-  // Tenancy guard: the role must belong to this session's org.
-  // A client-supplied roleId that belongs to another org would be a real security breach —
-  // granting permissions to another org's role through our session.
-  const role = await prisma.role.findFirst({
-    where: { id: roleId, organizationId: session.organizationId },
-    select: { id: true },
-  });
-  if (!role) throw new Error("Role not found or access denied");
-
-  // composite PK (roleId, permissionId) is the upsert key — see profile §5
-  await prisma.rolePermission.upsert({
-    where: { roleId_permissionId: { roleId, permissionId } },
-    create: { roleId, permissionId },
-    update: {},
-  });
+  await dalAddRolePermission(session, roleId, permissionId);
 
   revalidatePath(`/${orgSlug}/admin/roles/${roleId}`);
 }
@@ -88,15 +70,14 @@ export async function addRolePermission(formData: FormData): Promise<void> {
 /**
  * Revoke a permission from a role.
  * Gate: MANAGE_FEATURES.
- * Tenancy guard: verifies the target role belongs to the session's org before deleting.
+ * Tenancy guard: delegated to lib/data/admin.ts assertRoleInOrg.
  */
 export async function removeRolePermission(formData: FormData): Promise<void> {
   const orgSlug = formData.get("orgSlug") as string | null;
   const roleId = formData.get("roleId") as string | null;
   const permissionId = formData.get("permissionId") as string | null;
 
-  const session = await getSession();
-  if (!session) redirect(orgSlug ? `/${orgSlug}/login` : "/");
+  const session = await requireSession(orgSlug ?? "");
 
   try {
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
@@ -109,16 +90,7 @@ export async function removeRolePermission(formData: FormData): Promise<void> {
 
   if (!roleId || !permissionId) throw new Error("roleId and permissionId are required");
 
-  // Tenancy guard: the role must belong to this session's org.
-  const role = await prisma.role.findFirst({
-    where: { id: roleId, organizationId: session.organizationId },
-    select: { id: true },
-  });
-  if (!role) throw new Error("Role not found or access denied");
-
-  await prisma.rolePermission.delete({
-    where: { roleId_permissionId: { roleId, permissionId } },
-  });
+  await dalRemoveRolePermission(session, roleId, permissionId);
 
   revalidatePath(`/${orgSlug}/admin/roles/${roleId}`);
 }

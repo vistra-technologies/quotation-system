@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { getSession } from "@/lib/session";
-import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { prisma } from "@/lib/prisma";
+import { PERMISSIONS } from "@/lib/rbac";
+import { getCatalogItemById } from "@/lib/data/catalog";
+import { requireSession, requirePermissionFor } from "@/lib/data/session";
 import { upsertItemPrice, deleteItemPrice } from "../actions";
 
 // Always render live — reads session cookie and DB.
@@ -21,26 +21,11 @@ export default async function PricingItemPage({
   params: Promise<{ orgSlug: string; itemId: string }>;
 }) {
   const { orgSlug, itemId } = await params;
-  const session = await getSession();
-
-  if (!session) {
-    redirect(`/${orgSlug}/login`);
-  }
-
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_PRICING);
-  } catch (e) {
-    if (e instanceof ForbiddenError) {
-      redirect(`/${orgSlug}/dashboard`);
-    }
-    throw e;
-  }
+  const session = await requireSession(orgSlug);
+  await requirePermissionFor(session, PERMISSIONS.MANAGE_PRICING, orgSlug);
 
   const [item, t] = await Promise.all([
-    prisma.catalogItem.findFirst({
-      where: { id: itemId, organizationId: session.organizationId },
-      include: { prices: { orderBy: { currency: "asc" } } },
-    }),
+    getCatalogItemById(session, itemId),
     getTranslations("pricing"),
   ]);
 
