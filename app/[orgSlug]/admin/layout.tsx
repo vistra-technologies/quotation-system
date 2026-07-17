@@ -54,6 +54,7 @@ export default async function AdminLayout({
     users: allMessages.users,
     roles: allMessages.roles,
     permissions: allMessages.permissions,
+    components: allMessages.components,
   };
 
   return (
@@ -89,6 +90,12 @@ export default async function AdminLayout({
                     className="text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50"
                   >
                     {t("navPermissions")}
+                  </Link>
+                  <Link
+                    href={`/${orgSlug}/admin/components`}
+                    className="text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50"
+                  >
+                    {t("navComponents")}
                   </Link>
                 </>
               )}

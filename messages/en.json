@@ -13,6 +13,7 @@
     "navUsers": "Users",
     "navRoles": "Roles",
     "navPermissions": "Permissions",
+    "navComponents": "Component Types",
     "backToDashboard": "← Back to Dashboard"
   },
   "users": {
@@ -84,7 +85,41 @@
     "loading": "Processing..."
   },
   "components": {
-    "title": "Component Types"
+    "title": "Component Types",
+    "pageTitle": "Component Types",
+    "pageSubtitle": "Define the field schemas for each component category used in partition designs.",
+    "colCode": "Code",
+    "colName": "Name",
+    "colFields": "Fields",
+    "colStatus": "Status",
+    "colActions": "Actions",
+    "statusActive": "Active",
+    "statusInactive": "Inactive",
+    "statusCore": "Core",
+    "statusCustom": "Custom",
+    "createType": "Create Type",
+    "createPageTitle": "Create Component Type",
+    "createPageSubtitle": "Add a new component category with its field schema.",
+    "editPageTitle": "Edit Component Type",
+    "editPageSubtitle": "Update the name or field schema for this component type.",
+    "fieldCode": "Code",
+    "fieldCodeHint": "Uppercase, e.g. WALL_TYPE. Cannot be changed after creation.",
+    "fieldName": "Name",
+    "fieldStatus": "Active",
+    "fieldsSchemaLabel": "Fields Schema (JSON)",
+    "fieldsSchemaHint": "An array of field definitions. Each entry: { \"key\": \"...\", \"label\": \"...\", \"type\": \"text|number|boolean|select\", \"required\": true|false }",
+    "addField": "Add Field",
+    "removeField": "Remove",
+    "fieldKey": "Key",
+    "fieldLabel": "Label",
+    "fieldType": "Type",
+    "fieldRequired": "Required",
+    "submitCreate": "Create Component Type",
+    "submitUpdate": "Save Changes",
+    "backToList": "← Back to Component Types",
+    "inertCaveat": "Schema definitions only — fields added here have no effect until a developer wires them into the configurator. Core types (GLASS, DOOR, PROFILE_STOP) will be connected in Stage 6.",
+    "inertBadge": "Inert — not yet wired",
+    "fieldCount": "{count, plural, =0 {No fields} =1 {1 field} other {# fields}}"
   },
   "projects": {
     "title": "Projects"
