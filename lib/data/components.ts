@@ -6,12 +6,23 @@ import type { SessionData } from "@/lib/session";
 /**
  * A single field definition within a ComponentType's fieldsSchema.
  * Stored as JSONB; shape is admin-defined at runtime.
+ *
+ * Stage 6 shape:
+ *   type: "field" (plain text) | "radio" | "dropdown" | "checkbox"
+ *   options: required (non-empty) when type is radio or dropdown
+ *   hint: optional helper text shown under the input
+ *   basic: true → shown in the Basic section; false → shown in Advanced section
+ *   core: true → seeded by the platform; false → admin-created
  */
 export type FieldEntry = {
-  key: string; // machine key used by the configurator (Stage 6+)
+  key: string; // machine key used by the configurator
   label: string; // human-readable display label
-  type: "text" | "number" | "boolean" | "select"; // input kind
+  type: "field" | "radio" | "dropdown" | "checkbox";
+  options?: string[]; // required for radio and dropdown; absent for field/checkbox
+  hint?: string; // optional helper text
   required: boolean;
+  basic: boolean; // true = Basic section, false = Advanced section
+  core: boolean; // true = seeded by platform
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -27,17 +38,31 @@ export function isCoreComponentType(code: string): boolean {
 /** Parse the stored JSONB to a typed FieldEntry array (defensive). */
 function parseFieldsSchema(raw: unknown): FieldEntry[] {
   if (!Array.isArray(raw)) return [];
-  const validTypes = new Set(["text", "number", "boolean", "select"]);
+  const validTypes = new Set(["field", "radio", "dropdown", "checkbox"]);
   return (raw as unknown[])
     .map((item) => {
       if (typeof item !== "object" || item === null) return null;
       const obj = item as Record<string, unknown>;
-      return {
+      const type = (validTypes.has(obj.type as string) ? obj.type : "field") as FieldEntry["type"];
+      const entry: FieldEntry = {
         key: String(obj.key ?? ""),
         label: String(obj.label ?? ""),
-        type: (validTypes.has(obj.type as string) ? obj.type : "text") as FieldEntry["type"],
+        type,
         required: Boolean(obj.required),
+        // `basic` defaults to true when absent (backwards-compat with old rows)
+        basic: obj.basic !== undefined ? Boolean(obj.basic) : true,
+        core: Boolean(obj.core),
       };
+      // options: conditionally included for radio/dropdown
+      if (type === "radio" || type === "dropdown") {
+        entry.options = Array.isArray(obj.options)
+          ? (obj.options as unknown[]).map(String).filter(Boolean)
+          : [];
+      }
+      if (obj.hint) {
+        entry.hint = String(obj.hint);
+      }
+      return entry;
     })
     .filter((x): x is FieldEntry => x !== null);
 }
