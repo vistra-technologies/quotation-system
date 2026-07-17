@@ -306,6 +306,7 @@ async function main() {
           organizationId: org.id,
           code: def.code,
           name: def.name,
+          category: "Glass Partitions", // Stage 6 — Area 2 will reseed with proper per-type values
           fieldsSchema: def.fieldsSchema,
           active: true,
         },

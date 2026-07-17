@@ -65,12 +65,15 @@ export async function createComponentType(formData: FormData): Promise<void> {
 
   const code = (formData.get("code") as string | null)?.trim().toUpperCase();
   const name = (formData.get("name") as string | null)?.trim();
+  // category was added in Stage 6; the form field is added by the Area 2 dispatch.
+  // Until that lands, reads from form data fall back to an empty string.
+  const category = ((formData.get("category") as string | null) ?? "").trim();
   const fieldsSchema = parseFieldsSchema(formData.get("fieldsSchema") as string | null);
 
   if (!code) throw new Error("Code is required");
   if (!name) throw new Error("Name is required");
 
-  const created = await dalCreate(session, { code, name, fieldsSchema });
+  const created = await dalCreate(session, { code, name, category, fieldsSchema });
 
   revalidatePath(`/${orgSlug}/admin/components`);
   redirect(`/${orgSlug}/admin/components/${created.id}`);
