@@ -83,6 +83,12 @@
   "common": {
     "loading": "Processing..."
   },
+  "components": {
+    "title": "Component Types"
+  },
+  "projects": {
+    "title": "Projects"
+  },
   "pricing": {
     "pageTitle": "Pricing Management",
     "pageSubtitle": "Set and update product prices for your organization.",
