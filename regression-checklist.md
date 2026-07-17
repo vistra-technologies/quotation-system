@@ -59,3 +59,24 @@ Automated: `tests/e2e/pricing-stage3.spec.ts` (serial mode, 90 s timeout per tes
 20. **Stage 2 regression after Stage 3 migration:** per-org login, cross-org session rejection,
     role-correct dashboard, and `/api/health` all still pass after the Stage 3 migration is applied.
     (Items 1, 3, 7, 11 verified; item 10 manual only — deactivation test requires a DB write.)
+
+## Stage 4 — Admin section (users, roles, permissions)
+21. **MANAGE_USERS gating:** a role without MANAGE_USERS navigating to `/{orgSlug}/admin/users` → redirect to dashboard.
+22. **MANAGE_FEATURES gating:** a role without MANAGE_FEATURES navigating to `/{orgSlug}/admin/roles` → redirect to dashboard.
+23. **Cross-org user list isolation:** org A's admin cannot see org B's users by any URL manipulation.
+24. **Create-user + login round-trip:** admin creates a user with username/role/password → new user can log in immediately.
+25. **Password-reset round-trip:** admin sets a new password for a user → old password stops working; new password works.
+26. **Activate/deactivate instant block:** deactivating a currently-logged-in user invalidates their session on the very next request.
+27. **Inert-permission caveat:** the permissions page shows a prominent warning that adding a Permission row grants no capability until a developer wires it in code.
+28. **Loading overlay lifecycle:** form submission in admin user actions shows a loading state that clears on completion.
+29. **Authenticated-user login-page handling:** a logged-in user visiting their own org's `/login` is redirected to `/dashboard`; visiting another org's `/login` sees a notice rather than being auto-redirected.
+
+## Stage 5 — DAL + ComponentType + Project
+30. **DAL lint rule:** a file under `app/` importing `@/lib/prisma` directly fails `npm run lint`.
+31. **ComponentType tenancy:** org A's session cannot read org B's ComponentTypes.
+32. **ComponentType RBAC:** a role without MANAGE_FEATURES receives a 403/redirect on all `/admin/components` routes and actions.
+33. **ComponentType field schema round-trip:** add a field, save, reload — field still present in the editor.
+34. **Inert-caveat visible:** non-core/non-seeded ComponentTypes and fields show the inert-until-wired notice in the admin UI.
+35. **Project tenancy:** org A's session cannot read org B's Projects.
+36. **Project `projectNumber` per-org:** org A and org B can each have a project #1 without conflict.
+37. **Stage 2/3/4 regression after DAL refactor:** per-org login, cross-org session rejection, pricing CRUD, instant deactivation, and admin user/role/permission flows all still pass.
