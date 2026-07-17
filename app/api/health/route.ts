@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { pingHealthCheck } from "@/lib/data/admin";
 
 // Never cached — this route exists to prove live DB connectivity on each hit.
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 // A 200 with database: "connected" proves the full app -> Prisma -> Postgres chain works.
 export async function GET() {
   try {
-    const healthCheckRows = await prisma.healthCheck.count();
+    const healthCheckRows = await pingHealthCheck();
 
     return NextResponse.json({
       status: "ok",

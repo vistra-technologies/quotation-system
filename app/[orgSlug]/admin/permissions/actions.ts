@@ -2,9 +2,9 @@
 
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { getSession } from "@/lib/session";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { prisma } from "@/lib/prisma";
+import { createPermission as dalCreatePermission } from "@/lib/data/admin";
+import { requireSession } from "@/lib/data/session";
 
 export type CreatePermissionState = { error: string | null };
 
@@ -12,8 +12,6 @@ export type CreatePermissionState = { error: string | null };
  * Create a new global Permission row.
  *
  * Permission is GLOBAL — no organizationId, no tenancy filter.
- * A permission created here is visible in every org's catalog.
- *
  * Gate: MANAGE_FEATURES (server-side, always checked — not just the page).
  *
  * Duplicate code: the DB unique index on Permission.code raises P2002.
@@ -21,17 +19,13 @@ export type CreatePermissionState = { error: string | null };
  *
  * ⚠ Creating a Permission row grants NO capability. It only takes effect
  * once a developer adds requirePermission(session, "<code>") in code.
- * Surface this caveat prominently in the UI (handled by the calling page).
  */
 export async function createPermission(
   prevState: CreatePermissionState,
   formData: FormData
 ): Promise<CreatePermissionState> {
   const orgSlug = formData.get("orgSlug") as string | null;
-  const session = await getSession();
-  if (!session) {
-    redirect(orgSlug ? `/${orgSlug}/login` : "/");
-  }
+  const session = await requireSession(orgSlug ?? "");
 
   try {
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
@@ -53,7 +47,7 @@ export async function createPermission(
   }
 
   try {
-    await prisma.permission.create({ data: { code, description } });
+    await dalCreatePermission({ code, description });
   } catch (e: unknown) {
     // P2002 = unique constraint violation — code already exists in the global catalog
     if (
