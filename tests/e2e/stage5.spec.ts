@@ -232,6 +232,14 @@ test("createProject: cross-org externalCompanyId is rejected with INVALID_EXTERN
     return;
   }
 
+  // Sign out from acme-glass before switching to nordic-walls.
+  // Without this, signIn() navigates to /nordic-walls/login which shows the
+  // cross-org "already signed in" notice instead of the login form, causing
+  // the signIn helper's "Sign in to" heading assertion to fail.
+  await page.goto("/acme-glass/dashboard");
+  await page.getByRole("button", { name: /sign out/i }).click();
+  await expect(page).toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+
   // Step 2: Sign in to nordic-walls as admin
   await signIn(page, "admin", "Seed1234!", "nordic-walls");
   await page.goto("/nordic-walls/projects/new");
@@ -264,5 +272,5 @@ test("createProject: cross-org externalCompanyId is rejected with INVALID_EXTERN
   await expect(page).toHaveURL(/\/nordic-walls\/projects\/new/, { timeout: 10_000 });
 
   // Must show an error about invalid company -- not silently create a cross-tenant project
-  await expect(page.getByText(/invalid|not found|company/i)).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("p").filter({ hasText: /invalid|not found|company/i })).toBeVisible({ timeout: 10_000 });
 });

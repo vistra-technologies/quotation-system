@@ -80,3 +80,4 @@ Automated: `tests/e2e/pricing-stage3.spec.ts` (serial mode, 90 s timeout per tes
 35. **Project tenancy:** org A's session cannot read org B's Projects.
 36. **Project `projectNumber` per-org:** org A and org B can each have a project #1 without conflict.
 37. **Stage 2/3/4 regression after DAL refactor:** per-org login, cross-org session rejection, pricing CRUD, instant deactivation, and admin user/role/permission flows all still pass.
+38. **Cross-tenant ExternalCompany guard:** a crafted `createProject` form submission containing another org's `externalCompanyId` UUID is rejected by the DAL (`lib/data/projects.ts` org-scoped `findFirst` guard) with `INVALID_EXTERNAL_COMPANY`, surfaced as "Selected company is invalid." on the form — no cross-tenant FK is created. Verified E2E: stage5.spec.ts test 12.
