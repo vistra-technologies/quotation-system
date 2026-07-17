@@ -11,6 +11,7 @@
   },
   "admin": {
     "navUsers": "Users",
+    "navExternalCompanies": "External Companies",
     "navRoles": "Roles",
     "navPermissions": "Permissions",
     "navComponents": "Component Types",
@@ -141,6 +142,22 @@
     "fieldExternalCompanyNone": "None",
     "submitCreate": "Create Project",
     "backToList": "← Back to Projects"
+  },
+  "externalCompanies": {
+    "pageTitle": "External Companies",
+    "pageSubtitle": "Manage external companies (distributors and architectural firms) in your organization.",
+    "colName": "Name",
+    "colType": "Type",
+    "colActions": "Actions",
+    "createCompany": "Create Company",
+    "createPageTitle": "Create External Company",
+    "createPageSubtitle": "Add a new external company to your organization.",
+    "fieldName": "Company Name",
+    "fieldType": "Type",
+    "typeDistributor": "Distributor",
+    "typeArchitecturalFirm": "Architectural Firm",
+    "submitCreate": "Create Company",
+    "backToList": "← Back to External Companies"
   },
   "pricing": {
     "pageTitle": "Pricing Management",
