@@ -73,19 +73,33 @@ export default async function EditComponentTypePage({
           orgSlug={orgSlug}
           typeId={ct.id}
           initialName={ct.name}
+          initialCategory={ct.category}
           initialActive={ct.active}
           initialFields={ct.fieldsSchema}
           isCore={isCore}
           labels={{
             fieldNameLabel: t("fieldName"),
+            fieldCategoryLabel: t("fieldCategory"),
             fieldStatusLabel: t("fieldStatus"),
             fieldsSchemaLabel: t("fieldsSchemaLabel"),
+            sectionBasic: t("sectionBasic"),
+            sectionAdvanced: t("sectionAdvanced"),
             addFieldLabel: t("addField"),
             removeFieldLabel: t("removeField"),
             fieldKeyLabel: t("fieldKey"),
             fieldLabelLabel: t("fieldLabel"),
             fieldTypeLabel: t("fieldType"),
+            fieldTypeField: t("fieldTypeField"),
+            fieldTypeRadio: t("fieldTypeRadio"),
+            fieldTypeDropdown: t("fieldTypeDropdown"),
+            fieldTypeCheckbox: t("fieldTypeCheckbox"),
+            fieldOptions: t("fieldOptions"),
+            addOption: t("addOption"),
+            fieldHint: t("fieldHint"),
             fieldRequiredLabel: t("fieldRequired"),
+            fieldCoreLabel: t("fieldCore"),
+            moveUp: t("moveUp"),
+            moveDown: t("moveDown"),
             submitLabel: t("submitUpdate"),
             inertCaveat: t("inertCaveat"),
           }}

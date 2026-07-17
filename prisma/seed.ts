@@ -257,35 +257,173 @@ async function main() {
   }
 
   // ── 4. ComponentTypes (idempotent by organizationId + code) ────────────────
-  // Three seeded core types per org. fieldsSchema is a top-level array of FieldEntry
-  // objects — matching the shape parseFieldsSchema() in lib/data/components.ts expects.
+  // Three seeded core types per org. fieldsSchema uses the Stage 6 FieldEntry shape:
+  //   type: "field" | "radio" | "dropdown" | "checkbox"
+  //   options: required for radio/dropdown
+  //   hint: optional helper text
+  //   basic: true = Basic section, false = Advanced section
+  //   core: true = seeded by platform
   // PLACEHOLDER — replace with real client field lists when available.
   const componentTypeDefs = [
     {
       code: "GLASS",
       name: "Glass",
+      category: "Glass Partitions",
       fieldsSchema: [
-        // PLACEHOLDER — replace with real client field lists
-        { key: "thickness", label: "Thickness (mm)", type: "number", required: true },
-        { key: "finish", label: "Finish", type: "text", required: false },
+        // Basic fields
+        {
+          key: "thickness",
+          label: "Thickness (mm)",
+          type: "field",
+          hint: "Glass thickness in millimetres",
+          required: true,
+          basic: true,
+          core: true,
+        },
+        {
+          key: "glassType",
+          label: "Glass Type",
+          type: "radio",
+          options: ["Clear", "Frosted", "Tinted"],
+          required: true,
+          basic: true,
+          core: true,
+        },
+        {
+          key: "finish",
+          label: "Finish",
+          type: "dropdown",
+          options: ["Polished", "Satin", "Matt"],
+          required: false,
+          basic: true,
+          core: false,
+        },
+        // Advanced fields
+        {
+          key: "note",
+          label: "Internal Note",
+          type: "field",
+          hint: "Internal reference note",
+          required: false,
+          basic: false,
+          core: false,
+        },
+        {
+          key: "customOrder",
+          label: "Custom Order",
+          type: "checkbox",
+          hint: "Mark as custom order",
+          required: false,
+          basic: false,
+          core: false,
+        },
       ],
     },
     {
       code: "DOOR",
       name: "Door",
+      category: "Glass Partitions",
       fieldsSchema: [
-        // PLACEHOLDER — replace with real client field lists
-        { key: "doorType", label: "Door Type", type: "text", required: true },
-        { key: "width", label: "Width (mm)", type: "number", required: false },
+        // Basic fields
+        {
+          key: "doorType",
+          label: "Door Type",
+          type: "radio",
+          options: ["Single Swing", "Double Swing", "Sliding"],
+          required: true,
+          basic: true,
+          core: true,
+        },
+        {
+          key: "width",
+          label: "Width (mm)",
+          type: "field",
+          hint: "Width in mm",
+          required: true,
+          basic: true,
+          core: true,
+        },
+        {
+          key: "glassVariant",
+          label: "Glass Variant",
+          type: "dropdown",
+          options: ["Standard", "Fire-Rated"],
+          required: false,
+          basic: true,
+          core: false,
+        },
+        // Advanced fields
+        {
+          key: "handedness",
+          label: "Handedness",
+          type: "dropdown",
+          options: ["Left", "Right", "Reversible"],
+          required: false,
+          basic: false,
+          core: false,
+        },
+        {
+          key: "hasCloser",
+          label: "Include Door Closer",
+          type: "checkbox",
+          hint: "Include door closer in the configuration",
+          required: false,
+          basic: false,
+          core: false,
+        },
       ],
     },
     {
       code: "PROFILE_STOP",
       name: "Profile Stop",
+      category: "Glass Partitions",
       fieldsSchema: [
-        // PLACEHOLDER — replace with real client field lists
-        { key: "profileCode", label: "Profile Code", type: "text", required: true },
-        { key: "lengthM", label: "Length (m)", type: "number", required: false },
+        // Basic fields
+        {
+          key: "profileCode",
+          label: "Profile Code",
+          type: "field",
+          hint: "e.g. U-CH-25",
+          required: true,
+          basic: true,
+          core: true,
+        },
+        {
+          key: "material",
+          label: "Material",
+          type: "dropdown",
+          options: ["Aluminium", "Steel", "Stainless Steel"],
+          required: true,
+          basic: true,
+          core: true,
+        },
+        {
+          key: "lengthM",
+          label: "Length (m)",
+          type: "field",
+          hint: "Length in metres",
+          required: false,
+          basic: true,
+          core: false,
+        },
+        // Advanced fields
+        {
+          key: "colour",
+          label: "Colour / Finish",
+          type: "field",
+          hint: "RAL code or finish name",
+          required: false,
+          basic: false,
+          core: false,
+        },
+        {
+          key: "anodised",
+          label: "Anodised",
+          type: "checkbox",
+          required: false,
+          basic: false,
+          core: false,
+        },
       ],
     },
   ];
@@ -300,13 +438,14 @@ async function main() {
         },
         update: {
           name: def.name,
+          category: def.category,
           fieldsSchema: def.fieldsSchema,
         },
         create: {
           organizationId: org.id,
           code: def.code,
           name: def.name,
-          category: "Glass Partitions", // Stage 6 — Area 2 will reseed with proper per-type values
+          category: def.category,
           fieldsSchema: def.fieldsSchema,
           active: true,
         },

@@ -27,29 +27,55 @@ async function getSessionWithManageFeatures(orgSlug: string) {
 
 /**
  * Parse the serialised fieldsSchema JSON string from FormData.
- * Returns an empty array on any parse failure — never throws.
+ * Returns an empty array if the raw value is absent or not valid JSON.
+ * Throws a descriptive Error if a radio/dropdown field has no options — this propagates
+ * to the page-level error boundary, matching the !code / !name / !category guards above.
  */
 function parseFieldsSchema(raw: string | null): FieldEntry[] {
   if (!raw) return [];
+
+  // Isolate JSON.parse errors from validation errors so that a validation throw
+  // can escape and propagate to the caller (instead of being swallowed by the catch).
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    const validTypes = new Set(["text", "number", "boolean", "select"]);
-    return (parsed as unknown[])
-      .map((item) => {
-        if (typeof item !== "object" || item === null) return null;
-        const obj = item as Record<string, unknown>;
-        return {
-          key: String(obj.key ?? ""),
-          label: String(obj.label ?? ""),
-          type: (validTypes.has(obj.type as string) ? obj.type : "text") as FieldEntry["type"],
-          required: Boolean(obj.required),
-        };
-      })
-      .filter((x): x is FieldEntry => x !== null);
+    parsed = JSON.parse(raw);
   } catch {
     return [];
   }
+
+  if (!Array.isArray(parsed)) return [];
+  const validTypes = new Set(["field", "radio", "dropdown", "checkbox"]);
+  const optionRequiredTypes = new Set(["radio", "dropdown"]);
+  return (parsed as unknown[])
+    .map((item) => {
+      if (typeof item !== "object" || item === null) return null;
+      const obj = item as Record<string, unknown>;
+      const type = (validTypes.has(obj.type as string) ? obj.type : "field") as FieldEntry["type"];
+      const entry: FieldEntry = {
+        key: String(obj.key ?? ""),
+        label: String(obj.label ?? ""),
+        type,
+        required: Boolean(obj.required),
+        basic: obj.basic !== undefined ? Boolean(obj.basic) : true,
+        core: Boolean(obj.core),
+      };
+      if (optionRequiredTypes.has(type)) {
+        const opts = Array.isArray(obj.options)
+          ? (obj.options as unknown[]).map(String).filter(Boolean)
+          : [];
+        if (opts.length === 0) {
+          throw new Error(
+            `Field "${String(obj.label ?? obj.key ?? type)}": ${type} type requires at least one option.`,
+          );
+        }
+        entry.options = opts;
+      }
+      if (obj.hint) {
+        entry.hint = String(obj.hint);
+      }
+      return entry;
+    })
+    .filter((x): x is FieldEntry => x !== null);
 }
 
 // ─── Server actions ───────────────────────────────────────────────────────────
@@ -65,13 +91,12 @@ export async function createComponentType(formData: FormData): Promise<void> {
 
   const code = (formData.get("code") as string | null)?.trim().toUpperCase();
   const name = (formData.get("name") as string | null)?.trim();
-  // category was added in Stage 6; the form field is added by the Area 2 dispatch.
-  // Until that lands, reads from form data fall back to an empty string.
   const category = ((formData.get("category") as string | null) ?? "").trim();
   const fieldsSchema = parseFieldsSchema(formData.get("fieldsSchema") as string | null);
 
   if (!code) throw new Error("Code is required");
   if (!name) throw new Error("Name is required");
+  if (!category) throw new Error("Category is required");
 
   const created = await dalCreate(session, { code, name, category, fieldsSchema });
 
@@ -92,12 +117,14 @@ export async function updateComponentType(formData: FormData): Promise<void> {
   if (!typeId) throw new Error("typeId is required");
 
   const name = (formData.get("name") as string | null)?.trim();
+  const category = ((formData.get("category") as string | null) ?? "").trim();
   const fieldsSchema = parseFieldsSchema(formData.get("fieldsSchema") as string | null);
   const active = formData.get("active") === "true";
 
   if (!name) throw new Error("Name is required");
+  if (!category) throw new Error("Category is required");
 
-  await dalUpdate(session, typeId, { name, fieldsSchema, active });
+  await dalUpdate(session, typeId, { name, category, fieldsSchema, active });
 
   revalidatePath(`/${orgSlug}/admin/components`);
   revalidatePath(`/${orgSlug}/admin/components/${typeId}`);
