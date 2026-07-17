@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { getSession } from "@/lib/session";
-import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { prisma } from "@/lib/prisma";
+import { PERMISSIONS } from "@/lib/rbac";
+import { listPermissions } from "@/lib/data/admin";
+import { requireSession, requirePermissionFor } from "@/lib/data/session";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -25,23 +24,11 @@ export default async function PermissionsPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const session = await getSession();
-
-  if (!session) {
-    redirect(`/${orgSlug}/login`);
-  }
-
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
-  } catch (e) {
-    if (e instanceof ForbiddenError) {
-      redirect(`/${orgSlug}/dashboard`);
-    }
-    throw e;
-  }
+  const session = await requireSession(orgSlug);
+  await requirePermissionFor(session, PERMISSIONS.MANAGE_FEATURES, orgSlug);
 
   const [permissions, t] = await Promise.all([
-    prisma.permission.findMany({ orderBy: { code: "asc" } }),
+    listPermissions(),
     getTranslations("permissions"),
   ]);
 

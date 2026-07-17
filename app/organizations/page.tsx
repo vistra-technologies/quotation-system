@@ -1,13 +1,11 @@
 import Link from "next/link";
-import { prisma } from "@/lib/prisma";
+import { listOrganizations } from "@/lib/data/admin";
 
 // Always read fresh from the DB so newly seeded/created orgs show up immediately.
 export const dynamic = "force-dynamic";
 
 export default async function OrganizationsPage() {
-  const organizations = await prisma.organization.findMany({
-    orderBy: { createdAt: "asc" },
-  });
+  const organizations = await listOrganizations();
 
   const dateFmt = new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",

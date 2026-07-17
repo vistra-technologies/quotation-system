@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { getTranslations } from "next-intl/server";
-import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { getSession } from "@/lib/session";
+import { getOrgBySlug, getOrgById } from "@/lib/data/admin";
 import { CrossOrgNotice } from "./cross-org-notice";
 import { LoginForm } from "./login-form";
 
@@ -41,10 +41,7 @@ export default async function LoginPage({
 }) {
   const { orgSlug } = await params;
 
-  const org = await prisma.organization.findUnique({
-    where: { slug: orgSlug },
-    select: { name: true },
-  });
+  const org = await getOrgBySlug(orgSlug);
 
   if (!org) {
     // Defensive guard — proxy should have returned 404 before reaching here.
@@ -77,10 +74,7 @@ export default async function LoginPage({
     // generic fully (same reason lib/session.ts uses `const u = user as any`).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawUser = rawSession.user as any;
-    const sessionOrg = await prisma.organization.findUnique({
-      where: { id: rawUser.organizationId as string },
-      select: { name: true, slug: true },
-    });
+    const sessionOrg = await getOrgById(rawUser.organizationId as string);
 
     // Translate only the new cross-org notice strings (deviation 5: existing
     // hardcoded strings on this page are Stage 3 output and stay as-is).

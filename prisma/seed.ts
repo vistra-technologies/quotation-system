@@ -256,7 +256,69 @@ async function main() {
     }
   }
 
-  // ── 4. Catalog items and prices ─────────────────────────────────────────────
+  // ── 4. ComponentTypes (idempotent by organizationId + code) ────────────────
+  // Three seeded core types per org. fieldsSchema is a top-level array of FieldEntry
+  // objects — matching the shape parseFieldsSchema() in lib/data/components.ts expects.
+  // PLACEHOLDER — replace with real client field lists when available.
+  const componentTypeDefs = [
+    {
+      code: "GLASS",
+      name: "Glass",
+      fieldsSchema: [
+        // PLACEHOLDER — replace with real client field lists
+        { key: "thickness", label: "Thickness (mm)", type: "number", required: true },
+        { key: "finish", label: "Finish", type: "text", required: false },
+      ],
+    },
+    {
+      code: "DOOR",
+      name: "Door",
+      fieldsSchema: [
+        // PLACEHOLDER — replace with real client field lists
+        { key: "doorType", label: "Door Type", type: "text", required: true },
+        { key: "width", label: "Width (mm)", type: "number", required: false },
+      ],
+    },
+    {
+      code: "PROFILE_STOP",
+      name: "Profile Stop",
+      fieldsSchema: [
+        // PLACEHOLDER — replace with real client field lists
+        { key: "profileCode", label: "Profile Code", type: "text", required: true },
+        { key: "lengthM", label: "Length (m)", type: "number", required: false },
+      ],
+    },
+  ];
+
+  for (const org of allOrgs) {
+    for (const def of componentTypeDefs) {
+      // Upsert by organizationId + code so re-running the seed updates existing rows
+      // (consistent with the upsert pattern used for all other seeded entities).
+      await prisma.componentType.upsert({
+        where: {
+          organizationId_code: { organizationId: org.id, code: def.code },
+        },
+        update: {
+          name: def.name,
+          fieldsSchema: def.fieldsSchema,
+        },
+        create: {
+          organizationId: org.id,
+          code: def.code,
+          name: def.name,
+          fieldsSchema: def.fieldsSchema,
+          active: true,
+        },
+      });
+    }
+  }
+
+  const totalComponentTypes = await prisma.componentType.count();
+  console.log(
+    `ComponentTypes:     ${totalComponentTypes}  (${componentTypeDefs.length}×${allOrgs.length}=${componentTypeDefs.length * allOrgs.length} expected)`,
+  );
+
+  // ── 5. Catalog items and prices ─────────────────────────────────────────────
   // Representative items covering all categories.
   // PLACEHOLDER — replace with real client data before handover
   const catalogItemDefs = [
@@ -392,12 +454,13 @@ async function main() {
   }
   console.log(`CatalogItems + ItemPrices seeded for ${allOrgs.length} orgs`);
 
-  // ── 5. Summary ──────────────────────────────────────────────────────────────
+  // ── 6. Summary ──────────────────────────────────────────────────────────────
   const totalRoles = await prisma.role.count();
   const totalCompanies = await prisma.externalCompany.count();
   const totalUsers = await prisma.user.count();
   const totalCatalogItems = await prisma.catalogItem.count();
   const totalItemPrices = await prisma.itemPrice.count();
+  const totalComponentTypesCount = await prisma.componentType.count();
 
   console.log(`\n===== Seed summary =====`);
   console.log(`Organizations:      ${totalOrgs}  (4 expected)`);
@@ -416,6 +479,9 @@ async function main() {
   );
   console.log(
     `Item prices:        ${totalItemPrices}  (${priceDefs.length * catalogItemDefs.length}×${allOrgs.length}=${priceDefs.length * catalogItemDefs.length * allOrgs.length} expected)`,
+  );
+  console.log(
+    `Component types:    ${totalComponentTypesCount}  (${componentTypeDefs.length}×${allOrgs.length}=${componentTypeDefs.length * allOrgs.length} expected)`,
   );
   console.log(`\nSeeded password: ${SEED_PASSWORD}`);
   console.log(`Login at e.g. http://localhost:3000/acme-glass/login`);

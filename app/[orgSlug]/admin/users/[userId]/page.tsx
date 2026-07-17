@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { getSession } from "@/lib/session";
-import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { prisma } from "@/lib/prisma";
+import { PERMISSIONS } from "@/lib/rbac";
+import { getUserById } from "@/lib/data/users";
+import { listRolesForDropdown } from "@/lib/data/admin";
+import { requireSession, requirePermissionFor } from "@/lib/data/session";
 import { UserDetailForms } from "./user-detail-forms";
 
 // Always render live — reads session cookie and DB.
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
  * (activate/deactivate, change role, set password) to the UserDetailForms
  * Client Component so LoadingOverlay can respond to pending state.
  *
- * Tenancy guard: the user is fetched with both id AND organizationId = session's
+ * Tenancy guard: getUserById filters by both id AND organizationId = session's
  * org, so a client-supplied id for a different org returns notFound().
  */
 export default async function UserDetailPage({
@@ -25,32 +26,13 @@ export default async function UserDetailPage({
   params: Promise<{ orgSlug: string; userId: string }>;
 }) {
   const { orgSlug, userId } = await params;
-  const session = await getSession();
-
-  if (!session) {
-    redirect(`/${orgSlug}/login`);
-  }
-
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_USERS);
-  } catch (e) {
-    if (e instanceof ForbiddenError) {
-      redirect(`/${orgSlug}/dashboard`);
-    }
-    throw e;
-  }
+  const session = await requireSession(orgSlug);
+  await requirePermissionFor(session, PERMISSIONS.MANAGE_USERS, orgSlug);
 
   const [user, roles, t] = await Promise.all([
     // Tenancy guard: scope by both id and organizationId.
-    prisma.user.findFirst({
-      where: { id: userId, organizationId: session.organizationId },
-      include: { role: { select: { name: true } } },
-    }),
-    prisma.role.findMany({
-      where: { organizationId: session.organizationId },
-      orderBy: { name: "asc" },
-      select: { id: true, name: true },
-    }),
+    getUserById(session, userId),
+    listRolesForDropdown(session),
     getTranslations("users"),
   ]);
 

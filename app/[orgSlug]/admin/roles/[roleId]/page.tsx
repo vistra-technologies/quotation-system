@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { getSession } from "@/lib/session";
-import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { prisma } from "@/lib/prisma";
+import { PERMISSIONS } from "@/lib/rbac";
+import { getRoleById, listRolePermissions, listPermissions } from "@/lib/data/admin";
+import { requireSession, requirePermissionFor } from "@/lib/data/session";
 import { PermissionActionButton } from "./permission-buttons";
 
 // Always render live — reads session cookie and DB.
@@ -16,10 +16,9 @@ export const dynamic = "force-dynamic";
  * catalog, with Add / Remove buttons for each entry.
  *
  * Tenancy asymmetry enforced here:
- *   - Role is org-scoped: queried with organizationId = session.organizationId.
- *   - Permission catalog is global: no organizationId filter on prisma.permission.
- *   - RolePermission rows are created/deleted via server actions that re-verify
- *     the role's org before every write — see actions.ts.
+ *   - Role is org-scoped: getRoleById filters by organizationId.
+ *   - Permission catalog is global: listPermissions has no organizationId filter.
+ *   - RolePermission writes re-verify via assertRoleInOrg in lib/data/admin.ts.
  *
  * Gated on MANAGE_FEATURES.
  */
@@ -29,21 +28,12 @@ export default async function RoleDetailPage({
   params: Promise<{ orgSlug: string; roleId: string }>;
 }) {
   const { orgSlug, roleId } = await params;
-  const session = await getSession();
-  if (!session) redirect(`/${orgSlug}/login`);
-
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
-  } catch (e) {
-    if (e instanceof ForbiddenError) redirect(`/${orgSlug}/dashboard`);
-    throw e;
-  }
+  const session = await requireSession(orgSlug);
+  await requirePermissionFor(session, PERMISSIONS.MANAGE_FEATURES, orgSlug);
 
   // Tenancy guard on read: role must belong to this session's org.
   const [role, t] = await Promise.all([
-    prisma.role.findFirst({
-      where: { id: roleId, organizationId: session.organizationId },
-    }),
+    getRoleById(session, roleId),
     getTranslations("roles"),
   ]);
 
@@ -51,15 +41,9 @@ export default async function RoleDetailPage({
 
   // Fetch current grants and the full global permission catalog in parallel.
   const [grantedRps, allPerms] = await Promise.all([
-    prisma.rolePermission.findMany({
-      where: { roleId },
-      include: { permission: true },
-      orderBy: { permission: { code: "asc" } },
-    }),
+    listRolePermissions(roleId),
     // Permission is a global table — no organizationId filter.
-    prisma.permission.findMany({
-      orderBy: { code: "asc" },
-    }),
+    listPermissions(),
   ]);
 
   const grantedPermissionIds = new Set(grantedRps.map((rp) => rp.permissionId));

@@ -12,7 +12,22 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vercel CLI build output (generated; not source)
+    ".vercel/**",
   ]),
+  // Ban direct prisma imports under app/ — all DB access must go through
+  // lib/data/*.ts so tenancy checks and org-scoping are enforced in one place.
+  {
+    files: ["app/**/*.ts", "app/**/*.tsx"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        paths: [{
+          name: "@/lib/prisma",
+          message: "Import prisma only from lib/data/*.ts — direct app/ imports bypass tenancy checks.",
+        }],
+      }],
+    },
+  },
 ]);
 
 export default eslintConfig;

@@ -33,6 +33,9 @@ model Organization {
   // Stage 3 relations
   catalogItems      CatalogItem[]
   itemPrices        ItemPrice[]
+  // Stage 5 relations
+  componentTypes    ComponentType[]
+  projects          Project[]
 }
 
 // ────────────────────────────────────────────────────────────
@@ -82,6 +85,7 @@ model User {
   externalCompany ExternalCompany? @relation(fields: [externalCompanyId], references: [id])
   sessions        Session[]
   accounts        Account[]
+  createdProjects Project[]
 
   // Per-org username uniqueness — the actual uniqueness guarantee;
   // the synthetic email is only better-auth's carrier for it.
@@ -180,6 +184,7 @@ model ExternalCompany {
   updatedAt      DateTime            @updatedAt
   organization   Organization        @relation(fields: [organizationId], references: [id])
   users          User[]
+  projects       Project[]
 }
 
 // ────────────────────────────────────────────────────────────
@@ -226,4 +231,49 @@ model ItemPrice {
   catalogItem    CatalogItem  @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
 
   @@unique([catalogItemId, currency])
+}
+
+// ────────────────────────────────────────────────────────────
+// Domain models — Stage 5: component types and projects
+// ────────────────────────────────────────────────────────────
+
+// Admin-defined field schema for a component category (GLASS, DOOR, PROFILE_STOP, …).
+// fieldsSchema is JSONB containing field-list editor output — the shape is runtime-defined by admins.
+// New types / non-core fields are inert until a developer wires them into the configurator (Stage 6+).
+// See design-docs/04-data-model.md — ComponentType.
+model ComponentType {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  code           String       // stable developer-seeded key (GLASS, DOOR, PROFILE_STOP)
+  name           String       // admin-editable display label
+  fieldsSchema   Json         // JSONB field-list editor output
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, code])
+}
+
+// Org-scoped project created by a user, optionally linked to an external company.
+// projectNumber is a per-org integer sequence enforced at the app layer (MAX+1 in a transaction).
+// See design-docs/04-data-model.md — Project.
+model Project {
+  id                 String           @id @default(uuid())
+  organizationId     String
+  organization       Organization     @relation(fields: [organizationId], references: [id])
+  externalCompanyId  String?
+  externalCompany    ExternalCompany? @relation(fields: [externalCompanyId], references: [id])
+  createdByUserId    String
+  createdBy          User             @relation(fields: [createdByUserId], references: [id])
+  projectNumber      Int              // per-org sequence; @@unique enforces collision safety
+  name               String
+  destinationCountry String
+  currency           String
+  status             String           // enum-like string; Stage 6 will tighten to a Prisma enum
+  info               Json?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([organizationId, projectNumber])
 }
