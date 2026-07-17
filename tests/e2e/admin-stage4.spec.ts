@@ -202,8 +202,8 @@ test("create role → detail page shows empty granted permissions and full avail
   await page.locator("input[name='name']").fill(roleName);
   await page.locator("input[name='description']").fill("Stage 4 e2e test role");
   await page.getByRole("button", { name: "Create Role" }).click();
-  // Redirects to role detail
-  await expect(page).toHaveURL(/\/acme-glass\/admin\/roles\/.+/, {
+  // Redirects to role detail — UUID pattern ensures we wait past /roles/new
+  await expect(page).toHaveURL(/\/acme-glass\/admin\/roles\/[0-9a-f-]{36}/, {
     timeout: 15_000,
   });
   await expect(page.getByRole("heading", { name: roleName })).toBeVisible();
@@ -220,7 +220,8 @@ test("role permissions: add a permission then remove it", async ({ page }) => {
   await page.goto("/acme-glass/admin/roles/new");
   await page.locator("input[name='name']").fill(roleName);
   await page.getByRole("button", { name: "Create Role" }).click();
-  await expect(page).toHaveURL(/\/acme-glass\/admin\/roles\/.+/, {
+  // UUID pattern ensures we wait past /roles/new before asserting granted permissions
+  await expect(page).toHaveURL(/\/acme-glass\/admin\/roles\/[0-9a-f-]{36}/, {
     timeout: 15_000,
   });
 
