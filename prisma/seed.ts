@@ -257,61 +257,59 @@ async function main() {
   }
 
   // ── 4. ComponentTypes (idempotent by organizationId + code) ────────────────
-  // Three seeded core types per org. fieldsSchema is a placeholder object — the real
-  // field lists for each type will be filled in once client data is available.
+  // Three seeded core types per org. fieldsSchema is a top-level array of FieldEntry
+  // objects — matching the shape parseFieldsSchema() in lib/data/components.ts expects.
+  // PLACEHOLDER — replace with real client field lists when available.
   const componentTypeDefs = [
     {
       code: "GLASS",
       name: "Glass",
-      fieldsSchema: {
-        fields: [
-          // PLACEHOLDER — replace with real client field lists
-          { key: "thickness", label: "Thickness (mm)", type: "number", required: true },
-          { key: "finish", label: "Finish", type: "string", required: false },
-        ],
-      },
+      fieldsSchema: [
+        // PLACEHOLDER — replace with real client field lists
+        { key: "thickness", label: "Thickness (mm)", type: "number", required: true },
+        { key: "finish", label: "Finish", type: "text", required: false },
+      ],
     },
     {
       code: "DOOR",
       name: "Door",
-      fieldsSchema: {
-        fields: [
-          // PLACEHOLDER — replace with real client field lists
-          { key: "doorType", label: "Door Type", type: "string", required: true },
-          { key: "width", label: "Width (mm)", type: "number", required: false },
-        ],
-      },
+      fieldsSchema: [
+        // PLACEHOLDER — replace with real client field lists
+        { key: "doorType", label: "Door Type", type: "text", required: true },
+        { key: "width", label: "Width (mm)", type: "number", required: false },
+      ],
     },
     {
       code: "PROFILE_STOP",
       name: "Profile Stop",
-      fieldsSchema: {
-        fields: [
-          // PLACEHOLDER — replace with real client field lists
-          { key: "profileCode", label: "Profile Code", type: "string", required: true },
-          { key: "lengthM", label: "Length (m)", type: "number", required: false },
-        ],
-      },
+      fieldsSchema: [
+        // PLACEHOLDER — replace with real client field lists
+        { key: "profileCode", label: "Profile Code", type: "text", required: true },
+        { key: "lengthM", label: "Length (m)", type: "number", required: false },
+      ],
     },
   ];
 
   for (const org of allOrgs) {
     for (const def of componentTypeDefs) {
-      const existing = await prisma.componentType.findFirst({
-        where: { organizationId: org.id, code: def.code },
+      // Upsert by organizationId + code so re-running the seed updates existing rows
+      // (consistent with the upsert pattern used for all other seeded entities).
+      await prisma.componentType.upsert({
+        where: {
+          organizationId_code: { organizationId: org.id, code: def.code },
+        },
+        update: {
+          name: def.name,
+          fieldsSchema: def.fieldsSchema,
+        },
+        create: {
+          organizationId: org.id,
+          code: def.code,
+          name: def.name,
+          fieldsSchema: def.fieldsSchema,
+          active: true,
+        },
       });
-      if (!existing) {
-        await prisma.componentType.create({
-          data: {
-            organizationId: org.id,
-            code: def.code,
-            name: def.name,
-            fieldsSchema: def.fieldsSchema,
-            active: true,
-          },
-        });
-      }
-      // On re-run: skip silently (idempotent by organizationId + code).
     }
   }
 
