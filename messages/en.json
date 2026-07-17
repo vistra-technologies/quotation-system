@@ -87,7 +87,25 @@
     "title": "Component Types"
   },
   "projects": {
-    "title": "Projects"
+    "title": "Projects",
+    "pageTitle": "Projects",
+    "pageSubtitle": "Manage your organization's projects.",
+    "createProject": "New Project",
+    "noProjects": "No projects yet. Create your first project.",
+    "colNumber": "#",
+    "colName": "Name",
+    "colStatus": "Status",
+    "colExternalCompany": "Client",
+    "colDate": "Created",
+    "createPageTitle": "New Project",
+    "createPageSubtitle": "Create a new project for your organization.",
+    "fieldName": "Project Name",
+    "fieldDestinationCountry": "Destination Country",
+    "fieldCurrency": "Currency",
+    "fieldExternalCompany": "Client (optional)",
+    "fieldExternalCompanyNone": "None",
+    "submitCreate": "Create Project",
+    "backToList": "← Back to Projects"
   },
   "pricing": {
     "pageTitle": "Pricing Management",
