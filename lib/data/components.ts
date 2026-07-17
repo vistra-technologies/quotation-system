@@ -70,6 +70,7 @@ export async function getComponentTypeById(session: SessionData, id: string) {
 export type ComponentTypeInput = {
   code: string;
   name: string;
+  category: string; // admin-defined grouping label (e.g. "Glass Partitions") — added Stage 6
   fieldsSchema: FieldEntry[];
   active?: boolean;
 };
@@ -81,6 +82,7 @@ export async function createComponentType(session: SessionData, input: Component
       organizationId: session.organizationId,
       code: input.code.toUpperCase().trim(),
       name: input.name.trim(),
+      category: input.category.trim(),
       fieldsSchema: input.fieldsSchema,
       active: input.active ?? true,
     },
@@ -108,6 +110,7 @@ export async function updateComponentType(
     data: {
       ...(input.name !== undefined ? { name: input.name.trim() } : {}),
       ...(input.code !== undefined ? { code: input.code.toUpperCase().trim() } : {}),
+      ...(input.category !== undefined ? { category: input.category.trim() } : {}),
       ...(input.fieldsSchema !== undefined ? { fieldsSchema: input.fieldsSchema } : {}),
       ...(input.active !== undefined ? { active: input.active } : {}),
     },
