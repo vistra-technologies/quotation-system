@@ -171,6 +171,17 @@
     "submitCreate": "Create Company",
     "backToList": "← Back to External Companies"
   },
+  "selections": {
+    "sectionTitle": "Components",
+    "noSelections": "No components added yet.",
+    "addComponent": "Add Component",
+    "fieldLabel": "Label",
+    "submitAdd": "Add Component",
+    "stepPickType": "Component Type",
+    "stepConfigure": "Configure fields",
+    "advancedFields": "Advanced fields",
+    "backToProject": "← Back to Projects"
+  },
   "pricing": {
     "pageTitle": "Pricing Management",
     "pageSubtitle": "Set and update product prices for your organization.",
