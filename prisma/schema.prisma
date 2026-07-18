@@ -39,6 +39,8 @@ model Organization {
   projects          Project[]
   // Stage 6 relations
   selections        Selection[]
+  // Stage 7 relations
+  inquiries         Inquiry[]
 }
 
 // ────────────────────────────────────────────────────────────
@@ -86,9 +88,10 @@ model User {
   organization    Organization     @relation(fields: [organizationId], references: [id])
   role            Role             @relation(fields: [roleId], references: [id])
   externalCompany ExternalCompany? @relation(fields: [externalCompanyId], references: [id])
-  sessions        Session[]
-  accounts        Account[]
-  createdProjects Project[]
+  sessions          Session[]
+  accounts          Account[]
+  createdProjects   Project[]
+  createdInquiries  Inquiry[]
 
   // Per-org username uniqueness — the actual uniqueness guarantee;
   // the synthetic email is only better-auth's carrier for it.
@@ -188,6 +191,7 @@ model ExternalCompany {
   organization   Organization        @relation(fields: [organizationId], references: [id])
   users          User[]
   projects       Project[]
+  inquiries      Inquiry[]
 }
 
 // ────────────────────────────────────────────────────────────
@@ -299,8 +303,42 @@ model Project {
   updatedAt          DateTime         @updatedAt
   // Stage 6 relations
   selections         Selection[]
+  // Stage 7 relations
+  inquiryId          String?
+  inquiry            Inquiry?         @relation(fields: [inquiryId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, projectNumber])
+}
+
+// ────────────────────────────────────────────────────────────
+// Domain models — Stage 7: inquiries (lightweight pre-project entry point)
+// ────────────────────────────────────────────────────────────
+
+// Lightweight pre-project record. An Inquiry captures the same four fields
+// as a Project (name, destinationCountry, currency, externalCompanyId?) but
+// without committing to a full project workflow. It can be dismissed or
+// converted into a Project (status → CONVERTED) via the "Start Project" action.
+// inquiryNumber is a per-org integer sequence, enforced at the app layer (MAX+1
+// in a transaction), mirroring Project.projectNumber.
+// See design-docs/04-data-model.md — Inquiry.
+model Inquiry {
+  id                 String           @id @default(uuid())
+  organizationId     String
+  organization       Organization     @relation(fields: [organizationId], references: [id])
+  externalCompanyId  String?
+  externalCompany    ExternalCompany? @relation(fields: [externalCompanyId], references: [id])
+  createdByUserId    String
+  createdBy          User             @relation(fields: [createdByUserId], references: [id])
+  inquiryNumber      Int              // per-org sequence; @@unique enforces collision safety
+  name               String
+  destinationCountry String
+  currency           String
+  status             String           // "NEW" | "DISMISSED" | "CONVERTED"
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  projects           Project[]        // back-relation: Projects created by converting this Inquiry
+
+  @@unique([organizationId, inquiryNumber])
 }
 
 // ────────────────────────────────────────────────────────────
