@@ -413,8 +413,8 @@ test("Selection round-trip: create project → add selection → selection appea
 
   // The selection must now appear in the table
   await expect(page.getByText(selectionLabel)).toBeVisible({ timeout: 15_000 });
-  // The component type name must appear
-  await expect(page.getByRole("cell", { name: "Glass" })).toBeVisible({ timeout: 10_000 });
+  // The component type name must appear (exact match avoids collision with the selection label which also contains "Glass")
+  await expect(page.getByRole("cell", { name: "Glass", exact: true })).toBeVisible({ timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
