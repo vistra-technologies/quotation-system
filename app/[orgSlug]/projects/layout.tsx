@@ -18,6 +18,7 @@ export default function ProjectsLayout({ children }: { children: React.ReactNode
   const clientMessages = {
     common: allMessages.common,
     projects: allMessages.projects,
+    selections: allMessages.selections,
   };
 
   return (

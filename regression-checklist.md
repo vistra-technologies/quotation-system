@@ -81,3 +81,12 @@ Automated: `tests/e2e/pricing-stage3.spec.ts` (serial mode, 90 s timeout per tes
 36. **Project `projectNumber` per-org:** org A and org B can each have a project #1 without conflict.
 37. **Stage 2/3/4 regression after DAL refactor:** per-org login, cross-org session rejection, pricing CRUD, instant deactivation, and admin user/role/permission flows all still pass.
 38. **Cross-tenant ExternalCompany guard:** a crafted `createProject` form submission containing another org's `externalCompanyId` UUID is rejected by the DAL (`lib/data/projects.ts` org-scoped `findFirst` guard) with `INVALID_EXTERNAL_COMPANY`, surfaced as "Selected company is invalid." on the form — no cross-tenant FK is created. Verified E2E: stage5.spec.ts test 12.
+
+## Stage 6 — Selection, ComponentType overhaul, External Company UI
+Automated: `tests/e2e/stage6.spec.ts` (19 tests, serial mode).
+
+39. **External Company CRUD + RBAC + tenancy:** create via UI round-trips into both the list and the user-create dropdown; a role without `MANAGE_USERS` is refused; org A cannot see org B's external companies.
+40. **ComponentType overhaul round-trip:** `category` persists; all 4 field types (`field`/`radio`/`dropdown`/`checkbox`) with options/hint/required save and reload intact across Basic/Advanced sections; move-up/down reordering persists; a role without `MANAGE_FEATURES` is refused.
+41. **ComponentType malformed-options guard:** saving a `radio`/`dropdown` field with empty `options` throws a visible validation error instead of silently dropping the field (regression guard for the Area 2 CHANGES-NEEDED bug fixed during Stage 6 implement).
+42. **Selection round-trip:** adding a Selection to a project renders the dynamic form correctly for the picked ComponentType (required validation, radio/dropdown options, checkbox, hint text), and the saved `config` reflects what was entered and appears in the project's selection list; org A cannot view or attach selections on org B's projects.
+43. **Client i18n namespace coverage:** every namespace a client component calls `useTranslations()` on is actually forwarded in its route layout's `clientMessages` (regression guard for the Stage 6 test-phase MAJOR bug — `projects/layout.tsx` omitted `selections`, silently breaking the Selection form's hydration with no server-side signal).

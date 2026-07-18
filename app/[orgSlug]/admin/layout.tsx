@@ -55,6 +55,7 @@ export default async function AdminLayout({
     roles: allMessages.roles,
     permissions: allMessages.permissions,
     components: allMessages.components,
+    externalCompanies: allMessages.externalCompanies,
   };
 
   return (
@@ -70,12 +71,20 @@ export default async function AdminLayout({
             </Link>
             <nav className="flex gap-4">
               {canManageUsers && (
-                <Link
-                  href={`/${orgSlug}/admin/users`}
-                  className="text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50"
-                >
-                  {t("navUsers")}
-                </Link>
+                <>
+                  <Link
+                    href={`/${orgSlug}/admin/users`}
+                    className="text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50"
+                  >
+                    {t("navUsers")}
+                  </Link>
+                  <Link
+                    href={`/${orgSlug}/admin/external-companies`}
+                    className="text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50"
+                  >
+                    {t("navExternalCompanies")}
+                  </Link>
+                </>
               )}
               {canManageFeatures && (
                 <>

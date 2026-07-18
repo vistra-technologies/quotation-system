@@ -36,6 +36,8 @@ model Organization {
   // Stage 5 relations
   componentTypes    ComponentType[]
   projects          Project[]
+  // Stage 6 relations
+  selections        Selection[]
 }
 
 // ────────────────────────────────────────────────────────────
@@ -247,10 +249,13 @@ model ComponentType {
   organization   Organization @relation(fields: [organizationId], references: [id])
   code           String       // stable developer-seeded key (GLASS, DOOR, PROFILE_STOP)
   name           String       // admin-editable display label
+  category       String       // admin-defined grouping label (e.g. "Glass Partitions")
   fieldsSchema   Json         // JSONB field-list editor output
   active         Boolean      @default(true)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
+  // Stage 6 relations
+  selections     Selection[]
 
   @@unique([organizationId, code])
 }
@@ -274,6 +279,31 @@ model Project {
   info               Json?
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
+  // Stage 6 relations
+  selections         Selection[]
 
   @@unique([organizationId, projectNumber])
+}
+
+// ────────────────────────────────────────────────────────────
+// Domain models — Stage 6: selections (component instances on a project)
+// ────────────────────────────────────────────────────────────
+
+// A single component instance added to a project by a user.
+// config captures the field values collected by the dynamic form (keyed by FieldEntry.key).
+// orderIndex is an app-managed integer for display ordering (0-based, per project).
+// See design-docs/04-data-model.md — Selection.
+model Selection {
+  id              String        @id @default(uuid())
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id])
+  projectId       String
+  project         Project       @relation(fields: [projectId], references: [id])
+  componentTypeId String
+  componentType   ComponentType @relation(fields: [componentTypeId], references: [id])
+  label           String
+  config          Json
+  orderIndex      Int
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 }
