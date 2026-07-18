@@ -78,10 +78,20 @@ export default async function ProjectsPage({
                     className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
                   >
                     <td className="px-5 py-3 font-medium text-zinc-900 dark:text-zinc-50">
-                      #{project.projectNumber}
+                      <Link
+                        href={`/${orgSlug}/projects/${project.id}`}
+                        className="hover:underline"
+                      >
+                        #{project.projectNumber}
+                      </Link>
                     </td>
                     <td className="px-5 py-3 text-zinc-900 dark:text-zinc-50">
-                      {project.name}
+                      <Link
+                        href={`/${orgSlug}/projects/${project.id}`}
+                        className="hover:underline"
+                      >
+                        {project.name}
+                      </Link>
                     </td>
                     <td className="px-5 py-3">
                       <span className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
