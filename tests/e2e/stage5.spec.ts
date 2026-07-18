@@ -95,6 +95,7 @@ test("ComponentType field schema round-trip: create -> add field -> save -> navi
   await page.goto("/acme-glass/admin/components/new");
   await page.locator("input[name='code']").fill(code);
   await page.locator("input[name='name']").fill(name);
+  await page.locator("select[name='categoryId']").selectOption({ label: "Glass Partitions" });
   await Promise.all([
     page.waitForURL(
       (url) =>
@@ -108,7 +109,8 @@ test("ComponentType field schema round-trip: create -> add field -> save -> navi
   const editUrl = page.url();
 
   // Add a field to the freshly-created type (starts with 0 fields)
-  await page.getByRole("button", { name: /\+ add field/i }).click();
+  // The first "+ Add Field" button is the Basic section's.
+  await page.getByRole("button", { name: /\+ add field/i }).first().click();
 
   // Fill the first field row
   const keyInput = page.locator("input[placeholder='field_1']");
@@ -136,17 +138,16 @@ test("ComponentType field schema round-trip: create -> add field -> save -> navi
 });
 
 // ---------------------------------------------------------------------------
-// ComponentType -- inert badge on non-core (admin-created) type
+// ComponentType -- list shows the FK-backed category for every type
 // ---------------------------------------------------------------------------
 
-test("ComponentType list shows inert badge on non-core (admin-created) types", async ({
-  page,
-}) => {
+test("ComponentType list shows the assigned category for seeded types", async ({ page }) => {
   await signIn(page, "admin");
   await page.goto("/acme-glass/admin/components");
-  // Admin-created types (not GLASS/DOOR/PROFILE_STOP) show amber "Inert -- not yet wired" badge
-  const inertBadge = page.locator("span").filter({ hasText: /inert/i }).first();
-  await expect(inertBadge).toBeVisible({ timeout: 15_000 });
+  // All ComponentTypes (there is no core/non-core distinction) show their category name
+  await expect(page.getByRole("cell", { name: "Glass Partitions", exact: true }).first()).toBeVisible({
+    timeout: 15_000,
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -57,7 +57,6 @@ function parseFieldsSchema(raw: string | null): FieldEntry[] {
         type,
         required: Boolean(obj.required),
         basic: obj.basic !== undefined ? Boolean(obj.basic) : true,
-        core: Boolean(obj.core),
       };
       if (optionRequiredTypes.has(type)) {
         const opts = Array.isArray(obj.options)
@@ -91,14 +90,14 @@ export async function createComponentType(formData: FormData): Promise<void> {
 
   const code = (formData.get("code") as string | null)?.trim().toUpperCase();
   const name = (formData.get("name") as string | null)?.trim();
-  const category = ((formData.get("category") as string | null) ?? "").trim();
+  const categoryId = ((formData.get("categoryId") as string | null) ?? "").trim();
   const fieldsSchema = parseFieldsSchema(formData.get("fieldsSchema") as string | null);
 
   if (!code) throw new Error("Code is required");
   if (!name) throw new Error("Name is required");
-  if (!category) throw new Error("Category is required");
+  if (!categoryId) throw new Error("Category is required");
 
-  const created = await dalCreate(session, { code, name, category, fieldsSchema });
+  const created = await dalCreate(session, { code, name, categoryId, fieldsSchema });
 
   revalidatePath(`/${orgSlug}/admin/components`);
   redirect(`/${orgSlug}/admin/components/${created.id}`);
@@ -117,14 +116,14 @@ export async function updateComponentType(formData: FormData): Promise<void> {
   if (!typeId) throw new Error("typeId is required");
 
   const name = (formData.get("name") as string | null)?.trim();
-  const category = ((formData.get("category") as string | null) ?? "").trim();
+  const categoryId = ((formData.get("categoryId") as string | null) ?? "").trim();
   const fieldsSchema = parseFieldsSchema(formData.get("fieldsSchema") as string | null);
   const active = formData.get("active") === "true";
 
   if (!name) throw new Error("Name is required");
-  if (!category) throw new Error("Category is required");
+  if (!categoryId) throw new Error("Category is required");
 
-  await dalUpdate(session, typeId, { name, category, fieldsSchema, active });
+  await dalUpdate(session, typeId, { name, categoryId, fieldsSchema, active });
 
   revalidatePath(`/${orgSlug}/admin/components`);
   revalidatePath(`/${orgSlug}/admin/components/${typeId}`);
