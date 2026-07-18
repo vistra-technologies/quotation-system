@@ -12,7 +12,9 @@ import type { SessionData } from "@/lib/session";
  *   options: required (non-empty) when type is radio or dropdown
  *   hint: optional helper text shown under the input
  *   basic: true → shown in the Basic section; false → shown in Advanced section
- *   core: true → seeded by the platform; false → admin-created
+ *
+ * All ComponentTypes and fields are admin-created — there is no developer-seeded/"core"
+ * distinction; every field is freely editable and inert until a developer wires it in.
  */
 export type FieldEntry = {
   key: string; // machine key used by the configurator
@@ -22,18 +24,9 @@ export type FieldEntry = {
   hint?: string; // optional helper text
   required: boolean;
   basic: boolean; // true = Basic section, false = Advanced section
-  core: boolean; // true = seeded by platform
 };
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Seeded core codes — these will be wired into the configurator in Stage 6. */
-const CORE_CODES = new Set(["GLASS", "DOOR", "PROFILE_STOP"]);
-
-/** True for ComponentTypes whose codes were seeded by the platform (core). */
-export function isCoreComponentType(code: string): boolean {
-  return CORE_CODES.has(code);
-}
 
 /** Parse the stored JSONB to a typed FieldEntry array (defensive). */
 function parseFieldsSchema(raw: unknown): FieldEntry[] {
@@ -51,7 +44,6 @@ function parseFieldsSchema(raw: unknown): FieldEntry[] {
         required: Boolean(obj.required),
         // `basic` defaults to true when absent (backwards-compat with old rows)
         basic: obj.basic !== undefined ? Boolean(obj.basic) : true,
-        core: Boolean(obj.core),
       };
       // options: conditionally included for radio/dropdown.
       // Reads are intentionally lenient here (empty options → options: []) because
@@ -73,11 +65,20 @@ function parseFieldsSchema(raw: unknown): FieldEntry[] {
 
 // ─── Read functions ───────────────────────────────────────────────────────────
 
+/** List all ComponentCategories for the session org, A→Z by name — for the category dropdown. */
+export async function listComponentCategories(session: SessionData) {
+  return prisma.componentCategory.findMany({
+    where: { organizationId: session.organizationId },
+    orderBy: { name: "asc" },
+  });
+}
+
 /** List all ComponentTypes for the session org, A→Z by code. */
 export async function listComponentTypes(session: SessionData) {
   const rows = await prisma.componentType.findMany({
     where: { organizationId: session.organizationId },
     orderBy: { code: "asc" },
+    include: { category: true },
   });
   return rows.map((r) => ({ ...r, fieldsSchema: parseFieldsSchema(r.fieldsSchema) }));
 }
@@ -89,6 +90,7 @@ export async function listComponentTypes(session: SessionData) {
 export async function getComponentTypeById(session: SessionData, id: string) {
   const row = await prisma.componentType.findFirst({
     where: { id, organizationId: session.organizationId },
+    include: { category: true },
   });
   if (!row) return null;
   return { ...row, fieldsSchema: parseFieldsSchema(row.fieldsSchema) };
@@ -99,19 +101,29 @@ export async function getComponentTypeById(session: SessionData, id: string) {
 export type ComponentTypeInput = {
   code: string;
   name: string;
-  category: string; // admin-defined grouping label (e.g. "Glass Partitions") — added Stage 6
+  categoryId: string; // FK → ComponentCategory, chosen from the dropdown
   fieldsSchema: FieldEntry[];
   active?: boolean;
 };
 
+/** Verify a categoryId belongs to the session org (tenancy guard against FK injection). */
+async function assertCategoryInOrg(session: SessionData, categoryId: string) {
+  const category = await prisma.componentCategory.findFirst({
+    where: { id: categoryId, organizationId: session.organizationId },
+    select: { id: true },
+  });
+  if (!category) throw new Error("Category not found or access denied");
+}
+
 /** Create a new ComponentType scoped to the session org. */
 export async function createComponentType(session: SessionData, input: ComponentTypeInput) {
+  await assertCategoryInOrg(session, input.categoryId);
   return prisma.componentType.create({
     data: {
       organizationId: session.organizationId,
       code: input.code.toUpperCase().trim(),
       name: input.name.trim(),
-      category: input.category.trim(),
+      categoryId: input.categoryId,
       fieldsSchema: input.fieldsSchema,
       active: input.active ?? true,
     },
@@ -133,13 +145,16 @@ export async function updateComponentType(
     select: { id: true },
   });
   if (!existing) throw new Error("ComponentType not found or access denied");
+  if (input.categoryId !== undefined) {
+    await assertCategoryInOrg(session, input.categoryId);
+  }
 
   return prisma.componentType.update({
     where: { id },
     data: {
       ...(input.name !== undefined ? { name: input.name.trim() } : {}),
       ...(input.code !== undefined ? { code: input.code.toUpperCase().trim() } : {}),
-      ...(input.category !== undefined ? { category: input.category.trim() } : {}),
+      ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
       ...(input.fieldsSchema !== undefined ? { fieldsSchema: input.fieldsSchema } : {}),
       ...(input.active !== undefined ? { active: input.active } : {}),
     },

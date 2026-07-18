@@ -256,19 +256,20 @@ async function main() {
     }
   }
 
-  // ── 4. ComponentTypes (idempotent by organizationId + code) ────────────────
-  // Three seeded core types per org. fieldsSchema uses the Stage 6 FieldEntry shape:
+  // ── 4. ComponentCategories + ComponentTypes (idempotent by organizationId + code) ──
+  // A single seeded category per org for now — the category dropdown starts with
+  // just "Glass Partitions"; admins pick from whatever categories exist.
+  // Three starter types per org, all admin-editable — there is no developer-seeded/
+  // "core" distinction. fieldsSchema uses the Stage 6 FieldEntry shape:
   //   type: "field" | "radio" | "dropdown" | "checkbox"
   //   options: required for radio/dropdown
   //   hint: optional helper text
   //   basic: true = Basic section, false = Advanced section
-  //   core: true = seeded by platform
   // PLACEHOLDER — replace with real client field lists when available.
   const componentTypeDefs = [
     {
       code: "GLASS",
       name: "Glass",
-      category: "Glass Partitions",
       fieldsSchema: [
         // Basic fields
         {
@@ -278,7 +279,6 @@ async function main() {
           hint: "Glass thickness in millimetres",
           required: true,
           basic: true,
-          core: true,
         },
         {
           key: "glassType",
@@ -287,7 +287,6 @@ async function main() {
           options: ["Clear", "Frosted", "Tinted"],
           required: true,
           basic: true,
-          core: true,
         },
         {
           key: "finish",
@@ -296,7 +295,6 @@ async function main() {
           options: ["Polished", "Satin", "Matt"],
           required: false,
           basic: true,
-          core: false,
         },
         // Advanced fields
         {
@@ -306,7 +304,6 @@ async function main() {
           hint: "Internal reference note",
           required: false,
           basic: false,
-          core: false,
         },
         {
           key: "customOrder",
@@ -315,14 +312,12 @@ async function main() {
           hint: "Mark as custom order",
           required: false,
           basic: false,
-          core: false,
         },
       ],
     },
     {
       code: "DOOR",
       name: "Door",
-      category: "Glass Partitions",
       fieldsSchema: [
         // Basic fields
         {
@@ -332,7 +327,6 @@ async function main() {
           options: ["Single Swing", "Double Swing", "Sliding"],
           required: true,
           basic: true,
-          core: true,
         },
         {
           key: "width",
@@ -341,7 +335,6 @@ async function main() {
           hint: "Width in mm",
           required: true,
           basic: true,
-          core: true,
         },
         {
           key: "glassVariant",
@@ -350,7 +343,6 @@ async function main() {
           options: ["Standard", "Fire-Rated"],
           required: false,
           basic: true,
-          core: false,
         },
         // Advanced fields
         {
@@ -360,7 +352,6 @@ async function main() {
           options: ["Left", "Right", "Reversible"],
           required: false,
           basic: false,
-          core: false,
         },
         {
           key: "hasCloser",
@@ -369,14 +360,12 @@ async function main() {
           hint: "Include door closer in the configuration",
           required: false,
           basic: false,
-          core: false,
         },
       ],
     },
     {
       code: "PROFILE_STOP",
       name: "Profile Stop",
-      category: "Glass Partitions",
       fieldsSchema: [
         // Basic fields
         {
@@ -386,7 +375,6 @@ async function main() {
           hint: "e.g. U-CH-25",
           required: true,
           basic: true,
-          core: true,
         },
         {
           key: "material",
@@ -395,7 +383,6 @@ async function main() {
           options: ["Aluminium", "Steel", "Stainless Steel"],
           required: true,
           basic: true,
-          core: true,
         },
         {
           key: "lengthM",
@@ -404,7 +391,6 @@ async function main() {
           hint: "Length in metres",
           required: false,
           basic: true,
-          core: false,
         },
         // Advanced fields
         {
@@ -414,7 +400,6 @@ async function main() {
           hint: "RAL code or finish name",
           required: false,
           basic: false,
-          core: false,
         },
         {
           key: "anodised",
@@ -422,13 +407,20 @@ async function main() {
           type: "checkbox",
           required: false,
           basic: false,
-          core: false,
         },
       ],
     },
   ];
 
   for (const org of allOrgs) {
+    const glassPartitions = await prisma.componentCategory.upsert({
+      where: {
+        organizationId_name: { organizationId: org.id, name: "Glass Partitions" },
+      },
+      update: {},
+      create: { organizationId: org.id, name: "Glass Partitions" },
+    });
+
     for (const def of componentTypeDefs) {
       // Upsert by organizationId + code so re-running the seed updates existing rows
       // (consistent with the upsert pattern used for all other seeded entities).
@@ -438,14 +430,14 @@ async function main() {
         },
         update: {
           name: def.name,
-          category: def.category,
+          categoryId: glassPartitions.id,
           fieldsSchema: def.fieldsSchema,
         },
         create: {
           organizationId: org.id,
           code: def.code,
           name: def.name,
-          category: def.category,
+          categoryId: glassPartitions.id,
           fieldsSchema: def.fieldsSchema,
           active: true,
         },
@@ -453,7 +445,11 @@ async function main() {
     }
   }
 
+  const totalComponentCategories = await prisma.componentCategory.count();
   const totalComponentTypes = await prisma.componentType.count();
+  console.log(
+    `ComponentCategories: ${totalComponentCategories}  (1×${allOrgs.length}=${allOrgs.length} expected)`,
+  );
   console.log(
     `ComponentTypes:     ${totalComponentTypes}  (${componentTypeDefs.length}×${allOrgs.length}=${componentTypeDefs.length * allOrgs.length} expected)`,
   );
