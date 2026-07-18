@@ -95,7 +95,11 @@ export default async function InquiriesPage({
                     </td>
                     <td className="px-5 py-3">
                       <span className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                        {inquiry.status}
+                        {inquiry.status === "NEW"
+                          ? t("statusNew")
+                          : inquiry.status === "DISMISSED"
+                            ? t("statusDismissed")
+                            : t("statusConverted")}
                       </span>
                     </td>
                     <td className="px-5 py-3 text-zinc-600 dark:text-zinc-400">
