@@ -76,6 +76,24 @@ export default async function DashboardPage({
           </dl>
         </div>
 
+        <div className="mt-4">
+          <Link
+            href={`/${orgSlug}/projects`}
+            className="block w-full rounded-md border border-zinc-300 bg-white px-4 py-2 text-center text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            {t("projects")}
+          </Link>
+        </div>
+
+        <div className="mt-4">
+          <Link
+            href={`/${orgSlug}/inquiries`}
+            className="block w-full rounded-md border border-zinc-300 bg-white px-4 py-2 text-center text-sm font-medium text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            {t("inquiries")}
+          </Link>
+        </div>
+
         {permissionCodes.includes(PERMISSIONS.MANAGE_PRICING) && (
           <div className="mt-4">
             <Link

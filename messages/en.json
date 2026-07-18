@@ -1,7 +1,9 @@
 {
   "dashboard": {
     "managePricing": "Manage Pricing",
-    "manageAdmin": "Admin"
+    "manageAdmin": "Admin",
+    "projects": "Projects",
+    "inquiries": "Inquiries"
   },
   "login": {
     "crossOrgTitle": "You're already signed in",
