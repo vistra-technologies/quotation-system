@@ -76,7 +76,7 @@ Automated: `tests/e2e/pricing-stage3.spec.ts` (serial mode, 90 s timeout per tes
 31. **ComponentType tenancy:** org A's session cannot read org B's ComponentTypes.
 32. **ComponentType RBAC:** a role without MANAGE_FEATURES receives a 403/redirect on all `/admin/components` routes and actions.
 33. **ComponentType field schema round-trip:** add a field, save, reload — field still present in the editor.
-34. **Inert-caveat visible:** non-core/non-seeded ComponentTypes and fields show the inert-until-wired notice in the admin UI.
+34. **Inert-caveat visible:** every ComponentType and field (there is no core/non-core distinction) shows the inert-until-wired notice in the admin UI, exactly once per page.
 35. **Project tenancy:** org A's session cannot read org B's Projects.
 36. **Project `projectNumber` per-org:** org A and org B can each have a project #1 without conflict.
 37. **Stage 2/3/4 regression after DAL refactor:** per-org login, cross-org session rejection, pricing CRUD, instant deactivation, and admin user/role/permission flows all still pass.
@@ -90,3 +90,7 @@ Automated: `tests/e2e/stage6.spec.ts` (19 tests, serial mode).
 41. **ComponentType malformed-options guard:** saving a `radio`/`dropdown` field with empty `options` throws a visible validation error instead of silently dropping the field (regression guard for the Area 2 CHANGES-NEEDED bug fixed during Stage 6 implement).
 42. **Selection round-trip:** adding a Selection to a project renders the dynamic form correctly for the picked ComponentType (required validation, radio/dropdown options, checkbox, hint text), and the saved `config` reflects what was entered and appears in the project's selection list; org A cannot view or attach selections on org B's projects.
 43. **Client i18n namespace coverage:** every namespace a client component calls `useTranslations()` on is actually forwarded in its route layout's `clientMessages` (regression guard for the Stage 6 test-phase MAJOR bug — `projects/layout.tsx` omitted `selections`, silently breaking the Selection form's hydration with no server-side signal).
+
+## Stage 6 amendment (2026-07-18) — `core` removed, `category` becomes a real FK
+44. **No `core` distinction:** ComponentType create/edit forms have no "Core" checkbox on any field and no core/inert badge on the list page; GLASS/DOOR/PROFILE_STOP are fully admin-editable like any other type.
+45. **Category dropdown, not free text:** the category field on create/edit is a `<select>` sourced from `ComponentCategory`; selecting a category and saving round-trips correctly across reload; a `categoryId` belonging to another org is rejected by the DAL tenancy guard (`assertCategoryInOrg`).

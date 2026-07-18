@@ -168,20 +168,20 @@ test("ComponentType RBAC (re-verify): member redirected from /admin/components/n
 // ComponentType — category round-trip
 // ---------------------------------------------------------------------------
 
-test("ComponentType category round-trip: category persists after save and reload", async ({
+test("ComponentType category round-trip: selected category persists after save and reload", async ({
   page,
 }) => {
   const code = `E2E_CAT_${Date.now()}`;
   const name = `E2E Category Test ${code}`;
-  const category = `E2E Category ${Date.now()}`;
+  const category = "Glass Partitions";
 
   await signIn(page, "admin");
 
-  // Create with a custom category
+  // Create, selecting the seeded category from the dropdown (category is a fixed FK, not free text)
   await page.goto("/acme-glass/admin/components/new");
   await page.locator("input[name='code']").fill(code);
   await page.locator("input[name='name']").fill(name);
-  await page.locator("input[name='category']").fill(category);
+  await page.locator("select[name='categoryId']").selectOption({ label: category });
 
   await Promise.all([
     page.waitForURL(
@@ -197,10 +197,10 @@ test("ComponentType category round-trip: category persists after save and reload
   await page.goto(editUrl);
   await page.reload();
 
-  // Category input must display the saved value
-  const categoryInput = page.locator("input[name='category']");
-  await expect(categoryInput).toBeVisible({ timeout: 15_000 });
-  await expect(categoryInput).toHaveValue(category);
+  // Category dropdown must show the saved selection
+  const categorySelect = page.locator("select[name='categoryId']");
+  await expect(categorySelect).toBeVisible({ timeout: 15_000 });
+  await expect(categorySelect.locator("option:checked")).toHaveText(category);
 });
 
 // ---------------------------------------------------------------------------
@@ -212,7 +212,6 @@ test("ComponentType radio field round-trip: radio field with options persists af
 }) => {
   const code = `E2E_RADIO_${Date.now()}`;
   const name = `E2E Radio Test ${code}`;
-  const category = "E2E Glass";
   const fieldKey = `option_field_${Date.now()}`;
   const fieldLabel = "E2E Option Field";
   const optionValue = "Option Alpha";
@@ -223,7 +222,7 @@ test("ComponentType radio field round-trip: radio field with options persists af
   await page.goto("/acme-glass/admin/components/new");
   await page.locator("input[name='code']").fill(code);
   await page.locator("input[name='name']").fill(name);
-  await page.locator("input[name='category']").fill(category);
+  await page.locator("select[name='categoryId']").selectOption({ label: "Glass Partitions" });
 
   await Promise.all([
     page.waitForURL(
@@ -244,8 +243,8 @@ test("ComponentType radio field round-trip: radio field with options persists af
   await keyInput.fill(fieldKey);
   await page.locator("input[placeholder='Display label']").fill(fieldLabel);
 
-  // Change type to radio
-  const typeSelect = page.locator("select").first();
+  // Change type to radio — the categoryId select is index 0, the field-type select is index 1
+  const typeSelect = page.locator("select").nth(1);
   await typeSelect.selectOption("radio");
 
   // Add an option
@@ -286,7 +285,6 @@ test("ComponentType empty-options guard: radio field with no options produces er
 }) => {
   const code = `E2E_EMPTYOPT_${Date.now()}`;
   const name = `E2E Empty Options ${code}`;
-  const category = "E2E Test Category";
   const fieldKey = `radio_no_opts_${Date.now()}`;
   const fieldLabel = "Radio No Options";
 
@@ -294,7 +292,7 @@ test("ComponentType empty-options guard: radio field with no options produces er
   await page.goto("/acme-glass/admin/components/new");
   await page.locator("input[name='code']").fill(code);
   await page.locator("input[name='name']").fill(name);
-  await page.locator("input[name='category']").fill(category);
+  await page.locator("select[name='categoryId']").selectOption({ label: "Glass Partitions" });
 
   // Add a basic field
   await page.getByRole("button", { name: /\+ add field/i }).first().click();
@@ -303,8 +301,8 @@ test("ComponentType empty-options guard: radio field with no options produces er
   await keyInput.fill(fieldKey);
   await page.locator("input[placeholder='Display label']").fill(fieldLabel);
 
-  // Change type to radio but do NOT add any options
-  const typeSelect = page.locator("select").first();
+  // Change type to radio but do NOT add any options — the categoryId select is index 0
+  const typeSelect = page.locator("select").nth(1);
   await typeSelect.selectOption("radio");
 
   // Try to create — should NOT silently succeed and redirect to the edit page

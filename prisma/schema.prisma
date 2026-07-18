@@ -34,6 +34,7 @@ model Organization {
   catalogItems      CatalogItem[]
   itemPrices        ItemPrice[]
   // Stage 5 relations
+  componentCategories ComponentCategory[]
   componentTypes    ComponentType[]
   projects          Project[]
   // Stage 6 relations
@@ -239,21 +240,38 @@ model ItemPrice {
 // Domain models — Stage 5: component types and projects
 // ────────────────────────────────────────────────────────────
 
+// Admin-defined grouping label for ComponentTypes (e.g. "Glass Partitions").
+// Org-scoped; assignment is a dropdown backed by this table (not free text).
+// See design-docs/04-data-model.md — ComponentType.
+model ComponentCategory {
+  id             String          @id @default(uuid())
+  organizationId String
+  organization   Organization    @relation(fields: [organizationId], references: [id])
+  name           String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  componentTypes ComponentType[]
+
+  @@unique([organizationId, name])
+}
+
 // Admin-defined field schema for a component category (GLASS, DOOR, PROFILE_STOP, …).
 // fieldsSchema is JSONB containing field-list editor output — the shape is runtime-defined by admins.
-// New types / non-core fields are inert until a developer wires them into the configurator (Stage 6+).
+// All ComponentTypes and fields are admin-created and inert until a developer wires them into the
+// configurator (Stage 6+) — there is no developer-seeded/"core" distinction.
 // See design-docs/04-data-model.md — ComponentType.
 model ComponentType {
-  id             String       @id @default(uuid())
+  id             String            @id @default(uuid())
   organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  code           String       // stable developer-seeded key (GLASS, DOOR, PROFILE_STOP)
-  name           String       // admin-editable display label
-  category       String       // admin-defined grouping label (e.g. "Glass Partitions")
-  fieldsSchema   Json         // JSONB field-list editor output
-  active         Boolean      @default(true)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  organization   Organization      @relation(fields: [organizationId], references: [id])
+  code           String            // stable key, admin-defined at creation
+  name           String            // admin-editable display label
+  categoryId     String
+  category       ComponentCategory @relation(fields: [categoryId], references: [id])
+  fieldsSchema   Json              // JSONB field-list editor output
+  active         Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
   // Stage 6 relations
   selections     Selection[]
 

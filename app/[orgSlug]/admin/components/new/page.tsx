@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { PERMISSIONS } from "@/lib/rbac";
 import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { listComponentCategories } from "@/lib/data/components";
 import { CreateComponentForm } from "./create-component-form";
 
 // Always render live — reads session cookie and DB.
@@ -22,7 +23,10 @@ export default async function NewComponentTypePage({
   const session = await requireSession(orgSlug);
   await requirePermissionFor(session, PERMISSIONS.MANAGE_FEATURES, orgSlug);
 
-  const t = await getTranslations("components");
+  const [categories, t] = await Promise.all([
+    listComponentCategories(session),
+    getTranslations("components"),
+  ]);
 
   return (
     <div>
@@ -48,11 +52,13 @@ export default async function NewComponentTypePage({
       <div className="mt-6 max-w-2xl rounded-lg border border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
         <CreateComponentForm
           orgSlug={orgSlug}
+          categories={categories}
           labels={{
             fieldCodeLabel: t("fieldCode"),
             fieldCodeHint: t("fieldCodeHint"),
             fieldNameLabel: t("fieldName"),
             fieldCategoryLabel: t("fieldCategory"),
+            fieldCategoryPlaceholder: t("fieldCategoryPlaceholder"),
             fieldsSchemaLabel: t("fieldsSchemaLabel"),
             sectionBasic: t("sectionBasic"),
             sectionAdvanced: t("sectionAdvanced"),
@@ -69,7 +75,6 @@ export default async function NewComponentTypePage({
             addOption: t("addOption"),
             fieldHint: t("fieldHint"),
             fieldRequiredLabel: t("fieldRequired"),
-            fieldCoreLabel: t("fieldCore"),
             moveUp: t("moveUp"),
             moveDown: t("moveDown"),
             fieldStatusLabel: t("fieldStatus"),

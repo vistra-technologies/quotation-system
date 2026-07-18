@@ -168,7 +168,6 @@ function FieldRow({
     addOption: string;
     fieldHint: string;
     requiredLabel: string;
-    coreLabel: string;
     moveUp: string;
     moveDown: string;
     removeLabel: string;
@@ -315,17 +314,6 @@ function FieldRow({
             className="mt-1.5 h-4 w-4 rounded border-zinc-300 text-zinc-900 dark:border-zinc-600"
           />
         </div>
-        <div className="flex flex-col items-center gap-0.5">
-          <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
-            {labels.coreLabel}
-          </label>
-          <input
-            type="checkbox"
-            checked={entry.core}
-            onChange={(e) => onChange({ ...entry, core: e.target.checked })}
-            className="mt-1.5 h-4 w-4 rounded border-zinc-300 text-zinc-900 dark:border-zinc-600"
-          />
-        </div>
       </div>
     </div>
   );
@@ -361,7 +349,6 @@ function SectionEditor({
         type: "field",
         required: false,
         basic: isBasic,
-        core: false,
       },
     ]);
   };
@@ -414,10 +401,10 @@ interface EditComponentFormProps {
   orgSlug: string;
   typeId: string;
   initialName: string;
-  initialCategory: string;
+  initialCategoryId: string;
   initialActive: boolean;
   initialFields: FieldEntry[];
-  isCore: boolean;
+  categories: { id: string; name: string }[];
   labels: {
     fieldNameLabel: string;
     fieldCategoryLabel: string;
@@ -438,11 +425,10 @@ interface EditComponentFormProps {
     addOption: string;
     fieldHint: string;
     fieldRequiredLabel: string;
-    fieldCoreLabel: string;
     moveUp: string;
     moveDown: string;
     submitLabel: string;
-    inertCaveat: string;
+    fieldCategoryPlaceholder: string;
   };
 }
 
@@ -458,10 +444,10 @@ export function EditComponentForm({
   orgSlug,
   typeId,
   initialName,
-  initialCategory,
+  initialCategoryId,
   initialActive,
   initialFields,
-  isCore,
+  categories,
   labels,
 }: EditComponentFormProps) {
   const [fields, setFields] = useState<FieldEntry[]>(initialFields);
@@ -479,7 +465,6 @@ export function EditComponentForm({
     addOption: labels.addOption,
     fieldHint: labels.fieldHint,
     requiredLabel: labels.fieldRequiredLabel,
-    coreLabel: labels.fieldCoreLabel,
     moveUp: labels.moveUp,
     moveDown: labels.moveDown,
     removeLabel: labels.removeFieldLabel,
@@ -517,21 +502,27 @@ export function EditComponentForm({
       {/* Category */}
       <div className="flex flex-col gap-1">
         <label
-          htmlFor="category"
+          htmlFor="categoryId"
           className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
         >
           {labels.fieldCategoryLabel}
         </label>
-        <input
-          id="category"
-          name="category"
-          type="text"
+        <select
+          id="categoryId"
+          name="categoryId"
           required
-          defaultValue={initialCategory}
-          autoComplete="off"
-          placeholder="e.g. Glass Partitions"
-          className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
-        />
+          defaultValue={initialCategoryId}
+          className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:ring-zinc-50"
+        >
+          <option value="" disabled>
+            {labels.fieldCategoryPlaceholder}
+          </option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* Active toggle */}
@@ -550,13 +541,6 @@ export function EditComponentForm({
           {labels.fieldStatusLabel}
         </label>
       </div>
-
-      {/* Non-core inert caveat */}
-      {!isCore && (
-        <aside className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-          {labels.inertCaveat}
-        </aside>
-      )}
 
       {/* Field list editor — Basic / Advanced sections */}
       <div className="flex flex-col gap-4">

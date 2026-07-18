@@ -17,14 +17,13 @@ interface FieldEntry {
   hint?: string;
   required: boolean;
   basic: boolean;
-  core: boolean;
 }
 
 interface ComponentTypeOption {
   id: string;
   name: string;
   code: string;
-  category: string;
+  category: { id: string; name: string };
   fieldsSchema: FieldEntry[];
   active: boolean;
 }
@@ -69,7 +68,7 @@ export function AddSelectionForm({
 
   // Group component types by category (preserves insertion order per category)
   const byCategory = componentTypes.reduce<Record<string, ComponentTypeOption[]>>((acc, ct) => {
-    const cat = ct.category || "Other";
+    const cat = ct.category.name || "Other";
     if (!acc[cat]) acc[cat] = [];
     acc[cat].push(ct);
     return acc;
