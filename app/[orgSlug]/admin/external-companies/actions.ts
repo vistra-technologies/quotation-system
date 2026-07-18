@@ -30,7 +30,7 @@ export async function createExternalCompany(
     await requirePermission(session, PERMISSIONS.MANAGE_USERS);
   } catch (e) {
     if (e instanceof ForbiddenError) {
-      throw new Error("Forbidden: missing MANAGE_USERS permission");
+      redirect(`/${orgSlug}/dashboard`);
     }
     throw e;
   }
