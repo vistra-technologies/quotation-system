@@ -13,12 +13,12 @@ function PendingOverlay() {
   return <LoadingOverlay visible={pending} />;
 }
 
-function SubmitButton({ label }: { label: string }) {
+function SubmitButton({ label, disabled: extraDisabled }: { label: string; disabled?: boolean }) {
   const { pending } = useFormStatus();
   return (
     <button
       type="submit"
-      disabled={pending}
+      disabled={pending || extraDisabled}
       className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
     >
       {label}
@@ -395,6 +395,65 @@ function SectionEditor({
   );
 }
 
+// ─── JSON mode helpers ────────────────────────────────────────────────────────
+
+/**
+ * Thrown by validateJsonText when JSON.parse itself fails (syntax error).
+ * Distinguishable from shape-validation errors in the catch block.
+ */
+class JsonParseError extends Error {}
+
+/**
+ * Client-side strict validation that mirrors the write-path parseFieldsSchema in actions.ts.
+ * Runs when the user switches from JSON mode back to Form mode — gives immediate, specific
+ * feedback without a round-trip.
+ *
+ * Throws JsonParseError on bad JSON, plain Error on valid-JSON-but-wrong-shape.
+ * Returns a correctly-typed FieldEntry[] on success.
+ */
+function validateJsonText(text: string): FieldEntry[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    throw new JsonParseError((e as SyntaxError).message);
+  }
+  if (!Array.isArray(parsed)) throw new Error("Schema must be a JSON array.");
+  const validTypes = new Set(["field", "radio", "dropdown", "checkbox"]);
+  const optionRequiredTypes = new Set(["radio", "dropdown"]);
+  return (parsed as unknown[])
+    .map((item) => {
+      if (typeof item !== "object" || item === null) return null;
+      const obj = item as Record<string, unknown>;
+      const type = (validTypes.has(obj.type as string)
+        ? obj.type
+        : "field") as FieldEntry["type"];
+      const entry: FieldEntry = {
+        key: String(obj.key ?? ""),
+        label: String(obj.label ?? ""),
+        type,
+        required: Boolean(obj.required),
+        basic: obj.basic !== undefined ? Boolean(obj.basic) : true,
+      };
+      if (optionRequiredTypes.has(type)) {
+        const opts = Array.isArray(obj.options)
+          ? (obj.options as unknown[]).map(String).filter(Boolean)
+          : [];
+        if (opts.length === 0) {
+          throw new Error(
+            `Field "${String(obj.label ?? obj.key ?? type)}": ${type} type requires at least one option.`,
+          );
+        }
+        entry.options = opts;
+      }
+      if (obj.hint) {
+        entry.hint = String(obj.hint);
+      }
+      return entry;
+    })
+    .filter((x): x is FieldEntry => x !== null);
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface EditComponentFormProps {
@@ -429,6 +488,10 @@ interface EditComponentFormProps {
     moveDown: string;
     submitLabel: string;
     fieldCategoryPlaceholder: string;
+    modeForm: string;
+    modeJson: string;
+    jsonErrorBadJson: string;
+    jsonErrorBadShape: string;
   };
 }
 
@@ -452,6 +515,35 @@ export function EditComponentForm({
 }: EditComponentFormProps) {
   const [fields, setFields] = useState<FieldEntry[]>(initialFields);
   const [active, setActive] = useState(initialActive);
+  const [mode, setMode] = useState<"form" | "json">("form");
+  const [jsonText, setJsonText] = useState("");
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
+  const switchToJson = () => {
+    if (mode !== "json") {
+      setJsonText(JSON.stringify(fields, null, 2));
+      setJsonError(null);
+      setMode("json");
+    }
+  };
+
+  const switchToForm = () => {
+    if (mode === "json") {
+      try {
+        const validated = validateJsonText(jsonText);
+        setFields(validated);
+        setJsonError(null);
+        setMode("form");
+      } catch (e) {
+        const msg = (e as Error).message;
+        if (e instanceof JsonParseError) {
+          setJsonError(labels.jsonErrorBadJson + " " + msg);
+        } else {
+          setJsonError(labels.jsonErrorBadShape + " " + msg);
+        }
+      }
+    }
+  };
 
   const fieldRowLabels = {
     keyLabel: labels.fieldKeyLabel,
@@ -542,30 +634,83 @@ export function EditComponentForm({
         </label>
       </div>
 
-      {/* Field list editor — Basic / Advanced sections */}
+      {/* Field list editor — Basic / Advanced sections, with Form / JSON toggle */}
       <div className="flex flex-col gap-4">
-        <span className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
-          {labels.fieldsSchemaLabel}
-        </span>
-        <SectionEditor
-          sectionLabel={labels.sectionBasic}
-          isBasic={true}
-          fields={fields}
-          onFieldsChange={setFields}
-          fieldRowLabels={fieldRowLabels}
-          addFieldLabel={labels.addFieldLabel}
-        />
-        <SectionEditor
-          sectionLabel={labels.sectionAdvanced}
-          isBasic={false}
-          fields={fields}
-          onFieldsChange={setFields}
-          fieldRowLabels={fieldRowLabels}
-          addFieldLabel={labels.addFieldLabel}
-        />
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+            {labels.fieldsSchemaLabel}
+          </span>
+          {/* Form / JSON view toggle */}
+          <div className="flex text-xs font-medium">
+            <button
+              type="button"
+              onClick={switchToForm}
+              className={`rounded-l-md border px-2.5 py-1 ${
+                mode === "form"
+                  ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
+                  : "border-zinc-300 text-zinc-700 hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-600 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:text-zinc-50"
+              }`}
+            >
+              {labels.modeForm}
+            </button>
+            <button
+              type="button"
+              onClick={switchToJson}
+              className={`rounded-r-md border-b border-r border-t px-2.5 py-1 ${
+                mode === "json"
+                  ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
+                  : "border-zinc-300 text-zinc-700 hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-600 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:text-zinc-50"
+              }`}
+            >
+              {labels.modeJson}
+            </button>
+          </div>
+        </div>
+
+        {mode === "form" ? (
+          <>
+            <SectionEditor
+              sectionLabel={labels.sectionBasic}
+              isBasic={true}
+              fields={fields}
+              onFieldsChange={setFields}
+              fieldRowLabels={fieldRowLabels}
+              addFieldLabel={labels.addFieldLabel}
+            />
+            <SectionEditor
+              sectionLabel={labels.sectionAdvanced}
+              isBasic={false}
+              fields={fields}
+              onFieldsChange={setFields}
+              fieldRowLabels={fieldRowLabels}
+              addFieldLabel={labels.addFieldLabel}
+            />
+          </>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <textarea
+              value={jsonText}
+              onChange={(e) => {
+                setJsonText(e.target.value);
+                setJsonError(null);
+              }}
+              rows={20}
+              spellCheck={false}
+              className="w-full rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 font-mono text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:ring-zinc-50"
+            />
+            {jsonError && (
+              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{jsonError}</p>
+            )}
+          </div>
+        )}
       </div>
 
-      <SubmitButton label={labels.submitLabel} />
+      {mode === "json" && (
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          Switch to Form mode to save.
+        </p>
+      )}
+      <SubmitButton label={labels.submitLabel} disabled={mode === "json"} />
     </form>
   );
 }

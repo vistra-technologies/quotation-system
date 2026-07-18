@@ -86,6 +86,10 @@ export default async function EditComponentTypePage({
             moveUp: t("moveUp"),
             moveDown: t("moveDown"),
             submitLabel: t("submitUpdate"),
+            modeForm: t("modeForm"),
+            modeJson: t("modeJson"),
+            jsonErrorBadJson: t("jsonErrorBadJson"),
+            jsonErrorBadShape: t("jsonErrorBadShape"),
           }}
         />
       </div>

@@ -79,6 +79,10 @@ export default async function NewComponentTypePage({
             moveDown: t("moveDown"),
             fieldStatusLabel: t("fieldStatus"),
             submitLabel: t("submitCreate"),
+            modeForm: t("modeForm"),
+            modeJson: t("modeJson"),
+            jsonErrorBadJson: t("jsonErrorBadJson"),
+            jsonErrorBadShape: t("jsonErrorBadShape"),
           }}
         />
       </div>

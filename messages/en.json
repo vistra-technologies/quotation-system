@@ -132,7 +132,11 @@
     "submitUpdate": "Save Changes",
     "backToList": "← Back to Component Types",
     "inertCaveat": "Schema definitions only — fields added here have no effect until a developer wires them into the configurator.",
-    "fieldCount": "{count, plural, =0 {No fields} =1 {1 field} other {# fields}}"
+    "fieldCount": "{count, plural, =0 {No fields} =1 {1 field} other {# fields}}",
+    "modeForm": "Form",
+    "modeJson": "JSON",
+    "jsonErrorBadJson": "Invalid JSON:",
+    "jsonErrorBadShape": "Invalid schema:"
   },
   "projects": {
     "title": "Projects",
