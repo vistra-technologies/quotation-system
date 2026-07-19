@@ -16,6 +16,10 @@
  *   - ComponentType JSON invalid shape: radio with no options → inline error, stays in JSON mode
  *   - ComponentType JSON submit disabled in JSON mode
  *   - Direct Project create still works (regression, Inquiry-free path)
+ *   [Fix 1] Post-mutation redirects use replace (history grows by 1, not 2)
+ *   [Fix 2] External-user Client field is locked to their company on projects/new and inquiries/new
+ *   [Fix 2] Admin (null externalCompanyId) still sees the free-choice dropdown
+ *   [Fix 2] Trust boundary: forged externalCompanyId in form body is ignored; DAL uses session value
  *
  * Invariants only — no DOM structure / styling assertions (wireframe-stage rule).
  */
@@ -658,4 +662,210 @@ test("Start Project button renders on inquiry detail page (clientMessages wiring
   await expect(page.getByRole("button", { name: /start project/i })).toBeVisible({
     timeout: 15_000,
   });
+});
+
+// ---------------------------------------------------------------------------
+// Fix 1 — redirect uses replace (history stack grows by 1, not 2)
+//
+// With RedirectType.replace: navigating to /new and submitting replaces the
+// /new entry with /list → net +1 from the baseline (not +2 that a push would add).
+// This is a behavioral invariant: if the history check fails, it means the
+// redirect reverted to the default push, which adds a spurious back-stack entry.
+// ---------------------------------------------------------------------------
+
+test("Project create redirect uses replace: browser history grows by 1, not 2", async ({
+  page,
+}) => {
+  await signIn(page, "admin");
+  // Establish a stable baseline for history.length at the projects list.
+  await page.goto("/acme-glass/projects");
+  const historyBefore = await page.evaluate(() => window.history.length);
+
+  // Navigate to create form — this push-navigates, adding one entry.
+  await page.goto("/acme-glass/projects/new");
+
+  const projectName = `E2E History ${Date.now()}`;
+  await page.locator("input[name='name']").fill(projectName);
+  await page.locator("input[name='destinationCountry']").fill("UAE");
+  await page.locator("input[name='currency']").fill("AED");
+
+  await Promise.all([
+    page.waitForURL(/\/acme-glass\/projects$/, { timeout: 20_000 }),
+    page.getByRole("button", { name: /create project/i }).click(),
+  ]);
+
+  const historyAfter = await page.evaluate(() => window.history.length);
+  // With replace redirect: /new is replaced by /projects → history is historyBefore + 1.
+  // With push redirect (old default): /projects is added after /new → historyBefore + 2.
+  expect(historyAfter).toBe(historyBefore + 1);
+});
+
+test("Inquiry create redirect uses replace: browser history grows by 1, not 2", async ({
+  page,
+}) => {
+  await signIn(page, "admin");
+  await page.goto("/acme-glass/inquiries");
+  const historyBefore = await page.evaluate(() => window.history.length);
+
+  await page.goto("/acme-glass/inquiries/new");
+
+  const inquiryName = `E2E History Inq ${Date.now()}`;
+  await page.locator("input[name='name']").fill(inquiryName);
+  await page.locator("input[name='destinationCountry']").fill("UAE");
+  await page.locator("input[name='currency']").fill("AED");
+
+  await Promise.all([
+    page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
+    page.getByRole("button", { name: /create inquiry/i }).click(),
+  ]);
+
+  const historyAfter = await page.evaluate(() => window.history.length);
+  expect(historyAfter).toBe(historyBefore + 1);
+});
+
+// ---------------------------------------------------------------------------
+// Fix 2 — Client field locked for external users (distributors / architects)
+//
+// Seed: org "acme-glass" (name "Acme Glass Co.") has a DISTRIBUTOR company
+// "Acme Glass Co. Dist Co" and an ARCHITECTURAL_FIRM "Acme Glass Co. Arch Firm".
+// Users "distributor" and "architect" have externalCompanyId set to the
+// respective seeded companies; user "admin" has externalCompanyId = null.
+// ---------------------------------------------------------------------------
+
+test("Distributor user sees a locked (non-dropdown) Client field on /projects/new", async ({
+  page,
+}) => {
+  await signIn(page, "distributor", "Seed1234!", "acme-glass");
+  await page.goto("/acme-glass/projects/new");
+  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+
+  // The Client field must NOT be a select dropdown for an external user.
+  const dropdown = page.locator("select[name='externalCompanyId']");
+  await expect(dropdown).not.toBeVisible({ timeout: 5_000 });
+
+  // The locked company name must appear as static text.
+  await expect(page.getByText("Acme Glass Co. Dist Co")).toBeVisible({ timeout: 10_000 });
+
+  // A hidden input carries the company ID for form submission.
+  const hiddenInput = page.locator("input[type='hidden'][name='externalCompanyId']");
+  await expect(hiddenInput).toBeAttached({ timeout: 5_000 });
+});
+
+test("Distributor user sees a locked (non-dropdown) Client field on /inquiries/new", async ({
+  page,
+}) => {
+  await signIn(page, "distributor", "Seed1234!", "acme-glass");
+  await page.goto("/acme-glass/inquiries/new");
+  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+
+  // No dropdown for an external user.
+  const dropdown = page.locator("select[name='externalCompanyId']");
+  await expect(dropdown).not.toBeVisible({ timeout: 5_000 });
+
+  // Static company name display.
+  await expect(page.getByText("Acme Glass Co. Dist Co")).toBeVisible({ timeout: 10_000 });
+
+  // Hidden input present.
+  const hiddenInput = page.locator("input[type='hidden'][name='externalCompanyId']");
+  await expect(hiddenInput).toBeAttached({ timeout: 5_000 });
+});
+
+test("Admin user (null externalCompanyId) still sees the free-choice dropdown on /projects/new", async ({
+  page,
+}) => {
+  await signIn(page, "admin");
+  await page.goto("/acme-glass/projects/new");
+  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+
+  // Admin has null externalCompanyId → must see the select dropdown.
+  const dropdown = page.locator("select[name='externalCompanyId']");
+  await expect(dropdown).toBeVisible({ timeout: 10_000 });
+
+  // The dropdown must have at least 1 option (the "None" placeholder + seeded companies).
+  const optionCount = await dropdown.locator("option").count();
+  expect(optionCount).toBeGreaterThan(0);
+});
+
+// ---------------------------------------------------------------------------
+// Fix 2 — Trust boundary: forged externalCompanyId in form body is ignored
+//
+// Security property: even if a distributor modifies the hidden input's value
+// before submitting the form, the DAL derives the company from session.externalCompanyId
+// (server-side, from the auth cookie) and ignores whatever the client submitted.
+// Verified by creating a project/inquiry with a tampered form value and confirming
+// the resulting record still shows the distributor's real company — not the forged one.
+// ---------------------------------------------------------------------------
+
+test("Project trust boundary: forged externalCompanyId in form body is ignored for distributor", async ({
+  page,
+}) => {
+  await signIn(page, "distributor", "Seed1234!", "acme-glass");
+  await page.goto("/acme-glass/projects/new");
+  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+
+  const projectName = `E2E Trust Proj ${Date.now()}`;
+  await page.locator("input[name='name']").fill(projectName);
+  await page.locator("input[name='destinationCountry']").fill("UAE");
+  await page.locator("input[name='currency']").fill("AED");
+
+  // Tamper: replace the hidden externalCompanyId with a fake UUID before submitting.
+  // The DAL must ignore this and use session.externalCompanyId instead.
+  await page.evaluate(() => {
+    const el = document.querySelector<HTMLInputElement>(
+      "input[type='hidden'][name='externalCompanyId']",
+    );
+    if (el) el.value = "00000000-0000-0000-0000-deadbeef0001";
+  });
+
+  await Promise.all([
+    page.waitForURL(/\/acme-glass\/projects$/, { timeout: 20_000 }),
+    page.getByRole("button", { name: /create project/i }).click(),
+  ]);
+
+  // Project must be created successfully (not blocked by INVALID_EXTERNAL_COMPANY).
+  await expect(page.getByText(projectName)).toBeVisible({ timeout: 15_000 });
+
+  // The Client column for the newly created project must show the distributor's
+  // real company — NOT blank or any trace of the forged UUID.
+  const projectRow = page.getByRole("row").filter({ hasText: projectName }).first();
+  await expect(projectRow).toBeVisible({ timeout: 10_000 });
+  await expect(projectRow.getByText("Acme Glass Co. Dist Co")).toBeVisible({ timeout: 10_000 });
+});
+
+test("Inquiry trust boundary: forged externalCompanyId in form body is ignored for distributor", async ({
+  page,
+}) => {
+  await signIn(page, "distributor", "Seed1234!", "acme-glass");
+  await page.goto("/acme-glass/inquiries/new");
+  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+
+  const inquiryName = `E2E Trust Inq ${Date.now()}`;
+  await page.locator("input[name='name']").fill(inquiryName);
+  await page.locator("input[name='destinationCountry']").fill("UAE");
+  await page.locator("input[name='currency']").fill("AED");
+
+  // Tamper: replace the hidden externalCompanyId with a fake UUID.
+  await page.evaluate(() => {
+    const el = document.querySelector<HTMLInputElement>(
+      "input[type='hidden'][name='externalCompanyId']",
+    );
+    if (el) el.value = "00000000-0000-0000-0000-deadbeef0002";
+  });
+
+  await Promise.all([
+    page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
+    page.getByRole("button", { name: /create inquiry/i }).click(),
+  ]);
+
+  // Inquiry must be created successfully.
+  await expect(page.getByText(inquiryName)).toBeVisible({ timeout: 15_000 });
+
+  // Navigate to the inquiry detail and confirm the company is the distributor's real one.
+  const inquiryLink = page.getByRole("link").filter({ hasText: inquiryName }).first();
+  await expect(inquiryLink).toBeVisible({ timeout: 10_000 });
+  await inquiryLink.click();
+  await expect(page).toHaveURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+
+  // The detail page shows the company name — must be the distributor's real company.
+  await expect(page.getByText("Acme Glass Co. Dist Co")).toBeVisible({ timeout: 10_000 });
 });
