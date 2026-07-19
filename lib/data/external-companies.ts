@@ -14,6 +14,22 @@ export async function listExternalCompanies(session: SessionData) {
   });
 }
 
+/**
+ * Fetch a single external company by id, scoped to the session org.
+ *
+ * Returns { id, name } for display (e.g. locked Client field for external users),
+ * or null if not found or if it belongs to a different org.
+ */
+export async function getExternalCompanyById(
+  session: SessionData,
+  id: string,
+): Promise<{ id: string; name: string } | null> {
+  return prisma.externalCompany.findFirst({
+    where: { id, organizationId: session.organizationId },
+    select: { id: true, name: true },
+  });
+}
+
 // ─── Mutations ───────────────────────────────────────────────────────────────
 
 export type CreateExternalCompanyInput = {
