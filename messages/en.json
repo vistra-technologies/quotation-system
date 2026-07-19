@@ -214,6 +214,25 @@
     "advancedFields": "Advanced fields",
     "backToProject": "← Back to Projects"
   },
+  "design": {
+    "pageTitle": "Wall Design",
+    "canvasPlaceholder": "Wall Design Canvas — coming in Stage 9",
+    "selectionsTitle": "Component Palette",
+    "wallsTitle": "Walls",
+    "noWalls": "No walls added yet.",
+    "addWall": "Add Wall",
+    "addAnotherWall": "Add Another Wall",
+    "backToProject": "← Back to Project",
+    "fieldLocation": "Location",
+    "fieldFloor": "Floor",
+    "fieldFloorPlaceholder": "e.g. Ground Floor",
+    "fieldHeight": "Height",
+    "fieldWidth": "Width",
+    "unitMm": "mm",
+    "unitFeet": "feet",
+    "submitAddWall": "Save Wall",
+    "wallDisplay": "{location} — {height} × {width} mm"
+  },
   "pricing": {
     "pageTitle": "Pricing Management",
     "pageSubtitle": "Set and update product prices for your organization.",

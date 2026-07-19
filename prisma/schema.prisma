@@ -41,6 +41,9 @@ model Organization {
   selections        Selection[]
   // Stage 7 relations
   inquiries         Inquiry[]
+  // Stage 8 relations
+  floors            Floor[]
+  partitions        Partition[]
 }
 
 // ────────────────────────────────────────────────────────────
@@ -306,6 +309,8 @@ model Project {
   // Stage 7 relations
   inquiryId          String?
   inquiry            Inquiry?         @relation(fields: [inquiryId], references: [id], onDelete: SetNull)
+  // Stage 8 relations
+  floors             Floor[]
 
   @@unique([organizationId, projectNumber])
 }
@@ -339,6 +344,60 @@ model Inquiry {
   projects           Project[]        // back-relation: Projects created by converting this Inquiry
 
   @@unique([organizationId, inquiryNumber])
+}
+
+// ────────────────────────────────────────────────────────────
+// Domain models — Stage 8: floors and partitions (wall design)
+// ────────────────────────────────────────────────────────────
+
+// A logical level/area within a project (e.g. "Ground Floor", "Mezzanine").
+// Floors are created implicitly by the add-wall form: if the entered label
+// doesn't exist yet it's created; if it already exists the existing row is
+// reused. orderIndex is app-managed (MAX+1 at insert time, per project).
+// See design-docs/04-data-model.md — Floor.
+model Floor {
+  id             String       @id @default(uuid())
+  organizationId String
+  projectId      String
+  label          String
+  orderIndex     Int
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  project        Project      @relation(fields: [projectId], references: [id])
+  partitions     Partition[]
+
+  @@unique([projectId, label])
+}
+
+// A single wall (partition) within a floor. Users see "Wall" / "Add Wall";
+// the DB entity is called Partition, matching the product's BOQ terminology.
+// partitionNumber is a per-org sequence enforced at the app layer (MAX+1
+// across all partitions for the project, regardless of floor) and backed by
+// @@unique([organizationId, partitionNumber]) at the DB level — consistent with
+// the Project.@@unique([organizationId, projectNumber]) pattern. This makes
+// numbers org-wide unique (stronger than per-project intent, but achievable and
+// collision-safe via P2002 on concurrent inserts). design is JSONB for the
+// interactive canvas payload — populated in Stage 9, nullable for now.
+// See design-docs/04-data-model.md — Partition.
+model Partition {
+  id              String       @id @default(uuid())
+  organizationId  String
+  floorId         String
+  partitionNumber Int
+  location        String
+  heightMm        Int
+  widthMm         Int
+  status          String       @default("DRAFT")
+  design          Json?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  organization    Organization @relation(fields: [organizationId], references: [id])
+  floor           Floor        @relation(fields: [floorId], references: [id])
+
+  @@unique([organizationId, partitionNumber])
 }
 
 // ────────────────────────────────────────────────────────────
