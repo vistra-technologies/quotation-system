@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import {
   createUser as dalCreateUser,
@@ -58,7 +58,7 @@ export async function createUser(
   }
 
   revalidatePath(`/${orgSlug}/admin/users`);
-  redirect(`/${orgSlug}/admin/users`);
+  redirect(`/${orgSlug}/admin/users`, RedirectType.replace);
 }
 
 // ---------------------------------------------------------------------------
@@ -151,5 +151,5 @@ export async function setUserPassword(formData: FormData): Promise<void> {
   await dalSetUserPassword(session, userId, newPassword);
 
   revalidatePath(`/${orgSlug}/admin/users/${userId}`);
-  redirect(`/${orgSlug}/admin/users/${userId}`);
+  redirect(`/${orgSlug}/admin/users/${userId}`, RedirectType.replace);
 }

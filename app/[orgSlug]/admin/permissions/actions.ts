@@ -1,6 +1,6 @@
 "use server";
 
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import { createPermission as dalCreatePermission } from "@/lib/data/admin";
@@ -62,5 +62,5 @@ export async function createPermission(
   }
 
   revalidatePath(`/${orgSlug}/admin/permissions`);
-  redirect(`/${orgSlug}/admin/permissions`);
+  redirect(`/${orgSlug}/admin/permissions`, RedirectType.replace);
 }

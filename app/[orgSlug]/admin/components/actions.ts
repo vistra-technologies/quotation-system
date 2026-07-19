@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import {
   createComponentType as dalCreate,
@@ -100,7 +100,7 @@ export async function createComponentType(formData: FormData): Promise<void> {
   const created = await dalCreate(session, { code, name, categoryId, fieldsSchema });
 
   revalidatePath(`/${orgSlug}/admin/components`);
-  redirect(`/${orgSlug}/admin/components/${created.id}`);
+  redirect(`/${orgSlug}/admin/components/${created.id}`, RedirectType.replace);
 }
 
 /**
@@ -127,5 +127,5 @@ export async function updateComponentType(formData: FormData): Promise<void> {
 
   revalidatePath(`/${orgSlug}/admin/components`);
   revalidatePath(`/${orgSlug}/admin/components/${typeId}`);
-  redirect(`/${orgSlug}/admin/components/${typeId}`);
+  redirect(`/${orgSlug}/admin/components/${typeId}`, RedirectType.replace);
 }
