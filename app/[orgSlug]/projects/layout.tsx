@@ -19,6 +19,8 @@ export default function ProjectsLayout({ children }: { children: React.ReactNode
     common: allMessages.common,
     projects: allMessages.projects,
     selections: allMessages.selections,
+    // Stage 8: AddWallForm under projects/[projectId]/design/ uses this namespace.
+    design: allMessages.design,
   };
 
   return (
