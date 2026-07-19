@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import {
   createRole as dalCreateRole,
@@ -36,7 +36,7 @@ export async function createRole(formData: FormData): Promise<void> {
   const role = await dalCreateRole(session, { name, description });
 
   revalidatePath(`/${orgSlug}/admin/roles`);
-  redirect(`/${orgSlug}/admin/roles/${role.id}`);
+  redirect(`/${orgSlug}/admin/roles/${role.id}`, RedirectType.replace);
 }
 
 /**

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import { createProject as dalCreateProject } from "@/lib/data/projects";
 import { requireSession } from "@/lib/data/session";
 
@@ -64,5 +64,5 @@ export async function createProject(
   }
 
   revalidatePath(`/${orgSlug}/projects`);
-  redirect(`/${orgSlug}/projects`);
+  redirect(`/${orgSlug}/projects`, RedirectType.replace);
 }

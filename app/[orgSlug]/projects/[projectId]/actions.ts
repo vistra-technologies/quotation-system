@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, RedirectType } from "next/navigation";
 import { createSelection as dalCreateSelection } from "@/lib/data/selections";
 import { requireSession } from "@/lib/data/session";
 
@@ -58,5 +58,5 @@ export async function createSelection(
   }
 
   revalidatePath(`/${orgSlug}/projects/${projectId}`);
-  redirect(`/${orgSlug}/projects/${projectId}`);
+  redirect(`/${orgSlug}/projects/${projectId}`, RedirectType.replace);
 }
