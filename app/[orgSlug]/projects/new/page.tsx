@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { listExternalCompanies } from "@/lib/data/admin";
+import { getExternalCompanyById } from "@/lib/data/external-companies";
 import { requireSession } from "@/lib/data/session";
 import { CreateProjectForm } from "./create-project-form";
 
@@ -13,8 +14,10 @@ export const dynamic = "force-dynamic";
  * Any authenticated user in the org may create a project — no special
  * RBAC permission is required beyond a valid session for this org.
  *
- * Fetches the org's external companies for the optional select dropdown,
- * then delegates the interactive form to CreateProjectForm (Client Component).
+ * If the session user is tied to a fixed ExternalCompany (distributor /
+ * architectural-firm user), the Client field is locked to that company —
+ * only that company's name is fetched for display.  Otherwise the full
+ * org list is fetched for the free-choice dropdown (current behavior).
  */
 export default async function NewProjectPage({
   params,
@@ -24,8 +27,13 @@ export default async function NewProjectPage({
   const { orgSlug } = await params;
   const session = await requireSession(orgSlug);
 
-  const [externalCompanies, t] = await Promise.all([
-    listExternalCompanies(session),
+  const [lockedCompany, externalCompanies, t] = await Promise.all([
+    session.externalCompanyId
+      ? getExternalCompanyById(session, session.externalCompanyId)
+      : Promise.resolve(null),
+    session.externalCompanyId
+      ? Promise.resolve([] as { id: string; name: string }[])
+      : listExternalCompanies(session),
     getTranslations("projects"),
   ]);
 
@@ -45,7 +53,11 @@ export default async function NewProjectPage({
         {t("createPageSubtitle")}
       </p>
 
-      <CreateProjectForm orgSlug={orgSlug} externalCompanies={externalCompanies} />
+      <CreateProjectForm
+        orgSlug={orgSlug}
+        lockedCompany={lockedCompany}
+        externalCompanies={externalCompanies}
+      />
     </div>
   );
 }

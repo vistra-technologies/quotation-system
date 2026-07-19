@@ -62,11 +62,19 @@ export async function createProject(
   session: SessionData,
   input: CreateProjectInput,
 ) {
+  // Defense in depth: if the session user is tied to a fixed company,
+  // always use that — ignore whatever the client submitted.  Only when
+  // session.externalCompanyId is null does the caller-supplied value apply.
+  const resolvedExternalCompanyId =
+    session.externalCompanyId !== null
+      ? session.externalCompanyId
+      : (input.externalCompanyId ?? null);
+
   try {
     return await prisma.$transaction(async (tx) => {
-      if (input.externalCompanyId) {
+      if (resolvedExternalCompanyId) {
         const company = await tx.externalCompany.findFirst({
-          where: { id: input.externalCompanyId, organizationId: session.organizationId },
+          where: { id: resolvedExternalCompanyId, organizationId: session.organizationId },
           select: { id: true },
         });
         if (!company) {
@@ -91,7 +99,7 @@ export async function createProject(
           destinationCountry: input.destinationCountry,
           currency: input.currency,
           status: input.status,
-          externalCompanyId: input.externalCompanyId ?? null,
+          externalCompanyId: resolvedExternalCompanyId,
         },
       });
     });
