@@ -21,6 +21,8 @@ export default function ProjectsLayout({ children }: { children: React.ReactNode
     selections: allMessages.selections,
     // Stage 8: AddWallForm under projects/[projectId]/design/ uses this namespace.
     design: allMessages.design,
+    // Stage 9: ProjectWizardBreadcrumb under projects/[projectId]/* uses this namespace.
+    wizard: allMessages.wizard,
   };
 
   return (

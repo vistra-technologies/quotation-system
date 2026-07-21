@@ -42,6 +42,9 @@ const initialState: CreateSelectionState = { error: null };
 /**
  * Client Component form for adding a Selection to a project.
  *
+ * Moved verbatim from [projectId]/add-selection-form.tsx (Stage 9 URL restructure).
+ * The import for createSelection now resolves to ./actions (this directory).
+ *
  * Step 1: pick an active ComponentType from a grouped <select> (by category).
  * Step 2: render dynamic fields from the chosen type's fieldsSchema.
  *         Basic fields shown by default; advanced fields in a collapsible <details>.

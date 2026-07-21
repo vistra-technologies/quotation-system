@@ -3,22 +3,18 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { requireSession } from "@/lib/data/session";
 import { getProjectById } from "@/lib/data/projects";
-import { listSelections } from "@/lib/data/selections";
-import { listComponentTypes } from "@/lib/data/components";
-import { AddSelectionForm } from "./add-selection-form";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
 
 /**
- * Project detail page (Server Component).
+ * Project Details page — Step 1 of the project wizard (Server Component).
+ *
+ * Stage 9: stripped to read-only project metadata only. The Selections list
+ * and AddSelectionForm have moved to [projectId]/configuration/page.tsx.
+ * The "Design Walls" button has been removed (Design is Step 3 in the wizard).
  *
  * Auth gate: requireSession only — no special permission required.
- * Matches the existing createProject pattern: any authenticated org user
- * can view project details and add selections.
- *
- * Renders project metadata, the ordered list of existing Selections,
- * and the "Add component" form backed by the dynamic fieldsSchema renderer.
  */
 export default async function ProjectDetailPage({
   params,
@@ -28,19 +24,13 @@ export default async function ProjectDetailPage({
   const { orgSlug, projectId } = await params;
   const session = await requireSession(orgSlug);
 
-  const [project, selections, allComponentTypes, tProjects, tSelections] = await Promise.all([
+  const [project, tProjects] = await Promise.all([
     getProjectById(session, projectId),
-    listSelections(session, projectId),
-    listComponentTypes(session),
     getTranslations("projects"),
-    getTranslations("selections"),
   ]);
 
   // Tenancy guard: project not found or belongs to a different org.
   if (!project) notFound();
-
-  // Only active ComponentTypes are offered in the "Add component" picker.
-  const activeComponentTypes = allComponentTypes.filter((ct) => ct.active);
 
   return (
     <div>
@@ -49,11 +39,11 @@ export default async function ProjectDetailPage({
         href={`/${orgSlug}/projects`}
         className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
       >
-        {tSelections("backToProject")}
+        {tProjects("backToList")}
       </Link>
 
       {/* Project metadata */}
-      <div className="mb-6">
+      <div className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
           #{project.projectNumber} — {project.name}
         </h1>
@@ -72,82 +62,13 @@ export default async function ProjectDetailPage({
         </div>
       </div>
 
-      {/* Design Walls entry point */}
-      <div className="mb-6">
-        <Link
-          href={`/${orgSlug}/projects/${projectId}/design`}
-          className="inline-flex items-center rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
-          Design Walls
-        </Link>
-      </div>
-
-      {/* Selections list */}
-      <section className="mb-8">
-        <h2 className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-          {tSelections("sectionTitle")}
-        </h2>
-        <div className="rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-          {selections.length === 0 ? (
-            <p className="px-5 py-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-              {tSelections("noSelections")}
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-200 text-left dark:border-zinc-800">
-                    <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">#</th>
-                    <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
-                      {tSelections("fieldLabel")}
-                    </th>
-                    <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
-                      {tSelections("stepPickType")}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selections.map((sel, i) => (
-                    <tr
-                      key={sel.id}
-                      className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
-                    >
-                      <td className="px-5 py-3 text-zinc-500 dark:text-zinc-400">{i + 1}</td>
-                      <td className="px-5 py-3 font-medium text-zinc-900 dark:text-zinc-50">
-                        {sel.label}
-                      </td>
-                      <td className="px-5 py-3 text-zinc-600 dark:text-zinc-400">
-                        {sel.componentType.name}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Add component section */}
-      <section>
-        <h2 className="mb-3 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
-          {tSelections("addComponent")}
-        </h2>
-        {activeComponentTypes.length === 0 ? (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">
-            No active component types available. Ask an admin to configure them under Component Types.
-          </p>
-        ) : (
-          <div className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-            <AddSelectionForm
-              orgSlug={orgSlug}
-              projectId={projectId}
-              orderIndex={selections.length}
-              componentTypes={activeComponentTypes}
-            />
-          </div>
-        )}
-      </section>
+      {/* Next step link */}
+      <Link
+        href={`/${orgSlug}/projects/${projectId}/configuration`}
+        className="inline-flex items-center rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+      >
+        Next: Configuration →
+      </Link>
     </div>
   );
 }

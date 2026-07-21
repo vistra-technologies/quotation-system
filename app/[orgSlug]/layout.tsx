@@ -82,14 +82,6 @@ export default async function OrgSlugLayout({
                 Inquiries
               </Link>
             </li>
-            <li>
-              <Link
-                href={`/${orgSlug}/projects`}
-                className="block rounded-md px-3 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
-              >
-                Design
-              </Link>
-            </li>
 
             {/* Admin section — rendered only for users with admin permissions */}
             {(canManageUsers || canManageFeatures) && (

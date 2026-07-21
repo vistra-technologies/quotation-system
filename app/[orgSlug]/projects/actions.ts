@@ -35,8 +35,9 @@ export async function createProject(
     return { error: "Name, destination country, and currency are required." };
   }
 
+  let project;
   try {
-    await dalCreateProject(session, {
+    project = await dalCreateProject(session, {
       name,
       destinationCountry,
       currency,
@@ -64,5 +65,5 @@ export async function createProject(
   }
 
   revalidatePath(`/${orgSlug}/projects`);
-  redirect(`/${orgSlug}/projects`, RedirectType.replace);
+  redirect(`/${orgSlug}/projects/${project.id}`, RedirectType.replace);
 }

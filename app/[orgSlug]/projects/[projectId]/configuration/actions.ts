@@ -14,6 +14,10 @@ export type CreateSelectionState = { error: string | null };
 /**
  * Create a new Selection on a project.
  *
+ * Moved verbatim from [projectId]/actions.ts (Stage 9 URL restructure).
+ * Only change: revalidatePath and redirect targets updated to the
+ * /configuration path so submitting stays on Step 2 (Configuration).
+ *
  * Uses the useActionState signature so the client form can surface errors
  * (e.g. tenancy violations on malformed payloads) rather than crashing to an
  * error boundary. All DB work and tenancy is delegated to lib/data/selections.ts.
@@ -57,6 +61,6 @@ export async function createSelection(
     throw err;
   }
 
-  revalidatePath(`/${orgSlug}/projects/${projectId}`);
-  redirect(`/${orgSlug}/projects/${projectId}`, RedirectType.replace);
+  revalidatePath(`/${orgSlug}/projects/${projectId}/configuration`);
+  redirect(`/${orgSlug}/projects/${projectId}/configuration`, RedirectType.replace);
 }
