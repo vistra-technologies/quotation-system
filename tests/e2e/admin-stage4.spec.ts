@@ -118,14 +118,19 @@ test("distributor role (no MANAGE_FEATURES) cannot access admin/permissions — 
   await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
 });
 
-test("admin dashboard shows Admin link", async ({ page }) => {
+test("admin side panel shows admin section links (Users link visible)", async ({ page }) => {
   await signIn(page, "admin");
-  await expect(page.getByRole("link", { name: "Admin" })).toBeVisible();
+  // Stage 8 restructured navigation from a top-bar "Admin" link to a side panel
+  // with an "Admin" section header (span) plus individual admin links beneath it.
+  // Verify the admin section is accessible by checking the "Users" link, which
+  // only appears in the Admin section for users with MANAGE_USERS permission.
+  await expect(page.getByRole("link", { name: "Users" })).toBeVisible({ timeout: 15_000 });
 });
 
-test("distributor dashboard does not show Admin link", async ({ page }) => {
+test("distributor dashboard does not show admin section links", async ({ page }) => {
   await signIn(page, "distributor");
-  await expect(page.getByRole("link", { name: "Admin" })).not.toBeVisible();
+  // Distributor has no MANAGE_USERS / MANAGE_FEATURES → Admin section links must be hidden.
+  await expect(page.getByRole("link", { name: "Users" })).not.toBeVisible({ timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------

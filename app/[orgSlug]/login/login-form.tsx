@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 import { toAuthEmail } from "@/lib/auth-utils";
 
@@ -16,9 +15,18 @@ interface LoginFormProps {
  * from the dynamic route segment).  The form constructs the synthetic email
  * via toAuthEmail(username, orgSlug) and calls authClient.signIn.email — all
  * email-construction is centralised in toAuthEmail (D1 guardrail).
+ *
+ * Post-login navigation uses a hard redirect (window.location.href) rather than
+ * router.push().  The [orgSlug] layout conditionally renders the nav chrome only
+ * when getSession() returns a valid session.  Because Next.js App Router does NOT
+ * re-render shared layout segments on client-side navigation, a soft router.push()
+ * from /login to /dashboard leaves the layout in its "no session" state (children
+ * only, no chrome) until the user manually refreshes.  A hard redirect forces a
+ * full server render, ensuring getSession() runs again in the layout and the nav
+ * chrome appears immediately after sign-in.  This mirrors the hard redirect in
+ * logout-button.tsx for consistency.
  */
 export function LoginForm({ orgSlug }: LoginFormProps) {
-  const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +46,9 @@ export function LoginForm({ orgSlug }: LoginFormProps) {
       if (signInError) {
         setError(signInError.message ?? "Sign in failed. Check your credentials.");
       } else {
-        router.push(`/${orgSlug}/dashboard`);
+        // Hard redirect so the [orgSlug] layout re-renders server-side with the
+        // new session cookie, making the nav chrome appear immediately.
+        window.location.href = `/${orgSlug}/dashboard`;
       }
     } finally {
       setLoading(false);

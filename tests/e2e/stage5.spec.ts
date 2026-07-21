@@ -6,7 +6,7 @@
  *   - ComponentType tenancy: admin only sees own org's types
  *   - ComponentType inert-caveat: warning visible on list and edit pages
  *   - ComponentType field schema round-trip: create type -> add field -> save -> navigate back -> field persists
- *   - Project CRUD: create project -> appears in list with correct projectNumber
+ *   - Project CRUD: create project -> redirects to new project's Step 1 with correct projectNumber
  *   - Project tenancy: session guard prevents cross-org read
  *   - Cross-tenant externalCompanyId: crafted form submission with foreign company ID is rejected
  *
@@ -154,7 +154,7 @@ test("ComponentType list shows the assigned category for seeded types", async ({
 // Project -- CRUD round-trip
 // ---------------------------------------------------------------------------
 
-test("Project CRUD: create project -> appears in list with correct projectNumber", async ({
+test("Project CRUD: create project -> appears at Step 1 with correct projectNumber", async ({
   page,
 }) => {
   const projectName = `E2E Project ${Date.now()}`;
@@ -170,18 +170,18 @@ test("Project CRUD: create project -> appears in list with correct projectNumber
   await page.locator("input[name='destinationCountry']").fill("UAE");
   await page.locator("input[name='currency']").fill("AED");
 
-  // Submit and wait for redirect to projects list
+  // Stage 9: createProject now redirects to the new project's Step 1 (Project Details)
+  // page, not the projects list. Wait for the UUID-shaped project detail URL.
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/projects$/, { timeout: 15_000 }),
+    page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, { timeout: 15_000 }),
     page.getByRole("button", { name: /create project/i }).click(),
   ]);
 
-  // Project must appear in the list
+  // Project name must be visible on the Project Details page (shown in the page heading).
   await expect(page.getByText(projectName)).toBeVisible({ timeout: 10_000 });
 
-  // Must have a project number column value (# prefix)
-  const projectNumber = page.locator("td").filter({ hasText: /^#\d+$/ }).first();
-  await expect(projectNumber).toBeVisible();
+  // Project number must be visible in the page heading (format: "#N — Project Name").
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(/#\d+/);
 });
 
 test("Project list: any authenticated user can access /projects (no special RBAC required)", async ({

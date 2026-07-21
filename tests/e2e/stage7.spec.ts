@@ -607,13 +607,16 @@ test("Direct Project create (no Inquiry) still works correctly after Stage 7", a
   await page.locator("input[name='destinationCountry']").fill("UAE");
   await page.locator("input[name='currency']").fill("AED");
 
+  // Stage 9: createProject now redirects to the new project's Step 1 (Project Details),
+  // not the project list. Wait for the UUID-shaped project detail URL.
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/projects$/, { timeout: 20_000 }),
+    page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create project/i }).click(),
   ]);
 
-  // Project must appear in the list
+  // Project name and project number must appear on the Project Details page (Step 1).
   await expect(page.getByText(projectName)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(/#\d+/);
 });
 
 // ---------------------------------------------------------------------------
@@ -667,10 +670,10 @@ test("Start Project button renders on inquiry detail page (clientMessages wiring
 // ---------------------------------------------------------------------------
 // Fix 1 — redirect uses replace (history stack grows by 1, not 2)
 //
-// With RedirectType.replace: navigating to /new and submitting replaces the
-// /new entry with /list → net +1 from the baseline (not +2 that a push would add).
-// This is a behavioral invariant: if the history check fails, it means the
-// redirect reverted to the default push, which adds a spurious back-stack entry.
+// Stage 9: createProject now redirects to the new project's detail page
+// (/{orgSlug}/projects/{uuid}) using RedirectType.replace. The invariant is the
+// same: navigating to /new and submitting replaces /new with the destination →
+// net +1 from the baseline (not +2 that a push would add).
 // ---------------------------------------------------------------------------
 
 test("Project create redirect uses replace: browser history grows by 1, not 2", async ({
@@ -689,14 +692,16 @@ test("Project create redirect uses replace: browser history grows by 1, not 2", 
   await page.locator("input[name='destinationCountry']").fill("UAE");
   await page.locator("input[name='currency']").fill("AED");
 
+  // Stage 9: redirect goes to /{orgSlug}/projects/{uuid} (not the list).
+  // RedirectType.replace is used, so /new is replaced by /projects/{uuid} in history.
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/projects$/, { timeout: 20_000 }),
+    page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create project/i }).click(),
   ]);
 
   const historyAfter = await page.evaluate(() => window.history.length);
-  // With replace redirect: /new is replaced by /projects → history is historyBefore + 1.
-  // With push redirect (old default): /projects is added after /new → historyBefore + 2.
+  // With replace redirect: /new is replaced by /projects/{uuid} → history is historyBefore + 1.
+  // With push redirect (old default): /projects/{uuid} is added after /new → historyBefore + 2.
   expect(historyAfter).toBe(historyBefore + 1);
 });
 
@@ -792,7 +797,7 @@ test("Admin user (null externalCompanyId) still sees the free-choice dropdown on
 // Security property: even if a distributor modifies the hidden input's value
 // before submitting the form, the DAL derives the company from session.externalCompanyId
 // (server-side, from the auth cookie) and ignores whatever the client submitted.
-// Verified by creating a project/inquiry with a tampered form value and confirming
+// Verified by creating a project with a tampered form value and confirming
 // the resulting record still shows the distributor's real company — not the forged one.
 // ---------------------------------------------------------------------------
 
@@ -817,19 +822,18 @@ test("Project trust boundary: forged externalCompanyId in form body is ignored f
     if (el) el.value = "00000000-0000-0000-0000-deadbeef0001";
   });
 
+  // Stage 9: createProject now redirects to the new project's detail page (Step 1).
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/projects$/, { timeout: 20_000 }),
+    page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create project/i }).click(),
   ]);
 
   // Project must be created successfully (not blocked by INVALID_EXTERNAL_COMPANY).
   await expect(page.getByText(projectName)).toBeVisible({ timeout: 15_000 });
 
-  // The Client column for the newly created project must show the distributor's
-  // real company — NOT blank or any trace of the forged UUID.
-  const projectRow = page.getByRole("row").filter({ hasText: projectName }).first();
-  await expect(projectRow).toBeVisible({ timeout: 10_000 });
-  await expect(projectRow.getByText("Acme Glass Co. Dist Co")).toBeVisible({ timeout: 10_000 });
+  // The detail page must show the distributor's real company — NOT blank or any trace
+  // of the forged UUID. The company name appears in the project details section.
+  await expect(page.getByText("Acme Glass Co. Dist Co")).toBeVisible({ timeout: 10_000 });
 });
 
 test("Inquiry trust boundary: forged externalCompanyId in form body is ignored for distributor", async ({

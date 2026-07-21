@@ -138,8 +138,11 @@ test("Admin nav shows External Companies link for MANAGE_USERS role", async ({ p
   await signIn(page, "admin");
   // Admin section is reachable via any admin page
   await page.goto("/acme-glass/admin/users");
-  // The nav must have the External Companies link
-  await expect(page.getByRole("link", { name: /external companies/i })).toBeVisible({
+  // The nav must have the External Companies link.
+  // Use .first() because the admin layout's top nav AND the org-level side panel
+  // both render an "External Companies" link — two links is expected behavior
+  // after Stage 8 added the side panel (strict mode would fail without .first()).
+  await expect(page.getByRole("link", { name: /external companies/i }).first()).toBeVisible({
     timeout: 15_000,
   });
 });
@@ -322,9 +325,11 @@ test("ComponentType empty-options guard: radio field with no options produces er
     // Hard-reload and check whether the radio field actually persisted.
     await page.reload();
     const fieldKeyInput = page.locator(`input[value='${fieldKey}']`);
-    const fieldExists = await fieldKeyInput.count() > 0;
+    const fieldExists = (await fieldKeyInput.count()) > 0;
     // If the field is NOT there, the old silent-drop bug has regressed.
-    expect(fieldExists, "Radio field with empty options was silently dropped — bug regressed").toBe(true);
+    expect(fieldExists, "Radio field with empty options was silently dropped — bug regressed").toBe(
+      true,
+    );
     // If the field IS there but has empty options, that's also bad — but we can't easily check in UI.
   }
   // If still on the /new page or error page, the fix is working correctly.
@@ -371,18 +376,27 @@ test("Selection round-trip: create project → add selection → selection appea
   await page.locator("input[name='destinationCountry']").fill("UAE");
   await page.locator("input[name='currency']").fill("AED");
 
+  // Stage 9: createProject now redirects to the new project's Step 1 (Project Details),
+  // not the project list. Wait for the UUID-shaped project detail URL.
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/projects$/, { timeout: 15_000 }),
+    page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, { timeout: 15_000 }),
     page.getByRole("button", { name: /create project/i }).click(),
   ]);
 
-  // Click into the project detail page via the project link
-  const projectLink = page.getByRole("link").filter({ hasText: projectName }).first();
-  await expect(projectLink).toBeVisible({ timeout: 10_000 });
-  await projectLink.click();
-  await expect(page).toHaveURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+  // Wait for the page to fully settle after the Next.js App Router processes the
+  // server-action redirect client-side. The client router is still active when
+  // waitForURL resolves — calling page.goto immediately causes net::ERR_ABORTED.
+  await page.waitForLoadState("domcontentloaded");
 
-  // The "no components yet" empty state should be visible
+  // Navigate to Configuration (Step 2) where the Selections UI now lives.
+  const detailUrl = page.url();
+  const configUrl = `${detailUrl}/configuration`;
+  await page.goto(configUrl, { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/\/acme-glass\/projects\/[0-9a-f-]{36}\/configuration$/, {
+    timeout: 15_000,
+  });
+
+  // The "no components yet" empty state should be visible on /configuration
   await expect(page.getByText(/no components added yet/i)).toBeVisible({ timeout: 10_000 });
 
   // Fill the Add Component form
@@ -403,16 +417,18 @@ test("Selection round-trip: create project → add selection → selection appea
   // Select Glass Type radio (required) — pick "Clear"
   await page.getByLabel("Clear").check();
 
-  // Submit the selection
+  // Submit the selection — Stage 9: redirect goes back to /configuration, not project detail
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, { timeout: 20_000 }),
+    page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}\/configuration$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /add component/i }).click(),
   ]);
 
   // The selection must now appear in the table
   await expect(page.getByText(selectionLabel)).toBeVisible({ timeout: 15_000 });
-  // The component type name must appear (exact match avoids collision with the selection label which also contains "Glass")
-  await expect(page.getByRole("cell", { name: "Glass", exact: true })).toBeVisible({ timeout: 10_000 });
+  // The component type name must appear (exact match avoids collision with the selection label)
+  await expect(page.getByRole("cell", { name: "Glass", exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -443,21 +459,16 @@ test("Selection tenancy: direct access to a different org's project returns 404 
   await page.locator("input[name='name']").fill("E2E Tenancy Probe Project");
   await page.locator("input[name='destinationCountry']").fill("UAE");
   await page.locator("input[name='currency']").fill("AED");
+
+  // Stage 9: createProject redirects to the new project's detail page, not the list.
+  // Extract the projectId from the resulting URL directly.
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/projects$/, { timeout: 15_000 }),
+    page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, { timeout: 15_000 }),
     page.getByRole("button", { name: /create project/i }).click(),
   ]);
 
-  // Navigate to project detail to get the real project URL
-  const projectLink = page
-    .getByRole("link")
-    .filter({ hasText: "E2E Tenancy Probe Project" })
-    .first();
-  await expect(projectLink).toBeVisible({ timeout: 10_000 });
-
-  const href = await projectLink.getAttribute("href");
-  // href is like "/acme-glass/projects/[uuid]"
-  const projectId = href?.split("/").pop() ?? "";
+  // Get the projectId from the current URL (format: /acme-glass/projects/{uuid})
+  const projectId = page.url().split("/").pop() ?? "";
   expect(projectId).toMatch(/^[0-9a-f-]{36}$/);
 
   // Sign out of acme-glass
