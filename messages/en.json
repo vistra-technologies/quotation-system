@@ -242,6 +242,9 @@
     "summaryPlaceholder": "Design Summary — coming in Stage 10",
     "quotationPlaceholder": "Quotation — coming in Stage 10"
   },
+  "toast": {
+    "comingSoon": "Coming Soon"
+  },
   "pricing": {
     "pageTitle": "Pricing Management",
     "pageSubtitle": "Set and update product prices for your organization.",
