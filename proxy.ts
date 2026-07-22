@@ -5,29 +5,73 @@ import { prisma } from "@/lib/prisma";
 // Tenant-resolution proxy — runs in Node.js runtime (Next.js 16 default).
 // Do NOT set `export const runtime` here; it is not allowed in proxy files.
 //
-// On every non-static request:
-//   apex (pathname === "/")           → pass through; the apex page shows the org selector.
-//   /{orgSlug}/...  (org found in DB) → inject x-org-id and x-org-slug headers so Server
-//                                       Components can read them.
-//   /{orgSlug}/...  (org NOT found)   → 404 JSON.
+// Slug extraction strategy (Stage 10 subdomain routing):
+//
+//   Production (*.easeetool.com):
+//     easeetool.com / www.easeetool.com → apex passthrough (org selector)
+//     {orgSlug}.easeetool.com           → extract subdomain as orgSlug;
+//                                         rewrite URL so app/[orgSlug]/... receives it.
+//                                         Guard: skip rewrite if path already starts with
+//                                         /{orgSlug}/ to prevent double-prepend on a
+//                                         re-entrant request.
+//
+//   Local dev / CI / Playwright (any non-easeetool.com host, e.g. localhost):
+//     Falls back to path-segment extraction: pathname.split("/")[1].
+//     No *.localhost DNS config needed — local/CI runs work exactly as before Stage 10.
+//
+// After slug extraction (both modes):
+//   org found in DB  → inject x-org-id / x-org-slug headers so Server Components can
+//                       read them; rewrite URL if in subdomain mode
+//   org NOT found    → 404 JSON
+//   empty slug       → apex passthrough (strip org headers to prevent spoofing)
 //
 // Performance note (out of scope Stage 2): the DB lookup on every request is fine for dev
 // load.  A future optimization is a short-lived in-process Map cache keyed on slug,
 // invalidated on Organization updates.
 
 export async function proxy(request: NextRequest) {
-  const orgSlug = request.nextUrl.pathname.split("/")[1] ?? "";
+  const host = request.headers.get("host") ?? "";
+  // Strip port so "localhost:3000" → "localhost" and
+  // "acme-glass.easeetool.com:443" → "acme-glass.easeetool.com".
+  const hostname = host.split(":")[0];
 
+  const { pathname, search } = request.nextUrl;
+
+  // ---------------------------------------------------------------------------
+  // Slug extraction
+  // ---------------------------------------------------------------------------
+  let orgSlug: string;
+  let fromSubdomain = false;
+
+  if (hostname === "easeetool.com" || hostname === "www.easeetool.com") {
+    // Apex domain → always passthrough regardless of path (shows the org selector).
+    orgSlug = "";
+  } else if (hostname.endsWith(".easeetool.com")) {
+    // Subdomain routing: acme-glass.easeetool.com → orgSlug = "acme-glass"
+    orgSlug = hostname.slice(0, hostname.length - ".easeetool.com".length);
+    fromSubdomain = true;
+  } else {
+    // Local dev / CI / Playwright fallback — path-segment extraction (unchanged
+    // from pre-Stage 10 behavior).  e.g. pathname "/vistra/dashboard" → "vistra".
+    orgSlug = pathname.split("/")[1] ?? "";
+  }
+
+  // ---------------------------------------------------------------------------
+  // Apex passthrough
+  // ---------------------------------------------------------------------------
   if (orgSlug === "") {
-    // Apex passthrough. Strip any client-supplied org headers so an authenticated user
-    // cannot spoof x-org-id / x-org-slug on the apex page to reach org-scoped pages.
+    // Apex passthrough. Strip any client-supplied org headers so an authenticated
+    // user cannot spoof x-org-id / x-org-slug on the apex page to reach org-scoped
+    // pages.
     const stripped = new Headers(request.headers);
     stripped.delete("x-org-id");
     stripped.delete("x-org-slug");
     return NextResponse.next({ request: { headers: stripped } });
   }
 
-  // Look up the organization by slug.
+  // ---------------------------------------------------------------------------
+  // DB lookup
+  // ---------------------------------------------------------------------------
   const org = await prisma.organization.findUnique({
     where: { slug: orgSlug },
     select: { id: true, slug: true },
@@ -44,6 +88,27 @@ export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-org-id", org.id);
   requestHeaders.set("x-org-slug", org.slug);
+
+  // ---------------------------------------------------------------------------
+  // URL rewrite (subdomain mode only)
+  // ---------------------------------------------------------------------------
+  if (fromSubdomain) {
+    // Guard against double-prepend on a re-entrant request: if the path already
+    // starts with /{orgSlug}/ (or IS /{orgSlug}), the rewrite already happened —
+    // fall through to NextResponse.next() below.
+    const alreadyPrefixed =
+      pathname === `/${orgSlug}` || pathname.startsWith(`/${orgSlug}/`);
+
+    if (!alreadyPrefixed) {
+      // acme-glass.easeetool.com/projects → internal /acme-glass/projects
+      // NextResponse.rewrite accepts { request: { headers } } (same MiddlewareResponseInit
+      // as NextResponse.next) to forward modified request headers to the rewrite destination.
+      return NextResponse.rewrite(
+        new URL(`/${orgSlug}${pathname}${search}`, request.url),
+        { request: { headers: requestHeaders } },
+      );
+    }
+  }
 
   return NextResponse.next({
     request: { headers: requestHeaders },

@@ -7,10 +7,12 @@
  *   - Full sign-in → dashboard → sign-out flow
  *   - Cross-org session-replay guard (path-based routing, shared cookie jar)
  *
- * Run against the stable preview deployment:
+ * Run against the stable preview deployment (staging):
  *   PLAYWRIGHT_BASE_URL=https://v-quote-test.vercel.app \
  *   VERCEL_AUTOMATION_BYPASS_SECRET=<secret> \
  *   npx playwright test org-nav
+ * Production domain (Stage 10+): {orgSlug}.easeetool.com — subdomain-routed.
+ * Local runs use the localhost path-based fallback in proxy.ts; no *.localhost DNS needed.
  *
  * When VERCEL_AUTOMATION_BYPASS_SECRET is set, playwright.config.ts injects
  * x-vercel-protection-bypass and x-vercel-set-bypass-cookie headers on every
