@@ -19,22 +19,23 @@ import { prisma } from "@/lib/prisma";
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
 
-  // Allow browser requests from preview deployments in addition to the
-  // canonical baseURL origin (which covers production and localhost).
+  // Allow browser requests from preview deployments and production subdomains
+  // in addition to the canonical baseURL origin (which covers localhost).
   //
-  // Two preview origins must be trusted:
-  //   1. The raw per-deploy URL — Vercel auto-injects VERCEL_URL on every
+  // Origins trusted:
+  //   1. The raw per-deploy Vercel URL — auto-injected as VERCEL_URL on every
   //      build (no manual config needed); absent on local dev.
   //   2. The stable QA alias https://v-quote-test.vercel.app — manually
   //      re-pointed to the latest preview build after each deploy.
+  //      Keep this entry until staging migrates to an easeetool.com subdomain.
+  //   3. All org subdomains — wildcard pattern supported natively by
+  //      better-auth 1.6.23 via matchesOriginPattern().
   //
-  // trustedOrigins is a top-level BetterAuthOptions field (string[] |
-  // async-function). Strings are matched via matchesOriginPattern(); wildcard
-  // patterns like "https://*.vercel.app" are supported but deliberately
-  // avoided here — exact origins are tighter and correct for our two cases.
+  // trustedOrigins is a top-level BetterAuthOptions field (string[] | async-function).
   trustedOrigins: [
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
-    "https://v-quote-test.vercel.app",
+    "https://v-quote-test.vercel.app", // staging alias; remove once staging migrates to easeetool.com
+    "https://*.easeetool.com", // all org subdomains (Stage 10 subdomain routing)
   ],
 
   // Synthetic-email field is NOT a real email — block all email flows.
@@ -59,9 +60,12 @@ export const auth = betterAuth({
 
   advanced: {
     // Distinct cookie prefix so qs-* cookies don't collide with other tools.
-    // No crossSubDomainCookies — cookies are host-only by default; all org paths
-    // share the same cookie jar on the single deployed host.
     cookiePrefix: "qs",
+    // Share the session cookie across all *.easeetool.com subdomains (Stage 10
+    // subdomain routing).  Each org lives on its own subdomain; without this the
+    // browser treats acme-glass.easeetool.com and vistra.easeetool.com as
+    // independent cookie jars and cannot share a single-signon session.
+    crossSubDomainCookies: { enabled: true, domain: ".easeetool.com" },
   },
 
   // Declare domain additionalFields so better-auth saves/returns them
