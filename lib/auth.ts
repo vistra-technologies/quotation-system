@@ -65,7 +65,15 @@ export const auth = betterAuth({
     // subdomain routing).  Each org lives on its own subdomain; without this the
     // browser treats acme-glass.easeetool.com and vistra.easeetool.com as
     // independent cookie jars and cannot share a single-signon session.
-    crossSubDomainCookies: { enabled: true, domain: ".easeetool.com" },
+    //
+    // `enabled` is conditional: when BETTER_AUTH_URL does NOT target easeetool.com
+    // (localhost dev, *.vercel.app ad-hoc preview), the Domain attribute is omitted
+    // entirely — browsers would reject a ".easeetool.com" Domain on those hosts
+    // (RFC 6265 §5.3 host-match failure) and drop the session cookie silently.
+    crossSubDomainCookies: {
+      enabled: (process.env.BETTER_AUTH_URL ?? "").includes("easeetool.com"),
+      domain: ".easeetool.com",
+    },
   },
 
   // Declare domain additionalFields so better-auth saves/returns them
