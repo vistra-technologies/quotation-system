@@ -263,6 +263,23 @@ test("cross-org notice names only the session org", async ({ page }) => {
   await goToLogin(page, ORG2);
   await page.getByLabel("User ID").fill("admin");
   await page.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
+
+  // Rate-limit guard: this is the 4th real sign-in POST in the suite (tests 1,
+  // 2, and 5 each send one; tests 3 and 4 are blocked by HTML5 validation before
+  // reaching the server).  better-auth's default rate limiter allows at most 3
+  // /sign-in* requests per 10-second window per IP (see
+  // node_modules/better-auth/dist/api/rate-limiter/index.mjs,
+  // getDefaultSpecialRules() — window: 10, max: 3).  Without a wait, all four
+  // POSTs can land within the same 10s window and this one gets silently 429'd,
+  // causing waitForURL below to time out instead of showing an error message.
+  //
+  // 11 000 ms is just over the 10s window — enough to guarantee the limiter's
+  // counter has reset regardless of how fast tests 1–5 ran.  This is NOT a
+  // general flaky-test workaround; it is a deliberate, bounded pause tied to a
+  // known, documented rate-limiter contract.  Do not add similar waits elsewhere
+  // in this file — only this test lands as the 4th consecutive real POST.
+  await page.waitForTimeout(11_000);
+
   await page.getByRole("button", { name: /Sign in/i }).click();
   await page.waitForURL(new RegExp(`/${ORG2}/dashboard`), { timeout: 30_000 });
 
