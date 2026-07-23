@@ -16,7 +16,9 @@ interface ProjectWizardBreadcrumbProps {
  * uses exact-match; steps 2–5 use startsWith-match so nested routes (e.g.
  * design/add-wall) highlight the correct step.
  *
- * Wireframe-stage: plain horizontal list, no animation. Visual polish deferred.
+ * Stage 10 (Task 1.6): restyled to Sage Ease pill stepper. Active step gets
+ * bg-primary; completed steps show a checkmark and text-primary-dark; future
+ * steps are text-text-muted. Logic, hrefs, and aria-current are unchanged.
  *
  * namespace: "wizard" — wired in app/[orgSlug]/projects/layout.tsx clientMessages.
  */
@@ -34,33 +36,50 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId }: ProjectWizardBre
     { label: t("step5"), href: `${base}/quotation`, exact: false },
   ];
 
+  // Derive the active index so earlier steps can be shown as "done".
+  const activeIndex = steps.findIndex((step) =>
+    step.exact ? pathname === step.href : pathname.startsWith(step.href),
+  );
+
   return (
-    <nav
-      aria-label="Project wizard steps"
-      className="border-b border-zinc-200 bg-white px-6 py-3 dark:border-zinc-800 dark:bg-zinc-900"
-    >
-      <ol className="flex items-center gap-1 text-sm">
+    <nav aria-label="Project wizard steps" className="py-4">
+      <ol className="mx-auto flex max-w-2xl items-center gap-1.5 rounded-pill bg-primary-softer p-2">
         {steps.map((step, index) => {
-          const isActive = step.exact
-            ? pathname === step.href
-            : pathname.startsWith(step.href);
+          const isActive = index === activeIndex;
+          const isDone = activeIndex > -1 && index < activeIndex;
+
+          // Build step link className based on state.
+          const linkClass = isActive
+            ? "flex items-center gap-2 rounded-pill bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary"
+            : isDone
+              ? "flex items-center gap-2 rounded-pill px-5 py-2.5 text-sm font-bold text-primary-dark"
+              : "flex items-center gap-2 rounded-pill px-5 py-2.5 text-sm font-bold text-text-muted";
 
           return (
-            <li key={step.href} className="flex items-center gap-1">
-              {index > 0 && (
-                <span className="text-zinc-300 dark:text-zinc-700" aria-hidden="true">
-                  /
-                </span>
-              )}
+            <li key={step.href}>
               <Link
                 href={step.href}
-                className={
-                  isActive
-                    ? "font-semibold text-zinc-900 dark:text-zinc-50"
-                    : "text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-                }
+                className={linkClass}
                 aria-current={isActive ? "step" : undefined}
               >
+                {/* Step indicator: checkmark when done, number otherwise */}
+                {isDone ? (
+                  <span
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs text-primary"
+                    aria-hidden="true"
+                  >
+                    ✓
+                  </span>
+                ) : (
+                  <span
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${
+                      isActive ? "bg-white/25" : "bg-white/60"
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {index + 1}
+                  </span>
+                )}
                 {step.label}
               </Link>
             </li>

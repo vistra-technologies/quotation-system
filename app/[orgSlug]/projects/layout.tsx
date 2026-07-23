@@ -23,6 +23,8 @@ export default function ProjectsLayout({ children }: { children: React.ReactNode
     design: allMessages.design,
     // Stage 9: ProjectWizardBreadcrumb under projects/[projectId]/* uses this namespace.
     wizard: allMessages.wizard,
+    // Stage 10: Toast primitive used on placeholder buttons across project pages.
+    toast: allMessages.toast,
   };
 
   return (

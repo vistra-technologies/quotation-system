@@ -1,5 +1,55 @@
 @import "tailwindcss";
 
+/* ── Sage Ease design tokens (Stage 10 — Task 1.1) ─────────────────────────
+   All tokens from vistra-style-guide.css imported here via Tailwind v4 @theme.
+   These become CSS custom properties at :root AND generate Tailwind utilities:
+     --color-*   → bg-*, text-*, border-* utilities
+     --radius-*  → rounded-* utilities  (overrides Tailwind built-in defaults)
+     --shadow-*  → shadow-* utilities
+   Arbitrary-value syntax also works: bg-[--color-primary], rounded-[--radius-md]
+   ──────────────────────────────────────────────────────────────────────────── */
+@theme {
+  /* Core palette */
+  --color-primary:          #4E7F58;
+  --color-primary-dark:     #3E6647;
+  --color-primary-soft:     #CBDFCD;
+  --color-primary-softer:   #ECF0ED;
+
+  --color-bg-page:          #F7F8EF;
+  --color-bg-card:          #FBFAF5;
+  --color-bg-white:         #FFFFFF;
+  --color-border:           #E0E2D7;
+
+  --color-text-heading:     #1B281E;
+  --color-text-body:        #3A4038;
+  --color-text-muted:       #5C665C;
+  --color-text-placeholder: #8A8177;
+  --color-text-on-primary:  #FFFFFF;
+
+  /* Status pill tokens — named with --color- prefix for Tailwind color utilities.
+     (style guide source: --status-paid-bg / --status-paid-text etc.) */
+  --color-status-paid-bg:       #D4F1D4;
+  --color-status-paid-text:     #2E6B34;
+  --color-status-pending-bg:    #F7E7C4;
+  --color-status-pending-text:  #875711;
+  --color-status-shipped-bg:    #C7EFFF;
+  --color-status-shipped-text:  #0B6E99;
+  --color-status-failed-bg:     #FFD9D4;
+  --color-status-failed-text:   #B3261E;
+  --color-status-refunded-bg:   #EDE6E1;
+  --color-status-refunded-text: #6B645D;
+
+  /* Shape — overrides Tailwind built-in --radius-sm / --radius-md intentionally */
+  --radius-sm:   8px;
+  --radius-md:   14px;
+  --radius-pill: 999px;
+
+  /* Elevation */
+  --shadow-card:   0 1px 2px rgba(27, 40, 30, 0.05);
+  --shadow-header: 0 1px 0 rgba(27, 40, 30, 0.06);
+}
+
+/* ── Dark-mode base vars (original Next.js scaffold — kept for reference) ── */
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -8,7 +58,8 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  /* Sage Ease primary font (Nunito, loaded via next/font/google in app/layout.tsx) */
+  --font-sans: var(--font-nunito);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -20,7 +71,7 @@
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-bg-page);
+  color: var(--color-text-body);
+  font-family: var(--font-sans), 'Nunito Sans', system-ui, sans-serif;
 }

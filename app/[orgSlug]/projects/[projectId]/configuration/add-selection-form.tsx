@@ -52,6 +52,10 @@ const initialState: CreateSelectionState = { error: null };
  *
  * Defensive rendering: radio/dropdown fields with no configured options (options: [])
  * are displayed as "not configured" rather than crashing.
+ *
+ * Stage 10 (Task 1.7): restyled to Sage Ease tokens. All IDs, name attributes,
+ * hidden inputs, action binding, validation logic, and createSelection call are
+ * unchanged — parity-critical.
  */
 export function AddSelectionForm({
   orgSlug,
@@ -127,20 +131,22 @@ export function AddSelectionForm({
   // manipulation is needed.
   const configJson = JSON.stringify(fieldValues);
 
+  // ── Shared Sage Ease input class ─────────────────────────────────────────
+  const inputClass =
+    "w-full rounded-sm border border-border bg-bg-white px-3.5 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/30";
+
   return (
     <>
       <LoadingOverlay visible={isPending} />
 
       {(clientError ?? state.error) && (
-        <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-4 py-3 dark:border-red-700 dark:bg-red-950">
-          <p className="text-sm text-red-700 dark:text-red-300">
-            {clientError ?? state.error}
-          </p>
+        <div className="mb-4 rounded-sm border border-red-300 bg-red-50 px-4 py-3">
+          <p className="text-sm text-red-700">{clientError ?? state.error}</p>
         </div>
       )}
 
       <form action={formAction} onSubmit={handleSubmit} className="flex flex-col gap-5">
-        {/* Hidden context fields */}
+        {/* Hidden context fields — unchanged from Stage 9 */}
         <input type="hidden" name="orgSlug" value={orgSlug} />
         <input type="hidden" name="projectId" value={projectId} />
         <input type="hidden" name="componentTypeId" value={selectedTypeId} />
@@ -148,10 +154,10 @@ export function AddSelectionForm({
         <input type="hidden" name="config" value={configJson} />
 
         {/* Selection label */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           <label
             htmlFor="sel-label"
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+            className="text-xs font-bold uppercase tracking-wider text-text-muted"
           >
             {t("fieldLabel")} *
           </label>
@@ -162,15 +168,15 @@ export function AddSelectionForm({
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             autoComplete="off"
-            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+            className={inputClass}
           />
         </div>
 
         {/* Component type selector — grouped by category */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           <label
             htmlFor="sel-type"
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+            className="text-xs font-bold uppercase tracking-wider text-text-muted"
           >
             {t("stepPickType")} *
           </label>
@@ -178,7 +184,7 @@ export function AddSelectionForm({
             id="sel-type"
             value={selectedTypeId}
             onChange={(e) => handleTypeChange(e.target.value)}
-            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:ring-zinc-50"
+            className={inputClass}
           >
             <option value="">— {t("stepPickType")} —</option>
             {Object.entries(byCategory).map(([cat, types]) => (
@@ -195,8 +201,8 @@ export function AddSelectionForm({
 
         {/* Dynamic fields — only shown when a type is selected */}
         {selectedType && (
-          <div className="flex flex-col gap-4 rounded-md border border-zinc-100 bg-zinc-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
-            <p className="text-xs font-medium text-zinc-400 dark:text-zinc-500">
+          <div className="flex flex-col gap-4 rounded-sm border border-border bg-bg-page p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-text-placeholder">
               {t("stepConfigure")}
             </p>
 
@@ -212,8 +218,8 @@ export function AddSelectionForm({
 
             {/* Advanced fields in a collapsible section */}
             {advancedFields.length > 0 && (
-              <details className="rounded-md border border-zinc-200 dark:border-zinc-700">
-                <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+              <details className="rounded-sm border border-border">
+                <summary className="cursor-pointer select-none px-3 py-2 text-xs font-bold uppercase tracking-wider text-text-muted">
                   {t("advancedFields")}
                 </summary>
                 <div className="flex flex-col gap-4 px-3 pb-3 pt-2">
@@ -234,7 +240,7 @@ export function AddSelectionForm({
         <button
           type="submit"
           disabled={isPending}
-          className="self-start rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="self-start rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
         >
           {t("submitAdd")}
         </button>
@@ -253,9 +259,8 @@ interface FieldInputProps {
 
 function FieldInput({ field, value, onChange }: FieldInputProps) {
   const inputClass =
-    "rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50";
-  const labelClass =
-    "text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400";
+    "w-full rounded-sm border border-border bg-bg-white px-3.5 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/30";
+  const labelClass = "text-xs font-bold uppercase tracking-wider text-text-muted";
 
   const displayLabel = field.label || field.key;
 
@@ -272,7 +277,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
           {displayLabel}
           {field.required && <span className="ml-1 text-red-500">*</span>}
         </span>
-        <p className="text-xs italic text-zinc-400 dark:text-zinc-500">
+        <p className="text-xs italic text-text-placeholder">
           Options not configured for this field.
         </p>
       </div>
@@ -280,7 +285,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1.5">
       {field.type !== "checkbox" && (
         <label className={labelClass}>
           {displayLabel}
@@ -298,11 +303,11 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
       )}
 
       {field.type === "radio" && (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-2">
           {field.options!.map((opt) => (
             <label
               key={opt}
-              className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300"
+              className="flex cursor-pointer items-center gap-2 text-sm text-text-body"
             >
               <input
                 type="radio"
@@ -310,7 +315,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
                 value={opt}
                 checked={(value as string) === opt}
                 onChange={() => onChange(opt)}
-                className="accent-zinc-900 dark:accent-zinc-50"
+                className="accent-primary"
               />
               {opt}
             </label>
@@ -334,12 +339,12 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
       )}
 
       {field.type === "checkbox" && (
-        <label className="flex cursor-pointer items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-text-body">
           <input
             type="checkbox"
             checked={(value as boolean) ?? false}
             onChange={(e) => onChange(e.target.checked)}
-            className="accent-zinc-900 dark:accent-zinc-50"
+            className="accent-primary"
           />
           <span>
             {displayLabel}
@@ -349,7 +354,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
       )}
 
       {field.hint && (
-        <p className="text-xs text-zinc-400 dark:text-zinc-500">{field.hint}</p>
+        <p className="text-xs text-text-placeholder">{field.hint}</p>
       )}
     </div>
   );

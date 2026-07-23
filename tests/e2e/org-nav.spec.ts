@@ -7,10 +7,12 @@
  *   - Full sign-in → dashboard → sign-out flow
  *   - Cross-org session-replay guard (path-based routing, shared cookie jar)
  *
- * Run against the stable preview deployment:
- *   PLAYWRIGHT_BASE_URL=https://v-quote-test.vercel.app \
+ * Run against the stable preview deployment (staging):
+ *   PLAYWRIGHT_BASE_URL=https://test.easeetool.com \
  *   VERCEL_AUTOMATION_BYPASS_SECRET=<secret> \
  *   npx playwright test org-nav
+ * Production domain (Stage 10+): {orgSlug}.easeetool.com — subdomain-routed.
+ * Local runs use the localhost path-based fallback in proxy.ts; no *.localhost DNS needed.
  *
  * When VERCEL_AUTOMATION_BYPASS_SECRET is set, playwright.config.ts injects
  * x-vercel-protection-bypass and x-vercel-set-bypass-cookie headers on every
@@ -30,7 +32,7 @@ test.describe.configure({ mode: "serial" });
 async function getOrgLinks(page: import("@playwright/test").Page) {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Quotation System" }),
+    page.getByRole("heading", { name: "EaseeTool" }),
   ).toBeVisible();
 
   // Collect all org <a> elements in the nav (exclude the dev-tools links)
@@ -68,7 +70,7 @@ test("apex org-selector links point at the deployed origin, not localhost", asyn
     // Allow relative paths (no host) or absolute URLs on the same deployed origin
     // — but never a different host entirely.
     if (href.startsWith("http://") || href.startsWith("https://")) {
-      const url = new URL(href, baseURL ?? "https://v-quote-test.vercel.app");
+      const url = new URL(href, baseURL ?? "https://test.easeetool.com");
       expect(
         url.hostname,
         `Org "${name.replace(/\s+/g, " ")}" link points at unexpected host: ${url.hostname}`,
@@ -159,10 +161,9 @@ test("unauthenticated request to /{orgSlug}/dashboard redirects to /{orgSlug}/lo
   // After following redirects, we must be on the login page
   expect(page.url()).toMatch(/\/vistra\/login/);
 
-  // The login form heading must be visible
-  await expect(
-    page.getByRole("heading", { name: /Sign in to/i }),
-  ).toBeVisible();
+  // The login form must be visible — Stage 10 removed the "Sign in to" heading;
+  // the autocomplete="username" input is the stable anchor post-rebuild.
+  await expect(page.locator('input[autocomplete="username"]')).toBeVisible();
 
   // The response chain must have included a redirect (not a 200 straight through)
   // Playwright follows redirects automatically; final response is 200 on the login page.
@@ -179,7 +180,7 @@ test("full flow: apex org link → login page → sign in → dashboard → sign
   // Step 1: Load apex
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Quotation System" }),
+    page.getByRole("heading", { name: "EaseeTool" }),
   ).toBeVisible();
 
   // Step 2: Inspect the href — record it before clicking
@@ -203,17 +204,20 @@ test("full flow: apex org link → login page → sign in → dashboard → sign
     firstLink.click(),
   ]);
 
-  await expect(
-    page.getByRole("heading", { name: /Sign in to/i }),
-  ).toBeVisible({ timeout: 5_000 });
+  // Stage 10 removed the "Sign in to" heading — wait for the form input instead.
+  await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
+    timeout: 5_000,
+  });
 
   // Extract org slug from the URL we've landed on (e.g. /vistra/login → "vistra")
   const loginUrl = new URL(page.url());
   const orgSlug = loginUrl.pathname.split("/")[1];
 
   // Step 4: Sign in with the org's admin credentials
-  await page.getByLabel("Username").fill("admin");
-  await page.getByLabel("Password").fill("Seed1234!");
+  // Stage 10: label renamed "Username" → "User ID"; "Password" needs exact match
+  // to avoid ambiguity with the aria-label on the password-reveal toggle button.
+  await page.getByLabel("User ID").fill("admin");
+  await page.getByLabel("Password", { exact: true }).fill("Seed1234!");
   await page.getByRole("button", { name: /Sign in/i }).click();
 
   // Step 5: Dashboard must render with correct identity
@@ -239,9 +243,10 @@ test("full flow: apex org link → login page → sign in → dashboard → sign
   // Step 6: Sign out and confirm redirect back to /{orgSlug}/login
   await page.getByRole("button", { name: /Sign out/i }).click();
   await page.waitForURL(new RegExp(`/${orgSlug}/login`), { timeout: 10_000 });
-  await expect(
-    page.getByRole("heading", { name: /Sign in to/i }),
-  ).toBeVisible({ timeout: 5_000 });
+  // Stage 10: "Sign in to" heading gone — form input is the stable readiness signal.
+  await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
+    timeout: 5_000,
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -252,11 +257,12 @@ test("cross-org session replay: vistra session rejected on acme-glass dashboard"
 }) => {
   // Sign in as vistra admin
   await page.goto("/vistra/login");
-  await expect(
-    page.getByRole("heading", { name: /Sign in to/i }),
-  ).toBeVisible();
-  await page.getByLabel("Username").fill("admin");
-  await page.getByLabel("Password").fill("Seed1234!");
+  // Stage 10: "Sign in to" heading gone — wait for the form input instead.
+  await expect(page.locator('input[autocomplete="username"]')).toBeVisible();
+  // Stage 10: label renamed "Username" → "User ID"; exact match on "Password" to
+  // avoid ambiguity with the password-reveal toggle's aria-label.
+  await page.getByLabel("User ID").fill("admin");
+  await page.getByLabel("Password", { exact: true }).fill("Seed1234!");
   await page.getByRole("button", { name: /Sign in/i }).click();
 
   // Confirm we're on vistra dashboard
