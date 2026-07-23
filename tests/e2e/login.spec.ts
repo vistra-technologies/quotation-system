@@ -15,6 +15,13 @@
  *
  * Run against the deployed preview:
  *   PLAYWRIGHT_BASE_URL=https://<branch-url>.vercel.app npx playwright test login
+ *
+ * --- Rate-limit note ---
+ * better-auth's default rate limiter caps /sign-in* at 3 requests per 10s
+ * (window: 10, max: 3) keyed by clientIp:path.  To stay within that budget
+ * across the whole serial run this file shares the admin browser session via
+ * storageState rather than firing a fresh sign-in POST in every beforeAll /
+ * afterAll hook.  See the "inactive account" describe block for details.
  */
 
 import { test, expect } from "@playwright/test";
@@ -27,6 +34,20 @@ const ORG = "acme-glass"; // primary test org
 const ORG2 = "vistra"; // secondary org for cross-org test
 const LOGIN_URL = `/${ORG}/login`;
 const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!";
+
+// Playwright StorageState shape (cookies + origins) — matches both the return
+// type of BrowserContext.storageState() and the storageState option accepted
+// by Browser.newContext().
+type StorageState = Awaited<
+  ReturnType<import("@playwright/test").BrowserContext["storageState"]>
+>;
+
+// Admin session captured after test 1's sign-in and reused in the
+// "inactive account" describe block's beforeAll, eliminating one of the four
+// sign-in POSTs that would otherwise exceed better-auth's 3-per-10s limit.
+// (Each test gets a fresh browser context from Playwright's fixture, so
+// omitting an explicit sign-out here does not break test isolation.)
+let adminStorageState: StorageState | undefined;
 
 // ---------------------------------------------------------------------------
 // Shared helper — navigate to login page and wait for the form to be ready
@@ -49,11 +70,12 @@ test("correct credentials redirect to dashboard", async ({ page }) => {
   await page.waitForURL(new RegExp(`/${ORG}/dashboard`), { timeout: 30_000 });
   expect(page.url()).toContain(`/${ORG}/dashboard`);
 
-  // Sign out so subsequent tests start unauthenticated
-  await page.getByRole("button", { name: /Sign out/i }).click();
-  await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
-    timeout: 15_000,
-  });
+  // Capture the authenticated admin session so "inactive account" beforeAll/
+  // afterAll can reuse it via storageState instead of firing fresh sign-in
+  // POSTs.  Playwright cleans up each test's browser context independently,
+  // so the server-side session remains valid for reuse without an explicit
+  // sign-out here.
+  adminStorageState = await page.context().storageState();
 });
 
 // ---------------------------------------------------------------------------
@@ -108,28 +130,52 @@ test("empty password blocks form submission", async ({ page }) => {
 // 5. Inactive account → error surfaced
 // Uses admin UI flow to deactivate a test user before the test, then
 // restores the user afterward via afterAll.
+//
+// Rate-limit budget: better-auth caps /sign-in* at 3 requests per 10s.
+// Across this file the sign-in POSTs are: test 1 (admin correct), test 2
+// (admin wrong password), test 5 (architect, deactivated) = 3 total in the
+// relevant burst window.  beforeAll and afterAll reuse the admin session
+// captured in test 1 via storageState, so neither fires a sign-in POST.
 // ---------------------------------------------------------------------------
 test.describe("inactive account", () => {
   let architectUserId = "";
 
+  // Admin session state saved from beforeAll — reused in afterAll so no
+  // second sign-in POST is needed to restore the architect account.
+  let savedAdminCtxState: StorageState | undefined;
+
   test.beforeAll(async ({ browser }) => {
-    const ctx = await browser.newContext();
+    // Reuse the admin session from test 1 if available; otherwise fall back
+    // to a fresh sign-in (should only happen if test 1 failed before saving).
+    const ctx = adminStorageState
+      ? await browser.newContext({ storageState: adminStorageState })
+      : await browser.newContext();
     const adminPage = await ctx.newPage();
     try {
-      // Sign in as admin
-      await adminPage.goto(LOGIN_URL);
-      await expect(
-        adminPage.locator('input[autocomplete="username"]'),
-      ).toBeVisible({ timeout: 30_000 });
-      await adminPage.getByLabel("User ID").fill("admin");
-      await adminPage.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
-      await adminPage.getByRole("button", { name: /Sign in/i }).click();
-      await adminPage.waitForURL(new RegExp(`/${ORG}/dashboard`), {
-        timeout: 30_000,
-      });
+      if (adminStorageState) {
+        // Session already authenticated — navigate directly, no sign-in POST.
+        await adminPage.goto(`/${ORG}/admin/users`);
+        // If the session were somehow invalid we'd be redirected to login;
+        // waitForURL confirms we landed on the users page.
+        await adminPage.waitForURL(new RegExp(`/${ORG}/admin/users`), {
+          timeout: 30_000,
+        });
+      } else {
+        // Fallback: fresh sign-in (counts against the rate-limit budget).
+        await adminPage.goto(LOGIN_URL);
+        await expect(
+          adminPage.locator('input[autocomplete="username"]'),
+        ).toBeVisible({ timeout: 30_000 });
+        await adminPage.getByLabel("User ID").fill("admin");
+        await adminPage.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
+        await adminPage.getByRole("button", { name: /Sign in/i }).click();
+        await adminPage.waitForURL(new RegExp(`/${ORG}/dashboard`), {
+          timeout: 30_000,
+        });
+        await adminPage.goto(`/${ORG}/admin/users`);
+      }
 
       // Navigate to admin users list, find the "architect" row, open their detail
-      await adminPage.goto(`/${ORG}/admin/users`);
       const architectRow = adminPage
         .locator("table tbody tr")
         .filter({ has: adminPage.locator("td:first-child", { hasText: "architect" }) });
@@ -143,6 +189,9 @@ test.describe("inactive account", () => {
       await expect(
         adminPage.getByRole("button", { name: "Activate" }),
       ).toBeVisible({ timeout: 15_000 });
+
+      // Save context state for afterAll to reuse — avoids a second sign-in POST.
+      savedAdminCtxState = await ctx.storageState();
     } finally {
       await ctx.close();
     }
@@ -167,23 +216,33 @@ test.describe("inactive account", () => {
   test.afterAll(async ({ browser }) => {
     if (!architectUserId) return; // nothing to clean up
 
-    const ctx = await browser.newContext();
+    // Reuse the admin session from beforeAll; fall back to fresh sign-in only
+    // if savedAdminCtxState was not captured (e.g. beforeAll threw early).
+    const ctx = savedAdminCtxState
+      ? await browser.newContext({ storageState: savedAdminCtxState })
+      : await browser.newContext();
     const adminPage = await ctx.newPage();
     try {
-      // Sign in as admin
-      await adminPage.goto(LOGIN_URL);
-      await expect(
-        adminPage.locator('input[autocomplete="username"]'),
-      ).toBeVisible({ timeout: 30_000 });
-      await adminPage.getByLabel("User ID").fill("admin");
-      await adminPage.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
-      await adminPage.getByRole("button", { name: /Sign in/i }).click();
-      await adminPage.waitForURL(new RegExp(`/${ORG}/dashboard`), {
-        timeout: 30_000,
-      });
+      if (!savedAdminCtxState) {
+        // Fallback: fresh sign-in.
+        await adminPage.goto(LOGIN_URL);
+        await expect(
+          adminPage.locator('input[autocomplete="username"]'),
+        ).toBeVisible({ timeout: 30_000 });
+        await adminPage.getByLabel("User ID").fill("admin");
+        await adminPage.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
+        await adminPage.getByRole("button", { name: /Sign in/i }).click();
+        await adminPage.waitForURL(new RegExp(`/${ORG}/dashboard`), {
+          timeout: 30_000,
+        });
+      }
 
-      // Reactivate the architect user
+      // Reactivate the architect user — navigate directly to their detail page.
       await adminPage.goto(`/${ORG}/admin/users/${architectUserId}`);
+      await adminPage.waitForURL(
+        new RegExp(`/${ORG}/admin/users/${architectUserId}`),
+        { timeout: 15_000 },
+      );
       await adminPage.getByRole("button", { name: "Activate" }).click();
       // Deactivation button appears once reactivation succeeds
       await expect(
