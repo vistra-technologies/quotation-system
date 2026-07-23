@@ -291,8 +291,10 @@ test("cross-org notice names only the session org", async ({ page }) => {
     page.getByRole("heading", { name: /already signed in/i }),
   ).toBeVisible({ timeout: 15_000 });
 
-  // Notice must name the SESSION org (Vistra Partitions), not the URL org
-  await expect(page.getByText(/Vistra Partitions/)).toBeVisible();
+  // Notice must name the SESSION org (Vistra Partitions), not the URL org.
+  // Scoped to <p> to avoid matching the "Log out of Vistra Partitions" <button>
+  // which also contains this text (getByText on its own is too broad here).
+  await expect(page.locator("p", { hasText: /Vistra Partitions/ })).toBeVisible();
   // Acme Glass Co. must NOT appear anywhere in the notice
   await expect(page.getByText(/Acme Glass/i)).not.toBeVisible();
 
