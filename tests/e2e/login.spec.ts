@@ -66,7 +66,9 @@ test("wrong password shows error message", async ({ page }) => {
   await page.getByRole("button", { name: /Sign in/i }).click();
 
   // Error paragraph (role="alert") should appear; URL must not change
-  const alert = page.getByRole("alert");
+  // Use p[role="alert"] — the app's error element is a <p>, not Next.js's
+  // <div id="__next-route-announcer__" role="alert"> which is always in the DOM.
+  const alert = page.locator('p[role="alert"]');
   await expect(alert).toBeVisible({ timeout: 15_000 });
   await expect(page).toHaveURL(new RegExp(`/${ORG}/login`));
 });
@@ -82,8 +84,10 @@ test("empty username blocks form submission", async ({ page }) => {
 
   // HTML5 required validation fires; page must stay on login
   await expect(page).toHaveURL(new RegExp(`/${ORG}/login`));
-  // No error alert should appear (browser-native validation, not JS error)
-  await expect(page.getByRole("alert")).not.toBeVisible();
+  // No app error alert should appear (browser-native validation, not JS error).
+  // Scope to <p role="alert"> to exclude Next.js's always-present
+  // <div id="__next-route-announcer__" role="alert">.
+  await expect(page.locator('p[role="alert"]')).not.toBeVisible();
 });
 
 // ---------------------------------------------------------------------------
@@ -97,7 +101,7 @@ test("empty password blocks form submission", async ({ page }) => {
 
   // HTML5 required validation fires; page must stay on login
   await expect(page).toHaveURL(new RegExp(`/${ORG}/login`));
-  await expect(page.getByRole("alert")).not.toBeVisible();
+  await expect(page.locator('p[role="alert"]')).not.toBeVisible();
 });
 
 // ---------------------------------------------------------------------------
@@ -150,7 +154,9 @@ test.describe("inactive account", () => {
     await page.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
     await page.getByRole("button", { name: /Sign in/i }).click();
 
-    const alert = page.getByRole("alert");
+    // Use p[role="alert"] — the app's error element is a <p>, not Next.js's
+    // <div id="__next-route-announcer__" role="alert"> which is always in the DOM.
+    const alert = page.locator('p[role="alert"]');
     await expect(alert).toBeVisible({ timeout: 15_000 });
     await expect(alert).toContainText("deactivated");
 
