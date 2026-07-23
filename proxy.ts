@@ -8,7 +8,11 @@ import { prisma } from "@/lib/prisma";
 // Slug extraction strategy (Stage 10 subdomain routing):
 //
 //   Test / staging environment (*.test.easeetool.com):
-//     test.easeetool.com                → apex passthrough (org selector on the test env)
+//     test.easeetool.com                → apex passthrough (org selector on the test env).
+//                                         Non-root paths (anything other than "/") are
+//                                         rejected with 404 immediately — no DB lookup, no
+//                                         path-segment extraction, no path-based org routing
+//                                         on apex hosts. (Bug fix: BUG-3, bugs-2.md, 2026-07-23.)
 //     {orgSlug}.test.easeetool.com      → extract leftmost label as orgSlug;
 //                                         rewrite URL so app/[orgSlug]/... receives it.
 //     These two branches MUST come before the bare *.easeetool.com branches below, because
@@ -17,7 +21,9 @@ import { prisma } from "@/lib/prisma";
 //     extracted as an org slug (no such org → 404). (Bug fix: bugs-1.md, 2026-07-23.)
 //
 //   Production (*.easeetool.com):
-//     easeetool.com / www.easeetool.com → apex passthrough (org selector)
+//     easeetool.com / www.easeetool.com → apex passthrough (org selector).
+//                                         Same non-root-path 404 guard as test.easeetool.com
+//                                         above — no path-based org routing on apex hosts.
 //     {orgSlug}.easeetool.com           → extract subdomain as orgSlug;
 //                                         rewrite URL so app/[orgSlug]/... receives it.
 //                                         Guard: skip rewrite if path already starts with
@@ -27,6 +33,8 @@ import { prisma } from "@/lib/prisma";
 //   Local dev / CI / Playwright (any non-easeetool.com host, e.g. localhost):
 //     Falls back to path-segment extraction: pathname.split("/")[1].
 //     No *.localhost DNS config needed — local/CI runs work exactly as before Stage 10.
+//     The non-root-path 404 guard DOES NOT apply here — path-based org routing on
+//     localhost is the intended behavior for all local and CI runs.
 //
 // After slug extraction (both modes):
 //   org found in DB  → inject x-org-id / x-org-slug headers so Server Components can
@@ -56,6 +64,10 @@ export async function proxy(request: NextRequest) {
     // Test-env apex (test.easeetool.com itself) → passthrough (org selector).
     // Must precede the bare .easeetool.com endsWith check below — "test" would
     // otherwise be extracted as an org slug and produce a 404.
+    // Non-root paths on the apex hostname are rejected immediately — see top comment.
+    if (pathname !== "/") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     orgSlug = "";
   } else if (hostname.endsWith(".test.easeetool.com")) {
     // Test-env org subdomain: vistra.test.easeetool.com → orgSlug = "vistra".
@@ -63,7 +75,11 @@ export async function proxy(request: NextRequest) {
     orgSlug = hostname.slice(0, -".test.easeetool.com".length);
     fromSubdomain = true;
   } else if (hostname === "easeetool.com" || hostname === "www.easeetool.com") {
-    // Production apex domain → always passthrough regardless of path (shows the org selector).
+    // Production apex domain → passthrough (org selector).
+    // Non-root paths on the apex hostname are rejected immediately — see top comment.
+    if (pathname !== "/") {
+      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    }
     orgSlug = "";
   } else if (hostname.endsWith(".easeetool.com")) {
     // Production subdomain routing: acme-glass.easeetool.com → orgSlug = "acme-glass"
