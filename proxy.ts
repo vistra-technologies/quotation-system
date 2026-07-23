@@ -7,6 +7,15 @@ import { prisma } from "@/lib/prisma";
 //
 // Slug extraction strategy (Stage 10 subdomain routing):
 //
+//   Test / staging environment (*.test.easeetool.com):
+//     test.easeetool.com                → apex passthrough (org selector on the test env)
+//     {orgSlug}.test.easeetool.com      → extract leftmost label as orgSlug;
+//                                         rewrite URL so app/[orgSlug]/... receives it.
+//     These two branches MUST come before the bare *.easeetool.com branches below, because
+//     both test.easeetool.com and {orgSlug}.test.easeetool.com also match
+//     hostname.endsWith(".easeetool.com") — without the prior check, "test" would be
+//     extracted as an org slug (no such org → 404). (Bug fix: bugs-1.md, 2026-07-23.)
+//
 //   Production (*.easeetool.com):
 //     easeetool.com / www.easeetool.com → apex passthrough (org selector)
 //     {orgSlug}.easeetool.com           → extract subdomain as orgSlug;
@@ -43,11 +52,21 @@ export async function proxy(request: NextRequest) {
   let orgSlug: string;
   let fromSubdomain = false;
 
-  if (hostname === "easeetool.com" || hostname === "www.easeetool.com") {
-    // Apex domain → always passthrough regardless of path (shows the org selector).
+  if (hostname === "test.easeetool.com") {
+    // Test-env apex (test.easeetool.com itself) → passthrough (org selector).
+    // Must precede the bare .easeetool.com endsWith check below — "test" would
+    // otherwise be extracted as an org slug and produce a 404.
+    orgSlug = "";
+  } else if (hostname.endsWith(".test.easeetool.com")) {
+    // Test-env org subdomain: vistra.test.easeetool.com → orgSlug = "vistra".
+    // Also must precede .easeetool.com check for the same reason.
+    orgSlug = hostname.slice(0, -".test.easeetool.com".length);
+    fromSubdomain = true;
+  } else if (hostname === "easeetool.com" || hostname === "www.easeetool.com") {
+    // Production apex domain → always passthrough regardless of path (shows the org selector).
     orgSlug = "";
   } else if (hostname.endsWith(".easeetool.com")) {
-    // Subdomain routing: acme-glass.easeetool.com → orgSlug = "acme-glass"
+    // Production subdomain routing: acme-glass.easeetool.com → orgSlug = "acme-glass"
     orgSlug = hostname.slice(0, hostname.length - ".easeetool.com".length);
     fromSubdomain = true;
   } else {

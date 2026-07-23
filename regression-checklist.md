@@ -94,3 +94,20 @@ Automated: `tests/e2e/stage6.spec.ts` (19 tests, serial mode).
 ## Stage 6 amendment (2026-07-18) — `core` removed, `category` becomes a real FK
 44. **No `core` distinction:** ComponentType create/edit forms have no "Core" checkbox on any field and no core/inert badge on the list page; GLASS/DOOR/PROFILE_STOP are fully admin-editable like any other type.
 45. **Category dropdown, not free text:** the category field on create/edit is a `<select>` sourced from `ComponentCategory`; selecting a category and saving round-trips correctly across reload; a `categoryId` belonging to another org is rejected by the DAL tenancy guard (`assertCategoryInOrg`).
+
+## Stage 10 — EaseeTool: Brand, Design & Domain
+Manual (verified against `test.easeetool.com` after each staging deploy — Playwright cannot spoof
+`Host` headers against ad-hoc `*.vercel.app` preview URLs due to Vercel's edge firewall).
+
+46. **Test-env apex routing:** `https://test.easeetool.com/` → 200, org-selector page (same as
+    `app/page.tsx` — heading "EaseeTool", org list). Must NOT return `{"error":"Organization not found"}`.
+47. **Test-env org subdomain routing:** `https://vistra.test.easeetool.com/vistra/login` (or `/` with
+    subdomain rewrite) resolves `vistra` org correctly — 200 login page. Must NOT 404.
+48. **Test-env unknown-org subdomain still 404s:** `https://nope.test.easeetool.com/` → 404 JSON
+    `{"error":"Organization not found"}` — unknown slug must NOT silently pass through.
+49. **Production apex routing unchanged:** `https://easeetool.com/` → 200, org-selector page.
+50. **Production org subdomain routing:** `https://vistra.easeetool.com/` (or equivalent known org)
+    resolves correctly → 200 login or dashboard (depending on session state).
+51. **Localhost / CI path-based fallback unchanged:** `http://localhost:3000/vistra/login` → 200 login
+    page; `http://localhost:3000/nonexistent/login` → 404 JSON. (Automated: existing `org-nav.spec.ts`
+    and `smoke.spec.ts` cover these via the path-based fallback that runs on any non-easeetool.com host.)
