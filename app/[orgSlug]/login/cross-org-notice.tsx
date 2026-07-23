@@ -19,9 +19,13 @@ interface CrossOrgNoticeProps {
  * Shown when an authenticated user (signed in to org X) lands on a different
  * org's login page (org Y).
  *
- * Security constraint: this component ONLY renders information about org X
- * (the session org). It receives no information about org Y and cannot expose
- * or confirm anything about the visited org.
+ * Stage 10 (Task 1.4): restyled with Sage Ease tokens. Component no longer
+ * owns its own full-page wrapper — the parent page.tsx provides the two-panel
+ * layout; this component renders only the right-panel card content.
+ *
+ * Security constraint: unchanged. This component ONLY renders information about
+ * org X (the session org). It receives no information about org Y and cannot
+ * expose or confirm anything about the visited org.
  *
  * Props are pre-translated on the server so no NextIntlClientProvider is
  * required on the login route.
@@ -46,30 +50,29 @@ export function CrossOrgNotice({
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-6 dark:bg-zinc-950">
-      <main className="w-full max-w-sm">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          {title}
-        </h1>
-        <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">{message}</p>
+    <div>
+      <h2 className="mb-3 text-[22px] font-extrabold tracking-tight text-text-heading">
+        {title}
+      </h2>
+      <p className="mb-7 text-[13.5px] leading-relaxed text-text-muted">{message}</p>
 
-        <div className="mt-6 flex flex-col gap-3">
-          <button
-            onClick={handleLogout}
-            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-          >
-            {logoutLabel}
-          </button>
+      <div className="flex flex-col gap-3">
+        {/* Primary: logout and stay on this org's login page */}
+        <button
+          onClick={handleLogout}
+          className="flex w-full items-center justify-center rounded-sm bg-primary px-4 py-[13px] text-sm font-bold text-text-on-primary transition-colors hover:bg-primary-dark"
+        >
+          {logoutLabel}
+        </button>
 
-          <button
-            onClick={handleGoToDashboard}
-            className="rounded-lg border border-zinc-200 bg-white px-4 py-2 text-sm font-medium text-zinc-900 transition-colors hover:border-zinc-300 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
-          >
-            {dashboardLabel}
-          </button>
-        </div>
-
-      </main>
+        {/* Secondary: go to the session org's dashboard */}
+        <button
+          onClick={handleGoToDashboard}
+          className="flex w-full items-center justify-center rounded-sm border border-border bg-bg-white px-4 py-[13px] text-sm font-bold text-text-body transition-colors hover:bg-primary-softer hover:text-text-heading"
+        >
+          {dashboardLabel}
+        </button>
+      </div>
     </div>
   );
 }

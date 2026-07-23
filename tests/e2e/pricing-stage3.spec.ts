@@ -43,11 +43,13 @@ async function signIn(
 ) {
   // Use default waitUntil:"load" so the login form's JS hydrates before we interact
   await page.goto(`/${orgSlug}/login`);
-  await expect(page.getByRole("heading", { name: /Sign in to/i })).toBeVisible({
+  // Wait for the login form to be ready — the autocomplete="username" input is the
+  // stable anchor post-Stage-10 rebuild (the old "Sign in to" heading is gone).
+  await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
     timeout: 30_000,
   });
-  await page.getByLabel("Username").fill(username);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("User ID").fill(username);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: /Sign in/i }).click();
   // Wait for redirect to dashboard after successful login
   await page.waitForURL(new RegExp(`/${orgSlug}/dashboard`), { timeout: 30_000 });
