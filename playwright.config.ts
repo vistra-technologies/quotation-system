@@ -7,7 +7,7 @@ dotenvConfig({ path: ".env.playwright.local" });
 
 // UI testing mechanism for the QA/tester agent (engineering:tester / engineering:regression).
 // Target is switchable so the same suite runs against local dev or a deployed environment:
-//   PLAYWRIGHT_BASE_URL=https://v-quote-test.vercel.app npx playwright test   (staging)
+//   PLAYWRIGHT_BASE_URL=https://test.easeetool.com npx playwright test   (staging)
 // Production domain (Stage 10+): {orgSlug}.easeetool.com — subdomain-routed.
 // Local dev always uses the localhost path-based fallback in proxy.ts — no *.localhost DNS needed.
 // Default targets local dev — bring up `npm run dev` first (see AGENTS.md/CLAUDE.md),

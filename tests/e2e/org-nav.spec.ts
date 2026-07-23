@@ -8,7 +8,7 @@
  *   - Cross-org session-replay guard (path-based routing, shared cookie jar)
  *
  * Run against the stable preview deployment (staging):
- *   PLAYWRIGHT_BASE_URL=https://v-quote-test.vercel.app \
+ *   PLAYWRIGHT_BASE_URL=https://test.easeetool.com \
  *   VERCEL_AUTOMATION_BYPASS_SECRET=<secret> \
  *   npx playwright test org-nav
  * Production domain (Stage 10+): {orgSlug}.easeetool.com — subdomain-routed.
@@ -32,7 +32,7 @@ test.describe.configure({ mode: "serial" });
 async function getOrgLinks(page: import("@playwright/test").Page) {
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Quotation System" }),
+    page.getByRole("heading", { name: "EaseeTool" }),
   ).toBeVisible();
 
   // Collect all org <a> elements in the nav (exclude the dev-tools links)
@@ -70,7 +70,7 @@ test("apex org-selector links point at the deployed origin, not localhost", asyn
     // Allow relative paths (no host) or absolute URLs on the same deployed origin
     // — but never a different host entirely.
     if (href.startsWith("http://") || href.startsWith("https://")) {
-      const url = new URL(href, baseURL ?? "https://v-quote-test.vercel.app");
+      const url = new URL(href, baseURL ?? "https://test.easeetool.com");
       expect(
         url.hostname,
         `Org "${name.replace(/\s+/g, " ")}" link points at unexpected host: ${url.hostname}`,
@@ -180,7 +180,7 @@ test("full flow: apex org link → login page → sign in → dashboard → sign
   // Step 1: Load apex
   await page.goto("/");
   await expect(
-    page.getByRole("heading", { name: "Quotation System" }),
+    page.getByRole("heading", { name: "EaseeTool" }),
   ).toBeVisible();
 
   // Step 2: Inspect the href — record it before clicking

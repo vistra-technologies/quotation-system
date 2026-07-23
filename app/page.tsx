@@ -12,7 +12,7 @@ export default async function Home() {
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-6 dark:bg-zinc-950">
       <main className="w-full max-w-md">
         <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          Quotation System
+          EaseeTool
         </h1>
         <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
           Select your organization to sign in.
