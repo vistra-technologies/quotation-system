@@ -1,12 +1,40 @@
+import { headers } from "next/headers";
 import Link from "next/link";
 import { listOrganizationsForSelector } from "@/lib/data/admin";
 
-// Always render live — reads DB for org list.
+// Always render live — reads DB for org list and Host header.
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   // Apex — render the organization selector.
   const orgs = await listOrganizationsForSelector();
+
+  // Read the incoming Host header to determine the correct link format for each
+  // org entry.  On *.easeetool.com hosts the proxy treats the apex host as a
+  // pure passthrough (orgSlug = "") for every path, so path-based org links
+  // like /vistra/login would loop forever (proxy never injects x-org-id).
+  // Instead we emit absolute subdomain URLs so the browser navigates to the org
+  // subdomain where slug extraction is correct.
+  //
+  // On localhost, ad-hoc *.vercel.app previews, and CI the existing path-based
+  // relative links are kept — this is what all Playwright specs rely on.
+  const reqHeaders = await headers();
+  const host = reqHeaders.get("host") ?? "";
+  const hostname = host.split(":")[0]; // strip port e.g. "localhost:3000" → "localhost"
+
+  function orgHref(slug: string): string {
+    if (hostname === "test.easeetool.com") {
+      // Test / staging domain: generate subdomain URL so the org subdomain
+      // proxy branch injects the correct x-org-id header.
+      return `https://${slug}.test.easeetool.com/login`;
+    }
+    if (hostname === "easeetool.com" || hostname === "www.easeetool.com") {
+      // Production domain: same pattern, bare easeetool.com subdomain.
+      return `https://${slug}.easeetool.com/login`;
+    }
+    // Localhost, ad-hoc *.vercel.app previews, CI — path-based (unchanged).
+    return `/${slug}/login`;
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-6 dark:bg-zinc-950">
@@ -22,7 +50,7 @@ export default async function Home() {
           {orgs.map((org) => (
             <Link
               key={org.id}
-              href={`/${org.slug}/login`}
+              href={orgHref(org.slug)}
               className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-5 py-4 text-sm font-medium text-zinc-900 transition-colors hover:border-zinc-300 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
             >
               {org.name}

@@ -32,7 +32,7 @@ export function LogoutButton({ orgSlug }: LogoutButtonProps) {
   return (
     <button
       onClick={handleLogout}
-      className="rounded-lg border border-zinc-200 bg-white px-5 py-2 text-sm font-medium text-zinc-900 transition-colors hover:border-zinc-300 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
+      className="rounded-sm border border-border bg-bg-white px-5 py-2 text-sm font-medium text-text-body transition-colors hover:bg-primary-softer"
     >
       Sign out
     </button>
