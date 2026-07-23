@@ -9,6 +9,11 @@ import type { Page } from "@playwright/test";
  * without editing source), then falls back to the seeded default.
  *
  * Extracted from pricing-stage3.spec.ts:38-54 so Stage 4+ specs can share it.
+ *
+ * Stage 10 (Task 1.4): login page rebuilt to match login-page.html mockup.
+ * The username field label changed from "Username" to "User ID" (matching the
+ * mockup's <label for="userId">User ID</label>).  The heading guard was
+ * replaced with an input visibility check (more robust post-rebuild).
  */
 export async function signIn(
   page: Page,
@@ -17,10 +22,13 @@ export async function signIn(
   orgSlug = "acme-glass",
 ) {
   await page.goto(`/${orgSlug}/login`);
-  await expect(page.getByRole("heading", { name: /Sign in to/i })).toBeVisible({
+  // Wait for the login form to be ready (user-id input rendered) before
+  // filling credentials.  The input's autocomplete="username" attribute is
+  // the stable anchor regardless of label text.
+  await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
     timeout: 30_000,
   });
-  await page.getByLabel("Username").fill(username);
+  await page.getByLabel("User ID").fill(username);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: /Sign in/i }).click();
   await page.waitForURL(new RegExp(`/${orgSlug}/dashboard`), { timeout: 30_000 });
