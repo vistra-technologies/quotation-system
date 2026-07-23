@@ -14,6 +14,9 @@ export const dynamic = "force-dynamic";
  * and AddSelectionForm have moved to [projectId]/configuration/page.tsx.
  * The "Design Walls" button has been removed (Design is Step 3 in the wizard).
  *
+ * Stage 10 (Task 1.6): restyled to Sage Ease tokens — heading, metadata card,
+ * status badge, and "Next" button. No logic changes.
+ *
  * Auth gate: requireSession only — no special permission required.
  */
 export default async function ProjectDetailPage({
@@ -37,38 +40,67 @@ export default async function ProjectDetailPage({
       {/* Back link */}
       <Link
         href={`/${orgSlug}/projects`}
-        className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+        className="mb-6 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text-heading"
       >
         {tProjects("backToList")}
       </Link>
 
-      {/* Project metadata */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+      {/* Page heading */}
+      <div className="mb-6 text-center">
+        <h1 className="text-3xl font-extrabold text-text-heading">Project Details</h1>
+        <p className="mt-1 text-sm text-text-muted">
+          Review your project information to continue
+        </p>
+      </div>
+
+      {/* Project metadata card */}
+      <div className="mb-6 rounded-md border border-border bg-bg-card p-7 shadow-card">
+        {/* Project number + name */}
+        <h2 className="mb-4 text-xl font-extrabold text-primary-dark">
           #{project.projectNumber} — {project.name}
-        </h1>
-        <div className="mt-2 flex flex-wrap items-center gap-4 text-sm text-zinc-500 dark:text-zinc-400">
+        </h2>
+
+        {/* Metadata row */}
+        <div className="flex flex-wrap items-center gap-3 text-sm text-text-muted">
           <span>{project.destinationCountry}</span>
+          <span aria-hidden="true">·</span>
           <span>{project.currency}</span>
-          <span className="inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+          <span aria-hidden="true">·</span>
+
+          {/* Status badge */}
+          <span className="inline-flex items-center rounded-pill bg-primary-softer px-3 py-0.5 text-xs font-bold text-primary-dark">
             {project.status}
           </span>
+
           {project.externalCompany && (
-            <span>{project.externalCompany.name}</span>
+            <>
+              <span aria-hidden="true">·</span>
+              <span>{project.externalCompany.name}</span>
+            </>
           )}
-          <span className="text-zinc-400 dark:text-zinc-600">
+
+          <span aria-hidden="true">·</span>
+          <span className="text-text-placeholder">
             {tProjects("colDate")}: {new Date(project.createdAt).toLocaleDateString()}
           </span>
         </div>
       </div>
 
-      {/* Next step link */}
-      <Link
-        href={`/${orgSlug}/projects/${projectId}/configuration`}
-        className="inline-flex items-center rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-      >
-        Next: Configuration →
-      </Link>
+      {/* Card footer: navigate to next step */}
+      <div className="flex items-center justify-end gap-3">
+        <Link
+          href={`/${orgSlug}/projects`}
+          className="inline-flex items-center rounded-sm border border-border bg-bg-white px-5 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
+        >
+          Back to Projects
+        </Link>
+        <Link
+          href={`/${orgSlug}/projects/${projectId}/configuration`}
+          className="inline-flex items-center rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark"
+        >
+          Next: Configuration →
+        </Link>
+      </div>
     </div>
   );
 }
