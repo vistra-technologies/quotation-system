@@ -44,7 +44,7 @@ async function goToLogin(page: import("@playwright/test").Page, orgSlug = ORG) {
 test("correct credentials redirect to dashboard", async ({ page }) => {
   await goToLogin(page);
   await page.getByLabel("User ID").fill("admin");
-  await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
   await page.getByRole("button", { name: /Sign in/i }).click();
   await page.waitForURL(new RegExp(`/${ORG}/dashboard`), { timeout: 30_000 });
   expect(page.url()).toContain(`/${ORG}/dashboard`);
@@ -62,7 +62,7 @@ test("correct credentials redirect to dashboard", async ({ page }) => {
 test("wrong password shows error message", async ({ page }) => {
   await goToLogin(page);
   await page.getByLabel("User ID").fill("admin");
-  await page.getByLabel("Password").fill("definitely-wrong-password-123");
+  await page.getByLabel("Password", { exact: true }).fill("definitely-wrong-password-123");
   await page.getByRole("button", { name: /Sign in/i }).click();
 
   // Error paragraph (role="alert") should appear; URL must not change
@@ -77,7 +77,7 @@ test("wrong password shows error message", async ({ page }) => {
 test("empty username blocks form submission", async ({ page }) => {
   await goToLogin(page);
   // Fill password but leave username empty
-  await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
   await page.getByRole("button", { name: /Sign in/i }).click();
 
   // HTML5 required validation fires; page must stay on login
@@ -118,7 +118,7 @@ test.describe("inactive account", () => {
         adminPage.locator('input[autocomplete="username"]'),
       ).toBeVisible({ timeout: 30_000 });
       await adminPage.getByLabel("User ID").fill("admin");
-      await adminPage.getByLabel("Password").fill(ADMIN_PASSWORD);
+      await adminPage.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
       await adminPage.getByRole("button", { name: /Sign in/i }).click();
       await adminPage.waitForURL(new RegExp(`/${ORG}/dashboard`), {
         timeout: 30_000,
@@ -147,7 +147,7 @@ test.describe("inactive account", () => {
   test("inactive account login shows deactivated error", async ({ page }) => {
     await goToLogin(page);
     await page.getByLabel("User ID").fill("architect");
-    await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+    await page.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
     await page.getByRole("button", { name: /Sign in/i }).click();
 
     const alert = page.getByRole("alert");
@@ -170,7 +170,7 @@ test.describe("inactive account", () => {
         adminPage.locator('input[autocomplete="username"]'),
       ).toBeVisible({ timeout: 30_000 });
       await adminPage.getByLabel("User ID").fill("admin");
-      await adminPage.getByLabel("Password").fill(ADMIN_PASSWORD);
+      await adminPage.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
       await adminPage.getByRole("button", { name: /Sign in/i }).click();
       await adminPage.waitForURL(new RegExp(`/${ORG}/dashboard`), {
         timeout: 30_000,
@@ -197,7 +197,7 @@ test("cross-org notice names only the session org", async ({ page }) => {
   // Sign in to ORG2 (vistra)
   await goToLogin(page, ORG2);
   await page.getByLabel("User ID").fill("admin");
-  await page.getByLabel("Password").fill(ADMIN_PASSWORD);
+  await page.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
   await page.getByRole("button", { name: /Sign in/i }).click();
   await page.waitForURL(new RegExp(`/${ORG2}/dashboard`), { timeout: 30_000 });
 
