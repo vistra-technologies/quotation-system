@@ -29,7 +29,7 @@ export async function signIn(
     timeout: 30_000,
   });
   await page.getByLabel("User ID").fill(username);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: /Sign in/i }).click();
   await page.waitForURL(new RegExp(`/${orgSlug}/dashboard`), { timeout: 30_000 });
 }
