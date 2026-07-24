@@ -336,16 +336,71 @@ test("password reveal toggle changes field type and aria-label", async ({
 });
 
 // ---------------------------------------------------------------------------
-// 8. Remember-me checkbox: present and checked by default
+// 8. Remember-me checkbox: removed in the 2026-07-23 hotfix — must be absent
 // ---------------------------------------------------------------------------
-test("remember-me checkbox is present and checked by default", async ({
-  page,
-}) => {
+test("remember-me checkbox is absent", async ({ page }) => {
   await goToLogin(page);
 
-  const checkbox = page.getByRole("checkbox", { name: /remember me/i });
-  await expect(checkbox).toBeVisible();
-  await expect(checkbox).toBeChecked();
+  // The checkbox was removed entirely (not hidden) — assert count 0 so a future
+  // accidental re-addition is caught as a regression.
+  await expect(
+    page.getByRole("checkbox", { name: /remember me/i }),
+  ).toHaveCount(0);
+});
+
+// ---------------------------------------------------------------------------
+// 8b. Contact popup — "Contact here" opens a support dialog; closes via button
+//     and via backdrop; added 2026-07-23 hotfix.
+// ---------------------------------------------------------------------------
+test.describe("contact popup", () => {
+  test("Contact here button opens support popup with phone and email", async ({
+    page,
+  }) => {
+    await goToLogin(page);
+
+    await page.getByRole("button", { name: /contact here/i }).click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+
+    // Phone link — href is the tel: URI; visible text is the formatted number.
+    const phoneLink = page.getByRole("link", { name: "+91 8149007006" });
+    await expect(phoneLink).toBeVisible();
+    await expect(phoneLink).toHaveAttribute("href", "tel:+918149007006");
+
+    // Email link
+    const emailLink = page.getByRole("link", {
+      name: "support@easeetool.com",
+    });
+    await expect(emailLink).toBeVisible();
+    await expect(emailLink).toHaveAttribute(
+      "href",
+      "mailto:support@easeetool.com",
+    );
+  });
+
+  test("contact popup closes via close button", async ({ page }) => {
+    await goToLogin(page);
+    await page.getByRole("button", { name: /contact here/i }).click();
+    await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5_000 });
+
+    await page.getByRole("button", { name: "Close" }).click();
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("contact popup closes via backdrop click", async ({ page }) => {
+    await goToLogin(page);
+    await page.getByRole("button", { name: /contact here/i }).click();
+    await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5_000 });
+
+    // Click the fixed backdrop overlay at a corner well outside the inner card.
+    // The backdrop is the outermost fixed div; clicking inside the card is
+    // stopped by stopPropagation, so we target {x:5, y:5} (top-left corner).
+    await page.locator(".fixed.inset-0").click({ position: { x: 5, y: 5 } });
+
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
 });
 
 // ---------------------------------------------------------------------------
