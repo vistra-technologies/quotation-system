@@ -6,5 +6,5 @@ import { test, expect } from "@playwright/test";
 test("apex page loads and renders the organization selector", async ({ page }) => {
   const response = await page.goto("/");
   expect(response?.ok()).toBeTruthy();
-  await expect(page.getByRole("heading", { name: "Quotation System" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "EaseeTool" })).toBeVisible();
 });

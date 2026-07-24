@@ -231,7 +231,19 @@
     "unitMm": "mm",
     "unitFeet": "feet",
     "submitAddWall": "Save Wall",
-    "wallDisplay": "{location} — {height} × {width} mm"
+    "wallDisplay": "{location} — {heightMm} × {widthMm} mm"
+  },
+  "wizard": {
+    "step1": "Project Details",
+    "step2": "Configuration",
+    "step3": "Design",
+    "step4": "Summary",
+    "step5": "Quotation",
+    "summaryPlaceholder": "Design Summary — coming in Stage 10",
+    "quotationPlaceholder": "Quotation — coming in Stage 10"
+  },
+  "toast": {
+    "comingSoon": "Coming Soon"
   },
   "pricing": {
     "pageTitle": "Pricing Management",
