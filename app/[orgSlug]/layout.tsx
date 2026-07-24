@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/session";
 import { getAdminPermissions } from "@/lib/data/admin";
 import { PERMISSIONS } from "@/lib/rbac";
-import { LogoutButton } from "./dashboard/logout-button";
+import { TopBarActions } from "./top-bar-actions";
 import { Sidebar } from "./sidebar";
 
 // Always render live — reads session cookie and DB.
@@ -57,7 +57,7 @@ export default async function OrgSlugLayout({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top bar */}
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-end border-b border-border bg-bg-card px-10 shadow-header">
-          <LogoutButton orgSlug={orgSlug} />
+          <TopBarActions orgSlug={orgSlug} name={session.name} username={session.username} />
         </header>
 
         {/* Main content area */}
