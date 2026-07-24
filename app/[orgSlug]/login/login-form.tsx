@@ -16,10 +16,11 @@ interface LoginFormProps {
  * - Icon-prefixed inputs (person icon for user ID, lock icon for password).
  * - Password reveal toggle: type toggles "password"↔"text", aria-label
  *   updates "Show password"↔"Hide password".
- * - Remember-me checkbox: present, checked by default. Visual-only this batch
- *   (the authClient.signIn.email call does not yet wire rememberMe to cookie
- *   duration — TODO: pass rememberMe when that behavior is required).
  * - Submit button with arrow icon.
+ * - Remember-me / forgot-password row and the "Contact here" link are hidden/
+ *   repurposed per direct human request (2026-07-23): remember-me + forgot-
+ *   password aren't required yet; "Contact here" now opens a support popup
+ *   with a phone number and email instead of a dead "#" link.
  *
  * Post-login navigation uses a hard redirect (window.location.href) rather than
  * router.push() — same rationale as before (forces full server render so the
@@ -29,10 +30,9 @@ export function LoginForm({ orgSlug }: LoginFormProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  // Remember-me is UI-only this batch; default checked per mockup.
-  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showContact, setShowContact] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -171,26 +171,6 @@ export function LoginForm({ orgSlug }: LoginFormProps) {
         </div>
       </div>
 
-      {/* ── Remember me + Forgot password ── */}
-      <div className="-mt-1 flex items-center justify-between text-[12.5px]">
-        <label className="flex cursor-pointer select-none items-center gap-2 font-semibold text-text-muted">
-          <input
-            type="checkbox"
-            checked={rememberMe}
-            onChange={(e) => setRememberMe(e.target.checked)}
-            className="h-[15px] w-[15px] accent-primary"
-          />
-          Remember me
-        </label>
-        <a
-          href="#"
-          className="font-bold text-primary-dark hover:underline"
-          tabIndex={-1}
-        >
-          Forgot password?
-        </a>
-      </div>
-
       {/* ── Error ── */}
       {error && (
         <p className="-mt-1 text-sm text-red-500" role="alert">
@@ -229,10 +209,61 @@ export function LoginForm({ orgSlug }: LoginFormProps) {
       {/* ── Footnote ── */}
       <p className="mt-[8px] text-center text-[12.5px] text-text-muted">
         Need access?{" "}
-        <a href="#" className="font-bold text-primary-dark hover:underline">
+        <button
+          type="button"
+          onClick={() => setShowContact(true)}
+          className="font-bold text-primary-dark hover:underline"
+        >
           Contact here
-        </a>
+        </button>
       </p>
+
+      {/* ── Support contact popup ── */}
+      {showContact && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setShowContact(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="contact-popup-title"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-md bg-bg-white p-6 shadow-card"
+          >
+            <div className="flex items-start justify-between">
+              <h2
+                id="contact-popup-title"
+                className="text-base font-semibold text-text-heading"
+              >
+                Contact support
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowContact(false)}
+                aria-label="Close"
+                className="flex h-7 w-7 items-center justify-center rounded-sm text-text-muted hover:bg-primary-softer hover:text-text-heading"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="mt-4 flex flex-col gap-2 text-sm text-text-body">
+              <a
+                href="tel:+918149007006"
+                className="font-semibold text-primary-dark hover:underline"
+              >
+                +91 8149007006
+              </a>
+              <a
+                href="mailto:support@easeetool.com"
+                className="font-semibold text-primary-dark hover:underline"
+              >
+                support@easeetool.com
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

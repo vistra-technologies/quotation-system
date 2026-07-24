@@ -43,7 +43,7 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId }: ProjectWizardBre
 
   return (
     <nav aria-label="Project wizard steps" className="py-4">
-      <ol className="mx-auto flex max-w-2xl items-center gap-1.5 rounded-pill bg-primary-softer p-2">
+      <ol className="mx-auto flex w-fit max-w-full items-center gap-1.5 rounded-pill bg-primary-softer p-2">
         {steps.map((step, index) => {
           const isActive = index === activeIndex;
           const isDone = activeIndex > -1 && index < activeIndex;
@@ -80,7 +80,7 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId }: ProjectWizardBre
                     {index + 1}
                   </span>
                 )}
-                {step.label}
+                <span className="whitespace-nowrap">{step.label}</span>
               </Link>
             </li>
           );
