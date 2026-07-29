@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { getSession } from "@/lib/session";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
+import { orgHref } from "@/lib/orgHref";
 import { CreateRoleForm } from "./create-role-form";
 
 // Always render live — reads session cookie and DB.
@@ -21,13 +22,14 @@ export default async function NewRolePage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await getSession();
-  if (!session) redirect(`/${orgSlug}/login`);
+  if (!session) redirect(`${base}/login`);
 
   try {
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (e) {
-    if (e instanceof ForbiddenError) redirect(`/${orgSlug}/dashboard`);
+    if (e instanceof ForbiddenError) redirect(`${base}/dashboard`);
     throw e;
   }
 
@@ -36,7 +38,7 @@ export default async function NewRolePage({
   return (
     <div>
       <Link
-        href={`/${orgSlug}/admin/roles`}
+        href={`${base}/admin/roles`}
         className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
       >
         {t("backToList")}

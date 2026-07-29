@@ -5,6 +5,7 @@ import { PERMISSIONS } from "@/lib/rbac";
 import { getUserById } from "@/lib/data/users";
 import { listRolesForDropdown } from "@/lib/data/admin";
 import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 import { UserDetailForms } from "./user-detail-forms";
 
 // Always render live — reads session cookie and DB.
@@ -26,6 +27,7 @@ export default async function UserDetailPage({
   params: Promise<{ orgSlug: string; userId: string }>;
 }) {
   const { orgSlug, userId } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
   await requirePermissionFor(session, PERMISSIONS.MANAGE_USERS, orgSlug);
 
@@ -43,7 +45,7 @@ export default async function UserDetailPage({
   return (
     <div className="mx-auto max-w-lg">
       <Link
-        href={`/${orgSlug}/admin/users`}
+        href={`${base}/admin/users`}
         className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
       >
         {t("backToList")}

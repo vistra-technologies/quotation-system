@@ -6,6 +6,7 @@ import { getProjectById } from "@/lib/data/projects";
 import { listFloorsByProject } from "@/lib/data/floors";
 import { listPartitionsByFloor } from "@/lib/data/partitions";
 import { listSelections } from "@/lib/data/selections";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -27,6 +28,7 @@ export default async function DesignPage({
   params: Promise<{ orgSlug: string; projectId: string }>;
 }) {
   const { orgSlug, projectId } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
 
   const [project, floors, selections, t] = await Promise.all([
@@ -52,7 +54,7 @@ export default async function DesignPage({
       {/* Page header */}
       <div className="border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
         <Link
-          href={`/${orgSlug}/projects/${projectId}`}
+          href={`${base}/projects/${projectId}`}
           className="mb-2 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
         >
           {t("backToProject")}
@@ -99,7 +101,7 @@ export default async function DesignPage({
 
           <div className="mt-5">
             <Link
-              href={`/${orgSlug}/projects/${projectId}/design/add-wall`}
+              href={`${base}/projects/${projectId}/design/add-wall`}
               className="block w-full rounded-md bg-zinc-900 px-4 py-2 text-center text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
             >
               {t("addWall")}

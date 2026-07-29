@@ -9,6 +9,7 @@ import {
   removeRolePermission as dalRemoveRolePermission,
 } from "@/lib/data/admin";
 import { requireSession } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 
 /**
  * Create a new Role scoped to the session's organization.
@@ -36,7 +37,7 @@ export async function createRole(formData: FormData): Promise<void> {
   const role = await dalCreateRole(session, { name, description });
 
   revalidatePath(`/${orgSlug}/admin/roles`);
-  redirect(`/${orgSlug}/admin/roles/${role.id}`, RedirectType.replace);
+  redirect(await orgHref(orgSlug ?? "", `/admin/roles/${role.id}`), RedirectType.replace);
 }
 
 /**

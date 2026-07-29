@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { PERMISSIONS } from "@/lib/rbac";
 import { listExternalCompanies } from "@/lib/data/external-companies";
 import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export default async function ExternalCompaniesPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
   await requirePermissionFor(session, PERMISSIONS.MANAGE_USERS, orgSlug);
 
@@ -39,7 +41,7 @@ export default async function ExternalCompaniesPage({
           </p>
         </div>
         <Link
-          href={`/${orgSlug}/admin/external-companies/new`}
+          href={`${base}/admin/external-companies/new`}
           className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           {t("createCompany")}

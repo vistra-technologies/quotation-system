@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { PERMISSIONS } from "@/lib/rbac";
 import { getRoleById, listRolePermissions, listPermissions } from "@/lib/data/admin";
 import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 import { PermissionActionButton } from "./permission-buttons";
 
 // Always render live — reads session cookie and DB.
@@ -28,6 +29,7 @@ export default async function RoleDetailPage({
   params: Promise<{ orgSlug: string; roleId: string }>;
 }) {
   const { orgSlug, roleId } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
   await requirePermissionFor(session, PERMISSIONS.MANAGE_FEATURES, orgSlug);
 
@@ -52,7 +54,7 @@ export default async function RoleDetailPage({
   return (
     <div>
       <Link
-        href={`/${orgSlug}/admin/roles`}
+        href={`${base}/admin/roles`}
         className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
       >
         {t("backToList")}

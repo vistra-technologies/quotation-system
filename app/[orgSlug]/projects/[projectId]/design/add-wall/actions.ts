@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 import { getProjectById } from "@/lib/data/projects";
 import { createFloorIfNotExists } from "@/lib/data/floors";
 import { createPartition } from "@/lib/data/partitions";
@@ -102,5 +103,5 @@ export async function createWall(
   }
 
   revalidatePath(`/${orgSlug}/projects/${projectId}/design`);
-  redirect(`/${orgSlug}/projects/${projectId}/design`);
+  redirect(await orgHref(orgSlug, `/projects/${projectId}/design`));
 }

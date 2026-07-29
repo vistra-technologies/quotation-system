@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { NextIntlClientProvider } from "next-intl";
 import { getSession } from "@/lib/session";
 import { getAdminPermissions } from "@/lib/data/admin";
+import { orgHref } from "@/lib/orgHref";
 import allMessages from "@/messages/en.json";
 
 // Always render live — reads session cookie and DB.
@@ -31,14 +32,14 @@ export default async function AdminLayout({
   const session = await getSession();
 
   if (!session) {
-    redirect(`/${orgSlug}/login`);
+    redirect(await orgHref(orgSlug, "/login"));
   }
 
   // Query admin permission codes for the access gate.
   const adminCodes = await getAdminPermissions(session);
 
   if (adminCodes.length === 0) {
-    redirect(`/${orgSlug}/dashboard`);
+    redirect(await orgHref(orgSlug, "/dashboard"));
   }
 
   // Forward only the namespaces Client Components in this sub-tree need.

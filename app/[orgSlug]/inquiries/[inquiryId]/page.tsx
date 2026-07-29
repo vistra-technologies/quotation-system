@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { requireSession } from "@/lib/data/session";
 import { getInquiryById } from "@/lib/data/inquiries";
+import { orgHref } from "@/lib/orgHref";
 import { dismissInquiry } from "../actions";
 import { StartProjectButton } from "./start-project-button";
 
@@ -26,6 +27,7 @@ export default async function InquiryDetailPage({
   params: Promise<{ orgSlug: string; inquiryId: string }>;
 }) {
   const { orgSlug, inquiryId } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
 
   const [inquiry, t] = await Promise.all([
@@ -42,7 +44,7 @@ export default async function InquiryDetailPage({
     <div>
       {/* Back link */}
       <Link
-        href={`/${orgSlug}/inquiries`}
+        href={`${base}/inquiries`}
         className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
       >
         {t("backToList")}

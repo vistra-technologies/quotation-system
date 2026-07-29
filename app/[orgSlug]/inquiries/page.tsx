@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { listInquiries } from "@/lib/data/inquiries";
 import { requireSession } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export default async function InquiriesPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
 
   const [inquiries, t] = await Promise.all([
@@ -37,7 +39,7 @@ export default async function InquiriesPage({
           </p>
         </div>
         <Link
-          href={`/${orgSlug}/inquiries/new`}
+          href={`${base}/inquiries/new`}
           className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           {t("createInquiry")}
@@ -79,7 +81,7 @@ export default async function InquiriesPage({
                   >
                     <td className="px-5 py-3 font-medium text-zinc-900 dark:text-zinc-50">
                       <Link
-                        href={`/${orgSlug}/inquiries/${inquiry.id}`}
+                        href={`${base}/inquiries/${inquiry.id}`}
                         className="hover:underline"
                       >
                         #{inquiry.inquiryNumber}
@@ -87,7 +89,7 @@ export default async function InquiriesPage({
                     </td>
                     <td className="px-5 py-3 text-zinc-900 dark:text-zinc-50">
                       <Link
-                        href={`/${orgSlug}/inquiries/${inquiry.id}`}
+                        href={`${base}/inquiries/${inquiry.id}`}
                         className="hover:underline"
                       >
                         {inquiry.name}

@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { PERMISSIONS } from "@/lib/rbac";
 import { getComponentTypeById, listComponentCategories } from "@/lib/data/components";
 import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 import { EditComponentForm } from "./edit-component-form";
 
 // Always render live — reads session cookie and DB.
@@ -22,6 +23,7 @@ export default async function EditComponentTypePage({
   params: Promise<{ orgSlug: string; typeId: string }>;
 }) {
   const { orgSlug, typeId } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
   await requirePermissionFor(session, PERMISSIONS.MANAGE_FEATURES, orgSlug);
 
@@ -36,7 +38,7 @@ export default async function EditComponentTypePage({
   return (
     <div>
       <Link
-        href={`/${orgSlug}/admin/components`}
+        href={`${base}/admin/components`}
         className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
       >
         {t("backToList")}

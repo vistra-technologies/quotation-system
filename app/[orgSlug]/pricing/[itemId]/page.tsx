@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { PERMISSIONS } from "@/lib/rbac";
 import { getCatalogItemById } from "@/lib/data/catalog";
 import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 import { upsertItemPrice, deleteItemPrice } from "../actions";
 
 // Always render live — reads session cookie and DB.
@@ -21,6 +22,7 @@ export default async function PricingItemPage({
   params: Promise<{ orgSlug: string; itemId: string }>;
 }) {
   const { orgSlug, itemId } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
   await requirePermissionFor(session, PERMISSIONS.MANAGE_PRICING, orgSlug);
 
@@ -37,7 +39,7 @@ export default async function PricingItemPage({
     <div className="flex min-h-screen flex-col bg-zinc-50 px-6 py-8 dark:bg-zinc-950">
       <main className="mx-auto w-full max-w-lg">
         <Link
-          href={`/${orgSlug}/pricing`}
+          href={`${base}/pricing`}
           className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
         >
           {t("backToList")}

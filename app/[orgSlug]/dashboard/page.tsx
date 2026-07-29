@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
+import { orgHref } from "@/lib/orgHref";
 import { getOrgById, getSessionRole, getSessionRolePermissions } from "@/lib/data/admin";
 
 // Always render live — reads session cookie and DB.
@@ -22,7 +23,7 @@ export default async function DashboardPage({
   const session = await getSession();
 
   if (!session) {
-    redirect(`/${orgSlug}/login`);
+    redirect(await orgHref(orgSlug, "/login"));
   }
 
   const [org, role, permissionCodes] = await Promise.all([

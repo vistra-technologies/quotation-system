@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { PERMISSIONS } from "@/lib/rbac";
 import { listPermissions } from "@/lib/data/admin";
 import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ export default async function PermissionsPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
   await requirePermissionFor(session, PERMISSIONS.MANAGE_FEATURES, orgSlug);
 
@@ -44,7 +46,7 @@ export default async function PermissionsPage({
           </p>
         </div>
         <Link
-          href={`/${orgSlug}/admin/permissions/new`}
+          href={`${base}/admin/permissions/new`}
           className="inline-flex items-center rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-50 shadow-sm hover:bg-zinc-700 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           {t("createPermission")}

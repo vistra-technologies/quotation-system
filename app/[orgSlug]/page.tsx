@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { orgHref } from "@/lib/orgHref";
 
 /**
  * Org subdomain root handler (Server Component).
@@ -17,5 +18,5 @@ export default async function OrgRootPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  redirect(`/${orgSlug}/login`);
+  redirect(await orgHref(orgSlug, "/login"));
 }

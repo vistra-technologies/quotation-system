@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { requirePermission, ForbiddenError } from "@/lib/rbac";
+import { orgHref } from "@/lib/orgHref";
 
 export type { SessionData } from "@/lib/session";
 
@@ -12,7 +13,7 @@ export type { SessionData } from "@/lib/session";
  */
 export async function requireSession(orgSlug: string) {
   const session = await getSession();
-  if (!session) redirect(orgSlug ? `/${orgSlug}/login` : "/");
+  if (!session) redirect(orgSlug ? await orgHref(orgSlug, "/login") : "/");
   return session!;
 }
 
@@ -34,7 +35,7 @@ export async function requirePermissionFor(
   try {
     await requirePermission(session, permission);
   } catch (e) {
-    if (e instanceof ForbiddenError) redirect(`/${orgSlug}/dashboard`);
+    if (e instanceof ForbiddenError) redirect(await orgHref(orgSlug, "/dashboard"));
     throw e;
   }
 }

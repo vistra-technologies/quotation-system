@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { createProject as dalCreateProject } from "@/lib/data/projects";
 import { requireSession } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 
 // ---------------------------------------------------------------------------
 // createProject
@@ -65,5 +66,5 @@ export async function createProject(
   }
 
   revalidatePath(`/${orgSlug}/projects`);
-  redirect(`/${orgSlug}/projects/${project.id}`, RedirectType.replace);
+  redirect(await orgHref(orgSlug ?? "", `/projects/${project.id}`), RedirectType.replace);
 }

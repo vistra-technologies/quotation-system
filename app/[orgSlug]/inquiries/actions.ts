@@ -6,6 +6,7 @@ import { createInquiry as dalCreateInquiry } from "@/lib/data/inquiries";
 import { dismissInquiry as dalDismissInquiry } from "@/lib/data/inquiries";
 import { convertInquiryToProject as dalConvertInquiryToProject } from "@/lib/data/inquiries";
 import { requireSession } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 
 // ---------------------------------------------------------------------------
 // createInquiry
@@ -64,7 +65,7 @@ export async function createInquiry(
   }
 
   revalidatePath(`/${orgSlug}/inquiries`);
-  redirect(`/${orgSlug}/inquiries`, RedirectType.replace);
+  redirect(await orgHref(orgSlug ?? "", "/inquiries"), RedirectType.replace);
 }
 
 // ---------------------------------------------------------------------------
@@ -99,14 +100,14 @@ export async function dismissInquiry(formData: FormData): Promise<void> {
       (err as { code: string }).code === "ALREADY_CLOSED"
     ) {
       revalidatePath(`/${orgSlug}/inquiries/${inquiryId}`);
-      redirect(`/${orgSlug}/inquiries/${inquiryId}`, RedirectType.replace);
+      redirect(await orgHref(orgSlug ?? "", `/inquiries/${inquiryId}`), RedirectType.replace);
     }
     throw err;
   }
 
   revalidatePath(`/${orgSlug}/inquiries`);
   revalidatePath(`/${orgSlug}/inquiries/${inquiryId}`);
-  redirect(`/${orgSlug}/inquiries/${inquiryId}`, RedirectType.replace);
+  redirect(await orgHref(orgSlug ?? "", `/inquiries/${inquiryId}`), RedirectType.replace);
 }
 
 // ---------------------------------------------------------------------------
@@ -157,5 +158,5 @@ export async function convertInquiryToProject(
   revalidatePath(`/${orgSlug}/inquiries`);
   revalidatePath(`/${orgSlug}/inquiries/${inquiryId}`);
   revalidatePath(`/${orgSlug}/projects`);
-  redirect(`/${orgSlug}/projects/${newProject.id}`);
+  redirect(await orgHref(orgSlug ?? "", `/projects/${newProject.id}`));
 }

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { getSession } from "@/lib/session";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
+import { orgHref } from "@/lib/orgHref";
 import { CreatePermissionForm } from "./_components/create-permission-form";
 
 // Always render live — reads session cookie and DB.
@@ -24,17 +25,18 @@ export default async function CreatePermissionPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await getSession();
 
   if (!session) {
-    redirect(`/${orgSlug}/login`);
+    redirect(`${base}/login`);
   }
 
   try {
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (e) {
     if (e instanceof ForbiddenError) {
-      redirect(`/${orgSlug}/dashboard`);
+      redirect(`${base}/dashboard`);
     }
     throw e;
   }
@@ -45,7 +47,7 @@ export default async function CreatePermissionPage({
     <div className="max-w-lg">
       <div className="flex items-center gap-3">
         <Link
-          href={`/${orgSlug}/admin/permissions`}
+          href={`${base}/admin/permissions`}
           className="text-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
         >
           {t("backToList")}

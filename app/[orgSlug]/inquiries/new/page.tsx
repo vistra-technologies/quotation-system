@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { listExternalCompanies, getExternalCompanyById } from "@/lib/data/external-companies";
 import { requireSession } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 import { CreateInquiryForm } from "./create-inquiry-form";
 
 // Always render live — reads session cookie and DB.
@@ -24,6 +25,7 @@ export default async function NewInquiryPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
 
   const [lockedCompany, externalCompanies, t] = await Promise.all([
@@ -39,7 +41,7 @@ export default async function NewInquiryPage({
   return (
     <div className="mx-auto max-w-lg">
       <Link
-        href={`/${orgSlug}/inquiries`}
+        href={`${base}/inquiries`}
         className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
       >
         {t("backToList")}

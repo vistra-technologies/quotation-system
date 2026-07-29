@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { PERMISSIONS } from "@/lib/rbac";
 import { listCatalogItems } from "@/lib/data/catalog";
 import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export default async function PricingPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
   await requirePermissionFor(session, PERMISSIONS.MANAGE_PRICING, orgSlug);
 
@@ -99,7 +101,7 @@ export default async function PricingPage({
                     </td>
                     <td className="px-5 py-3 text-right">
                       <Link
-                        href={`/${orgSlug}/pricing/${item.id}`}
+                        href={`${base}/pricing/${item.id}`}
                         className="text-sm font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-50"
                       >
                         {t("editPrices")}

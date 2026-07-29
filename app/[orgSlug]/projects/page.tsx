@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { listProjects } from "@/lib/data/projects";
 import { requireSession } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export default async function ProjectsPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
 
   const [projects, t] = await Promise.all([
@@ -37,7 +39,7 @@ export default async function ProjectsPage({
           </p>
         </div>
         <Link
-          href={`/${orgSlug}/projects/new`}
+          href={`${base}/projects/new`}
           className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           {t("createProject")}
@@ -79,7 +81,7 @@ export default async function ProjectsPage({
                   >
                     <td className="px-5 py-3 font-medium text-zinc-900 dark:text-zinc-50">
                       <Link
-                        href={`/${orgSlug}/projects/${project.id}`}
+                        href={`${base}/projects/${project.id}`}
                         className="hover:underline"
                       >
                         #{project.projectNumber}
@@ -87,7 +89,7 @@ export default async function ProjectsPage({
                     </td>
                     <td className="px-5 py-3 text-zinc-900 dark:text-zinc-50">
                       <Link
-                        href={`/${orgSlug}/projects/${project.id}`}
+                        href={`${base}/projects/${project.id}`}
                         className="hover:underline"
                       >
                         {project.name}

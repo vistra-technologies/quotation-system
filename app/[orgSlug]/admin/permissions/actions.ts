@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import { createPermission as dalCreatePermission } from "@/lib/data/admin";
 import { requireSession } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 
 export type CreatePermissionState = { error: string | null };
 
@@ -62,5 +63,5 @@ export async function createPermission(
   }
 
   revalidatePath(`/${orgSlug}/admin/permissions`);
-  redirect(`/${orgSlug}/admin/permissions`, RedirectType.replace);
+  redirect(await orgHref(orgSlug ?? "", "/admin/permissions"), RedirectType.replace);
 }

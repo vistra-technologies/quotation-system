@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { PERMISSIONS } from "@/lib/rbac";
 import { listRolesForDropdown, listExternalCompanies } from "@/lib/data/admin";
 import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 import { CreateUserForm } from "./create-user-form";
 
 // Always render live — reads session cookie and DB.
@@ -20,6 +21,7 @@ export default async function NewUserPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
   await requirePermissionFor(session, PERMISSIONS.MANAGE_USERS, orgSlug);
 
@@ -32,7 +34,7 @@ export default async function NewUserPage({
   return (
     <div className="mx-auto max-w-lg">
       <Link
-        href={`/${orgSlug}/admin/users`}
+        href={`${base}/admin/users`}
         className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
       >
         {t("backToList")}
