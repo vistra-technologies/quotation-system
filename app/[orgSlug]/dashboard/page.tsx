@@ -9,9 +9,12 @@ export const dynamic = "force-dynamic";
 /**
  * Dashboard landing page (Server Component).
  *
- * Displays the authenticated user's identity and effective permissions.
- * Navigation is provided by the shared app/[orgSlug]/layout.tsx side panel —
- * the nav buttons that previously lived here have been removed in Stage 8.
+ * Stage 11 (Batch 4): restyled to Sage Ease tokens matching
+ * dashboard-2026-07-23-v1.html. Shows org badge, welcome heading, and three
+ * KPI tiles (Orders / Projects / Inquiries). Counts display "—" until a future
+ * stage adds the corresponding Prisma queries; the session/org/role queries are
+ * intentionally unchanged from Stage 10.
+ *
  * Redirects to /{orgSlug}/login if no valid session exists.
  */
 export default async function DashboardPage({
@@ -26,50 +29,116 @@ export default async function DashboardPage({
     redirect(await orgHref(orgSlug, "/login"));
   }
 
-  const [org, role, permissionCodes] = await Promise.all([
+  const [org] = await Promise.all([
     getOrgById(session.organizationId),
     getSessionRole(session),
     getSessionRolePermissions(session),
   ]);
 
   return (
-    <div className="px-6 py-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-        Dashboard
+    <div className="px-8 pt-7 pb-12">
+      {/* Org badge */}
+      <div className="mb-3 inline-flex items-center gap-1.5 rounded-pill bg-primary-softer px-3 py-1.5 text-xs font-bold text-primary-dark">
+        <svg
+          className="h-[13px] w-[13px]"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M3 21h18M6 21V7l6-4 6 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1" />
+        </svg>
+        {org?.name ?? orgSlug}
+      </div>
+
+      {/* Welcome heading */}
+      <h1 className="text-[27px] font-extrabold leading-tight text-text-heading">
+        Welcome, {session.name}
       </h1>
-      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-        Session verified — your identity and permissions below.
+      <p className="mt-1.5 mb-6 text-[13.5px] text-text-muted">
+        Here&apos;s what&apos;s happening across your workspace today.
       </p>
 
-      <div className="mt-6 w-full max-w-lg rounded-lg border border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <dl className="flex flex-col gap-3 text-sm">
-          <div className="flex justify-between gap-4">
-            <dt className="text-zinc-500 dark:text-zinc-400">Username</dt>
-            <dd className="font-medium text-zinc-900 dark:text-zinc-50">
-              {session.username}
-            </dd>
+      {/* KPI tiles */}
+      <div className="flex flex-wrap gap-4">
+        {/* Orders */}
+        <div className="min-w-[230px] flex-1 rounded-md border border-border bg-bg-card p-[18px] shadow-card">
+          <div className="mb-3.5 flex items-center justify-between">
+            <div className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-primary-softer text-primary">
+              <svg
+                className="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                <path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12" />
+              </svg>
+            </div>
+            <span className="rounded-pill bg-status-paid-bg px-2.5 py-0.5 text-[11px] font-bold text-status-paid-text whitespace-nowrap">
+              —
+            </span>
           </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-zinc-500 dark:text-zinc-400">Organization</dt>
-            <dd className="font-medium text-zinc-900 dark:text-zinc-50">
-              {org?.name ?? session.organizationId}
-            </dd>
+          <div className="text-[25px] font-extrabold leading-none text-text-heading">—</div>
+          <div className="mt-1.5 text-[11.5px] font-bold text-text-muted">Orders</div>
+        </div>
+
+        {/* Projects */}
+        <div className="min-w-[230px] flex-1 rounded-md border border-border bg-bg-card p-[18px] shadow-card">
+          <div className="mb-3.5 flex items-center justify-between">
+            <div className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-primary-softer text-primary">
+              <svg
+                className="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+              </svg>
+            </div>
+            <span className="rounded-pill bg-status-pending-bg px-2.5 py-0.5 text-[11px] font-bold text-status-pending-text whitespace-nowrap">
+              —
+            </span>
           </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-zinc-500 dark:text-zinc-400">Role</dt>
-            <dd className="font-medium text-zinc-900 dark:text-zinc-50">
-              {role?.name ?? session.roleId}
-            </dd>
+          <div className="text-[25px] font-extrabold leading-none text-text-heading">—</div>
+          <div className="mt-1.5 text-[11.5px] font-bold text-text-muted">Projects</div>
+        </div>
+
+        {/* Inquiries */}
+        <div className="min-w-[230px] flex-1 rounded-md border border-border bg-bg-card p-[18px] shadow-card">
+          <div className="mb-3.5 flex items-center justify-between">
+            <div className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-primary-softer text-primary">
+              <svg
+                className="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+              </svg>
+            </div>
+            <span className="rounded-pill bg-status-pending-bg px-2.5 py-0.5 text-[11px] font-bold text-status-pending-text whitespace-nowrap">
+              —
+            </span>
           </div>
-          <div className="flex justify-between gap-4">
-            <dt className="shrink-0 text-zinc-500 dark:text-zinc-400">
-              Permissions
-            </dt>
-            <dd className="text-right font-mono text-xs text-zinc-900 dark:text-zinc-50">
-              {permissionCodes.length > 0 ? permissionCodes.join(", ") : "none"}
-            </dd>
-          </div>
-        </dl>
+          <div className="text-[25px] font-extrabold leading-none text-text-heading">—</div>
+          <div className="mt-1.5 text-[11.5px] font-bold text-text-muted">Inquiries</div>
+        </div>
       </div>
     </div>
   );
