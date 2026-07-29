@@ -25,16 +25,14 @@ export const auth = betterAuth({
   // Origins trusted:
   //   1. The raw per-deploy Vercel URL — auto-injected as VERCEL_URL on every
   //      build (no manual config needed); absent on local dev.
-  //   2. The stable QA alias https://v-quote-test.vercel.app — manually
-  //      re-pointed to the latest preview build after each deploy.
-  //      Keep this entry until staging migrates to an easeetool.com subdomain.
-  //   3. All org subdomains — wildcard pattern supported natively by
+  //   2. All org subdomains — wildcard pattern supported natively by
   //      better-auth 1.6.23 via matchesOriginPattern().
+  //      Covers both *.easeetool.com (prod) and *.test.easeetool.com (staging),
+  //      since test.easeetool.com is itself a subdomain of easeetool.com.
   //
   // trustedOrigins is a top-level BetterAuthOptions field (string[] | async-function).
   trustedOrigins: [
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
-    "https://v-quote-test.vercel.app", // staging alias; remove once staging migrates to easeetool.com
     "https://*.easeetool.com", // all org subdomains (Stage 10 subdomain routing)
   ],
 
