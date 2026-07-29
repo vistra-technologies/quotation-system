@@ -111,3 +111,32 @@ Manual (verified against `test.easeetool.com` after each staging deploy — Play
 51. **Localhost / CI path-based fallback unchanged:** `http://localhost:3000/vistra/login` → 200 login
     page; `http://localhost:3000/nonexistent/login` → 404 JSON. (Automated: existing `org-nav.spec.ts`
     and `smoke.spec.ts` cover these via the path-based fallback that runs on any non-easeetool.com host.)
+
+## Stage 11 — Subdomain URL Hygiene (Part A, Batches 1–3)
+
+Automated: `tests/e2e/subdomain-url-hygiene.spec.ts` (4 tests, serial mode).
+Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_URL`
+(not the custom domain — `trustedOrigins` is scoped to `VERCEL_URL`).
+
+52. **No doubled org segment after login:** after signing in via `/{orgSlug}/login`, the post-redirect
+    URL must be `/{orgSlug}/dashboard` (path-based mode on `*.vercel.app`). Must NOT contain
+    `/{orgSlug}/{orgSlug}` (the doubled-slug bug fixed in Stage 11).
+
+53. **Sidebar nav links produce clean URLs:** clicking "Inquiries", "Projects", and the "Home" top-bar
+    icon each navigate to `/{orgSlug}/<section>` without a doubled org segment. Admin flyout links
+    (`/admin/users`, `/admin/roles`, etc.) must also produce clean URLs (manual check on a subdomain
+    host, as the flyout requires CSS hover which is harder to automate).
+
+54. **Logout redirects to clean login URL:** clicking Log Out navigates to `/{orgSlug}/login` without a
+    doubled segment. On a subdomain host (`vistra.easeetool.com`), the URL must be `/login`, not
+    `/vistra/login`.
+
+55. **Server redirect from unauthenticated access is clean:** an unauthenticated request to
+    `/{orgSlug}/dashboard` (path-based) or `vistra.easeetool.com/dashboard` (subdomain) is
+    server-redirected to the login page without a doubled org segment.
+
+**Manual check on a subdomain host (e.g., `vistra.test.easeetool.com`) once all batches are merged:**
+- After login: URL is `vistra.easeetool.com/dashboard` (NOT `vistra.easeetool.com/vistra/dashboard`).
+- After sidebar nav: URL is `vistra.easeetool.com/projects` (NOT `.../vistra/projects`).
+- After logout: URL is `vistra.easeetool.com/login` (NOT `.../vistra/login`).
+- After unauthenticated access: server redirect lands on `vistra.easeetool.com/login` (NOT `.../vistra/login`).

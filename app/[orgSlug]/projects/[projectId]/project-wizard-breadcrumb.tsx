@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { useOrgHref } from "@/lib/useOrgHref";
 
 interface ProjectWizardBreadcrumbProps {
   orgSlug: string;
@@ -25,18 +26,25 @@ interface ProjectWizardBreadcrumbProps {
 export function ProjectWizardBreadcrumb({ orgSlug, projectId }: ProjectWizardBreadcrumbProps) {
   const t = useTranslations("wizard");
   const pathname = usePathname();
+  const orgHref = useOrgHref(orgSlug);
 
+  // base: path-based (internal route), used for active-step detection.
+  // usePathname() always returns the internal path-based route even in subdomain
+  // mode, so active detection must compare against path-based strings.
   const base = `/${orgSlug}/projects/${projectId}`;
+  // hrefBase: user-facing href, resolves to bare subpath on subdomain hosts.
+  const hrefBase = orgHref(`/projects/${projectId}`);
 
   const steps = [
-    { label: t("step1"), href: base, exact: true },
-    { label: t("step2"), href: `${base}/configuration`, exact: false },
-    { label: t("step3"), href: `${base}/design`, exact: false },
-    { label: t("step4"), href: `${base}/summary`, exact: false },
-    { label: t("step5"), href: `${base}/quotation`, exact: false },
+    { label: t("step1"), href: base, linkHref: hrefBase, exact: true },
+    { label: t("step2"), href: `${base}/configuration`, linkHref: `${hrefBase}/configuration`, exact: false },
+    { label: t("step3"), href: `${base}/design`, linkHref: `${hrefBase}/design`, exact: false },
+    { label: t("step4"), href: `${base}/summary`, linkHref: `${hrefBase}/summary`, exact: false },
+    { label: t("step5"), href: `${base}/quotation`, linkHref: `${hrefBase}/quotation`, exact: false },
   ];
 
   // Derive the active index so earlier steps can be shown as "done".
+  // Uses step.href (path-based) to match against usePathname()'s internal route.
   const activeIndex = steps.findIndex((step) =>
     step.exact ? pathname === step.href : pathname.startsWith(step.href),
   );
@@ -58,7 +66,7 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId }: ProjectWizardBre
           return (
             <li key={step.href}>
               <Link
-                href={step.href}
+                href={step.linkHref}
                 className={linkClass}
                 aria-current={isActive ? "step" : undefined}
               >
