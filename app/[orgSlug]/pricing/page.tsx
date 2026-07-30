@@ -1,17 +1,39 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { PERMISSIONS } from "@/lib/rbac";
-import { listCatalogItems } from "@/lib/data/catalog";
-import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
+
+// ─── API response types ──────────────────────────────────────────────────────
+
+interface ItemPriceRow {
+  id: string;
+  currency: string;
+  price: string | number;
+}
+
+interface CatalogItemRow {
+  id: string;
+  category: string;
+  code: string;
+  name: string;
+  unitOfMeasure: string;
+  prices: ItemPriceRow[];
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 /**
  * Pricing management list page (Server Component).
  *
  * Lists all active catalog items for the org with their current prices.
- * Gated on MANAGE_PRICING — wrong-role requests are redirected to the dashboard.
+ *
+ * Stage 12: switched from direct requireSession + DAL calls to internalFetch
+ * against GET /api/v1/orgs/[orgSlug]/catalog. RBAC (MANAGE_PRICING) is
+ * enforced by the route handler — 403 here redirects to login.
  */
 export default async function PricingPage({
   params,
@@ -19,13 +41,19 @@ export default async function PricingPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const session = await requireSession(orgSlug);
-  await requirePermissionFor(session, PERMISSIONS.MANAGE_PRICING, orgSlug);
 
-  const [items, t] = await Promise.all([
-    listCatalogItems(session),
+  const [catalogRes, t] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/catalog`),
     getTranslations("pricing"),
   ]);
+
+  if (catalogRes.status === 401 || catalogRes.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  const items: CatalogItemRow[] = catalogRes.ok
+    ? ((await catalogRes.json()) as { items: CatalogItemRow[] }).items
+    : [];
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50 px-6 py-8 dark:bg-zinc-950">
