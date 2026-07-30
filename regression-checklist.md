@@ -141,6 +141,7 @@ Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_UR
 - After logout: URL is `vistra.easeetool.com/login` (NOT `.../vistra/login`).
 - After unauthenticated access: server redirect lands on `vistra.easeetool.com/login` (NOT `.../vistra/login`).
 
+<<<<<<< HEAD
 ## Stage 11 — Part B (Batches 4–9, UI restyle)
 
 Manual (no per-batch tester pass — full regression runs once at end-of-stage against `test.easeetool.com`).
@@ -173,3 +174,18 @@ All checks: verify via the Vercel preview URL for the merged `release/stage-11` 
 63. **New Project form — Sage Ease styling:** the New Project page renders the page heading, card wrapper,
     and all form fields (Project Name, Destination Country, Currency, Client) with Sage Ease input styling.
     Submitting the form still creates a project and redirects to the project detail page (behavior unchanged).
+
+### Batch 7 — Component Types admin cluster
+
+64. **Component Types list page — Sage Ease restyle:** `/{orgSlug}/admin/components` renders with
+    Sage Ease heading, card wrapper, count badge, code chip (monospace), category chip (icon + label),
+    fields badge (pill), status pill (green = Active, muted = Inactive), and Edit button. No
+    interactive search/filter (not in the original RSC — was a JS-only mockup feature).
+65. **Create Component Type page — Sage Ease restyle:** `/{orgSlug}/admin/components/new` renders
+    with Sage Ease back link, heading, inert-caveat notice (status-pending amber tokens), form card.
+    All form fields (Code, Name, Category, Field Schema) use Sage Ease token classes. Form / JSON
+    toggle visually matches the design; field reordering (↑↓) and option builder still function.
+66. **Edit Component Type page — Sage Ease restyle:** `/{orgSlug}/admin/components/[id]` renders
+    with Sage Ease back link, heading + code monospace subtitle, inert-caveat, form card. Active
+    checkbox, JSON view/edit toggle, all field-row controls (move, remove, required) still function.
+    Stage 7 field-schema round-trip (item 33) must still pass.
