@@ -1,6 +1,6 @@
-import { notFound } from "next/navigation";
-import { requireSession } from "@/lib/data/session";
-import { getProjectById } from "@/lib/data/projects";
+import { notFound, redirect } from "next/navigation";
+import { orgHref } from "@/lib/orgHref";
+import { fetchProjectDetail } from "./_project-fetch";
 import { ProjectWizardBreadcrumb } from "./project-wizard-breadcrumb";
 
 // Always render live — reads session cookie and DB.
@@ -13,12 +13,13 @@ export const dynamic = "force-dynamic";
  * 5-step breadcrumb. Steps: Project Details → Configuration → Design →
  * Summary → Quotation.
  *
- * Auth gate: requireSession — same as each child page. The layout runs its
- * own check so an unauthenticated request gets a 401/redirect before
- * rendering any child content.
+ * Auth gate: calls fetchProjectDetail() which hits the API route; a 401 response
+ * means no session → redirect to login; any other non-200 means project not found
+ * → 404.
  *
- * Tenancy guard: getProjectById scoped to session.organizationId; returns
- * null for missing or cross-org projects → 404.
+ * Stage 12: switched from direct requireSession + getProjectById DAL calls to
+ * internalFetch via the shared React.cache()-wrapped fetchProjectDetail helper.
+ * The layout and its child page share one HTTP round-trip per render pass.
  *
  * NOTE: This layout is a Server Component and does NOT wrap with its own
  * NextIntlClientProvider. The "wizard" namespace is forwarded to the client
@@ -34,12 +35,16 @@ export default async function ProjectWizardLayout({
   params: Promise<{ orgSlug: string; projectId: string }>;
 }) {
   const { orgSlug, projectId } = await params;
-  const session = await requireSession(orgSlug);
 
-  const project = await getProjectById(session, projectId);
+  const { status, project } = await fetchProjectDetail(orgSlug, projectId);
 
-  // Tenancy guard: project not found or belongs to a different org.
-  if (!project) notFound();
+  if (status === 401 || status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!project) {
+    notFound();
+  }
 
   return (
     <div className="flex flex-col">
