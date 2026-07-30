@@ -140,3 +140,22 @@ Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_UR
 - After sidebar nav: URL is `vistra.easeetool.com/projects` (NOT `.../vistra/projects`).
 - After logout: URL is `vistra.easeetool.com/login` (NOT `.../vistra/login`).
 - After unauthenticated access: server redirect lands on `vistra.easeetool.com/login` (NOT `.../vistra/login`).
+
+## Stage 11 — Part B Batch 5 (Inquiries cluster)
+
+Manual visual verification — run against staging after all batches merge.
+
+56. **Inquiry list page:** `/{orgSlug}/inquiries` renders Sage Ease card/table with correct status badge
+    colors (NEW=orange, DISMISSED=gray, CONVERTED=green), count badge in heading, "New Inquiry" primary
+    button, and a "Start Project" button per row (disabled for closed inquiries).
+57. **New inquiry form:** `/{orgSlug}/inquiries/new` renders a two-column card (Inquiry Details / Client
+    Information panels with sage-green panel titles), Sage Ease field inputs, and Cancel + Create Inquiry
+    buttons in the card footer. Cancel returns to the list.
+58. **Inquiry detail page:** `/{orgSlug}/inquiries/{id}` renders back link, heading with inquiry number,
+    metadata row (country, currency, status badge, client, date, created-by), Dismiss + Start Project
+    buttons, and a two-column read-only card. Both buttons remain disabled when the inquiry is closed.
+59. **Dismiss behavior:** Dismiss form submits without error for a NEW inquiry, flipping status to
+    DISMISSED and redirecting back to the detail page. Button is disabled for DISMISSED/CONVERTED inquiries.
+60. **Start Project behavior:** Start Project converts a NEW inquiry to a project, redirects to the new
+    project's detail page. Button is disabled for DISMISSED/CONVERTED inquiries. A SEQUENCE_CONFLICT error
+    is displayed inline (not a crash). (Also verifiable from the list page row button.)

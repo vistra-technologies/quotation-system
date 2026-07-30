@@ -22,6 +22,10 @@ const initialState: ConvertInquiryState = { error: null };
  *
  * The `inquiries` namespace must be forwarded in the ancestor layout's
  * clientMessages — verified in app/[orgSlug]/inquiries/layout.tsx.
+ *
+ * Stage 11 (Batch 5): Sage Ease token swap — zinc-900 → primary,
+ * error banner uses status-failed tokens. All behavior (useActionState,
+ * LoadingOverlay, form hidden inputs) unchanged.
  */
 export function StartProjectButton({ orgSlug, inquiryId, disabled }: StartProjectButtonProps) {
   const t = useTranslations("inquiries");
@@ -32,8 +36,8 @@ export function StartProjectButton({ orgSlug, inquiryId, disabled }: StartProjec
       <LoadingOverlay visible={isPending} />
 
       {state.error && (
-        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 dark:border-red-700 dark:bg-red-950">
-          <p className="text-sm text-red-700 dark:text-red-300">{state.error}</p>
+        <div className="rounded-sm border border-status-failed-text/20 bg-status-failed-bg px-4 py-3">
+          <p className="text-sm font-semibold text-status-failed-text">{state.error}</p>
         </div>
       )}
 
@@ -43,7 +47,7 @@ export function StartProjectButton({ orgSlug, inquiryId, disabled }: StartProjec
         <button
           type="submit"
           disabled={disabled || isPending}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="inline-flex items-center rounded-sm bg-primary px-4 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t("startProject")}
         </button>
