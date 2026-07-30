@@ -1,19 +1,44 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { PERMISSIONS } from "@/lib/rbac";
-import { getCatalogItemById } from "@/lib/data/catalog";
-import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 import { upsertItemPrice, deleteItemPrice } from "../actions";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
 
+// ─── API response types ──────────────────────────────────────────────────────
+
+interface ItemPriceRow {
+  id: string;
+  currency: string;
+  price: string | number;
+}
+
+interface CatalogItemDetail {
+  id: string;
+  category: string;
+  code: string;
+  name: string;
+  unitOfMeasure: string;
+  prices: ItemPriceRow[];
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
+
 /**
  * Pricing item edit page (Server Component).
  *
  * Shows the current prices for one CatalogItem and lets company members add,
- * update, or delete ItemPrice rows.  Gated on MANAGE_PRICING.
+ * update, or delete ItemPrice rows.
+ *
+ * Stage 12: switched from direct requireSession + DAL calls to internalFetch
+ * against GET /api/v1/orgs/[orgSlug]/catalog/[itemId]. RBAC (MANAGE_PRICING)
+ * is enforced by the route handler — 401/403 redirect to login, 404 → notFound().
+ *
+ * deleteItemPrice closure updated to pass item.id (needed to build the
+ * DELETE /catalog/[itemId]/prices URL — see actions.ts for the updated signature).
  */
 export default async function PricingItemPage({
   params,
@@ -21,17 +46,25 @@ export default async function PricingItemPage({
   params: Promise<{ orgSlug: string; itemId: string }>;
 }) {
   const { orgSlug, itemId } = await params;
-  const session = await requireSession(orgSlug);
-  await requirePermissionFor(session, PERMISSIONS.MANAGE_PRICING, orgSlug);
 
-  const [item, t] = await Promise.all([
-    getCatalogItemById(session, itemId),
+  const [itemRes, t] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/catalog/${itemId}`),
     getTranslations("pricing"),
   ]);
 
-  if (!item) {
+  if (itemRes.status === 401 || itemRes.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (itemRes.status === 404) {
     notFound();
   }
+
+  if (!itemRes.ok) {
+    notFound();
+  }
+
+  const item = ((await itemRes.json()) as { item: CatalogItemDetail }).item;
 
   return (
     <div className="flex min-h-screen flex-col bg-zinc-50 px-6 py-8 dark:bg-zinc-950">
@@ -102,7 +135,7 @@ export default async function PricingItemPage({
                   <form
                     action={async () => {
                       "use server";
-                      await deleteItemPrice(p.id, orgSlug);
+                      await deleteItemPrice(p.id, item.id, orgSlug);
                     }}
                   >
                     <button
