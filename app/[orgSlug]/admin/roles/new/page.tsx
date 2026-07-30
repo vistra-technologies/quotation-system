@@ -15,6 +15,8 @@ export const dynamic = "force-dynamic";
  * Handles auth + RBAC gate server-side, then delegates form rendering to the
  * CreateRoleForm Client Component (which needs to be a Client Component so
  * useFormStatus() can drive the loading overlay).
+ *
+ * Stage 11 (Batch 9): restyled to Sage Ease tokens.
  */
 export default async function NewRolePage({
   params,
@@ -36,19 +38,19 @@ export default async function NewRolePage({
   const t = await getTranslations("roles");
 
   return (
-    <div>
+    <div className="mx-auto w-full max-w-5xl px-6 py-8">
       <Link
         href={`${base}/admin/roles`}
-        className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+        className="mb-4 inline-block text-sm text-text-muted hover:text-text-heading"
       >
         {t("backToList")}
       </Link>
 
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+      <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-text-heading">
         {t("createPageTitle")}
       </h1>
 
-      <div className="mt-6 max-w-lg rounded-lg border border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="mt-6 max-w-lg rounded-md border border-border bg-bg-card px-5 py-4 shadow-card">
         <CreateRoleForm
           orgSlug={orgSlug}
           fieldNameLabel={t("fieldName")}
