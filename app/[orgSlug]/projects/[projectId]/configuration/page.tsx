@@ -1,13 +1,49 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { requireSession } from "@/lib/data/session";
-import { getProjectById } from "@/lib/data/projects";
-import { listSelections } from "@/lib/data/selections";
-import { listComponentTypes } from "@/lib/data/components";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
+import { fetchProjectDetail } from "../_project-fetch";
 import { AddSelectionForm } from "./add-selection-form";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
+
+// ─── API response types ──────────────────────────────────────────────────────
+
+/** Shape of a single Selection as returned by GET /api/v1/.../selections */
+interface SelectionRow {
+  id: string;
+  label: string;
+  orderIndex: number;
+  componentType: { id: string; name: string; code: string };
+}
+
+/**
+ * Shape of a single FieldEntry within a ComponentType's fieldsSchema.
+ * Must match FieldEntry in lib/data/components.ts (duplicated to avoid bundling
+ * server-only DAL code — same pattern as add-selection-form.tsx).
+ */
+interface FieldEntry {
+  key: string;
+  label: string;
+  type: "field" | "radio" | "dropdown" | "checkbox";
+  options?: string[];
+  hint?: string;
+  required: boolean;
+  basic: boolean;
+}
+
+/** Shape of a single ComponentType as returned by GET /api/v1/.../component-types */
+interface ComponentTypeRow {
+  id: string;
+  name: string;
+  code: string;
+  active: boolean;
+  category: { id: string; name: string };
+  fieldsSchema: FieldEntry[];
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 /**
  * Configuration page — Step 2 of the project wizard (Server Component).
@@ -20,7 +56,14 @@ export const dynamic = "force-dynamic";
  * all data fetching, server actions, validation logic, and form IDs are
  * unchanged.
  *
- * Auth gate: requireSession only — no special permission required.
+ * Stage 12: switched from direct requireSession + DAL calls to internalFetch
+ * against the new API routes. Project fetch reuses the React.cache()-wrapped
+ * fetchProjectDetail helper shared with the layout and project-detail page —
+ * no duplicate HTTP round-trip for the project data. Selections and component
+ * types are fetched in parallel via internalFetch.
+ *
+ * Auth gate: API routes return 401/403 on unauthenticated/cross-tenant requests;
+ * the page redirects to login on 401/403. 404 → notFound().
  */
 export default async function ConfigurationPage({
   params,
@@ -28,17 +71,49 @@ export default async function ConfigurationPage({
   params: Promise<{ orgSlug: string; projectId: string }>;
 }) {
   const { orgSlug, projectId } = await params;
-  const session = await requireSession(orgSlug);
 
-  const [project, selections, allComponentTypes, tSelections] = await Promise.all([
-    getProjectById(session, projectId),
-    listSelections(session, projectId),
-    listComponentTypes(session),
+  // Parallel fetch: project (React.cache() deduped with layout), selections,
+  // component types, and translations.
+  const [
+    { status: projectStatus, project },
+    selectionsRes,
+    componentTypesRes,
+    tSelections,
+  ] = await Promise.all([
+    fetchProjectDetail(orgSlug, projectId),
+    internalFetch(
+      `/api/v1/orgs/${orgSlug}/selections?projectId=${projectId}`,
+    ),
+    internalFetch(`/api/v1/orgs/${orgSlug}/component-types`),
     getTranslations("selections"),
   ]);
 
+  // Auth redirect on 401 or 403 from any of the three API calls.
+  if (
+    projectStatus === 401 ||
+    projectStatus === 403 ||
+    selectionsRes.status === 401 ||
+    selectionsRes.status === 403 ||
+    componentTypesRes.status === 401 ||
+    componentTypesRes.status === 403
+  ) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
   // Tenancy guard: project not found or belongs to a different org.
   if (!project) notFound();
+
+  const selections: SelectionRow[] = selectionsRes.ok
+    ? ((await selectionsRes.json()) as { selections: SelectionRow[] }).selections
+    : [];
+
+  const allComponentTypes: ComponentTypeRow[] = componentTypesRes.ok
+    ? (
+        (await componentTypesRes.json()) as {
+          componentTypes: ComponentTypeRow[];
+        }
+      ).componentTypes
+    : [];
 
   // Only active ComponentTypes are offered in the "Add component" picker.
   const activeComponentTypes = allComponentTypes.filter((ct) => ct.active);
