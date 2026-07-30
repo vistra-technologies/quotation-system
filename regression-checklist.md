@@ -141,9 +141,12 @@ Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_UR
 - After logout: URL is `vistra.easeetool.com/login` (NOT `.../vistra/login`).
 - After unauthenticated access: server redirect lands on `vistra.easeetool.com/login` (NOT `.../vistra/login`).
 
-## Stage 11 — Part B Batch 5 (Inquiries cluster)
+## Stage 11 — Part B (Batches 4–9, UI restyle)
 
-Manual visual verification — run against staging after all batches merge.
+Manual (no per-batch tester pass — full regression runs once at end-of-stage against `test.easeetool.com`).
+All checks: verify via the Vercel preview URL for the merged `release/stage-11` branch.
+
+### Batch 5 — Inquiries cluster
 
 56. **Inquiry list page:** `/{orgSlug}/inquiries` renders Sage Ease card/table with correct status badge
     colors (NEW=orange, DISMISSED=gray, CONVERTED=green), count badge in heading, "New Inquiry" primary
@@ -159,3 +162,14 @@ Manual visual verification — run against staging after all batches merge.
 60. **Start Project behavior:** Start Project converts a NEW inquiry to a project, redirects to the new
     project's detail page. Button is disabled for DISMISSED/CONVERTED inquiries. A SEQUENCE_CONFLICT error
     is displayed inline (not a crash). (Also verifiable from the list page row button.)
+
+### Batch 6 — Project wizard interior + New Project form
+
+61. **Summary page chrome:** navigating to a project's Summary step renders the page heading "Summary",
+    the card placeholder, and Back / Next: Quotation navigation links. The page must NOT render any
+    Floor/Partition data, SVG shop drawings, or cut-list tables (still inert).
+62. **Quotation page chrome:** navigating to a project's Quotation step renders the page heading "Quotation",
+    the card placeholder, and a Back navigation link. Page must stay inert.
+63. **New Project form — Sage Ease styling:** the New Project page renders the page heading, card wrapper,
+    and all form fields (Project Name, Destination Country, Currency, Client) with Sage Ease input styling.
+    Submitting the form still creates a project and redirects to the project detail page (behavior unchanged).
