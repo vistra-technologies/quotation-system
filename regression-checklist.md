@@ -141,7 +141,6 @@ Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_UR
 - After logout: URL is `vistra.easeetool.com/login` (NOT `.../vistra/login`).
 - After unauthenticated access: server redirect lands on `vistra.easeetool.com/login` (NOT `.../vistra/login`).
 
-<<<<<<< HEAD
 ## Stage 11 — Part B (Batches 4–9, UI restyle)
 
 Manual (no per-batch tester pass — full regression runs once at end-of-stage against `test.easeetool.com`).
@@ -189,3 +188,20 @@ All checks: verify via the Vercel preview URL for the merged `release/stage-11` 
     with Sage Ease back link, heading + code monospace subtitle, inert-caveat, form card. Active
     checkbox, JSON view/edit toggle, all field-row controls (move, remove, required) still function.
     Stage 7 field-schema round-trip (item 33) must still pass.
+
+### Batch 8 — Admin: Users + External Companies
+
+67. **Users list page renders correctly:** `/admin/users` loads, shows the users table with username, role,
+    and status columns. Active users show a green badge; inactive users show a muted badge.
+68. **Create-user form works end-to-end:** `/admin/users/new` renders the form; submitting with valid data
+    creates the user and redirects to the list. Submitting a duplicate username shows the inline error
+    message without a page crash.
+69. **User detail page renders correctly:** `/admin/users/[userId]` shows the metadata card (username, role,
+    status) and the three action sections (activate/deactivate, change role, set password). Self-user
+    cannot deactivate themselves (button disabled, helper text shown).
+70. **Activate/deactivate, change-role, and set-password actions still work:** each form submission triggers
+    the correct server action and the page reflects the updated state after redirect.
+71. **External Companies list page renders correctly:** `/admin/external-companies` loads, shows the table
+    with name and type columns.
+72. **Create-external-company form works end-to-end:** `/admin/external-companies/new` renders; submitting
+    creates the company and redirects to the list. Duplicate-name error shows inline.

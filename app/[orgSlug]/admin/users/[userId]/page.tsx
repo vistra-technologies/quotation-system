@@ -20,6 +20,8 @@ export const dynamic = "force-dynamic";
  *
  * Tenancy guard: getUserById filters by both id AND organizationId = session's
  * org, so a client-supplied id for a different org returns notFound().
+ *
+ * Stage 11 Batch 8: restyled to Sage Ease tokens. No logic changes.
  */
 export default async function UserDetailPage({
   params,
@@ -46,34 +48,34 @@ export default async function UserDetailPage({
     <div className="mx-auto max-w-lg">
       <Link
         href={`${base}/admin/users`}
-        className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+        className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text-heading"
       >
         {t("backToList")}
       </Link>
 
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+      <h1 className="mt-2 text-2xl font-bold text-text-heading">
         {t("detailPageTitle")}
       </h1>
 
       {/* User metadata */}
-      <div className="mt-4 rounded-lg border border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="mt-4 rounded-md border border-border bg-bg-card p-5 shadow-card">
         <dl className="flex flex-col gap-2 text-sm">
           <div className="flex justify-between gap-4">
-            <dt className="text-zinc-500 dark:text-zinc-400">{t("colUsername")}</dt>
-            <dd className="font-medium text-zinc-900 dark:text-zinc-50">{user.username}</dd>
+            <dt className="text-text-muted">{t("colUsername")}</dt>
+            <dd className="font-bold text-text-heading">{user.username}</dd>
           </div>
           <div className="flex justify-between gap-4">
-            <dt className="text-zinc-500 dark:text-zinc-400">{t("colRole")}</dt>
-            <dd className="text-zinc-900 dark:text-zinc-50">{user.role.name}</dd>
+            <dt className="text-text-muted">{t("colRole")}</dt>
+            <dd className="text-text-body">{user.role.name}</dd>
           </div>
           <div className="flex justify-between gap-4">
-            <dt className="text-zinc-500 dark:text-zinc-400">{t("colStatus")}</dt>
+            <dt className="text-text-muted">{t("colStatus")}</dt>
             <dd>
               <span
                 className={
                   user.active
-                    ? "inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-300"
-                    : "inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                    ? "inline-flex items-center rounded-pill bg-status-paid-bg px-2.5 py-0.5 text-xs font-bold text-status-paid-text"
+                    : "inline-flex items-center rounded-pill bg-border px-2.5 py-0.5 text-xs font-bold text-text-muted"
                 }
               >
                 {user.active ? t("statusActive") : t("statusInactive")}
