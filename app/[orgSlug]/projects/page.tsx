@@ -1,16 +1,29 @@
 import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { listProjects } from "@/lib/data/projects";
-import { requireSession } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
+
+interface ProjectListItem {
+  id: string;
+  projectNumber: number;
+  name: string;
+  status: string;
+  createdAt: string;
+  externalCompany: { id: string; name: string } | null;
+}
 
 /**
  * Projects list page (Server Component).
  *
  * Lists all projects within the session's org, newest-first.
  * Auth-protected (any authenticated user); no special RBAC permission required.
+ *
+ * Stage 12: switched from direct requireSession + listProjects DAL call to
+ * internalFetch against GET /api/v1/orgs/[orgSlug]/projects.
  */
 export default async function ProjectsPage({
   params,
@@ -18,12 +31,21 @@ export default async function ProjectsPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const session = await requireSession(orgSlug);
 
-  const [projects, t] = await Promise.all([
-    listProjects(session),
+  const [res, t] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/projects`),
     getTranslations("projects"),
   ]);
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!res.ok) {
+    notFound();
+  }
+
+  const { projects } = (await res.json()) as { projects: ProjectListItem[] };
 
   return (
     <div>
