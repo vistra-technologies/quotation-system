@@ -140,3 +140,19 @@ Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_UR
 - After sidebar nav: URL is `vistra.easeetool.com/projects` (NOT `.../vistra/projects`).
 - After logout: URL is `vistra.easeetool.com/login` (NOT `.../vistra/login`).
 - After unauthenticated access: server redirect lands on `vistra.easeetool.com/login` (NOT `.../vistra/login`).
+
+## Stage 11 — Part B (Batches 4–9, UI restyle)
+
+Manual (no per-batch tester pass — full regression runs once at end-of-stage against `test.easeetool.com`).
+All checks: verify via the Vercel preview URL for the merged `release/stage-11` branch.
+
+56. **Summary page chrome:** navigating to a project's Summary step renders the page heading "Summary",
+    the card placeholder, and Back / Next: Quotation navigation links. The page must NOT render any
+    Floor/Partition data, SVG shop drawings, or cut-list tables (still inert).
+
+57. **Quotation page chrome:** navigating to a project's Quotation step renders the page heading "Quotation",
+    the card placeholder, and a Back navigation link. Page must stay inert.
+
+58. **New Project form — Sage Ease styling:** the New Project page renders the page heading, card wrapper,
+    and all form fields (Project Name, Destination Country, Currency, Client) with Sage Ease input styling.
+    Submitting the form still creates a project and redirects to the project detail page (behavior unchanged).
