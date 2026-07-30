@@ -1,24 +1,39 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { requireSession } from "@/lib/data/session";
-import { getInquiryById } from "@/lib/data/inquiries";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 import { dismissInquiry } from "../actions";
 import { StartProjectButton } from "./start-project-button";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
 
+interface InquiryDetail {
+  id: string;
+  inquiryNumber: number;
+  name: string;
+  destinationCountry: string;
+  currency: string;
+  status: string;
+  createdAt: string;
+  externalCompany: { id: string; name: string } | null;
+  createdBy: { id: string; username: string };
+}
+
 /**
  * Inquiry detail page (Server Component).
  *
- * Auth gate: requireSession only — no special permission required.
+ * Auth gate: any authenticated org member — no special permission required.
  * Renders inquiry metadata, a Dismiss form (RSC form, no client component needed),
  * and the "Start Project" button (client component, uses useActionState for
  * inline SEQUENCE_CONFLICT error surfacing).
  *
- * Tenancy guard: getInquiryById returns null if the inquiry doesn't exist or
- * belongs to a different org → notFound().
+ * Tenancy guard: the API route's getApiSession() enforces cross-org isolation,
+ * and getInquiryById() returns null for wrong-org inquiries → 404.
+ *
+ * Stage 12: switched from direct requireSession + getInquiryById DAL call to
+ * internalFetch against GET /api/v1/orgs/[orgSlug]/inquiries/[inquiryId].
  */
 export default async function InquiryDetailPage({
   params,
@@ -26,17 +41,24 @@ export default async function InquiryDetailPage({
   params: Promise<{ orgSlug: string; inquiryId: string }>;
 }) {
   const { orgSlug, inquiryId } = await params;
-  const session = await requireSession(orgSlug);
 
-  const [inquiry, t] = await Promise.all([
-    getInquiryById(session, inquiryId),
+  const [res, t] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/inquiries/${inquiryId}`),
     getTranslations("inquiries"),
   ]);
 
-  // Tenancy guard: inquiry not found or belongs to a different org.
-  if (!inquiry) notFound();
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
 
-  const isClosed = inquiry.status === "DISMISSED" || inquiry.status === "CONVERTED";
+  if (!res.ok) {
+    notFound();
+  }
+
+  const { inquiry } = (await res.json()) as { inquiry: InquiryDetail };
+
+  const isClosed =
+    inquiry.status === "DISMISSED" || inquiry.status === "CONVERTED";
 
   return (
     <div>

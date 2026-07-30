@@ -1,16 +1,29 @@
 import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { listInquiries } from "@/lib/data/inquiries";
-import { requireSession } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
+
+interface InquiryListItem {
+  id: string;
+  inquiryNumber: number;
+  name: string;
+  status: string;
+  createdAt: string;
+  externalCompany: { id: string; name: string } | null;
+}
 
 /**
  * Inquiries list page (Server Component).
  *
  * Lists all inquiries within the session's org, newest-first.
  * Auth-protected (any authenticated user); no special RBAC permission required.
+ *
+ * Stage 12: switched from direct requireSession + listInquiries DAL call to
+ * internalFetch against GET /api/v1/orgs/[orgSlug]/inquiries.
  */
 export default async function InquiriesPage({
   params,
@@ -18,12 +31,21 @@ export default async function InquiriesPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const session = await requireSession(orgSlug);
 
-  const [inquiries, t] = await Promise.all([
-    listInquiries(session),
+  const [res, t] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/inquiries`),
     getTranslations("inquiries"),
   ]);
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!res.ok) {
+    notFound();
+  }
+
+  const { inquiries } = (await res.json()) as { inquiries: InquiryListItem[] };
 
   return (
     <div>
