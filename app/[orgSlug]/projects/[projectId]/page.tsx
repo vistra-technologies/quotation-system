@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { requireSession } from "@/lib/data/session";
 import { getProjectById } from "@/lib/data/projects";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -25,6 +26,7 @@ export default async function ProjectDetailPage({
   params: Promise<{ orgSlug: string; projectId: string }>;
 }) {
   const { orgSlug, projectId } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
 
   const [project, tProjects] = await Promise.all([
@@ -39,7 +41,7 @@ export default async function ProjectDetailPage({
     <div>
       {/* Back link */}
       <Link
-        href={`/${orgSlug}/projects`}
+        href={`${base}/projects`}
         className="mb-6 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text-heading"
       >
         {tProjects("backToList")}
@@ -89,13 +91,13 @@ export default async function ProjectDetailPage({
       {/* Card footer: navigate to next step */}
       <div className="flex items-center justify-end gap-3">
         <Link
-          href={`/${orgSlug}/projects`}
+          href={`${base}/projects`}
           className="inline-flex items-center rounded-sm border border-border bg-bg-white px-5 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
         >
           Back to Projects
         </Link>
         <Link
-          href={`/${orgSlug}/projects/${projectId}/configuration`}
+          href={`${base}/projects/${projectId}/configuration`}
           className="inline-flex items-center rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark"
         >
           Next: Configuration →

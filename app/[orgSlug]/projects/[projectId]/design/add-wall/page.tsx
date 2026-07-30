@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { requireSession } from "@/lib/data/session";
 import { getProjectById } from "@/lib/data/projects";
 import { listFloorsByProject } from "@/lib/data/floors";
+import { orgHref } from "@/lib/orgHref";
 import { AddWallForm } from "./add-wall-form";
 
 // Always render live — reads session cookie and DB.
@@ -26,6 +27,7 @@ export default async function AddWallPage({
   params: Promise<{ orgSlug: string; projectId: string }>;
 }) {
   const { orgSlug, projectId } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
 
   const [project, floors, t] = await Promise.all([
@@ -42,7 +44,7 @@ export default async function AddWallPage({
   return (
     <div className="px-6 py-8">
       <Link
-        href={`/${orgSlug}/projects/${projectId}/design`}
+        href={`${base}/projects/${projectId}/design`}
         className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
       >
         {t("backToProject")}

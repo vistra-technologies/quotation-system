@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { listExternalCompanies } from "@/lib/data/admin";
 import { getExternalCompanyById } from "@/lib/data/external-companies";
 import { requireSession } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 import { CreateProjectForm } from "./create-project-form";
 
 // Always render live — reads session cookie and DB.
@@ -18,6 +19,9 @@ export const dynamic = "force-dynamic";
  * architectural-firm user), the Client field is locked to that company —
  * only that company's name is fetched for display.  Otherwise the full
  * org list is fetched for the free-choice dropdown (current behavior).
+ *
+ * Stage 11 (Batch 6): outer chrome restyled to Sage Ease tokens — back
+ * link, page heading, card wrapper. No data/prop changes.
  */
 export default async function NewProjectPage({
   params,
@@ -25,6 +29,7 @@ export default async function NewProjectPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
   const session = await requireSession(orgSlug);
 
   const [lockedCompany, externalCompanies, t] = await Promise.all([
@@ -39,25 +44,32 @@ export default async function NewProjectPage({
 
   return (
     <div className="mx-auto max-w-lg">
+      {/* Back link */}
       <Link
-        href={`/${orgSlug}/projects`}
-        className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+        href={`${base}/projects`}
+        className="mb-6 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text-heading"
       >
         {t("backToList")}
       </Link>
 
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-        {t("createPageTitle")}
-      </h1>
-      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-        {t("createPageSubtitle")}
-      </p>
+      {/* Page heading */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-extrabold text-text-heading">
+          {t("createPageTitle")}
+        </h1>
+        <p className="mt-1 text-sm text-text-muted">
+          {t("createPageSubtitle")}
+        </p>
+      </div>
 
-      <CreateProjectForm
-        orgSlug={orgSlug}
-        lockedCompany={lockedCompany}
-        externalCompanies={externalCompanies}
-      />
+      {/* Form card */}
+      <div className="rounded-md border border-border bg-bg-card p-6 shadow-card">
+        <CreateProjectForm
+          orgSlug={orgSlug}
+          lockedCompany={lockedCompany}
+          externalCompanies={externalCompanies}
+        />
+      </div>
     </div>
   );
 }

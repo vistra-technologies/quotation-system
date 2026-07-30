@@ -5,6 +5,7 @@ import { redirect, RedirectType } from "next/navigation";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import { createExternalCompany as dalCreateExternalCompany } from "@/lib/data/external-companies";
 import { requireSession } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 
 // ---------------------------------------------------------------------------
 // createExternalCompany
@@ -30,7 +31,7 @@ export async function createExternalCompany(
     await requirePermission(session, PERMISSIONS.MANAGE_USERS);
   } catch (e) {
     if (e instanceof ForbiddenError) {
-      redirect(`/${orgSlug}/dashboard`);
+      redirect(await orgHref(orgSlug ?? "", "/dashboard"));
     }
     throw e;
   }
@@ -53,5 +54,5 @@ export async function createExternalCompany(
   }
 
   revalidatePath(`/${orgSlug}/admin/external-companies`);
-  redirect(`/${orgSlug}/admin/external-companies`, RedirectType.replace);
+  redirect(await orgHref(orgSlug ?? "", "/admin/external-companies"), RedirectType.replace);
 }

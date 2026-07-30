@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
+import { useOrgHref } from "@/lib/useOrgHref";
 
 interface TopBarActionsProps {
   orgSlug: string;
@@ -26,10 +27,11 @@ interface TopBarActionsProps {
 export function TopBarActions({ orgSlug, name, username }: TopBarActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [comingSoon, setComingSoon] = useState<string | null>(null);
+  const href = useOrgHref(orgSlug);
 
   async function handleLogout() {
     await authClient.signOut();
-    window.location.href = `/${orgSlug}/login`;
+    window.location.href = href("/login");
   }
 
   const initial = name.trim().charAt(0).toUpperCase() || "?";
@@ -37,7 +39,7 @@ export function TopBarActions({ orgSlug, name, username }: TopBarActionsProps) {
   return (
     <div className="flex items-center gap-2">
       <Link
-        href={`/${orgSlug}/dashboard`}
+        href={href("/dashboard")}
         title="Home"
         aria-label="Home"
         className="flex h-9 w-9 items-center justify-center rounded-sm border border-border bg-bg-white text-text-body transition-colors hover:bg-primary-softer"

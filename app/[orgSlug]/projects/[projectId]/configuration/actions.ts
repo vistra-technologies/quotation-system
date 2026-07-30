@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { createSelection as dalCreateSelection } from "@/lib/data/selections";
 import { requireSession } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 
 // ---------------------------------------------------------------------------
 // createSelection
@@ -62,5 +63,5 @@ export async function createSelection(
   }
 
   revalidatePath(`/${orgSlug}/projects/${projectId}/configuration`);
-  redirect(`/${orgSlug}/projects/${projectId}/configuration`, RedirectType.replace);
+  redirect(await orgHref(orgSlug ?? "", `/projects/${projectId}/configuration`), RedirectType.replace);
 }

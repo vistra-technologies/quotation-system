@@ -21,6 +21,9 @@ interface CreatePermissionFormProps {
  * server action is in flight and dismissed the moment it settles.
  *
  * Requires NextIntlClientProvider in scope (provided by the admin layout).
+ * The "permissions" namespace is forwarded in admin layout's clientMessages.
+ *
+ * Stage 11 (Batch 9): restyled to Sage Ease tokens.
  */
 export function CreatePermissionForm({ orgSlug }: CreatePermissionFormProps) {
   const t = useTranslations("permissions");
@@ -31,19 +34,19 @@ export function CreatePermissionForm({ orgSlug }: CreatePermissionFormProps) {
       <LoadingOverlay visible={isPending} />
 
       {state.error && (
-        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 dark:border-red-700 dark:bg-red-950">
-          <p className="text-sm text-red-700 dark:text-red-300">{state.error}</p>
+        <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-4 py-3">
+          <p className="text-sm text-red-700">{state.error}</p>
         </div>
       )}
 
-      <form action={formAction} className="mt-4 space-y-5">
+      <form action={formAction} className="flex flex-col gap-4">
         {/* Carry orgSlug so the action can redirect and revalidate correctly */}
         <input type="hidden" name="orgSlug" value={orgSlug} />
 
-        <div>
+        <div className="flex flex-col gap-1">
           <label
             htmlFor="code"
-            className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+            className="text-xs font-bold uppercase tracking-wide text-text-muted"
           >
             {t("fieldCode")}
           </label>
@@ -54,17 +57,17 @@ export function CreatePermissionForm({ orgSlug }: CreatePermissionFormProps) {
             required
             autoComplete="off"
             placeholder={t("fieldCodePlaceholder")}
-            className="mt-1 block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 shadow-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder-zinc-500"
+            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary"
           />
-          <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          <p className="text-xs text-text-muted">
             {t("fieldCodeHint")}
           </p>
         </div>
 
-        <div>
+        <div className="flex flex-col gap-1">
           <label
             htmlFor="description"
-            className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
+            className="text-xs font-bold uppercase tracking-wide text-text-muted"
           >
             {t("fieldDescription")}
           </label>
@@ -74,7 +77,7 @@ export function CreatePermissionForm({ orgSlug }: CreatePermissionFormProps) {
             type="text"
             required
             autoComplete="off"
-            className="mt-1 block w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 placeholder-zinc-400 shadow-sm focus:border-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50 dark:placeholder-zinc-500"
+            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary"
           />
         </div>
 
@@ -82,7 +85,7 @@ export function CreatePermissionForm({ orgSlug }: CreatePermissionFormProps) {
           <button
             type="submit"
             disabled={isPending}
-            className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-50 shadow-sm hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            className="rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
           >
             {t("submitCreate")}
           </button>

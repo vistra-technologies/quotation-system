@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { getSession } from "@/lib/session";
 import { getOrgBySlug, getOrgById } from "@/lib/data/admin";
+import { orgHref } from "@/lib/orgHref";
 import { CrossOrgNotice } from "./cross-org-notice";
 import { LoginForm } from "./login-form";
 
@@ -54,7 +55,7 @@ export default async function LoginPage({
   // ── Auth check 1: same-org ────────────────────────────────────────────────
   const session = await getSession();
   if (session) {
-    redirect(`/${orgSlug}/dashboard`);
+    redirect(await orgHref(orgSlug, "/dashboard"));
   }
 
   // ── Auth check 2: cross-org ───────────────────────────────────────────────

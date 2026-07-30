@@ -46,7 +46,18 @@ export function CrossOrgNotice({
   }
 
   function handleGoToDashboard() {
-    window.location.href = `/${sessionOrgSlug}/dashboard`;
+    // Cross-org case: the current hostname belongs to *another* org's subdomain,
+    // so useOrgHref(sessionOrgSlug) cannot detect subdomain mode from hostname
+    // equality. Resolve the target org's correct origin directly.
+    const hostname = window.location.hostname;
+    if (hostname.endsWith(".test.easeetool.com")) {
+      window.location.href = `https://${sessionOrgSlug}.test.easeetool.com/dashboard`;
+    } else if (hostname.endsWith(".easeetool.com")) {
+      window.location.href = `https://${sessionOrgSlug}.easeetool.com/dashboard`;
+    } else {
+      // localhost / CI / Vercel preview → path-based fallback
+      window.location.href = `/${sessionOrgSlug}/dashboard`;
+    }
   }
 
   return (

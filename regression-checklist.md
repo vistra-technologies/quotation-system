@@ -111,3 +111,115 @@ Manual (verified against `test.easeetool.com` after each staging deploy — Play
 51. **Localhost / CI path-based fallback unchanged:** `http://localhost:3000/vistra/login` → 200 login
     page; `http://localhost:3000/nonexistent/login` → 404 JSON. (Automated: existing `org-nav.spec.ts`
     and `smoke.spec.ts` cover these via the path-based fallback that runs on any non-easeetool.com host.)
+
+## Stage 11 — Subdomain URL Hygiene (Part A, Batches 1–3)
+
+Automated: `tests/e2e/subdomain-url-hygiene.spec.ts` (4 tests, serial mode).
+Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_URL`
+(not the custom domain — `trustedOrigins` is scoped to `VERCEL_URL`).
+
+52. **No doubled org segment after login:** after signing in via `/{orgSlug}/login`, the post-redirect
+    URL must be `/{orgSlug}/dashboard` (path-based mode on `*.vercel.app`). Must NOT contain
+    `/{orgSlug}/{orgSlug}` (the doubled-slug bug fixed in Stage 11).
+
+53. **Sidebar nav links produce clean URLs:** clicking "Inquiries", "Projects", and the "Home" top-bar
+    icon each navigate to `/{orgSlug}/<section>` without a doubled org segment. Admin flyout links
+    (`/admin/users`, `/admin/roles`, etc.) must also produce clean URLs (manual check on a subdomain
+    host, as the flyout requires CSS hover which is harder to automate).
+
+54. **Logout redirects to clean login URL:** clicking Log Out navigates to `/{orgSlug}/login` without a
+    doubled segment. On a subdomain host (`vistra.easeetool.com`), the URL must be `/login`, not
+    `/vistra/login`.
+
+55. **Server redirect from unauthenticated access is clean:** an unauthenticated request to
+    `/{orgSlug}/dashboard` (path-based) or `vistra.easeetool.com/dashboard` (subdomain) is
+    server-redirected to the login page without a doubled org segment.
+
+**Manual check on a subdomain host (e.g., `vistra.test.easeetool.com`) once all batches are merged:**
+- After login: URL is `vistra.easeetool.com/dashboard` (NOT `vistra.easeetool.com/vistra/dashboard`).
+- After sidebar nav: URL is `vistra.easeetool.com/projects` (NOT `.../vistra/projects`).
+- After logout: URL is `vistra.easeetool.com/login` (NOT `.../vistra/login`).
+- After unauthenticated access: server redirect lands on `vistra.easeetool.com/login` (NOT `.../vistra/login`).
+
+## Stage 11 — Part B (Batches 4–9, UI restyle)
+
+Manual (no per-batch tester pass — full regression runs once at end-of-stage against `test.easeetool.com`).
+All checks: verify via the Vercel preview URL for the merged `release/stage-11` branch.
+
+### Batch 5 — Inquiries cluster
+
+56. **Inquiry list page:** `/{orgSlug}/inquiries` renders Sage Ease card/table with correct status badge
+    colors (NEW=orange, DISMISSED=gray, CONVERTED=green), count badge in heading, "New Inquiry" primary
+    button, and a "Start Project" button per row (disabled for closed inquiries).
+57. **New inquiry form:** `/{orgSlug}/inquiries/new` renders a two-column card (Inquiry Details / Client
+    Information panels with sage-green panel titles), Sage Ease field inputs, and Cancel + Create Inquiry
+    buttons in the card footer. Cancel returns to the list.
+58. **Inquiry detail page:** `/{orgSlug}/inquiries/{id}` renders back link, heading with inquiry number,
+    metadata row (country, currency, status badge, client, date, created-by), Dismiss + Start Project
+    buttons, and a two-column read-only card. Both buttons remain disabled when the inquiry is closed.
+59. **Dismiss behavior:** Dismiss form submits without error for a NEW inquiry, flipping status to
+    DISMISSED and redirecting back to the detail page. Button is disabled for DISMISSED/CONVERTED inquiries.
+60. **Start Project behavior:** Start Project converts a NEW inquiry to a project, redirects to the new
+    project's detail page. Button is disabled for DISMISSED/CONVERTED inquiries. A SEQUENCE_CONFLICT error
+    is displayed inline (not a crash). (Also verifiable from the list page row button.)
+
+### Batch 6 — Project wizard interior + New Project form
+
+61. **Summary page chrome:** navigating to a project's Summary step renders the page heading "Summary",
+    the card placeholder, and Back / Next: Quotation navigation links. The page must NOT render any
+    Floor/Partition data, SVG shop drawings, or cut-list tables (still inert).
+62. **Quotation page chrome:** navigating to a project's Quotation step renders the page heading "Quotation",
+    the card placeholder, and a Back navigation link. Page must stay inert.
+63. **New Project form — Sage Ease styling:** the New Project page renders the page heading, card wrapper,
+    and all form fields (Project Name, Destination Country, Currency, Client) with Sage Ease input styling.
+    Submitting the form still creates a project and redirects to the project detail page (behavior unchanged).
+
+### Batch 7 — Component Types admin cluster
+
+64. **Component Types list page — Sage Ease restyle:** `/{orgSlug}/admin/components` renders with
+    Sage Ease heading, card wrapper, count badge, code chip (monospace), category chip (icon + label),
+    fields badge (pill), status pill (green = Active, muted = Inactive), and Edit button. No
+    interactive search/filter (not in the original RSC — was a JS-only mockup feature).
+65. **Create Component Type page — Sage Ease restyle:** `/{orgSlug}/admin/components/new` renders
+    with Sage Ease back link, heading, inert-caveat notice (status-pending amber tokens), form card.
+    All form fields (Code, Name, Category, Field Schema) use Sage Ease token classes. Form / JSON
+    toggle visually matches the design; field reordering (↑↓) and option builder still function.
+66. **Edit Component Type page — Sage Ease restyle:** `/{orgSlug}/admin/components/[id]` renders
+    with Sage Ease back link, heading + code monospace subtitle, inert-caveat, form card. Active
+    checkbox, JSON view/edit toggle, all field-row controls (move, remove, required) still function.
+    Stage 7 field-schema round-trip (item 33) must still pass.
+
+### Batch 8 — Admin: Users + External Companies
+
+67. **Users list page renders correctly:** `/admin/users` loads, shows the users table with username, role,
+    and status columns. Active users show a green badge; inactive users show a muted badge.
+68. **Create-user form works end-to-end:** `/admin/users/new` renders the form; submitting with valid data
+    creates the user and redirects to the list. Submitting a duplicate username shows the inline error
+    message without a page crash.
+69. **User detail page renders correctly:** `/admin/users/[userId]` shows the metadata card (username, role,
+    status) and the three action sections (activate/deactivate, change role, set password). Self-user
+    cannot deactivate themselves (button disabled, helper text shown).
+70. **Activate/deactivate, change-role, and set-password actions still work:** each form submission triggers
+    the correct server action and the page reflects the updated state after redirect.
+71. **External Companies list page renders correctly:** `/admin/external-companies` loads, shows the table
+    with name and type columns.
+72. **Create-external-company form works end-to-end:** `/admin/external-companies/new` renders; submitting
+    creates the company and redirects to the list. Duplicate-name error shows inline.
+
+### Batch 9 — Admin: Roles + Permissions + Pricing + apex + 404 pages
+
+73. **Roles cluster renders correctly:** `/admin/roles` list, `/admin/roles/new`, and `/admin/roles/[roleId]`
+    (with permission toggle buttons) render with Sage Ease tokens; create-role and permission-toggle actions
+    still work end-to-end.
+74. **Permissions cluster renders correctly:** `/admin/permissions` list and `/admin/permissions/new` render
+    with Sage Ease tokens; create-permission action still works.
+75. **Pricing cluster renders correctly:** `/pricing` list and `/pricing/[itemId]` edit page render with
+    Sage Ease tokens (no stray `min-h-screen` wrapper); price CRUD still works.
+76. **Apex org selector renders correctly:** `/` renders the org-selector cards with Sage Ease tokens;
+    clicking an org still navigates to that org's own subdomain login page (local `orgHref()` helper
+    unchanged).
+77. **404 pages render correctly:** an unknown path at the apex (`/some-bogus-path`) renders the standalone
+    `app/not-found.tsx` page (no org shell) with a link back to `/`; an unknown path within a known org
+    (`/{orgSlug}/some-bogus-path`) renders `app/[orgSlug]/not-found.tsx` inside the org shell (sidebar
+    present). An unknown org slug itself must still return `proxy.ts`'s existing JSON 404 (unchanged,
+    out of scope for this batch).

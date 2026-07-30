@@ -11,6 +11,7 @@ import {
   setUserPassword as dalSetUserPassword,
 } from "@/lib/data/users";
 import { requireSession } from "@/lib/data/session";
+import { orgHref } from "@/lib/orgHref";
 
 // ---------------------------------------------------------------------------
 // createUser
@@ -58,7 +59,7 @@ export async function createUser(
   }
 
   revalidatePath(`/${orgSlug}/admin/users`);
-  redirect(`/${orgSlug}/admin/users`, RedirectType.replace);
+  redirect(await orgHref(orgSlug ?? "", "/admin/users"), RedirectType.replace);
 }
 
 // ---------------------------------------------------------------------------
@@ -151,5 +152,5 @@ export async function setUserPassword(formData: FormData): Promise<void> {
   await dalSetUserPassword(session, userId, newPassword);
 
   revalidatePath(`/${orgSlug}/admin/users/${userId}`);
-  redirect(`/${orgSlug}/admin/users/${userId}`, RedirectType.replace);
+  redirect(await orgHref(orgSlug ?? "", `/admin/users/${userId}`), RedirectType.replace);
 }
