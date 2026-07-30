@@ -205,3 +205,21 @@ All checks: verify via the Vercel preview URL for the merged `release/stage-11` 
     with name and type columns.
 72. **Create-external-company form works end-to-end:** `/admin/external-companies/new` renders; submitting
     creates the company and redirects to the list. Duplicate-name error shows inline.
+
+### Batch 9 — Admin: Roles + Permissions + Pricing + apex + 404 pages
+
+73. **Roles cluster renders correctly:** `/admin/roles` list, `/admin/roles/new`, and `/admin/roles/[roleId]`
+    (with permission toggle buttons) render with Sage Ease tokens; create-role and permission-toggle actions
+    still work end-to-end.
+74. **Permissions cluster renders correctly:** `/admin/permissions` list and `/admin/permissions/new` render
+    with Sage Ease tokens; create-permission action still works.
+75. **Pricing cluster renders correctly:** `/pricing` list and `/pricing/[itemId]` edit page render with
+    Sage Ease tokens (no stray `min-h-screen` wrapper); price CRUD still works.
+76. **Apex org selector renders correctly:** `/` renders the org-selector cards with Sage Ease tokens;
+    clicking an org still navigates to that org's own subdomain login page (local `orgHref()` helper
+    unchanged).
+77. **404 pages render correctly:** an unknown path at the apex (`/some-bogus-path`) renders the standalone
+    `app/not-found.tsx` page (no org shell) with a link back to `/`; an unknown path within a known org
+    (`/{orgSlug}/some-bogus-path`) renders `app/[orgSlug]/not-found.tsx` inside the org shell (sidebar
+    present). An unknown org slug itself must still return `proxy.ts`'s existing JSON 404 (unchanged,
+    out of scope for this batch).
