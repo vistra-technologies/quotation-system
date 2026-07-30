@@ -1,14 +1,30 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { PERMISSIONS } from "@/lib/rbac";
-import { getUserById } from "@/lib/data/users";
-import { listRolesForDropdown } from "@/lib/data/admin";
-import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 import { UserDetailForms } from "./user-detail-forms";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
+
+// ─── API response types ──────────────────────────────────────────────────────
+
+interface UserDetail {
+  id: string;
+  username: string;
+  active: boolean;
+  roleId: string;
+  role: { name: string };
+}
+
+interface RoleOption {
+  id: string;
+  name: string;
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 /**
  * User detail page (Server Component shell).
@@ -17,8 +33,15 @@ export const dynamic = "force-dynamic";
  * (activate/deactivate, change role, set password) to the UserDetailForms
  * Client Component so LoadingOverlay can respond to pending state.
  *
- * Tenancy guard: getUserById filters by both id AND organizationId = session's
- * org, so a client-supplied id for a different org returns notFound().
+ * Stage 12: switched from direct requireSession + DAL calls to internalFetch
+ * against GET /api/v1/orgs/[orgSlug]/users/[userId] and GET /roles.
+ * RBAC (MANAGE_USERS) is enforced by the route handlers.
+ *
+ * The GET /users/[userId] response includes `isSelf` (true when the requesting
+ * user is the target user) so the page does not need a separate session call.
+ *
+ * Tenancy guard: getUserById in the route handler filters by both id AND
+ * organizationId = session's org, so a spoofed id for a different org returns 404.
  */
 export default async function UserDetailPage({
   params,
@@ -26,19 +49,33 @@ export default async function UserDetailPage({
   params: Promise<{ orgSlug: string; userId: string }>;
 }) {
   const { orgSlug, userId } = await params;
-  const session = await requireSession(orgSlug);
-  await requirePermissionFor(session, PERMISSIONS.MANAGE_USERS, orgSlug);
 
-  const [user, roles, t] = await Promise.all([
-    // Tenancy guard: scope by both id and organizationId.
-    getUserById(session, userId),
-    listRolesForDropdown(session),
+  const [userRes, rolesRes, t] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/users/${userId}`),
+    internalFetch(`/api/v1/orgs/${orgSlug}/roles`),
     getTranslations("users"),
   ]);
 
-  if (!user) {
+  if (userRes.status === 401 || userRes.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (userRes.status === 404) {
     notFound();
   }
+
+  if (!userRes.ok) {
+    notFound();
+  }
+
+  const { user, isSelf } = (await userRes.json()) as {
+    user: UserDetail;
+    isSelf: boolean;
+  };
+
+  const roles: RoleOption[] = rolesRes.ok
+    ? ((await rolesRes.json()) as { roles: RoleOption[] }).roles
+    : [];
 
   return (
     <div className="mx-auto max-w-lg">
@@ -89,7 +126,7 @@ export default async function UserDetailPage({
           isActive={user.active}
           currentRoleId={user.roleId}
           roles={roles}
-          isSelf={user.id === session.userId}
+          isSelf={isSelf}
         />
       </div>
     </div>

@@ -2,15 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
-import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import {
-  createUser as dalCreateUser,
-  activateUser as dalActivateUser,
-  deactivateUser as dalDeactivateUser,
-  changeUserRole as dalChangeUserRole,
-  setUserPassword as dalSetUserPassword,
-} from "@/lib/data/users";
-import { requireSession } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 
 // ---------------------------------------------------------------------------
 // createUser
@@ -19,85 +12,133 @@ import { requireSession } from "@/lib/data/session";
 export type CreateUserState = { error: string | null };
 
 /**
- * Create a new user within the session's org and wire up a better-auth
- * credential account.
+ * Create a new user within the session's org.
+ *
+ * Thin marshaler (Stage 12): parses FormData, delegates to
+ * POST /api/v1/orgs/[orgSlug]/users via internalFetch.
+ * All tenancy enforcement and business logic live in the route handler.
  *
  * Uses the useActionState signature so the client form can surface errors
- * (e.g. duplicate username) instead of crashing to an error boundary.
- * All DB work and tenancy checks are delegated to lib/data/users.ts.
+ * (e.g. duplicate username) rather than crashing to an error boundary.
  */
 export async function createUser(
   prevState: CreateUserState,
-  formData: FormData
+  formData: FormData,
 ): Promise<CreateUserState> {
-  const orgSlug = formData.get("orgSlug") as string | null;
-  const session = await requireSession(orgSlug ?? "");
-
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_USERS);
-  } catch (e) {
-    if (e instanceof ForbiddenError) {
-      throw new Error("Forbidden: missing MANAGE_USERS permission");
-    }
-    throw e;
-  }
-
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const username = (formData.get("username") as string | null)?.trim();
   const roleId = formData.get("roleId") as string | null;
-  const externalCompanyId = (formData.get("externalCompanyId") as string | null) || null;
+  const externalCompanyId =
+    (formData.get("externalCompanyId") as string | null) || null;
   const password = formData.get("password") as string | null;
 
   if (!username || !roleId || !password) {
     return { error: "Username, role, and password are required" };
   }
 
-  try {
-    await dalCreateUser(session, { username, roleId, externalCompanyId, password });
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "An error occurred" };
+  const res = await internalFetch(`/api/v1/orgs/${orgSlug}/users`, {
+    method: "POST",
+    body: JSON.stringify({ username, roleId, externalCompanyId, password }),
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    return { error: errorMessage };
   }
 
   revalidatePath(`/${orgSlug}/admin/users`);
-  redirect(`/${orgSlug}/admin/users`, RedirectType.replace);
+  redirect(await orgHref(orgSlug, "/admin/users"), RedirectType.replace);
 }
 
 // ---------------------------------------------------------------------------
 // activateUser / deactivateUser
 // ---------------------------------------------------------------------------
 
+/**
+ * Activate a user (sets active = true).
+ *
+ * Thin marshaler (Stage 12): delegates to
+ * POST /api/v1/orgs/[orgSlug]/users/[userId]/activate via internalFetch.
+ * All tenancy enforcement and RBAC live in the route handler.
+ */
 export async function activateUser(formData: FormData): Promise<void> {
-  const orgSlug = formData.get("orgSlug") as string | null;
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const userId = formData.get("userId") as string | null;
-  const session = await requireSession(orgSlug ?? "");
-
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_USERS);
-  } catch (e) {
-    if (e instanceof ForbiddenError) throw new Error("Forbidden: missing MANAGE_USERS permission");
-    throw e;
-  }
 
   if (!userId) throw new Error("userId is required");
-  await dalActivateUser(session, userId);
+
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/users/${userId}/activate`,
+    { method: "POST" },
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    throw new Error(errorMessage);
+  }
 
   revalidatePath(`/${orgSlug}/admin/users`);
   revalidatePath(`/${orgSlug}/admin/users/${userId}`);
 }
 
+/**
+ * Deactivate a user (sets active = false).
+ *
+ * Thin marshaler (Stage 12): delegates to
+ * POST /api/v1/orgs/[orgSlug]/users/[userId]/deactivate via internalFetch.
+ * All tenancy enforcement and RBAC live in the route handler.
+ *
+ * Self-deactivation guard: the route handler catches the DAL's
+ * "You cannot deactivate your own account" throw and returns 400.
+ * On 400 here we throw (error boundary) since the UI already disables
+ * the deactivate button for isSelf === true — this is a defense-in-depth
+ * fallback scenario only.
+ */
 export async function deactivateUser(formData: FormData): Promise<void> {
-  const orgSlug = formData.get("orgSlug") as string | null;
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const userId = formData.get("userId") as string | null;
-  const session = await requireSession(orgSlug ?? "");
-
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_USERS);
-  } catch (e) {
-    if (e instanceof ForbiddenError) throw new Error("Forbidden: missing MANAGE_USERS permission");
-    throw e;
-  }
 
   if (!userId) throw new Error("userId is required");
-  await dalDeactivateUser(session, userId);
+
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/users/${userId}/deactivate`,
+    { method: "POST" },
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    throw new Error(errorMessage);
+  }
 
   revalidatePath(`/${orgSlug}/admin/users`);
   revalidatePath(`/${orgSlug}/admin/users/${userId}`);
@@ -107,21 +148,42 @@ export async function deactivateUser(formData: FormData): Promise<void> {
 // changeUserRole
 // ---------------------------------------------------------------------------
 
+/**
+ * Change a user's role.
+ *
+ * Thin marshaler (Stage 12): delegates to
+ * PATCH /api/v1/orgs/[orgSlug]/users/[userId]/role via internalFetch.
+ * All tenancy enforcement and RBAC live in the route handler.
+ */
 export async function changeUserRole(formData: FormData): Promise<void> {
-  const orgSlug = formData.get("orgSlug") as string | null;
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const userId = formData.get("userId") as string | null;
   const newRoleId = formData.get("roleId") as string | null;
-  const session = await requireSession(orgSlug ?? "");
-
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_USERS);
-  } catch (e) {
-    if (e instanceof ForbiddenError) throw new Error("Forbidden: missing MANAGE_USERS permission");
-    throw e;
-  }
 
   if (!userId || !newRoleId) throw new Error("userId and roleId are required");
-  await dalChangeUserRole(session, userId, newRoleId);
+
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/users/${userId}/role`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ roleId: newRoleId }),
+    },
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    throw new Error(errorMessage);
+  }
 
   revalidatePath(`/${orgSlug}/admin/users`);
   revalidatePath(`/${orgSlug}/admin/users/${userId}`);
@@ -132,24 +194,45 @@ export async function changeUserRole(formData: FormData): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * Admin-set password.  The password is never logged, echoed, or returned.
+ * Admin-set password for a user. The password is never logged, echoed, or returned.
+ *
+ * Thin marshaler (Stage 12): delegates to
+ * POST /api/v1/orgs/[orgSlug]/users/[userId]/password via internalFetch.
+ * All tenancy enforcement and RBAC live in the route handler.
  */
 export async function setUserPassword(formData: FormData): Promise<void> {
-  const orgSlug = formData.get("orgSlug") as string | null;
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const userId = formData.get("userId") as string | null;
   const newPassword = formData.get("password") as string | null;
-  const session = await requireSession(orgSlug ?? "");
-
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_USERS);
-  } catch (e) {
-    if (e instanceof ForbiddenError) throw new Error("Forbidden: missing MANAGE_USERS permission");
-    throw e;
-  }
 
   if (!userId || !newPassword) throw new Error("userId and password are required");
-  await dalSetUserPassword(session, userId, newPassword);
+
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/users/${userId}/password`,
+    {
+      method: "POST",
+      body: JSON.stringify({ password: newPassword }),
+    },
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    throw new Error(errorMessage);
+  }
 
   revalidatePath(`/${orgSlug}/admin/users/${userId}`);
-  redirect(`/${orgSlug}/admin/users/${userId}`, RedirectType.replace);
+  redirect(
+    await orgHref(orgSlug, `/admin/users/${userId}`),
+    RedirectType.replace,
+  );
 }

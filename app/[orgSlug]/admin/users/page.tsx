@@ -1,17 +1,31 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { PERMISSIONS } from "@/lib/rbac";
-import { listUsers } from "@/lib/data/users";
-import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
+
+// ─── API response types ──────────────────────────────────────────────────────
+
+interface UserRow {
+  id: string;
+  username: string;
+  active: boolean;
+  role: { name: string };
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 /**
  * Users list page (Server Component).
  *
  * Lists all users within the session's org, ordered alphabetically.
- * Gated on MANAGE_USERS — wrong-role requests redirect to the dashboard.
+ *
+ * Stage 12: switched from direct requireSession + DAL calls to internalFetch
+ * against GET /api/v1/orgs/[orgSlug]/users. RBAC (MANAGE_USERS) is enforced
+ * by the route handler — 401/403 here redirects to login.
  */
 export default async function UsersPage({
   params,
@@ -19,13 +33,19 @@ export default async function UsersPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const session = await requireSession(orgSlug);
-  await requirePermissionFor(session, PERMISSIONS.MANAGE_USERS, orgSlug);
 
-  const [users, t] = await Promise.all([
-    listUsers(session),
+  const [usersRes, t] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/users`),
     getTranslations("users"),
   ]);
+
+  if (usersRes.status === 401 || usersRes.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  const users: UserRow[] = usersRes.ok
+    ? ((await usersRes.json()) as { users: UserRow[] }).users
+    : [];
 
   return (
     <div>
