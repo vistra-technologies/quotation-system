@@ -5,6 +5,15 @@ import { listOrganizationsForSelector } from "@/lib/data/admin";
 // Always render live — reads DB for org list and Host header.
 export const dynamic = "force-dynamic";
 
+/**
+ * Apex — organization selector page (Server Component).
+ *
+ * Stage 11 (Batch 9): restyled to Sage Ease tokens. The local orgHref()
+ * helper below is intentionally different from lib/orgHref.ts — it constructs
+ * absolute subdomain URLs for the org selector (apex → org), while
+ * lib/orgHref.ts is used inside org-scoped pages to emit subpath vs. subdomain
+ * URLs relative to the current org. Do not replace this helper.
+ */
 export default async function Home() {
   // Apex — render the organization selector.
   const orgs = await listOrganizationsForSelector();
@@ -37,43 +46,81 @@ export default async function Home() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-6 dark:bg-zinc-950">
+    <div className="flex min-h-screen items-center justify-center bg-bg-page px-6">
       <main className="w-full max-w-md">
-        <h1 className="text-3xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          EaseeTool
+        {/* Logo mark + wordmark */}
+        <div className="mb-8 flex items-center gap-2">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-primary">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                d="M14 2.5H6.8a1.8 1.8 0 0 0-1.8 1.8v15.4a1.8 1.8 0 0 0 1.8 1.8h10.4a1.8 1.8 0 0 0 1.8-1.8V8.3z"
+                stroke="white"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M14 2.5v5.8h5.2"
+                stroke="white"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M8.6 14.2l2 2 4-4.4"
+                stroke="white"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </div>
+          <span className="text-lg font-extrabold text-text-heading">
+            EaseeTool
+          </span>
+        </div>
+
+        <h1 className="text-2xl font-extrabold tracking-tight text-text-heading">
+          Select your organization
         </h1>
-        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-          Select your organization to sign in.
+        <p className="mt-2 text-sm text-text-muted">
+          Sign in to the organization you belong to.
         </p>
 
-        <nav className="mt-8 flex flex-col gap-3">
+        <nav className="mt-6 flex flex-col gap-3">
           {orgs.map((org) => (
             <Link
               key={org.id}
               href={orgHref(org.slug)}
-              className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-5 py-4 text-sm font-medium text-zinc-900 transition-colors hover:border-zinc-300 hover:bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-50 dark:hover:border-zinc-700 dark:hover:bg-zinc-800"
+              className="flex items-center justify-between rounded-md border border-border bg-bg-card px-5 py-4 text-sm font-semibold text-text-heading shadow-card transition-colors hover:border-primary-soft hover:bg-primary-softer"
             >
               {org.name}
-              <span className="font-mono text-xs text-zinc-400">{org.slug}</span>
+              <span className="font-mono text-xs text-text-muted">{org.slug}</span>
             </Link>
           ))}
         </nav>
 
         {/* Diagnostic links — Stage 1 artifacts kept for dev convenience */}
-        <div className="mt-8 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-400">
+        <div className="mt-8 border-t border-border pt-4">
+          <p className="mb-2 text-xs font-bold uppercase tracking-wide text-text-muted">
             Dev tools
           </p>
           <div className="flex flex-col gap-2">
             <Link
               href="/organizations"
-              className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              className="text-xs text-text-muted hover:text-text-body"
             >
               /organizations
             </Link>
             <Link
               href="/api/health"
-              className="text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+              className="text-xs text-text-muted hover:text-text-body"
             >
               /api/health
             </Link>

@@ -19,7 +19,7 @@ function SubmitButton({ label }: { label: string }) {
     <button
       type="submit"
       disabled={pending}
-      className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+      className="rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
     >
       {label}
     </button>
@@ -41,6 +41,8 @@ interface CreateRoleFormProps {
  * already in scope from the admin layout, but passing strings as props avoids
  * adding the hook dependency and keeps translation calls co-located with the
  * Server Component that owns the page.
+ *
+ * Stage 11 (Batch 9): restyled to Sage Ease tokens.
  */
 export function CreateRoleForm({
   orgSlug,
@@ -58,7 +60,7 @@ export function CreateRoleForm({
       <div className="flex flex-col gap-1">
         <label
           htmlFor="name"
-          className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+          className="text-xs font-bold uppercase tracking-wide text-text-muted"
         >
           {fieldNameLabel}
         </label>
@@ -68,14 +70,14 @@ export function CreateRoleForm({
           type="text"
           required
           autoComplete="off"
-          className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+          className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
 
       <div className="flex flex-col gap-1">
         <label
           htmlFor="description"
-          className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+          className="text-xs font-bold uppercase tracking-wide text-text-muted"
         >
           {fieldDescriptionLabel}
         </label>
@@ -84,7 +86,7 @@ export function CreateRoleForm({
           name="description"
           type="text"
           autoComplete="off"
-          className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+          className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </div>
 

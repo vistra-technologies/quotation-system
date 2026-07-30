@@ -22,6 +22,8 @@ export const dynamic = "force-dynamic";
  *   - RolePermission writes re-verify via assertRoleInOrg in lib/data/admin.ts.
  *
  * Gated on MANAGE_FEATURES.
+ *
+ * Stage 11 (Batch 9): restyled to Sage Ease tokens.
  */
 export default async function RoleDetailPage({
   params,
@@ -52,43 +54,43 @@ export default async function RoleDetailPage({
   const availablePerms = allPerms.filter((p) => !grantedPermissionIds.has(p.id));
 
   return (
-    <div>
+    <div className="mx-auto w-full max-w-5xl px-6 py-8">
       <Link
         href={`${base}/admin/roles`}
-        className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+        className="mb-4 inline-block text-sm text-text-muted hover:text-text-heading"
       >
         {t("backToList")}
       </Link>
 
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+      <h1 className="mt-4 text-2xl font-extrabold tracking-tight text-text-heading">
         {role.name}
       </h1>
-      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="mt-1 text-sm text-text-muted">
         {t("detailSubtitle")}
       </p>
 
       {/* Granted permissions */}
-      <div className="mt-6 rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="border-b border-zinc-200 px-5 py-3 dark:border-zinc-800">
-          <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+      <div className="mt-6 rounded-md border border-border bg-bg-card shadow-card">
+        <div className="border-b border-border px-5 py-3">
+          <h2 className="text-sm font-bold text-text-body">
             {t("grantedPermissions")}
           </h2>
         </div>
         {grantedRps.length === 0 ? (
-          <p className="px-5 py-4 text-sm text-zinc-400 dark:text-zinc-500">
+          <p className="px-5 py-4 text-sm text-text-muted">
             {t("noGranted")}
           </p>
         ) : (
-          <ul>
+          <ul className="divide-y divide-border">
             {grantedRps.map((rp) => (
               <li
                 key={rp.permissionId}
-                className="flex items-center gap-4 border-b border-zinc-100 px-5 py-3 last:border-0 dark:border-zinc-800"
+                className="flex items-center gap-4 px-5 py-3"
               >
-                <span className="w-40 shrink-0 font-mono text-xs font-semibold text-zinc-900 dark:text-zinc-50">
+                <span className="w-40 shrink-0 font-mono text-xs font-semibold text-text-heading">
                   {rp.permission.code}
                 </span>
-                <span className="flex-1 text-sm text-zinc-500 dark:text-zinc-400">
+                <span className="flex-1 text-sm text-text-muted">
                   {rp.permission.description}
                 </span>
                 <PermissionActionButton
@@ -106,22 +108,22 @@ export default async function RoleDetailPage({
 
       {/* Available permissions — only rendered when there is something to add */}
       {availablePerms.length > 0 && (
-        <div className="mt-6 rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="border-b border-zinc-200 px-5 py-3 dark:border-zinc-800">
-            <h2 className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+        <div className="mt-6 rounded-md border border-border bg-bg-card shadow-card">
+          <div className="border-b border-border px-5 py-3">
+            <h2 className="text-sm font-bold text-text-body">
               {t("availablePermissions")}
             </h2>
           </div>
-          <ul>
+          <ul className="divide-y divide-border">
             {availablePerms.map((perm) => (
               <li
                 key={perm.id}
-                className="flex items-center gap-4 border-b border-zinc-100 px-5 py-3 last:border-0 dark:border-zinc-800"
+                className="flex items-center gap-4 px-5 py-3"
               >
-                <span className="w-40 shrink-0 font-mono text-xs font-semibold text-zinc-900 dark:text-zinc-50">
+                <span className="w-40 shrink-0 font-mono text-xs font-semibold text-text-heading">
                   {perm.code}
                 </span>
-                <span className="flex-1 text-sm text-zinc-500 dark:text-zinc-400">
+                <span className="flex-1 text-sm text-text-muted">
                   {perm.description}
                 </span>
                 <PermissionActionButton
