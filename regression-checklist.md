@@ -140,3 +140,20 @@ Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_UR
 - After sidebar nav: URL is `vistra.easeetool.com/projects` (NOT `.../vistra/projects`).
 - After logout: URL is `vistra.easeetool.com/login` (NOT `.../vistra/login`).
 - After unauthenticated access: server redirect lands on `vistra.easeetool.com/login` (NOT `.../vistra/login`).
+
+### Stage 11 — Batch 8 (Admin: Users + External Companies restyle)
+
+56. **Users list page renders correctly:** `/admin/users` loads, shows the users table with username, role,
+    and status columns. Active users show a green badge; inactive users show a muted badge.
+57. **Create-user form works end-to-end:** `/admin/users/new` renders the form; submitting with valid data
+    creates the user and redirects to the list. Submitting a duplicate username shows the inline error
+    message without a page crash.
+58. **User detail page renders correctly:** `/admin/users/[userId]` shows the metadata card (username, role,
+    status) and the three action sections (activate/deactivate, change role, set password). Self-user
+    cannot deactivate themselves (button disabled, helper text shown).
+59. **Activate/deactivate, change-role, and set-password actions still work:** each form submission triggers
+    the correct server action and the page reflects the updated state after redirect.
+60. **External Companies list page renders correctly:** `/admin/external-companies` loads, shows the table
+    with name and type columns.
+61. **Create-external-company form works end-to-end:** `/admin/external-companies/new` renders; submitting
+    creates the company and redirects to the list. Duplicate-name error shows inline.

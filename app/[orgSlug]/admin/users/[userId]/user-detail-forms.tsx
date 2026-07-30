@@ -24,6 +24,8 @@ interface UserDetailFormsProps {
  *
  * Each form uses its own useTransition so only the form being submitted shows
  * the overlay; the others remain interactive.
+ *
+ * Stage 11 Batch 8: restyled to Sage Ease tokens. No logic changes.
  */
 export function UserDetailForms({
   orgSlug,
@@ -75,7 +77,7 @@ export function UserDetailForms({
       <LoadingOverlay visible={anyPending} />
 
       {/* Activate / Deactivate */}
-      <section className="rounded-lg border border-zinc-200 bg-white px-5 py-5 dark:border-zinc-800 dark:bg-zinc-900">
+      <section className="rounded-md border border-border bg-bg-card p-5 shadow-card">
         <form onSubmit={handleToggle}>
           <input type="hidden" name="orgSlug" value={orgSlug} />
           <input type="hidden" name="userId" value={userId} />
@@ -85,14 +87,14 @@ export function UserDetailForms({
             title={isSelf ? t("cannotDeactivateSelfTooltip") : undefined}
             className={
               isActive
-                ? "rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 dark:bg-red-700 dark:hover:bg-red-600"
-                : "rounded-md bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-green-800 disabled:opacity-50 dark:bg-green-600 dark:hover:bg-green-500"
+                ? "rounded-sm bg-status-failed-text px-4 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-50"
+                : "rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
             }
           >
             {isActive ? t("deactivateAction") : t("activateAction")}
           </button>
           {isSelf && (
-            <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-500">
+            <p className="mt-2 text-xs text-text-placeholder">
               {t("cannotDeactivateSelf")}
             </p>
           )}
@@ -100,8 +102,8 @@ export function UserDetailForms({
       </section>
 
       {/* Change Role */}
-      <section className="rounded-lg border border-zinc-200 bg-white px-5 py-5 dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="mb-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+      <section className="rounded-md border border-border bg-bg-card p-5 shadow-card">
+        <h2 className="mb-3 text-sm font-bold text-text-body">
           {t("changeRoleLabel")}
         </h2>
         <form onSubmit={handleRole} className="flex flex-col gap-3">
@@ -110,7 +112,7 @@ export function UserDetailForms({
           <select
             name="roleId"
             defaultValue={currentRoleId}
-            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:ring-zinc-50"
+            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           >
             {roles.map((r) => (
               <option key={r.id} value={r.id}>
@@ -121,7 +123,7 @@ export function UserDetailForms({
           <button
             type="submit"
             disabled={anyPending}
-            className="self-start rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            className="self-start rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
           >
             {t("changeRoleSubmit")}
           </button>
@@ -129,8 +131,8 @@ export function UserDetailForms({
       </section>
 
       {/* Set Password */}
-      <section className="rounded-lg border border-zinc-200 bg-white px-5 py-5 dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="mb-3 text-sm font-medium text-zinc-700 dark:text-zinc-300">
+      <section className="rounded-md border border-border bg-bg-card p-5 shadow-card">
+        <h2 className="mb-3 text-sm font-bold text-text-body">
           {t("setPasswordLabel")}
         </h2>
         <form onSubmit={handlePassword} className="flex flex-col gap-3">
@@ -141,12 +143,12 @@ export function UserDetailForms({
             type="password"
             required
             autoComplete="new-password"
-            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           />
           <button
             type="submit"
             disabled={anyPending}
-            className="self-start rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+            className="self-start rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
           >
             {t("setPasswordSubmit")}
           </button>
