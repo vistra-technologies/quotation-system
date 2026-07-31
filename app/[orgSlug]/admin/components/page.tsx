@@ -1,8 +1,8 @@
 import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { PERMISSIONS } from "@/lib/rbac";
-import { listComponentTypes } from "@/lib/data/components";
-import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -11,7 +11,15 @@ export const dynamic = "force-dynamic";
  * ComponentType list page (Server Component).
  *
  * Lists all ComponentTypes for the session's organization.
- * Gated on MANAGE_FEATURES — wrong-role requests redirect to the dashboard.
+ * Gated on MANAGE_FEATURES.
+ *
+ * Auth strategy:
+ *   - GET /component-types is auth-only (not MANAGE_FEATURES-gated) because the
+ *     configurator uses it too. So we use /me to check MANAGE_FEATURES first.
+ *   - Both calls are parallel.
+ *
+ * Stage 12 Batch 6: switched from requireSession/requirePermissionFor/listComponentTypes
+ * DAL to internalFetch against /me and /component-types.
  */
 export default async function ComponentTypesPage({
   params,
@@ -19,13 +27,35 @@ export default async function ComponentTypesPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const session = await requireSession(orgSlug);
-  await requirePermissionFor(session, PERMISSIONS.MANAGE_FEATURES, orgSlug);
 
-  const [types, t] = await Promise.all([
-    listComponentTypes(session),
+  const [meRes, typesRes, t] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/me`),
+    internalFetch(`/api/v1/orgs/${orgSlug}/component-types`),
     getTranslations("components"),
   ]);
+
+  if (meRes.status === 401 || typesRes.status === 401) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+  if (meRes.status === 403) redirect(await orgHref(orgSlug, "/dashboard"));
+
+  const me = (await meRes.json()) as { adminPermissions: string[] };
+  if (!me.adminPermissions.includes("MANAGE_FEATURES")) {
+    redirect(await orgHref(orgSlug, "/dashboard"));
+  }
+
+  if (!typesRes.ok) notFound();
+  const { componentTypes: types } = (await typesRes.json()) as {
+    componentTypes: Array<{
+      id: string;
+      code: string;
+      name: string;
+      active: boolean;
+      categoryId: string;
+      category: { name: string };
+      fieldsSchema: unknown[];
+    }>;
+  };
 
   return (
     <div>

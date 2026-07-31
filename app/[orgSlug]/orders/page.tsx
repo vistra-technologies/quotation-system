@@ -1,4 +1,6 @@
-import { requireSession } from "@/lib/data/session";
+import { redirect } from "next/navigation";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 import { OrdersPlaceholder } from "./orders-placeholder";
 
 // Always render live — reads session cookie.
@@ -14,6 +16,9 @@ export const dynamic = "force-dynamic";
  * Stage 10 — Task 1.8: new route, inert placeholder matching order-list-
  * page.html. All interactive elements in <OrdersPlaceholder> show the
  * "Coming Soon" toast. The Orders pipeline arrives in a future stage.
+ *
+ * Stage 12 Batch 6: switched requireSession from lib/data/session to
+ * internalFetch /me (auth-only, no RBAC gate needed).
  */
 export default async function OrdersPage({
   params,
@@ -22,8 +27,9 @@ export default async function OrdersPage({
 }) {
   const { orgSlug } = await params;
 
-  // Redirects to login if no valid session exists for this org.
-  await requireSession(orgSlug);
+  // Auth-only gate — redirect to login if no valid session.
+  const meRes = await internalFetch(`/api/v1/orgs/${orgSlug}/me`);
+  if (!meRes.ok) redirect(await orgHref(orgSlug, "/login"));
 
   return <OrdersPlaceholder />;
 }

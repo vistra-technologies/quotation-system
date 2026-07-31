@@ -1,8 +1,8 @@
 import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { PERMISSIONS } from "@/lib/rbac";
-import { listPermissions } from "@/lib/data/admin";
-import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -13,10 +13,10 @@ export const dynamic = "force-dynamic";
  * Lists ALL global Permission rows — no org scope, by design.
  * A permission created by any org's admin is visible here.
  *
- * ⚠ The inert-by-design caveat is displayed prominently above the table:
- * creating a Permission row grants no capability until a developer wires it.
+ * Gated on MANAGE_FEATURES (enforced by GET /api/v1/permissions).
  *
- * Gated on MANAGE_FEATURES. Wrong-role users are redirected to the dashboard.
+ * Stage 12 Batch 6: switched from requireSession/requirePermissionFor/listPermissions DAL
+ * to internalFetch against GET /api/v1/permissions (global endpoint).
  */
 export default async function PermissionsPage({
   params,
@@ -24,13 +24,19 @@ export default async function PermissionsPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const session = await requireSession(orgSlug);
-  await requirePermissionFor(session, PERMISSIONS.MANAGE_FEATURES, orgSlug);
 
-  const [permissions, t] = await Promise.all([
-    listPermissions(),
+  const [permsRes, t] = await Promise.all([
+    internalFetch(`/api/v1/permissions`),
     getTranslations("permissions"),
   ]);
+
+  if (permsRes.status === 401) redirect(await orgHref(orgSlug, "/login"));
+  if (permsRes.status === 403) redirect(await orgHref(orgSlug, "/dashboard"));
+  if (!permsRes.ok) notFound();
+
+  const { permissions } = (await permsRes.json()) as {
+    permissions: Array<{ id: string; code: string; description: string }>;
+  };
 
   return (
     <div>

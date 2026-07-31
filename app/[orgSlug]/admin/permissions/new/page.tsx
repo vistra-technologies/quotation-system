@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { getSession } from "@/lib/session";
-import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 import { CreatePermissionForm } from "./_components/create-permission-form";
 
 // Always render live — reads session cookie and DB.
@@ -11,12 +11,12 @@ export const dynamic = "force-dynamic";
 /**
  * Create permission page (Server Component shell).
  *
- * Auth gate is server-side. The form itself is a Client Component so it can
- * use useActionState for user-readable error display and LoadingOverlay for
- * the pending state. The inert-by-design caveat is rendered here (server side)
- * so it is always visible regardless of JS availability.
+ * Auth gate is server-side via the /me route. The form itself is a Client Component
+ * so it can use useActionState for user-readable error display and LoadingOverlay
+ * for the pending state.
  *
- * ⚠ Inert caveat rendered prominently as an amber alert — a hard DoD requirement.
+ * Stage 12 Batch 6: switched from getSession()/requirePermission() to
+ * internalFetch against /api/v1/orgs/[orgSlug]/me for MANAGE_FEATURES check.
  */
 export default async function CreatePermissionPage({
   params,
@@ -24,19 +24,14 @@ export default async function CreatePermissionPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const session = await getSession();
 
-  if (!session) {
-    redirect(`/${orgSlug}/login`);
-  }
+  const meRes = await internalFetch(`/api/v1/orgs/${orgSlug}/me`);
+  if (meRes.status === 401) redirect(await orgHref(orgSlug, "/login"));
+  if (meRes.status === 403) redirect(await orgHref(orgSlug, "/dashboard"));
 
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
-  } catch (e) {
-    if (e instanceof ForbiddenError) {
-      redirect(`/${orgSlug}/dashboard`);
-    }
-    throw e;
+  const me = (await meRes.json()) as { adminPermissions: string[] };
+  if (!me.adminPermissions.includes("MANAGE_FEATURES")) {
+    redirect(await orgHref(orgSlug, "/dashboard"));
   }
 
   const t = await getTranslations("permissions");

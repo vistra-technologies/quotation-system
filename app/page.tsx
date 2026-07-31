@@ -1,13 +1,18 @@
 import { headers } from "next/headers";
 import Link from "next/link";
-import { listOrganizationsForSelector } from "@/lib/data/admin";
+import { internalFetch } from "@/lib/internal-fetch";
 
 // Always render live — reads DB for org list and Host header.
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   // Apex — render the organization selector.
-  const orgs = await listOrganizationsForSelector();
+  // Stage 12 Batch 6: switched listOrganizationsForSelector DAL to internalFetch
+  // against the public GET /api/v1/orgs endpoint (no auth required).
+  const orgsRes = await internalFetch("/api/v1/orgs");
+  const { orgs } = orgsRes.ok
+    ? ((await orgsRes.json()) as { orgs: Array<{ id: string; slug: string; name: string }> })
+    : { orgs: [] as Array<{ id: string; slug: string; name: string }> };
 
   // Read the incoming Host header to determine the correct link format for each
   // org entry.  On *.easeetool.com hosts the proxy treats the apex host as a

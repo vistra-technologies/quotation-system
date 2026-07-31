@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { requireSession } from "@/lib/data/session";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { CreateProjectForm } from "./create-project-form";
@@ -20,9 +19,8 @@ export const dynamic = "force-dynamic";
  * only that company's name is fetched for display.  Otherwise the full
  * org list is fetched for the free-choice dropdown (current behavior).
  *
- * Stage 12: requireSession kept for session.externalCompanyId check (needed
- * for UI branching). External-company reads switched from lib/data DAL calls to
- * internalFetch against GET /api/v1/orgs/[orgSlug]/external-companies/*.
+ * Stage 12 Batch 6: switched requireSession → internalFetch /me.
+ * externalCompanyId now comes from the /me response (plan-batch6.md D2).
  */
 export default async function NewProjectPage({
   params,
@@ -30,16 +28,20 @@ export default async function NewProjectPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  // requireSession kept here: session.externalCompanyId drives the locked/free-choice branch.
-  const session = await requireSession(orgSlug);
+
+  const meRes = await internalFetch(`/api/v1/orgs/${orgSlug}/me`);
+  if (meRes.status === 401) redirect(await orgHref(orgSlug, "/login"));
+  if (!meRes.ok) redirect(await orgHref(orgSlug, "/login"));
+
+  const me = (await meRes.json()) as { externalCompanyId: string | null };
 
   let lockedCompany: { id: string; name: string } | null = null;
   let externalCompanies: { id: string; name: string }[] = [];
 
-  if (session.externalCompanyId) {
+  if (me.externalCompanyId) {
     // External user — fetch only their locked company for read-only display.
     const res = await internalFetch(
-      `/api/v1/orgs/${orgSlug}/external-companies/${session.externalCompanyId}`,
+      `/api/v1/orgs/${orgSlug}/external-companies/${me.externalCompanyId}`,
     );
     if (res.status === 401 || res.status === 403) {
       redirect(await orgHref(orgSlug, "/login"));

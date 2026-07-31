@@ -1,11 +1,15 @@
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
+import type { FieldEntry as _FieldEntry } from "@/lib/types/field-entry";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 /**
  * A single field definition within a ComponentType's fieldsSchema.
  * Stored as JSONB; shape is admin-defined at runtime.
+ *
+ * Defined in lib/types/field-entry.ts and re-exported here so that callers
+ * in app/api/** can continue using `import type { FieldEntry } from "@/lib/data/components"`.
  *
  * Stage 6 shape:
  *   type: "field" (plain text) | "radio" | "dropdown" | "checkbox"
@@ -16,15 +20,7 @@ import type { SessionData } from "@/lib/session";
  * All ComponentTypes and fields are admin-created — there is no developer-seeded/"core"
  * distinction; every field is freely editable and inert until a developer wires it in.
  */
-export type FieldEntry = {
-  key: string; // machine key used by the configurator
-  label: string; // human-readable display label
-  type: "field" | "radio" | "dropdown" | "checkbox";
-  options?: string[]; // required for radio and dropdown; absent for field/checkbox
-  hint?: string; // optional helper text
-  required: boolean;
-  basic: boolean; // true = Basic section, false = Advanced section
-};
+export type FieldEntry = _FieldEntry;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
