@@ -532,3 +532,11 @@ accurate.
 MINOR-1: `dashboard/page.tsx` catches only `meRes.status === 401 || 403` before calling `meRes.json()`. A 5xx from `/me` falls through; `me.name`/`me.orgName` parse as `undefined` and render as empty text (no crash, no `—`). Pre-existing pattern accepted for this file in Batch 6 (Batch 6 reviewer flagged the analogous gap in `admin/layout.tsx` — that version threw TypeError due to `.length` access; this one only renders empty strings). Unreachable in production. Fix: add `if (!meRes.ok) redirect(await orgHref(orgSlug, "/login"))` before `meRes.json()`.
 
 All priority checks passed: tenant isolation (all 4 COUNT queries `WHERE organizationId = session.organizationId`) ✓ · RBAC (auth-only matches dashboard visibility to all org members) ✓ · stats fallback (`EMPTY_STATS` all-zeros for any non-ok response, values render as "0") ✓ · trend-chip interpretation (DRAFT count = "in progress" correct — DRAFT is the only active status; mockup uses status-count labels not percentages for Projects/Inquiries; NEW count = "awaiting reply" correct; "No orders yet" correct with no Order model) ✓ · no `@/lib/data/*` imports in `dashboard/page.tsx` ✓ · by-page.sql updated ✓ · `npm run lint` 0 errors · `npx tsc --noEmit` 0 errors.
+
+### Batch 7c — reviewer (2026-07-31)
+
+**Verdict:** APPROVE-WITH-NITS · 0 CRITICAL · 0 IMPORTANT · 3 MINOR
+
+**Findings returned in reviewer final response** (no separate report file).
+
+All priority checks passed: tenancy (`{ organizationId: session.organizationId }` unconditional first AND condition) ✓ · externalCompanyId filter applied ONLY when `session.externalCompanyId === null` (internal users) — external users' own company enforced from session, URL param ignored ✓ · no residual cross-org code (grep + diff confirmed) ✓ · `getApiSession()` canonical pattern ✓ · no direct Prisma in route/page ✓ · no `@/lib/data/*` in page.tsx ✓ · frozen lib/api-auth.ts / lib/api-error.ts contracts respected ✓ · pagination math correct ✓ · date range presets server-side UTC ✓ · filter changes reset page to 1 ✓ · /external-companies response shape matches page's type cast ✓
