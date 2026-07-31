@@ -378,3 +378,41 @@ All other priority checks passed: `lib/api-auth.ts` byte-for-byte unchanged (fro
 **Report:** `.engineering/stage-12/review-batch6.md` ("Follow-up: Fix Verification" section)
 
 IMPORTANT-1 resolved: commit `de5447a` adds `const role = await getRoleById(session, roleId); if (!role) return apiNotFound("Role not found");` before `listRolePermissions` in the GET handler. `getRoleById` confirmed to scope by `session.organizationId` (lib/data/admin.ts lines 113–117). Guard is unconditional — no code path reaches `listRolePermissions` without passing it. POST/DELETE verbs unaffected. Response shape unchanged. `npm run lint` 0 errors · `npx tsc --noEmit` 0 errors. Batch 6 is clear to merge.
+
+### Batch 7f — developer (2026-07-31) — Admin section padding
+
+**Outcome:** DONE. Commit `ecd5f3c` on `feature/batch7f-admin-padding`.
+
+**Preview URL:** `https://quotation-system-9exlzc5tg-vistra-indias-projects.vercel.app`
+
+**Canonical pattern identified:** Non-admin sub-layouts (inquiries, projects, orders) wrap children in
+`<div className="mx-auto w-full max-w-5xl px-6 py-8">` — no background override, no `flex min-h-screen`,
+no nested `<main>`.
+
+**Root cause of inconsistency:** `admin/layout.tsx` wrapped everything in
+`<div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950">`. The `bg-zinc-50` override
+changed the app background color inside the admin section (non-admin pages inherit the shell's `bg-bg-page`
+design token). The `flex min-h-screen` created a nested full-height stacking context inside the org shell's
+`<main className="flex-1 overflow-auto">`. The children element was `<main>` — semantically invalid as a
+nested `<main>` inside the org shell's outer `<main>`.
+
+**Changed:**
+- `app/[orgSlug]/admin/layout.tsx` — removed `flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950` from
+  outer wrapper div (now bare `<div>`); changed `<main className="mx-auto w-full max-w-5xl px-6 py-8">` →
+  `<div className="mx-auto w-full max-w-5xl px-6 py-8">`. Admin secondary nav header kept unchanged
+  (content, not padding).
+- `app/[orgSlug]/admin/permissions/new/page.tsx` — changed `<div className="max-w-lg">` →
+  `<div className="mx-auto max-w-lg">` to match the other narrow-form admin pages (`users/new`,
+  `external-companies/new`, `users/[userId]` all use `mx-auto max-w-lg`).
+
+**Admin pages checked and requiring no change:** All 5 list pages + `components/new`, `components/[typeId]`,
+`roles/new`, `roles/[roleId]`, `users/new`, `external-companies/new`, `users/[userId]` — all already
+consistent within the layout's provided padding.
+
+**No data-fetching, API, or business-logic changes.**
+
+**Verify:**
+- `npm run lint` → 0 errors ✓
+- `npx tsc --noEmit` → 0 errors ✓
+- Preview READY (`https://quotation-system-9exlzc5tg-vistra-indias-projects.vercel.app`) ✓
+- `/api/health` → `{"status":"ok","database":"connected"}` ✓
