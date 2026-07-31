@@ -61,7 +61,7 @@ export default async function AdminLayout({
 
   return (
     <NextIntlClientProvider messages={clientMessages}>
-      <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
+      <div>
         <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
           <div className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-3">
             <Link
@@ -112,7 +112,7 @@ export default async function AdminLayout({
             </nav>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-5xl px-6 py-8">{children}</main>
+        <div className="mx-auto w-full max-w-5xl px-6 py-8">{children}</div>
       </div>
     </NextIntlClientProvider>
   );

@@ -451,3 +451,60 @@ users/new (all match claimed patterns) · zero data-fetching or business-logic c
 root-cause diagnosis correct (`flex min-h-screen` was a redundant stacking context inside the scroll
 host; `bg-zinc-50` was overriding the shell's design token) · `mx-auto` addition in
 permissions/new/page.tsx matches canonical narrow-form pattern.
+
+### Batch 7f — developer (2026-07-31) — Admin section padding
+
+**Outcome:** DONE. Commit `ecd5f3c` on `feature/batch7f-admin-padding`.
+
+**Preview URL:** `https://quotation-system-9exlzc5tg-vistra-indias-projects.vercel.app`
+
+**Canonical pattern identified:** Non-admin sub-layouts (inquiries, projects, orders) wrap children in
+`<div className="mx-auto w-full max-w-5xl px-6 py-8">` — no background override, no `flex min-h-screen`,
+no nested `<main>`.
+
+**Root cause of inconsistency:** `admin/layout.tsx` wrapped everything in
+`<div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950">`. The `bg-zinc-50` override
+changed the app background color inside the admin section (non-admin pages inherit the shell's `bg-bg-page`
+design token). The `flex min-h-screen` created a nested full-height stacking context inside the org shell's
+`<main className="flex-1 overflow-auto">`. The children element was `<main>` — semantically invalid as a
+nested `<main>` inside the org shell's outer `<main>`.
+
+**Changed:**
+- `app/[orgSlug]/admin/layout.tsx` — removed `flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950` from
+  outer wrapper div (now bare `<div>`); changed `<main className="mx-auto w-full max-w-5xl px-6 py-8">` →
+  `<div className="mx-auto w-full max-w-5xl px-6 py-8">`. Admin secondary nav header kept unchanged
+  (content, not padding).
+- `app/[orgSlug]/admin/permissions/new/page.tsx` — changed `<div className="max-w-lg">` →
+  `<div className="mx-auto max-w-lg">` to match the other narrow-form admin pages (`users/new`,
+  `external-companies/new`, `users/[userId]` all use `mx-auto max-w-lg`).
+
+**Admin pages checked and requiring no change:** All 5 list pages + `components/new`, `components/[typeId]`,
+`roles/new`, `roles/[roleId]`, `users/new`, `external-companies/new`, `users/[userId]` — all already
+consistent within the layout's provided padding.
+
+**No data-fetching, API, or business-logic changes.**
+
+**Verify:**
+- `npm run lint` → 0 errors ✓
+- `npx tsc --noEmit` → 0 errors ✓
+- Preview READY (`https://quotation-system-9exlzc5tg-vistra-indias-projects.vercel.app`) ✓
+- `/api/health` → `{"status":"ok","database":"connected"}` ✓
+
+### Batch 7a — reviewer (2026-07-31)
+
+**Verdict:** APPROVE · 0 CRITICAL · 0 IMPORTANT · 0 MINOR
+
+**Findings returned in reviewer final response** (no separate report file).
+
+All checks passed: `orgName` in type cast confirmed genuinely returned by `/me` route (route.ts line 83:
+`org?.name ?? session.organizationId`, always a string) — not a speculative assertion · height math
+verified correct (top bar `h-16` = 64px; sidebar header `py-4`+`h-8`+`py-4` = 16+32+16 = 64px in
+both collapsed and expanded states) · all three toast tokens (`primary-soft`, `primary-softer`,
+`primary-dark`) confirmed defined in `app/globals.css` `@theme`; `backdrop-blur-sm` is a standard
+Tailwind v4 core utility, not a custom token — no invented class names · `justify-between` with
+exactly two header children (org chip + `TopBarActions`) is correct; no displacement of existing
+right-side buttons · git diff confirms exactly 3 files changed (layout.tsx, sidebar.tsx, toast.tsx),
+23 additions, 5 deletions — zero new fetches, zero business-logic changes · login page audit confirmed:
+right panel shows only EaseeTool logo + "Sign in to continue to your account" + `<LoginForm>` in the
+unauthenticated branch — no org name rendered, matches mockup, developer's "no change needed" claim
+accurate.
