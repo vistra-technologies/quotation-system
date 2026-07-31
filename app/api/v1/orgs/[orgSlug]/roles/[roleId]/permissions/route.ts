@@ -9,6 +9,7 @@ import {
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import {
+  getRoleById,
   listRolePermissions,
   addRolePermission,
   removeRolePermission,
@@ -23,9 +24,10 @@ export const dynamic = "force-dynamic";
  * List the permissions currently granted to a role, A→Z by code.
  *
  * Auth: authenticated org member with MANAGE_FEATURES permission.
- * Tenancy: the role's permissions are fetched by roleId; the role itself is
- *          org-scoped (enforced by addRolePermission/removeRolePermission via
- *          assertRoleInOrg). The list read trusts getApiSession()'s cross-tenant guard.
+ * Tenancy: getRoleById() confirms the role belongs to the session's org before
+ *          listRolePermissions() runs — mirrors the same guard in GET /roles/[roleId].
+ *          Without this, a MANAGE_FEATURES user who knows a foreign role UUID could
+ *          read that role's permission assignments (cross-org read leak).
  *
  * Returns: { rolePermissions: Array<{ permissionId, permission: { id, code, description } }> }
  */
@@ -63,6 +65,10 @@ export async function GET(
   }
 
   try {
+    // Org-membership guard: getRoleById() returns null for roles that don't
+    // belong to the session's org. Mirrors the guard in GET /roles/[roleId].
+    const role = await getRoleById(session, roleId);
+    if (!role) return apiNotFound("Role not found");
     const rolePermissions = await listRolePermissions(roleId);
     return NextResponse.json({ rolePermissions });
   } catch (err) {
