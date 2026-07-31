@@ -37,7 +37,7 @@ export default async function CreatePermissionPage({
   const t = await getTranslations("permissions");
 
   return (
-    <div className="max-w-lg">
+    <div className="mx-auto max-w-lg">
       <div className="flex items-center gap-3">
         <Link
           href={`/${orgSlug}/admin/permissions`}
