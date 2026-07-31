@@ -1,8 +1,8 @@
 import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { PERMISSIONS } from "@/lib/rbac";
-import { listRoles } from "@/lib/data/admin";
-import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -12,6 +12,11 @@ export const dynamic = "force-dynamic";
  *
  * Lists all roles for the session's organization.
  * Gated on MANAGE_FEATURES — wrong-role requests redirect to the dashboard.
+ *
+ * Stage 12 Batch 6: switched from requireSession/requirePermissionFor/listRoles DAL
+ * to internalFetch against GET /api/v1/orgs/[orgSlug]/me (for MANAGE_FEATURES gate)
+ * and GET /api/v1/orgs/[orgSlug]/roles (for role data).
+ * Both are called in parallel; MANAGE_FEATURES check from /me gates whether to render.
  */
 export default async function RolesPage({
   params,
@@ -19,13 +24,26 @@ export default async function RolesPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const session = await requireSession(orgSlug);
-  await requirePermissionFor(session, PERMISSIONS.MANAGE_FEATURES, orgSlug);
 
-  const [roles, t] = await Promise.all([
-    listRoles(session),
-    getTranslations("roles"),
+  const [meRes, rolesRes] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/me`),
+    internalFetch(`/api/v1/orgs/${orgSlug}/roles`),
   ]);
+
+  if (meRes.status === 401) redirect(await orgHref(orgSlug, "/login"));
+  if (meRes.status === 403) redirect(await orgHref(orgSlug, "/dashboard"));
+
+  const me = (await meRes.json()) as { adminPermissions: string[] };
+  if (!me.adminPermissions.includes("MANAGE_FEATURES")) {
+    redirect(await orgHref(orgSlug, "/dashboard"));
+  }
+
+  if (!rolesRes.ok) notFound();
+  const { roles } = (await rolesRes.json()) as {
+    roles: Array<{ id: string; name: string; description: string | null }>;
+  };
+
+  const t = await getTranslations("roles");
 
   return (
     <div>

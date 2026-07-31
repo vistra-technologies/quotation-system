@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { createComponentType } from "../actions";
-import type { FieldEntry } from "@/lib/data/components";
+import type { FieldEntry } from "@/lib/types/field-entry";
 
 // ─── Inner status helpers ─────────────────────────────────────────────────────
 

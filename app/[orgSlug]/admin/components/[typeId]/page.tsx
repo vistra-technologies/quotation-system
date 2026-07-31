@@ -1,9 +1,9 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { PERMISSIONS } from "@/lib/rbac";
-import { getComponentTypeById, listComponentCategories } from "@/lib/data/components";
-import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
+import type { FieldEntry } from "@/lib/types/field-entry";
 import { EditComponentForm } from "./edit-component-form";
 
 // Always render live — reads session cookie and DB.
@@ -15,6 +15,11 @@ export const dynamic = "force-dynamic";
  * Loads the ComponentType by id (org-scoped), then renders the
  * EditComponentForm Client Component with the current values.
  * Gated on MANAGE_FEATURES.
+ *
+ * Stage 12 Batch 6: switched from requireSession/requirePermissionFor/getComponentTypeById/
+ * listComponentCategories DAL to internalFetch against /component-types/[typeId]
+ * and /component-categories. Auth check comes from the 401/403 the API routes return —
+ * GET /component-types/[typeId] is MANAGE_FEATURES gated, so 403 means no permission.
  */
 export default async function EditComponentTypePage({
   params,
@@ -22,16 +27,32 @@ export default async function EditComponentTypePage({
   params: Promise<{ orgSlug: string; typeId: string }>;
 }) {
   const { orgSlug, typeId } = await params;
-  const session = await requireSession(orgSlug);
-  await requirePermissionFor(session, PERMISSIONS.MANAGE_FEATURES, orgSlug);
 
-  const [ct, categories, t] = await Promise.all([
-    getComponentTypeById(session, typeId),
-    listComponentCategories(session),
+  const [ctRes, categoriesRes, t] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/component-types/${typeId}`),
+    internalFetch(`/api/v1/orgs/${orgSlug}/component-categories`),
     getTranslations("components"),
   ]);
 
-  if (!ct) notFound();
+  if (ctRes.status === 401 || categoriesRes.status === 401) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+  if (ctRes.status === 403) redirect(await orgHref(orgSlug, "/dashboard"));
+  if (ctRes.status === 404) notFound();
+
+  const { componentType: ct } = (await ctRes.json()) as {
+    componentType: {
+      id: string;
+      code: string;
+      name: string;
+      active: boolean;
+      categoryId: string;
+      fieldsSchema: FieldEntry[];
+    };
+  };
+  const { categories } = (await categoriesRes.json()) as {
+    categories: { id: string; name: string }[];
+  };
 
   return (
     <div>

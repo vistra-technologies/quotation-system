@@ -1,4 +1,5 @@
 "use server";
+/* eslint-disable no-restricted-imports -- deferred per stage-12.md: add-wall actions use floors/partitions DAL; migration blocked until interactive canvas stage */
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";

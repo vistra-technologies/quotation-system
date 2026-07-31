@@ -1,8 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { PERMISSIONS } from "@/lib/rbac";
-import { requireSession, requirePermissionFor } from "@/lib/data/session";
-import { listComponentCategories } from "@/lib/data/components";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 import { CreateComponentForm } from "./create-component-form";
 
 // Always render live — reads session cookie and DB.
@@ -13,6 +13,9 @@ export const dynamic = "force-dynamic";
  *
  * Handles auth + RBAC gate server-side, then delegates form rendering to the
  * CreateComponentForm Client Component.
+ *
+ * Stage 12 Batch 6: switched from requireSession/requirePermissionFor/listComponentCategories
+ * DAL to internalFetch against /me (MANAGE_FEATURES check) and /component-categories.
  */
 export default async function NewComponentTypePage({
   params,
@@ -20,13 +23,26 @@ export default async function NewComponentTypePage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const session = await requireSession(orgSlug);
-  await requirePermissionFor(session, PERMISSIONS.MANAGE_FEATURES, orgSlug);
 
-  const [categories, t] = await Promise.all([
-    listComponentCategories(session),
+  const [meRes, categoriesRes, t] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/me`),
+    internalFetch(`/api/v1/orgs/${orgSlug}/component-categories`),
     getTranslations("components"),
   ]);
+
+  if (meRes.status === 401 || categoriesRes.status === 401) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+  if (meRes.status === 403) redirect(await orgHref(orgSlug, "/dashboard"));
+
+  const me = (await meRes.json()) as { adminPermissions: string[] };
+  if (!me.adminPermissions.includes("MANAGE_FEATURES")) {
+    redirect(await orgHref(orgSlug, "/dashboard"));
+  }
+
+  const { categories } = (await categoriesRes.json()) as {
+    categories: { id: string; name: string }[];
+  };
 
   return (
     <div>

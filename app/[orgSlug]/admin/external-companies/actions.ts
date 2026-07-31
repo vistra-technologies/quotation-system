@@ -2,9 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
-import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { createExternalCompany as dalCreateExternalCompany } from "@/lib/data/external-companies";
-import { requireSession } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 
 // ---------------------------------------------------------------------------
 // createExternalCompany
@@ -17,24 +16,16 @@ export type CreateExternalCompanyState = { error: string | null };
  *
  * Uses the useActionState signature so the client form can surface errors
  * without crashing to an error boundary.
- * All DB work and tenancy checks are delegated to lib/data/external-companies.ts.
+ *
+ * Gate: MANAGE_USERS (enforced by POST /api/v1/orgs/[orgSlug]/external-companies).
+ *
+ * Stage 12 Batch 6: thin marshaler — FormData → internalFetch → error state or redirect.
  */
 export async function createExternalCompany(
   prevState: CreateExternalCompanyState,
   formData: FormData,
 ): Promise<CreateExternalCompanyState> {
   const orgSlug = formData.get("orgSlug") as string | null;
-  const session = await requireSession(orgSlug ?? "");
-
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_USERS);
-  } catch (e) {
-    if (e instanceof ForbiddenError) {
-      redirect(`/${orgSlug}/dashboard`);
-    }
-    throw e;
-  }
-
   const name = (formData.get("name") as string | null)?.trim();
   const type = formData.get("type") as string | null;
 
@@ -46,10 +37,22 @@ export async function createExternalCompany(
     return { error: "Invalid company type" };
   }
 
-  try {
-    await dalCreateExternalCompany(session, { name, type });
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "An error occurred" };
+  if (!orgSlug) return { error: "Missing orgSlug" };
+
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/external-companies`,
+    {
+      method: "POST",
+      body: JSON.stringify({ name, type }),
+    },
+  );
+
+  if (res.status === 401) redirect(await orgHref(orgSlug, "/login"));
+  if (res.status === 403) redirect(await orgHref(orgSlug, "/dashboard"));
+
+  if (!res.ok) {
+    const body = (await res.json()) as { error?: string };
+    return { error: body.error ?? "Failed to create company" };
   }
 
   revalidatePath(`/${orgSlug}/admin/external-companies`);

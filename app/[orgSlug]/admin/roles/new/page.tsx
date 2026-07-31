@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { getSession } from "@/lib/session";
-import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
+import { internalFetch } from "@/lib/internal-fetch";
+import { orgHref } from "@/lib/orgHref";
 import { CreateRoleForm } from "./create-role-form";
 
 // Always render live — reads session cookie and DB.
@@ -11,9 +11,12 @@ export const dynamic = "force-dynamic";
 /**
  * Create-role page (Server Component shell).
  *
- * Handles auth + RBAC gate server-side, then delegates form rendering to the
- * CreateRoleForm Client Component (which needs to be a Client Component so
- * useFormStatus() can drive the loading overlay).
+ * Handles auth + RBAC gate server-side via the /me route, then delegates form
+ * rendering to the CreateRoleForm Client Component (which needs to be a Client
+ * Component so useFormStatus() can drive the loading overlay).
+ *
+ * Stage 12 Batch 6: switched from getSession()/requirePermission() DAL to
+ * internalFetch against /api/v1/orgs/[orgSlug]/me.
  */
 export default async function NewRolePage({
   params,
@@ -21,14 +24,14 @@ export default async function NewRolePage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const session = await getSession();
-  if (!session) redirect(`/${orgSlug}/login`);
 
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
-  } catch (e) {
-    if (e instanceof ForbiddenError) redirect(`/${orgSlug}/dashboard`);
-    throw e;
+  const meRes = await internalFetch(`/api/v1/orgs/${orgSlug}/me`);
+  if (meRes.status === 401) redirect(await orgHref(orgSlug, "/login"));
+  if (meRes.status === 403) redirect(await orgHref(orgSlug, "/dashboard"));
+
+  const me = (await meRes.json()) as { adminPermissions: string[] };
+  if (!me.adminPermissions.includes("MANAGE_FEATURES")) {
+    redirect(await orgHref(orgSlug, "/dashboard"));
   }
 
   const t = await getTranslations("roles");
