@@ -508,3 +508,27 @@ right-side buttons · git diff confirms exactly 3 files changed (layout.tsx, sid
 right panel shows only EaseeTool logo + "Sign in to continue to your account" + `<LoginForm>` in the
 unauthenticated branch — no org name rendered, matches mockup, developer's "no change needed" claim
 accurate.
+
+### Batch 7b — developer (2026-07-31)
+
+**Outcome:** DONE. Commit `22f8aee` (+ empty retrigger `961b20b`) on `feature/batch7b-dashboard`.
+
+**Preview URL:** `https://quotation-system-6yuhj304s-vistra-indias-projects.vercel.app`
+
+**Changed:**
+- `lib/data/stats.ts` (new) — `getDashboardStats(session)`: 4 parallel Prisma COUNT queries scoped to `session.organizationId` (projectsTotal, projectsInProgress [DRAFT], inquiriesTotal, inquiriesNew [NEW]).
+- `app/api/v1/orgs/[orgSlug]/stats/route.ts` (new) — GET, auth-only. Calls `getDashboardStats()`, returns `{ ...stats, ordersTotal: 0 }`. ordersTotal hardcoded 0 — no Order model.
+- `app/[orgSlug]/dashboard/page.tsx` (rewritten) — fetches `/me` and `/stats` in parallel; renders KPI tiles; graceful EMPTY_STATS (all zeros) fallback if stats fails; never shows `—`.
+- `quotation-system-docs/design-docs/sql-queries/by-page.sql` — Batch 7b section (commit `edebd67` on docs `main`).
+
+**Verify:** `npm run lint` → 0 errors · `npx tsc --noEmit` → 0 errors · Preview READY (48s) · `/api/health` `{ database: "connected" }` · `GET /api/v1/orgs/vistra/stats` (unauthenticated) → 401 ✓
+
+### Batch 7b — reviewer (2026-07-31)
+
+**Verdict:** APPROVE-WITH-NITS · 0 CRITICAL · 0 IMPORTANT · 1 MINOR
+
+**Findings in reviewer final response** (no separate report file).
+
+MINOR-1: `dashboard/page.tsx` catches only `meRes.status === 401 || 403` before calling `meRes.json()`. A 5xx from `/me` falls through; `me.name`/`me.orgName` parse as `undefined` and render as empty text (no crash, no `—`). Pre-existing pattern accepted for this file in Batch 6 (Batch 6 reviewer flagged the analogous gap in `admin/layout.tsx` — that version threw TypeError due to `.length` access; this one only renders empty strings). Unreachable in production. Fix: add `if (!meRes.ok) redirect(await orgHref(orgSlug, "/login"))` before `meRes.json()`.
+
+All priority checks passed: tenant isolation (all 4 COUNT queries `WHERE organizationId = session.organizationId`) ✓ · RBAC (auth-only matches dashboard visibility to all org members) ✓ · stats fallback (`EMPTY_STATS` all-zeros for any non-ok response, values render as "0") ✓ · trend-chip interpretation (DRAFT count = "in progress" correct — DRAFT is the only active status; mockup uses status-count labels not percentages for Projects/Inquiries; NEW count = "awaiting reply" correct; "No orders yet" correct with no Order model) ✓ · no `@/lib/data/*` imports in `dashboard/page.tsx` ✓ · by-page.sql updated ✓ · `npm run lint` 0 errors · `npx tsc --noEmit` 0 errors.
