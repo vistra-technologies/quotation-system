@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import { DeleteUserButton } from "./delete-user-button";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -12,6 +13,8 @@ export const dynamic = "force-dynamic";
 interface UserRow {
   id: string;
   username: string;
+  firstName: string;
+  lastName: string;
   active: boolean;
   role: { name: string };
 }
@@ -26,6 +29,9 @@ interface UserRow {
  * Stage 12: switched from direct requireSession + DAL calls to internalFetch
  * against GET /api/v1/orgs/[orgSlug]/users. RBAC (MANAGE_USERS) is enforced
  * by the route handler — 401/403 here redirects to login.
+ *
+ * Batch 7g: added Full Name column; added Delete row action (client component
+ * with window.confirm() before proceeding).
  */
 export default async function UsersPage({
   params,
@@ -75,6 +81,9 @@ export default async function UsersPage({
                   {t("colUsername")}
                 </th>
                 <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
+                  {t("colFullName")}
+                </th>
+                <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
                   {t("colRole")}
                 </th>
                 <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
@@ -92,6 +101,9 @@ export default async function UsersPage({
                   <td className="px-5 py-3 font-medium text-zinc-900 dark:text-zinc-50">
                     {user.username}
                   </td>
+                  <td className="px-5 py-3 text-zinc-700 dark:text-zinc-300">
+                    {user.firstName} {user.lastName}
+                  </td>
                   <td className="px-5 py-3 text-zinc-600 dark:text-zinc-400">
                     {user.role.name}
                   </td>
@@ -107,12 +119,19 @@ export default async function UsersPage({
                     </span>
                   </td>
                   <td className="px-5 py-3 text-right">
-                    <Link
-                      href={`/${orgSlug}/admin/users/${user.id}`}
-                      className="text-sm font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-50"
-                    >
-                      {t("colActions")}
-                    </Link>
+                    <div className="flex items-center justify-end gap-4">
+                      <Link
+                        href={`/${orgSlug}/admin/users/${user.id}`}
+                        className="text-sm font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-50"
+                      >
+                        {t("colActions")}
+                      </Link>
+                      <DeleteUserButton
+                        orgSlug={orgSlug}
+                        userId={user.id}
+                        username={user.username}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}

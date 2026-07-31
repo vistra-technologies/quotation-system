@@ -378,3 +378,23 @@ All other priority checks passed: `lib/api-auth.ts` byte-for-byte unchanged (fro
 **Report:** `.engineering/stage-12/review-batch6.md` ("Follow-up: Fix Verification" section)
 
 IMPORTANT-1 resolved: commit `de5447a` adds `const role = await getRoleById(session, roleId); if (!role) return apiNotFound("Role not found");` before `listRolePermissions` in the GET handler. `getRoleById` confirmed to scope by `session.organizationId` (lib/data/admin.ts lines 113–117). Guard is unconditional — no code path reaches `listRolePermissions` without passing it. POST/DELETE verbs unaffected. Response shape unchanged. `npm run lint` 0 errors · `npx tsc --noEmit` 0 errors. Batch 6 is clear to merge.
+
+### Batch 7g — developer (2026-07-31)
+
+**Outcome:** BLOCKED — schema fields required by the stage doc are missing from `prisma/schema.prisma`.
+
+**Schema audit result:**
+- `firstName` — NOT in schema (only a single `name` field exists, currently set to `username`)
+- `lastName` — NOT in schema
+- `mobile` — NOT in schema
+- `profileEmail String?` — EXISTS (maps to the optional "Email" field)
+
+The stage doc requires First Name and Last Name as **mandatory** create-user form fields, and Mobile as **optional**. All three map to columns that don't exist on the `User` model. Proceeding would require a `prisma migrate dev` against the Neon dev DB — an irreversible, higher-risk operation that also forces a design decision about the existing `name` field (a better-auth core field currently set to `username`).
+
+**Per briefing instructions:** "If the schema is missing required fields (firstName/lastName/mobile), STOP and report BLOCKED — do not write a migration without explicit sign-off."
+
+**No code changes made.** Worktree is clean at the starting commit.
+
+**What CAN be done without schema changes (for reference):** password min-8 validation, delete-with-confirm row action (new route + action + DAL needed), detail page showing `profileEmail`. These are partial and wouldn't satisfy the full scope — not implemented, awaiting human decision.
+
+**Plan:** `.engineering/stage-12/plan-batch7g.md` — full schema audit, options (add nullable fields / repurpose `name` / defer), and file change list for when unblocked.
