@@ -435,3 +435,19 @@ The stage doc requires First Name and Last Name as **mandatory** create-user for
 - `DELETE /api/v1/orgs/vistra/users/fake-id` (unauthenticated) → 401 ✓ (route deployed)
 - `POST /api/v1/orgs/vistra/users` (unauthenticated) → 401 ✓ (route deployed)
 - Full functional verification (authenticated MANAGE_USERS session: create form shows new fields, password min-8 enforced client+server, list shows Full Name column + Delete button with confirm, detail shows richer fields) — to be covered by end-of-stage tester pass.
+
+### Batch 7f — reviewer (2026-07-31)
+
+**Verdict:** APPROVE · 0 CRITICAL · 0 IMPORTANT · 0 MINOR
+
+**Report:** [`.engineering/stage-12/review-batch7f.md`](./review-batch7f.md)
+
+All priority checks passed: dark-mode concern verified unfounded (`--color-bg-page` has no dark-mode
+variant anywhere in the codebase — the design system is uniformly light-only for page backgrounds;
+removing `dark:bg-zinc-950` is a consistency improvement, not a regression) · `<main>` → `<div>`
+semantically correct (no CSS tag-selector targets `main`, outer shell `<main>` remains the document
+landmark) · audit of "no change needed" pages confirmed accurate for roles/page, components/page,
+users/new (all match claimed patterns) · zero data-fetching or business-logic changes in diff ·
+root-cause diagnosis correct (`flex min-h-screen` was a redundant stacking context inside the scroll
+host; `bg-zinc-50` was overriding the shell's design token) · `mx-auto` addition in
+permissions/new/page.tsx matches canonical narrow-form pattern.
