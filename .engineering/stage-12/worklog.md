@@ -356,3 +356,25 @@ Other:
 - Bearer token on /me → `{"error":"Bearer token authentication not yet supported"}` ✓
 - Bearer token on /permissions → `{"error":"Bearer token authentication not yet supported"}` ✓
 - Full functional verification (authenticated session: shell renders, dashboard shows org/role/permissions, admin CRUD) to be covered by end-of-stage tester pass per stage doc.
+
+### Batch 6 — reviewer (2026-07-31)
+
+**Verdict:** CHANGES-NEEDED · 0 CRITICAL · 1 IMPORTANT · 2 MINOR
+
+**Report:** `.engineering/stage-12/review-batch6.md` (findings returned in reviewer final response)
+
+IMPORTANT-1: `GET /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions` (route.ts line 66) calls `listRolePermissions(roleId)` without verifying the role belongs to the session's org. `getApiSession()` confirms the user is in `orgSlug`'s org, but does not check whether `roleId` is in that org. A user with MANAGE_FEATURES in org A could call this endpoint with a UUID from org B's role and read org B's role-permission assignments. POST and DELETE on the same route ARE safe — `addRolePermission`/`removeRolePermission` call `assertRoleInOrg` in the DAL. Fix: add `const role = await getRoleById(session, roleId); if (!role) return apiNotFound("Role not found");` before the `listRolePermissions` call.
+
+MINOR-1: ESLint ban rule (`eslint.config.mjs`) catches `@/lib/data/*` alias imports only — a relative import `../../lib/data/admin` would not be flagged. No current violations (the codebase universally uses the alias), so not a functional gap today. Fix: add a second pattern matching `**/lib/data/**` to catch relative paths, or accept the limitation given the alias convention.
+
+MINOR-2: `app/[orgSlug]/admin/layout.tsx` line 40 handles only 401 (→ login redirect) and 403 (→ dashboard redirect). If `/me` returns 404 or 5xx, execution falls through to `(await meRes.json()) as { adminPermissions: string[] }`, leaving `me.adminPermissions === undefined` and throwing a TypeError on `.length`. Unreachable in production (proxy returns 404 before Next.js for unknown slugs), but inconsistent with the outer layout which uses `!meRes.ok` for full defensive coverage. Fix: add `if (!meRes.ok) redirect(await orgHref(orgSlug, "/login"));` after the 403 check (or reuse the `!meRes.ok` pattern).
+
+All other priority checks passed: `lib/api-auth.ts` byte-for-byte unchanged (frozen contract held) ✓ · `/api/v1/permissions` auth: checks Bearer seam, checks active flag (`!u.active`), checks MANAGE_FEATURES from session's own org ✓ · `/me` route uses lib/data/admin DAL (no direct Prisma) ✓ · adminPermissions filter is server-side (never client-gated) ✓ · login-passthrough behavior preserved in outer layout (all `!meRes.ok` → render children) ✓ · admin nav links driven by server-side adminPermissions subset (MANAGE_USERS/MANAGE_FEATURES) — strings match PERMISSIONS constants ✓ · POST `/roles` MANAGE_FEATURES gated ✓ · GET `/roles/[roleId]` org-scoped via `getRoleById(session, roleId)` ✓ · POST/DELETE `/roles/[roleId]/permissions` org-scoped via `assertRoleInOrg` in DAL ✓ · 3 deferred design files have correct eslint-disable comments, no new exemptions in Batch 6 code ✓ · `lib/data/session.ts` correctly retained (3 deferred files still import it, ban rule would catch any new import) ✓ · `npm run lint` 0 errors (1 pre-existing warning) ✓ · `npx tsc --noEmit` 0 errors ✓
+
+### Batch 6 — reviewer follow-up: fix verification (2026-07-31)
+
+**Verdict:** APPROVE-WITH-NITS · 0 CRITICAL · 0 IMPORTANT · 2 MINOR (pre-existing, developer's discretion)
+
+**Report:** `.engineering/stage-12/review-batch6.md` ("Follow-up: Fix Verification" section)
+
+IMPORTANT-1 resolved: commit `de5447a` adds `const role = await getRoleById(session, roleId); if (!role) return apiNotFound("Role not found");` before `listRolePermissions` in the GET handler. `getRoleById` confirmed to scope by `session.organizationId` (lib/data/admin.ts lines 113–117). Guard is unconditional — no code path reaches `listRolePermissions` without passing it. POST/DELETE verbs unaffected. Response shape unchanged. `npm run lint` 0 errors · `npx tsc --noEmit` 0 errors. Batch 6 is clear to merge.
