@@ -378,3 +378,89 @@ All other priority checks passed: `lib/api-auth.ts` byte-for-byte unchanged (fro
 **Report:** `.engineering/stage-12/review-batch6.md` ("Follow-up: Fix Verification" section)
 
 IMPORTANT-1 resolved: commit `de5447a` adds `const role = await getRoleById(session, roleId); if (!role) return apiNotFound("Role not found");` before `listRolePermissions` in the GET handler. `getRoleById` confirmed to scope by `session.organizationId` (lib/data/admin.ts lines 113–117). Guard is unconditional — no code path reaches `listRolePermissions` without passing it. POST/DELETE verbs unaffected. Response shape unchanged. `npm run lint` 0 errors · `npx tsc --noEmit` 0 errors. Batch 6 is clear to merge.
+
+### Batch 7c — developer (2026-07-31)
+
+**Outcome:** DONE. Commit `5f6a264` on `feature/batch7c-inquiries-list-pattern`.
+
+**Preview URL:** `https://quotation-system-i4jg0utn0-vistra-indias-projects.vercel.app`
+
+**Changed (app repo):**
+- `components/list-page-controls.tsx` (NEW) — shared "use client" component. Two named exports:
+  - `ListPageControls`: toolbar (date-range dropdown, 350ms-debounced search input, optional
+    org-switcher for internal+all, My/All segmented toggle). All interactions navigate via
+    URL params (`router.push`). Scope/search/dateRange changes reset page to 1.
+  - `ListPagePagination`: self-contained footer with page count, prev/next, numbered buttons
+    (compact ellipsis for >7 pages). Uses its own `useRouter`/`useSearchParams` — no coupling
+    to `ListPageControls`.
+  - Entity-agnostic: `entityLabel` + `searchPlaceholder` props; column definitions stay in parent.
+  - Projects/Orders (Batches 7d/7e) import this component unchanged.
+- `lib/data/inquiries.ts` — added `listInquiriesPaginated(session, params)`:
+  - RBAC visibility: `scope=mine` → `createdByUserId = session.userId` (all users);
+    `scope=all + external user (externalCompanyId != null)` → own-company filter;
+    `scope=all + internal user (null)` → full org scope.
+  - Full-text search: name + externalCompany.name (ILIKE, case-insensitive).
+  - Date filter: `createdAt` ≥ `dateFrom` / ≤ `dateTo` (passed as `Date` objects from route).
+  - Returns `{ inquiries, total }` — parallel `count` + `findMany`.
+  - Old `listInquiries` kept with `@deprecated` note (no other callers).
+- `app/api/v1/orgs/[orgSlug]/inquiries/route.ts` GET — extended with `scope/search/dateRange/page/pageSize`
+  query params; server-side `resolveDateRange()` helper converts preset keys to `Date` bounds;
+  returns `{ inquiries, total, page, pageSize }`.
+- `app/[orgSlug]/inquiries/page.tsx` — rewritten: new columns (Project Name, Client Name/Company,
+  Location, Status, Created On, Submission Date "—"); parallel fetch `/me` + `/inquiries`; sequential
+  fetch `/api/v1/orgs` for internal users' org-switcher; `isInternal` discriminator from
+  `me.externalCompanyId === null`; `clientColumnHeader` = "Company" (internal) / "Client Name" (external).
+- `app/[orgSlug]/inquiries/layout.tsx` — margins: `max-w-[1180px] px-8 pt-7 pb-12` (was `max-w-5xl px-6 py-8`).
+- `app/[orgSlug]/inquiries/loading.tsx` — updated skeleton for new toolbar + columns + pagination.
+
+**Changed (docs repo, commit `2394e9e` on main):**
+- `design-docs/sql-queries/by-page.sql` — updated inquiries GET section to reflect `listInquiriesPaginated` (count + paginated data queries with scope/search/date conditions).
+
+**Key decisions/deviations (per plan-batch7c.md):**
+- D1 (Submission Date): no `submittedAt` field on Inquiry schema → renders "—". Adding a migration is out of scope for a UI pass.
+- D2 (Org-switcher): navigation affordance only — selecting a different org navigates to `/{slug}/inquiries?scope=all`. Cross-tenant session guard applies normally (user re-authenticates if needed).
+- D3 (role discriminator): `me.externalCompanyId === null` used as the internal/external discriminator, not role name strings — robust against role renaming.
+- D4 (old `listInquiries`): kept with `@deprecated` annotation. ESLint rule prevents new callers from `app/[orgSlug]/**`.
+
+**Reused:** `lib/api-auth.ts` (frozen), `lib/api-error.ts` (frozen), `lib/internal-fetch.ts` (frozen), `lib/orgHref.ts`, `lib/data/inquiries.ts` (extended), design tokens from `app/globals.css`.
+
+**Verify:**
+- `npm run lint` → 0 errors (1 pre-existing warning in org-nav.spec.ts) ✓
+- `npx tsc --noEmit` → 0 errors ✓
+- Preview READY in 52s (`https://quotation-system-i4jg0utn0-vistra-indias-projects.vercel.app`) ✓
+- `/api/health` → `{ database: "connected" }` ✓
+- `GET /api/v1/orgs/vistra/inquiries` (unauthenticated) → 401 `{"error":"Not authenticated"}` ✓
+- `GET /api/v1/orgs/vistra/inquiries?scope=all&page=1&pageSize=20` (unauthenticated) → 401 ✓
+- `GET /api/v1/orgs/vistra/inquiries` with Bearer token → 401 "Bearer token authentication not yet supported" ✓
+- Full functional RBAC verification (scope toggle, external-company isolation, org-switcher visibility) requires authenticated session — to be covered by the end-of-stage tester pass per stage doc, and by manual verification against the preview URL with real sessions.
+
+**Shared component location for Projects/Orders batches:**
+`components/list-page-controls.tsx` exports `ListPageControls` and `ListPagePagination`.
+Props required by consuming pages: `entityLabel`, `searchPlaceholder`, `scope`, `search`, `dateRange`,
+`externalCompanies` (null for external users), `externalCompanyId`; and `totalCount`/`page`/`pageSize`
+for pagination. Column definitions stay entirely in the parent page — the shared component owns only
+toolbar + footer.
+
+### Batch 7c — fix: org-switcher → external-company filter (2026-07-31)
+
+**Outcome:** DONE. Correction from human: no cross-org capability exists. The org-switcher was replaced
+with an external-company filter dropdown (within-org filtering only).
+
+**Changed:**
+- `components/list-page-controls.tsx` — replaced `OrgOption`/`orgs`/`currentOrgSlug` props +
+  cross-org nav with `ExternalCompanyOption`/`externalCompanies`/`externalCompanyId` props.
+  `handleCompanyChange()` updates `externalCompanyId` URL param (does NOT navigate cross-org).
+  Dropdown shows only when `externalCompanies !== null && scope === "all"`.
+- `lib/data/inquiries.ts` — added `externalCompanyId?: string` to `ListInquiriesParams`;
+  `listInquiriesPaginated` appends `{ externalCompanyId }` AND condition for internal users only —
+  never overrides the org-level tenant scope.
+- `app/api/v1/orgs/[orgSlug]/inquiries/route.ts` GET — parses `externalCompanyId` from URL params
+  and passes to `listInquiriesPaginated`.
+- `app/[orgSlug]/inquiries/page.tsx` — removed `/api/v1/orgs` fetch; added
+  `/api/v1/orgs/${orgSlug}/external-companies` fetch for internal users (response shape:
+  `{ companies: [{ id, name }] }`); `externalCompanyId` param parsed from `searchParams`;
+  `ListPageControls` props updated to `externalCompanies`/`externalCompanyId`.
+
+**Verify:**
+- `npm run lint` → 0 errors ✓
+- `npx tsc --noEmit` → 0 errors ✓

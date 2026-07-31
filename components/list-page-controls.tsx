@@ -5,9 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface OrgOption {
+interface ExternalCompanyOption {
   id: string;
-  slug: string;
   name: string;
 }
 
@@ -26,13 +25,18 @@ interface ListPageControlsProps {
   /** Active date-range preset key (empty string = "All dates"). */
   dateRange: string;
   /**
-   * List of orgs for the org-switcher dropdown.
-   * null = external user — the switcher is not rendered.
-   * For internal users, pass the full list from GET /api/v1/orgs.
+   * Active external-company filter value — empty string means "All companies".
+   * Only meaningful when scope="all" and externalCompanies is non-null.
    */
-  orgs: OrgOption[] | null;
-  /** The org slug currently in the URL — used to navigate when switching orgs. */
-  currentOrgSlug: string;
+  externalCompanyId: string;
+  /**
+   * External companies for the filter dropdown, scoped to the current org.
+   * null = external user — the filter is not rendered (they already see only
+   * their own company's records via RBAC and have no need to filter further).
+   * For internal users (Admin / Company Member), pass the org's company list
+   * from GET /api/v1/orgs/[orgSlug]/external-companies.
+   */
+  externalCompanies: ExternalCompanyOption[] | null;
 }
 
 // ─── Date range options ───────────────────────────────────────────────────────
@@ -50,12 +54,12 @@ const DATE_RANGE_OPTIONS: { value: string; label: string }[] = [
 /**
  * Shared list-page toolbar (Client Component).
  *
- * Handles: date-range filter, search input (debounced), My/All scope toggle,
- * and optional org-switcher (internal users + All scope only).
+ * Handles: date-range filter, search input (debounced), optional external-company
+ * filter (internal users + All scope only), and My/All scope toggle.
  *
  * All state lives in URL search params — each interaction calls router.push() so
- * the Server Component page re-fetches with new filters. Scope/search/dateRange
- * changes reset page to 1 to avoid stale pagination.
+ * the Server Component page re-fetches with new filters. Filter changes reset
+ * page to 1 to avoid stale pagination.
  *
  * Reuse by Projects/Orders batches: pass entityLabel, searchPlaceholder, and
  * the server-resolved current param values. Column definitions stay in the
@@ -69,8 +73,8 @@ export function ListPageControls({
   scope,
   search,
   dateRange,
-  orgs,
-  currentOrgSlug,
+  externalCompanyId,
+  externalCompanies,
 }: ListPageControlsProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -134,21 +138,14 @@ export function ListPageControls({
     }, 350);
   };
 
-  const handleOrgChange = (slug: string) => {
-    if (slug === currentOrgSlug) return;
-    // Strip the current orgSlug prefix from pathname to get the entity path
-    // (works for both path-based routing /orgSlug/inquiries and subdomain /inquiries).
-    const entityPath = pathname.startsWith(`/${currentOrgSlug}`)
-      ? pathname.slice(`/${currentOrgSlug}`.length)
-      : pathname;
-    router.push(`/${slug}${entityPath}?scope=all`);
-  };
+  const handleCompanyChange = (id: string) =>
+    navigate({ externalCompanyId: id });
 
   const currentDateLabel =
     DATE_RANGE_OPTIONS.find((o) => o.value === dateRange)?.label ?? "All dates";
 
-  // Org-switcher only appears for internal users when viewing All scope.
-  const showOrgSwitcher = orgs !== null && scope === "all";
+  // Company filter only appears for internal users (externalCompanies != null) when viewing All scope.
+  const showCompanyFilter = externalCompanies !== null && scope === "all";
 
   return (
     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -220,7 +217,7 @@ export function ListPageControls({
         )}
       </div>
 
-      {/* ── Right: search + org-switcher + my/all toggle ────────────── */}
+      {/* ── Right: search + company filter + my/all toggle ────────── */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Search */}
         <input
@@ -232,17 +229,20 @@ export function ListPageControls({
           aria-label="Search"
         />
 
-        {/* Org-switcher — internal users + "All" scope only */}
-        {showOrgSwitcher && orgs && (
+        {/* External-company filter — internal users + "All" scope only.
+            Narrows the list to inquiries associated with a specific client
+            company, within this org. Never navigates cross-org. */}
+        {showCompanyFilter && externalCompanies && (
           <select
-            value={currentOrgSlug}
-            onChange={(e) => handleOrgChange(e.target.value)}
+            value={externalCompanyId}
+            onChange={(e) => handleCompanyChange(e.target.value)}
             className="rounded-sm border border-border bg-bg-white px-3 py-2 text-[13px] font-semibold text-text-body focus:outline-none focus:ring-1 focus:ring-primary"
-            aria-label="Switch organization"
+            aria-label="Filter by company"
           >
-            {orgs.map((org) => (
-              <option key={org.id} value={org.slug}>
-                {org.name}
+            <option value="">All companies</option>
+            {externalCompanies.map((co) => (
+              <option key={co.id} value={co.id}>
+                {co.name}
               </option>
             ))}
           </select>

@@ -99,6 +99,8 @@ export async function GET(
   const dateRangeKey = url.searchParams.get("dateRange") ?? "";
   const rawPage = parseInt(url.searchParams.get("page") ?? "1", 10);
   const rawPageSize = parseInt(url.searchParams.get("pageSize") ?? "20", 10);
+  // externalCompanyId filter — only applied for internal users in the DAL.
+  const externalCompanyId = url.searchParams.get("externalCompanyId") ?? "";
 
   const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
   const pageSize =
@@ -118,6 +120,7 @@ export async function GET(
       dateTo: dateRange?.lte,
       page,
       pageSize,
+      externalCompanyId: externalCompanyId || undefined,
     });
     return NextResponse.json({ inquiries, total, page, pageSize });
   } catch (err) {

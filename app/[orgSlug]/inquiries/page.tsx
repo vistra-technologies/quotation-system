@@ -24,9 +24,8 @@ interface InquiryListItem {
   createdBy: { id: string; name: string; username: string };
 }
 
-interface OrgOption {
+interface ExternalCompanyOption {
   id: string;
-  slug: string;
   name: string;
 }
 
@@ -68,7 +67,7 @@ function statusBadge(status: string) {
  *
  * Stage 12 Batch 7c: upgraded to the shared list-page pattern —
  * reduced margins, date-range filter, search, My/All toggle with RBAC visibility
- * rules, org-switcher for internal users, pagination, and updated column schema.
+ * rules, external-company filter for internal users, pagination, and updated column schema.
  *
  * Column schema: Project Name, Client Name / Company, Location, Status,
  * Created On, Submission Date ("—" — no submittedAt field in current schema).
@@ -88,6 +87,7 @@ export default async function InquiriesPage({
     search?: string;
     dateRange?: string;
     page?: string;
+    externalCompanyId?: string;
   }>;
 }) {
   const { orgSlug } = await params;
@@ -99,6 +99,8 @@ export default async function InquiriesPage({
   const dateRange = typeof sp.dateRange === "string" ? sp.dateRange : "";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 20;
+  const externalCompanyId =
+    typeof sp.externalCompanyId === "string" ? sp.externalCompanyId : "";
 
   // Build API query string.
   const apiParams = new URLSearchParams({
@@ -108,6 +110,7 @@ export default async function InquiriesPage({
   });
   if (search) apiParams.set("search", search);
   if (dateRange) apiParams.set("dateRange", dateRange);
+  if (externalCompanyId) apiParams.set("externalCompanyId", externalCompanyId);
 
   // Fetch session identity (/me) and inquiry list in parallel.
   const [meRes, listRes] = await Promise.all([
@@ -144,14 +147,18 @@ export default async function InquiriesPage({
   // External user = externalCompanyId is non-null (Distributor / Architectural Firm).
   const isInternal = me.externalCompanyId === null;
 
-  // Org-switcher list — only needed for internal users.
-  // External users never see the org-switcher (enforced by passing null).
-  let orgs: OrgOption[] | null = null;
+  // External-company filter list — only shown to internal users.
+  // External users are already pinned to their own company (enforced in the DAL).
+  let externalCompanies: ExternalCompanyOption[] | null = null;
   if (isInternal) {
-    const orgsRes = await internalFetch("/api/v1/orgs");
-    if (orgsRes.ok) {
-      const data = (await orgsRes.json()) as { orgs: OrgOption[] };
-      orgs = data.orgs;
+    const companiesRes = await internalFetch(
+      `/api/v1/orgs/${orgSlug}/external-companies`,
+    );
+    if (companiesRes.ok) {
+      const data = (await companiesRes.json()) as {
+        companies: ExternalCompanyOption[];
+      };
+      externalCompanies = data.companies;
     }
   }
 
@@ -188,8 +195,8 @@ export default async function InquiriesPage({
         scope={scope}
         search={search}
         dateRange={dateRange}
-        orgs={orgs}
-        currentOrgSlug={orgSlug}
+        externalCompanies={externalCompanies}
+        externalCompanyId={externalCompanyId}
       />
 
       {/* ── Table card ───────────────────────────────────────────────── */}

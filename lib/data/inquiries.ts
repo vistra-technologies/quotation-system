@@ -23,6 +23,13 @@ export interface ListInquiriesParams {
   page: number;
   /** Records per page. */
   pageSize: number;
+  /**
+   * Additional external-company filter for internal users viewing "All" scope.
+   * When set, narrows results to inquiries with this externalCompanyId, within
+   * the session's org. Ignored for external users (they're already scoped to
+   * their own company by the scope=all condition).
+   */
+  externalCompanyId?: string;
 }
 
 // ─── Queries ────────────────────────────────────────────────────────────────
@@ -83,6 +90,13 @@ export async function listInquiriesPaginated(
     andConditions.push({ externalCompanyId: session.externalCompanyId });
   }
   // Internal user + scope=all: no extra condition — sees all org inquiries.
+
+  // Optional external-company filter — internal users only.
+  // Narrows within the org; never replaces the org-level scope above.
+  // Ignored for external users (their externalCompanyId is already enforced above).
+  if (params.externalCompanyId && session.externalCompanyId === null) {
+    andConditions.push({ externalCompanyId: params.externalCompanyId });
+  }
 
   // Date range filter on createdAt
   if (dateFrom || dateTo) {
