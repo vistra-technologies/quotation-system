@@ -115,6 +115,18 @@ export async function POST(
 
   const username =
     typeof body.username === "string" ? body.username.trim() : null;
+  const firstName =
+    typeof body.firstName === "string" ? body.firstName.trim() : null;
+  const lastName =
+    typeof body.lastName === "string" ? body.lastName.trim() : null;
+  const mobile =
+    typeof body.mobile === "string" && body.mobile.trim()
+      ? body.mobile.trim()
+      : null;
+  const profileEmail =
+    typeof body.profileEmail === "string" && body.profileEmail.trim()
+      ? body.profileEmail.trim()
+      : null;
   const roleId =
     typeof body.roleId === "string" ? body.roleId.trim() : null;
   const password =
@@ -125,11 +137,23 @@ export async function POST(
       : null;
 
   if (!username) return apiBadRequest("username is required");
+  if (!firstName) return apiBadRequest("firstName is required");
+  if (!lastName) return apiBadRequest("lastName is required");
   if (!roleId) return apiBadRequest("roleId is required");
   if (!password) return apiBadRequest("password is required");
+  if (password.length < 8) return apiBadRequest("Password must be at least 8 characters");
 
   try {
-    await createUser(session, { username, roleId, externalCompanyId, password });
+    await createUser(session, {
+      username,
+      firstName,
+      lastName,
+      mobile,
+      profileEmail,
+      roleId,
+      externalCompanyId,
+      password,
+    });
     return NextResponse.json({ user: { username } }, { status: 201 });
   } catch (err) {
     if (err instanceof Error) {

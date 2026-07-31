@@ -378,3 +378,60 @@ All other priority checks passed: `lib/api-auth.ts` byte-for-byte unchanged (fro
 **Report:** `.engineering/stage-12/review-batch6.md` ("Follow-up: Fix Verification" section)
 
 IMPORTANT-1 resolved: commit `de5447a` adds `const role = await getRoleById(session, roleId); if (!role) return apiNotFound("Role not found");` before `listRolePermissions` in the GET handler. `getRoleById` confirmed to scope by `session.organizationId` (lib/data/admin.ts lines 113–117). Guard is unconditional — no code path reaches `listRolePermissions` without passing it. POST/DELETE verbs unaffected. Response shape unchanged. `npm run lint` 0 errors · `npx tsc --noEmit` 0 errors. Batch 6 is clear to merge.
+
+### Batch 7g — developer (2026-07-31)
+
+**Outcome:** BLOCKED — schema fields required by the stage doc are missing from `prisma/schema.prisma`.
+
+**Schema audit result:**
+- `firstName` — NOT in schema (only a single `name` field exists, currently set to `username`)
+- `lastName` — NOT in schema
+- `mobile` — NOT in schema
+- `profileEmail String?` — EXISTS (maps to the optional "Email" field)
+
+The stage doc requires First Name and Last Name as **mandatory** create-user form fields, and Mobile as **optional**. All three map to columns that don't exist on the `User` model. Proceeding would require a `prisma migrate dev` against the Neon dev DB — an irreversible, higher-risk operation that also forces a design decision about the existing `name` field (a better-auth core field currently set to `username`).
+
+**Per briefing instructions:** "If the schema is missing required fields (firstName/lastName/mobile), STOP and report BLOCKED — do not write a migration without explicit sign-off."
+
+**No code changes made.** Worktree is clean at the starting commit.
+
+**What CAN be done without schema changes (for reference):** password min-8 validation, delete-with-confirm row action (new route + action + DAL needed), detail page showing `profileEmail`. These are partial and wouldn't satisfy the full scope — not implemented, awaiting human decision.
+
+**Plan:** `.engineering/stage-12/plan-batch7g.md` — full schema audit, options (add nullable fields / repurpose `name` / defer), and file change list for when unblocked.
+
+### Batch 7g — developer (2026-07-31) — RESUMED after human decision
+
+**Outcome:** DONE. Commit `597b35c` on `feature/batch7g-user-management`.
+
+**Schema decision confirmed by human:** `firstName String`, `lastName String` (NOT NULL) + `mobile String?` added to User model. Migration ran against dev branch `ep-dark-term-ai0ufj4k` (confirmed, not production `ep-little-paper-aipm0o0i`).
+
+**DB operations (dev DB only):** Cleanup script deleted all user-dependent rows (28 users, 69 projects, 67 inquiries, 17 selections, 4 floors, 4 partitions) in FK-safe order → `prisma migrate dev --name add_user_firstname_lastname_mobile` → `prisma db seed` (16 users re-created with firstName/lastName).
+
+**Preview URL:** `https://quotation-system-5f0w1s4dp-vistra-indias-projects.vercel.app`
+
+**Changed (app repo):**
+- `prisma/schema.prisma` — `firstName String`, `lastName String`, `mobile String?` added to User model
+- `prisma/migrations/20260731110524_add_user_firstname_lastname_mobile/migration.sql` — new migration
+- `prisma/seed.ts` — firstName/lastName on all 4 user slots; user.create data updated
+- `scripts/cleanup-users-dev.ts` — one-time migration prep script (kept for audit)
+- `lib/data/users.ts` — `CreateUserInput` extended; `createUser()` writes new fields, sets `name = firstName + ' ' + lastName`; `deleteUser()` added (self-delete guard + FK proactive check)
+- `app/api/v1/orgs/[orgSlug]/users/route.ts` — POST parses firstName/lastName/mobile/profileEmail; password min-8 validated server-side
+- `app/api/v1/orgs/[orgSlug]/users/[userId]/route.ts` — DELETE handler added (MANAGE_USERS, 204 on success)
+- `app/[orgSlug]/admin/users/new/create-user-form.tsx` — firstName/lastName (required), mobile/email (optional), password minLength=8 + hint text
+- `app/[orgSlug]/admin/users/actions.ts` — createUser parses new fields + client-side password length check; deleteUser action added
+- `app/[orgSlug]/admin/users/delete-user-button.tsx` — new Client Component with window.confirm() + useTransition pattern
+- `app/[orgSlug]/admin/users/page.tsx` — Full Name column; Delete row action
+- `app/[orgSlug]/admin/users/[userId]/page.tsx` — firstName, lastName, mobile, profileEmail in metadata block
+- `messages/en.json` — colFullName, fieldFirstName/LastName/Mobile/Email, fieldPasswordHint, deleteAction, deleteConfirm, detailMobile/Email
+
+**Changed (docs repo, commit `bb7aece` on `main`):**
+- `design-docs/sql-queries/by-page.sql` — createUser INSERT updated for new fields; deleteUser FK pre-check and DELETE queries added
+
+**Verify:**
+- `npm run lint` → 0 errors (1 pre-existing warning in org-nav.spec.ts) ✓
+- `npx tsc --noEmit` → 0 errors ✓
+- Preview READY at `https://quotation-system-5f0w1s4dp-vistra-indias-projects.vercel.app`
+- `/api/health` → `{ database: "connected" }` ✓
+- `DELETE /api/v1/orgs/vistra/users/fake-id` (unauthenticated) → 401 ✓ (route deployed)
+- `POST /api/v1/orgs/vistra/users` (unauthenticated) → 401 ✓ (route deployed)
+- Full functional verification (authenticated MANAGE_USERS session: create form shows new fields, password min-8 enforced client+server, list shows Full Name column + Delete button with confirm, detail shows richer fields) — to be covered by end-of-stage tester pass.

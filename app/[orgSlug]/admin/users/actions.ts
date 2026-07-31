@@ -26,19 +26,40 @@ export async function createUser(
   formData: FormData,
 ): Promise<CreateUserState> {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
+  const firstName = (formData.get("firstName") as string | null)?.trim();
+  const lastName = (formData.get("lastName") as string | null)?.trim();
   const username = (formData.get("username") as string | null)?.trim();
   const roleId = formData.get("roleId") as string | null;
   const externalCompanyId =
     (formData.get("externalCompanyId") as string | null) || null;
   const password = formData.get("password") as string | null;
+  const mobile =
+    (formData.get("mobile") as string | null)?.trim() || null;
+  const profileEmail =
+    (formData.get("profileEmail") as string | null)?.trim() || null;
 
+  if (!firstName || !lastName) {
+    return { error: "First name and last name are required" };
+  }
   if (!username || !roleId || !password) {
     return { error: "Username, role, and password are required" };
+  }
+  if (password.length < 8) {
+    return { error: "Password must be at least 8 characters" };
   }
 
   const res = await internalFetch(`/api/v1/orgs/${orgSlug}/users`, {
     method: "POST",
-    body: JSON.stringify({ username, roleId, externalCompanyId, password }),
+    body: JSON.stringify({
+      username,
+      firstName,
+      lastName,
+      mobile,
+      profileEmail,
+      roleId,
+      externalCompanyId,
+      password,
+    }),
   });
 
   if (res.status === 401 || res.status === 403) {
@@ -235,4 +256,48 @@ export async function setUserPassword(formData: FormData): Promise<void> {
     await orgHref(orgSlug, `/admin/users/${userId}`),
     RedirectType.replace,
   );
+}
+
+// ---------------------------------------------------------------------------
+// deleteUser
+// ---------------------------------------------------------------------------
+
+/**
+ * Delete a user from the org.
+ *
+ * Thin marshaler (Stage 12 Batch 7g): delegates to
+ * DELETE /api/v1/orgs/[orgSlug]/users/[userId] via internalFetch.
+ * All tenancy enforcement and business logic live in the route handler.
+ *
+ * Throws on error so the caller (DeleteUserButton) can surface it.
+ * The route handler returns 400 for expected rejection cases (self-delete,
+ * FK constraint) — these throw with the server's descriptive message.
+ */
+export async function deleteUser(formData: FormData): Promise<void> {
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
+  const userId = formData.get("userId") as string | null;
+
+  if (!userId) throw new Error("userId is required");
+
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/users/${userId}`,
+    { method: "DELETE" },
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    throw new Error(errorMessage);
+  }
+
+  revalidatePath(`/${orgSlug}/admin/users`);
 }
