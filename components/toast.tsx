@@ -39,7 +39,7 @@ export function Toast({ visible, onDismiss, message }: ToastProps) {
     <div
       role="status"
       aria-live="polite"
-      className="fixed bottom-6 right-6 z-50 rounded-md bg-primary px-4 py-3 text-sm font-semibold text-white shadow-card"
+      className="fixed bottom-6 right-6 z-50 rounded-md border border-primary-soft bg-primary-softer/85 px-4 py-3 text-sm font-semibold text-primary-dark shadow-[0_8px_24px_-8px_rgba(62,102,71,0.28)] backdrop-blur-sm"
     >
       {message ?? t("comingSoon")}
     </div>
