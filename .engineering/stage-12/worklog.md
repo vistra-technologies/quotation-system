@@ -21,7 +21,7 @@ applies throughout, no exceptions.
 | 3 | Selections + Component Types | `app/api/v1/orgs/[orgSlug]/selections/**`, `component-types/**`, `component-categories/**`, `configuration/page.tsx`/`actions.ts` | 1 | **merged** (`75a1e6b` on `release/stage-12`) |
 | 4 | Catalog + Pricing | `app/api/v1/orgs/[orgSlug]/catalog/**`, `pricing/*` pages/actions | 1 | **merged** (`f483674` on `release/stage-12`) |
 | 5 | Admin: Users | `app/api/v1/orgs/[orgSlug]/users/**`, `roles/route.ts` (GET only), `admin/users/*` | 1 | **merged** (`dbe6c83` on `release/stage-12`) |
-| 6 | Admin: Roles/Permissions/Components/Me + shell layouts (capstone) | `roles/[roleId]/**`, `app/api/v1/permissions/route.ts`, `orgs/[orgSlug]/me/route.ts`, `app/api/v1/orgs/route.ts`, remaining admin pages, both shell layouts, `app/page.tsx`, `eslint.config.mjs` DB-access rule | 1-5 merged | pending |
+| 6 | Admin: Roles/Permissions/Components/Me + shell layouts (capstone) | `roles/[roleId]/**`, `app/api/v1/permissions/route.ts`, `orgs/[orgSlug]/me/route.ts`, `app/api/v1/orgs/route.ts`, remaining admin pages, both shell layouts, `app/page.tsx`, `eslint.config.mjs` DB-access rule | 1-5 merged | **merged** (`d8481a9` on `release/stage-12`) |
 
 Batch 1 is a hard go/no-go gate per the stage doc: push → preview → verify list/create/detail/login-redirect
 before Batch 2 starts.
