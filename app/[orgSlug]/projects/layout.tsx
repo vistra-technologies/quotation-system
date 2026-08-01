@@ -29,7 +29,9 @@ export default function ProjectsLayout({ children }: { children: React.ReactNode
 
   return (
     <NextIntlClientProvider messages={clientMessages}>
-      <div className="mx-auto w-full max-w-5xl px-6 py-8">{children}</div>
+      <div className="mx-auto w-full max-w-[1180px] px-8 pb-12 pt-7">
+        {children}
+      </div>
     </NextIntlClientProvider>
   );
 }

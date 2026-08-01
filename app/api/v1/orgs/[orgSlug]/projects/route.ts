@@ -8,19 +8,71 @@ import {
   apiConflict,
   apiServerError,
 } from "@/lib/api-error";
-import { listProjects, createProject } from "@/lib/data/projects";
+import { listProjectsPaginated, createProject } from "@/lib/data/projects";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Convert a named date-range preset to { gte, lte } Date bounds.
+ * All computation is server-side (UTC) — no timezone ambiguity from the client.
+ */
+function resolveDateRange(
+  dateRange: string,
+): { gte?: Date; lte?: Date } | null {
+  const now = new Date();
+  switch (dateRange) {
+    case "today": {
+      const start = new Date(now);
+      start.setUTCHours(0, 0, 0, 0);
+      const end = new Date(now);
+      end.setUTCHours(23, 59, 59, 999);
+      return { gte: start, lte: end };
+    }
+    case "week": {
+      const start = new Date(now);
+      start.setUTCDate(start.getUTCDate() - 7);
+      return { gte: start };
+    }
+    case "month": {
+      const start = new Date(
+        Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
+      );
+      return { gte: start };
+    }
+    case "last30": {
+      const start = new Date(now);
+      start.setUTCDate(start.getUTCDate() - 30);
+      return { gte: start };
+    }
+    default:
+      return null;
+  }
+}
+
 // ─── GET /api/v1/orgs/[orgSlug]/projects ────────────────────────────────────
 
 /**
- * List all projects for the org, newest-first.
+ * List projects for the org with filtering, search, and pagination.
  *
  * Auth: any authenticated org member (no specific RBAC permission required).
- * Tenancy: enforced by getApiSession() (403 on cross-org) and listProjects()
- *          filtering on session.organizationId.
+ * Tenancy: enforced by getApiSession() (403 on cross-org).
+ *
+ * Query params:
+ *   scope      "mine"|"all"  (default: "all")
+ *   search     string        searches name + externalCompany.name (case-insensitive)
+ *   dateRange  ""| "today"|"week"|"month"|"last30"  (default: "")
+ *   page       number        1-based (default: 1)
+ *   pageSize   number        1–100 (default: 20)
+ *
+ * Visibility rules (enforced in DAL from session — not URL params):
+ *   scope=mine  → createdByUserId = session.userId (all user types)
+ *   scope=all   → external user: externalCompanyId = session.externalCompanyId
+ *               → internal user: full org scope
+ *
+ * Returns: { projects, total, page, pageSize }
  */
 export async function GET(
   request: Request,
@@ -41,11 +93,41 @@ export async function GET(
     return apiServerError();
   }
 
+  const url = new URL(request.url);
+  const scope = url.searchParams.get("scope") === "mine" ? "mine" : "all";
+  const search = url.searchParams.get("search") ?? "";
+  const dateRangeKey = url.searchParams.get("dateRange") ?? "";
+  const rawPage = parseInt(url.searchParams.get("page") ?? "1", 10);
+  const rawPageSize = parseInt(url.searchParams.get("pageSize") ?? "20", 10);
+  // externalCompanyId filter — only applied for internal users in the DAL.
+  const externalCompanyId = url.searchParams.get("externalCompanyId") ?? "";
+
+  const page = isNaN(rawPage) || rawPage < 1 ? 1 : rawPage;
+  const pageSize =
+    isNaN(rawPageSize) || rawPageSize < 1
+      ? 20
+      : rawPageSize > 100
+        ? 100
+        : rawPageSize;
+
+  const dateRange = resolveDateRange(dateRangeKey);
+
   try {
-    const projects = await listProjects(session);
-    return NextResponse.json({ projects });
+    const { projects, total } = await listProjectsPaginated(session, {
+      scope,
+      search: search.trim() || undefined,
+      dateFrom: dateRange?.gte,
+      dateTo: dateRange?.lte,
+      page,
+      pageSize,
+      externalCompanyId: externalCompanyId || undefined,
+    });
+    return NextResponse.json({ projects, total, page, pageSize });
   } catch (err) {
-    console.error("[GET /api/v1/orgs/[orgSlug]/projects] listProjects", err);
+    console.error(
+      "[GET /api/v1/orgs/[orgSlug]/projects] listProjectsPaginated",
+      err,
+    );
     return apiServerError();
   }
 }
