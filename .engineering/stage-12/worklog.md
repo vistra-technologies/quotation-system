@@ -644,3 +644,31 @@ reflected in the empty-state message. MINOR-2 (developer's discretion): debounce
 unmount. MINOR-3 (developer's discretion): `stage-12.md`'s plan prose still says "organization-switcher
 dropdown" — should be reworded to match what was actually built. Merged into `release/stage-12` as-is;
 nits not blocking.
+
+### Batch 7d — developer (2026-08-01)
+
+**Outcome:** DONE. Commit `ecb708f` on `feature/batch7d-projects-list-pattern`.
+
+**Changed (app repo):**
+- `lib/data/projects.ts` — added `ListProjectsParams` interface + `listProjectsPaginated(session, params)`: same RBAC shape as `listInquiriesPaginated` (scope=mine → creator-only; scope=all + external user → own-company only from session; scope=all + internal → full org scope + optional externalCompanyId filter). Search across `name` + `externalCompany.name`. Date filter on `createdAt`. Parallel count + findMany. Old `listProjects` marked `@deprecated`.
+- `app/api/v1/orgs/[orgSlug]/projects/route.ts` — GET extended with `scope/search/dateRange/page/pageSize/externalCompanyId` params; `resolveDateRange` helper copied verbatim from inquiries route; returns `{ projects, total, page, pageSize }`. POST unchanged.
+- `app/[orgSlug]/projects/page.tsx` — rewritten to shared list-page pattern (mirror of inquiries/page.tsx): parallel `/me` + `/projects` fetch; sequential `/external-companies` fetch for internal users; `ListPageControls` + `ListPagePagination`; 7-column schema (Project Name, Client Name/Company, Location, Status, Value["—"], Created On, Submission Date["—"]); no row checkboxes; "New Project" button consistent with inquiries placement.
+- `app/[orgSlug]/projects/layout.tsx` — margins updated to `max-w-[1180px] px-8 pt-7 pb-12` (was `max-w-5xl px-6 py-8`, matching Batch 7c's inquiries layout). Project detail pages unaffected: `[projectId]/layout.tsx` has its own `max-w-5xl px-6 py-8` inner wrapper.
+- `app/[orgSlug]/projects/loading.tsx` — skeleton updated for 7-column table + toolbar + pagination footer.
+
+**Changed (docs repo, commit `65b1c87` on `main`):**
+- `design-docs/sql-queries/by-page.sql` — updated GET /api/v1/orgs/[orgSlug]/projects section to reflect `listProjectsPaginated` (count + paginated data queries with scope/search/date/externalCompany conditions). Collapsed old [Projects: list/create] section to a cross-reference.
+
+**Schema gaps (flagged, no migration):**
+- D1: `value` — no field on `Project` model → renders "—"
+- D2: Submission Date — no `submittedAt` field on `Project` model → renders "—"
+(Same pattern as Batch 7c's D1 for Inquiry's `submittedAt`.)
+
+**Reused:** `components/list-page-controls.tsx` (ListPageControls, ListPagePagination — unchanged), `lib/api-auth.ts` (frozen), `lib/api-error.ts` (frozen), `lib/internal-fetch.ts` (frozen), `lib/orgHref.ts`, `lib/data/external-companies.ts` (via external-companies API route from Batch 2).
+
+**Verify:**
+- `npm run lint` → 0 errors (exit code 0 confirmed twice) ✓
+- `npx tsc --noEmit` → 0 errors ✓
+- Pushed to `feature/batch7d-projects-list-pattern` at `ecb708f`
+- Vercel preview deployment pending (push just completed)
+- Full functional verification (scope toggle, search, date filter, externalCompany filter, pagination, cross-tenant 403) to be covered by end-of-stage tester pass.
