@@ -48,6 +48,16 @@ export default async function AdminLayout({
 
   const t = await getTranslations("admin");
 
+  // Precompute org-aware hrefs — orgHref() returns the bare subpath in subdomain
+  // mode (e.g. "/admin/users" on vistra.easeetool.com) and the org-prefixed path
+  // in path-based mode (e.g. "/vistra/admin/users" on localhost).
+  const hrefDashboard = await orgHref(orgSlug, "/dashboard");
+  const hrefUsers = await orgHref(orgSlug, "/admin/users");
+  const hrefExtCompanies = await orgHref(orgSlug, "/admin/external-companies");
+  const hrefRoles = await orgHref(orgSlug, "/admin/roles");
+  const hrefPermissions = await orgHref(orgSlug, "/admin/permissions");
+  const hrefComponents = await orgHref(orgSlug, "/admin/components");
+
   // Forward only the namespaces Client Components in this sub-tree need.
   const clientMessages = {
     common: allMessages.common,
@@ -62,26 +72,27 @@ export default async function AdminLayout({
   return (
     <NextIntlClientProvider messages={clientMessages}>
       <div>
-        <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+        {/* Admin secondary nav — Sage Ease tokens, matching app-shell style */}
+        <header className="border-b border-border bg-bg-card">
           <div className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-3">
             <Link
-              href={`/${orgSlug}/dashboard`}
-              className="shrink-0 text-sm text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-50"
+              href={hrefDashboard}
+              className="shrink-0 text-sm font-medium text-text-muted hover:text-text-heading"
             >
               {t("backToDashboard")}
             </Link>
-            <nav className="flex gap-4">
+            <nav className="flex gap-1">
               {canManageUsers && (
                 <>
                   <Link
-                    href={`/${orgSlug}/admin/users`}
-                    className="text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50"
+                    href={hrefUsers}
+                    className="rounded-sm px-3 py-[6px] text-sm font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                   >
                     {t("navUsers")}
                   </Link>
                   <Link
-                    href={`/${orgSlug}/admin/external-companies`}
-                    className="text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50"
+                    href={hrefExtCompanies}
+                    className="rounded-sm px-3 py-[6px] text-sm font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                   >
                     {t("navExternalCompanies")}
                   </Link>
@@ -90,20 +101,20 @@ export default async function AdminLayout({
               {canManageFeatures && (
                 <>
                   <Link
-                    href={`/${orgSlug}/admin/roles`}
-                    className="text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50"
+                    href={hrefRoles}
+                    className="rounded-sm px-3 py-[6px] text-sm font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                   >
                     {t("navRoles")}
                   </Link>
                   <Link
-                    href={`/${orgSlug}/admin/permissions`}
-                    className="text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50"
+                    href={hrefPermissions}
+                    className="rounded-sm px-3 py-[6px] text-sm font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                   >
                     {t("navPermissions")}
                   </Link>
                   <Link
-                    href={`/${orgSlug}/admin/components`}
-                    className="text-sm font-medium text-zinc-700 hover:text-zinc-900 dark:text-zinc-300 dark:hover:text-zinc-50"
+                    href={hrefComponents}
+                    className="rounded-sm px-3 py-[6px] text-sm font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                   >
                     {t("navComponents")}
                   </Link>

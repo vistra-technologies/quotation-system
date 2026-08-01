@@ -205,89 +205,81 @@ export default async function ProjectsPage({
       {/* ── Table card ───────────────────────────────────────────────── */}
       <div className="rounded-md border border-border bg-bg-card shadow-card">
         <div className="px-4">
-          {projects.length === 0 ? (
-            <p className="py-8 text-center text-[13px] text-text-muted">
-              {search || dateRange || scope === "mine"
-                ? "No projects match your filters."
-                : "No projects yet. Create your first project."}
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      Project Name
-                    </th>
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      {clientColumnHeader}
-                    </th>
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      Location
-                    </th>
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      Status
-                    </th>
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      Value
-                    </th>
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      Created On
-                    </th>
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      Submission Date
-                    </th>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                    Project Name
+                  </th>
+                  <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                    {clientColumnHeader}
+                  </th>
+                  <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                    Location
+                  </th>
+                  <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                    Status
+                  </th>
+                  <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                    Value
+                  </th>
+                  <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                    Created On
+                  </th>
+                  <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                    Submission Date
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {projects.map((project) => (
+                  <tr
+                    key={project.id}
+                    className="border-b border-border/60 last:border-0 hover:bg-primary-softer"
+                  >
+                    {/* Project Name — links to project detail */}
+                    <td className="px-3 py-[11px] text-[13px] font-semibold text-text-heading">
+                      <Link
+                        href={`/${orgSlug}/projects/${project.id}`}
+                        className="hover:underline"
+                      >
+                        {project.name}
+                      </Link>
+                    </td>
+                    {/* Client Name / Company */}
+                    <td className="px-3 py-[11px] text-[13px] text-text-body">
+                      {project.externalCompany?.name ?? (
+                        <span className="text-text-placeholder">—</span>
+                      )}
+                    </td>
+                    {/* Location (destinationCountry) */}
+                    <td className="px-3 py-[11px] text-[13px] text-text-body">
+                      {project.destinationCountry || (
+                        <span className="text-text-placeholder">—</span>
+                      )}
+                    </td>
+                    {/* Status badge */}
+                    <td className="px-3 py-[11px]">
+                      {statusBadge(project.status)}
+                    </td>
+                    {/* Value — no value field in current schema (Stage 12 Batch 7d gap D1) */}
+                    <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
+                      —
+                    </td>
+                    {/* Created On */}
+                    <td className="px-3 py-[11px] text-[13px] text-text-muted">
+                      {new Date(project.createdAt).toLocaleDateString()}
+                    </td>
+                    {/* Submission Date — no submittedAt field in current schema (Stage 12 Batch 7d gap D2) */}
+                    <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
+                      —
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {projects.map((project) => (
-                    <tr
-                      key={project.id}
-                      className="border-b border-border/60 last:border-0 hover:bg-primary-softer"
-                    >
-                      {/* Project Name — links to project detail */}
-                      <td className="px-3 py-[11px] text-[13px] font-semibold text-text-heading">
-                        <Link
-                          href={`/${orgSlug}/projects/${project.id}`}
-                          className="hover:underline"
-                        >
-                          {project.name}
-                        </Link>
-                      </td>
-                      {/* Client Name / Company */}
-                      <td className="px-3 py-[11px] text-[13px] text-text-body">
-                        {project.externalCompany?.name ?? (
-                          <span className="text-text-placeholder">—</span>
-                        )}
-                      </td>
-                      {/* Location (destinationCountry) */}
-                      <td className="px-3 py-[11px] text-[13px] text-text-body">
-                        {project.destinationCountry || (
-                          <span className="text-text-placeholder">—</span>
-                        )}
-                      </td>
-                      {/* Status badge */}
-                      <td className="px-3 py-[11px]">
-                        {statusBadge(project.status)}
-                      </td>
-                      {/* Value — no value field in current schema (Stage 12 Batch 7d gap D1) */}
-                      <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
-                        —
-                      </td>
-                      {/* Created On */}
-                      <td className="px-3 py-[11px] text-[13px] text-text-muted">
-                        {new Date(project.createdAt).toLocaleDateString()}
-                      </td>
-                      {/* Submission Date — no submittedAt field in current schema (Stage 12 Batch 7d gap D2) */}
-                      <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
-                        —
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* ── Pagination footer ─────────────────────────────────────── */}

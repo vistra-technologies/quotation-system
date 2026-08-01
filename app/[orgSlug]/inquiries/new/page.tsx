@@ -67,12 +67,13 @@ export default async function NewInquiryPage({
   }
 
   const t = await getTranslations("inquiries");
+  const inquiriesHref = await orgHref(orgSlug, "/inquiries");
 
   return (
     <div className="mx-auto max-w-lg">
       <Link
-        href={`/${orgSlug}/inquiries`}
-        className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+        href={inquiriesHref}
+        className="mb-4 inline-block text-sm font-medium text-text-muted underline-offset-2 hover:text-text-heading hover:underline"
       >
         {t("backToList")}
       </Link>
