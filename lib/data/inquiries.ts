@@ -10,11 +10,35 @@ export interface CreateInquiryInput {
   externalCompanyId?: string | null;
 }
 
+export interface ListInquiriesParams {
+  /** "mine" = current user's own; "all" = scoped by role (see below). */
+  scope: "mine" | "all";
+  /** Full-text search across inquiry name and external company name. */
+  search?: string;
+  /** Earliest createdAt to include (inclusive). */
+  dateFrom?: Date;
+  /** Latest createdAt to include (inclusive). */
+  dateTo?: Date;
+  /** 1-based page number. */
+  page: number;
+  /** Records per page. */
+  pageSize: number;
+  /**
+   * Additional external-company filter for internal users viewing "All" scope.
+   * When set, narrows results to inquiries with this externalCompanyId, within
+   * the session's org. Ignored for external users (they're already scoped to
+   * their own company by the scope=all condition).
+   */
+  externalCompanyId?: string;
+}
+
 // ─── Queries ────────────────────────────────────────────────────────────────
 
 /**
  * List all inquiries for the session org, newest-first.
  * Includes externalCompany name (nullable) for the list table.
+ *
+ * @deprecated Use listInquiriesPaginated for all new callers.
  */
 export async function listInquiries(session: SessionData) {
   return prisma.inquiry.findMany({
@@ -24,6 +48,93 @@ export async function listInquiries(session: SessionData) {
       externalCompany: { select: { id: true, name: true } },
     },
   });
+}
+
+/**
+ * Paginated, filtered inquiry list with RBAC visibility rules.
+ *
+ * Visibility rules (enforced server-side from session — never from URL params):
+ *   scope="mine"  — always filters to createdByUserId = session.userId
+ *   scope="all"   — external user (externalCompanyId != null): own company only
+ *                 — internal user (externalCompanyId === null): full org scope
+ *
+ * Returns { inquiries, total } — total is the count before pagination, used
+ * by the caller to compute page count.
+ *
+ * Tenancy: organizationId always scoped to session.organizationId.
+ */
+// Extract Prisma's InquiryWhereInput type without explicitly importing from @prisma/client.
+// NonNullable strips the `| undefined` from the optional `where` property.
+type InquiryWhereInput = NonNullable<
+  NonNullable<Parameters<typeof prisma.inquiry.findMany>[0]>["where"]
+>;
+
+export async function listInquiriesPaginated(
+  session: SessionData,
+  params: ListInquiriesParams,
+) {
+  const { scope, search, dateFrom, dateTo, page, pageSize } = params;
+
+  // Build AND conditions incrementally to keep the where clause type-safe
+  // without explicitly importing Prisma namespace types.
+  const andConditions: InquiryWhereInput[] = [
+    { organizationId: session.organizationId },
+  ];
+
+  // Scope: my own vs. role-scoped "all"
+  if (scope === "mine") {
+    andConditions.push({ createdByUserId: session.userId });
+  } else if (session.externalCompanyId !== null) {
+    // External user: "all" = only their external company's inquiries.
+    // Value from server-side session — cannot be spoofed by URL params.
+    andConditions.push({ externalCompanyId: session.externalCompanyId });
+  }
+  // Internal user + scope=all: no extra condition — sees all org inquiries.
+
+  // Optional external-company filter — internal users only.
+  // Narrows within the org; never replaces the org-level scope above.
+  // Ignored for external users (their externalCompanyId is already enforced above).
+  if (params.externalCompanyId && session.externalCompanyId === null) {
+    andConditions.push({ externalCompanyId: params.externalCompanyId });
+  }
+
+  // Date range filter on createdAt
+  if (dateFrom || dateTo) {
+    andConditions.push({
+      createdAt: {
+        ...(dateFrom ? { gte: dateFrom } : {}),
+        ...(dateTo ? { lte: dateTo } : {}),
+      },
+    });
+  }
+
+  // Full-text search across name and external company name
+  if (search && search.trim()) {
+    andConditions.push({
+      OR: [
+        { name: { contains: search, mode: "insensitive" } },
+        { externalCompany: { name: { contains: search, mode: "insensitive" } } },
+      ],
+    });
+  }
+
+  const where: InquiryWhereInput = { AND: andConditions };
+
+  const [total, inquiries] = await Promise.all([
+    prisma.inquiry.count({ where }),
+    prisma.inquiry.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
+        externalCompany: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true, username: true } },
+      },
+    }),
+  ]);
+
+  return { inquiries, total };
 }
 
 /**
