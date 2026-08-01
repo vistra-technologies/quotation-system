@@ -644,3 +644,54 @@ reflected in the empty-state message. MINOR-2 (developer's discretion): debounce
 unmount. MINOR-3 (developer's discretion): `stage-12.md`'s plan prose still says "organization-switcher
 dropdown" — should be reworded to match what was actually built. Merged into `release/stage-12` as-is;
 nits not blocking.
+
+### Batch 7e — developer (2026-08-01)
+
+**Outcome:** DONE. Commit `d07d9bd` on `feature/batch7e-orders-list-pattern`.
+
+**Changed (app repo):**
+- `app/api/v1/orgs/[orgSlug]/orders/route.ts` (new) — Auth-only GET stub; returns
+  `{ orders: [], total: 0, page, pageSize }`. No DAL, no Order model. Same
+  error-handling pattern as stats/route.ts.
+- `app/[orgSlug]/orders/page.tsx` (rewrite) — Full shared list-page pattern:
+  URL params (scope/search/dateRange/page/externalCompanyId), parallel /me + /orders
+  fetch, auth guard (401/403 → login redirect, !ok → notFound()), external-companies
+  fetch for internal users, `ListPageControls` + 7-column table (Project Name,
+  Client Name/Company, Location, Status, Value, Created On, Submission Date) +
+  `ListPagePagination`. No checkboxes, no row actions, no "New Order" / "Export" buttons.
+  Empty state: "No orders yet." / "No orders match your filters." (filter-aware, same
+  pattern as inquiries).
+- `app/[orgSlug]/orders/layout.tsx` — Margins updated to `max-w-[1180px] px-8 pt-7 pb-12`
+  (matching inquiries Batch 7c); clientMessages updated from `{ toast }` to `{ common }`
+  (OrdersPlaceholder no longer used; list-page-controls.tsx doesn't use useTranslations).
+- `app/[orgSlug]/orders/loading.tsx` (new) — Pulse skeleton for the updated orders
+  structure (no action button in header, 7-column table skeleton).
+
+**Dead code note:** `app/[orgSlug]/orders/orders-placeholder.tsx` is now unreferenced
+(page.tsx no longer imports OrdersPlaceholder). Cannot delete with available tools;
+file has no lint/TS errors standalone. Flagging for reviewer — safe to remove manually.
+
+**Reused:** `components/list-page-controls.tsx` (ListPageControls, ListPagePagination — unchanged),
+`lib/api-auth.ts` (frozen), `lib/api-error.ts` (frozen), `lib/internal-fetch.ts` (frozen),
+`lib/orgHref.ts`, `app/[orgSlug]/inquiries/page.tsx` (structural reference for page layout).
+
+**Key decisions:**
+- D1 (trivial API route): Added `/api/v1/orgs/[orgSlug]/orders` returning empty list —
+  makes fetch shape identical to inquiries/projects, explicitly allowed by task brief.
+- D2 (no "New Order" button): Orders come from the quotation pipeline (not direct creation);
+  spec says "remove edit/delete row actions" implying a read-only view; consistent with the
+  "no Order model" constraint.
+- D3 (dead code): `orders-placeholder.tsx` left as-is (unreferenced but compiles clean).
+
+**Verify:**
+- `npm run lint` → 0 errors ✓
+- `npx tsc --noEmit` → 0 errors ✓
+- Pushed to `feature/batch7e-orders-list-pattern` at `d07d9bd`. Vercel preview building.
+
+### Batch 7e — reviewer (2026-08-01)
+
+**Verdict:** APPROVE · 0 CRITICAL · 0 IMPORTANT · 0 MINOR
+
+**Findings returned in reviewer final response** (no separate report file per reviewer protocol).
+
+All priority checks passed: no fabricated data (route honestly returns `{ orders: [], total: 0 }`, MOCK_ORDERS file was dead code and has been deleted) ✓ · `getApiSession()` called correctly, auth-only gate matches inquiries/projects ✓ · frozen infrastructure files untouched by Batch 7e (git diff merge-base confirms) ✓ · no direct Prisma or `lib/data/*` access in new files ✓ · column schema matches stage-12.md spec exactly (Project Name, Client Name/Company, Location, Status, Value, Created On, Submission Date) ✓ · no checkboxes, no row actions, no New Order/Export buttons ✓ · `ListPageControls`/`ListPagePagination` imported unchanged ✓ · `common` namespace forwarding safe (`list-page-controls.tsx` confirmed uses no `useTranslations`) ✓ · `npx tsc --noEmit` → 0 errors ✓ · `orders-placeholder.tsx` confirmed unreferenced (grep) and deleted by reviewer as part of this pass ✓
