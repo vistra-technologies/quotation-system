@@ -202,32 +202,39 @@ export default async function InquiriesPage({
       {/* ── Table card ───────────────────────────────────────────────── */}
       <div className="rounded-md border border-border bg-bg-card shadow-card">
         <div className="px-4">
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border">
-                  <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                    Project Name
-                  </th>
-                  <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                    {clientColumnHeader}
-                  </th>
-                  <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                    Location
-                  </th>
-                  <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                    Status
-                  </th>
-                  <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                    Created On
-                  </th>
-                  <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                    Submission Date
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {inquiries.map((inquiry) => (
+          {inquiries.length === 0 ? (
+            <p className="py-8 text-center text-[13px] text-text-muted">
+              {search || dateRange || scope === "mine"
+                ? "No inquiries match your filters."
+                : "No inquiries yet. Create your first inquiry."}
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Project Name
+                    </th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      {clientColumnHeader}
+                    </th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Location
+                    </th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Status
+                    </th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Created On
+                    </th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Submission Date
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {inquiries.map((inquiry) => (
                   <tr
                     key={inquiry.id}
                     className="border-b border-border/60 last:border-0 hover:bg-primary-softer"
@@ -270,6 +277,7 @@ export default async function InquiriesPage({
               </tbody>
             </table>
           </div>
+          )}
         </div>
 
         {/* ── Pagination footer ─────────────────────────────────────── */}
