@@ -27,6 +27,8 @@ interface PermissionActionButtonProps {
  * Each button renders its own <form> pointing at the appropriate server action.
  * The PendingOverlay child shows the full-screen overlay while the action is
  * in flight and disappears automatically when the action settles.
+ *
+ * Stage 11 (Batch 9): restyled to Sage Ease tokens.
  */
 export function PermissionActionButton({
   orgSlug,
@@ -48,8 +50,8 @@ export function PermissionActionButton({
         type="submit"
         className={
           action === "remove"
-            ? "text-sm text-red-600 underline-offset-2 hover:underline dark:text-red-400"
-            : "text-sm font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-50"
+            ? "text-sm font-semibold text-red-600 underline-offset-2 hover:underline"
+            : "text-sm font-semibold text-primary underline-offset-2 hover:text-primary-dark hover:underline"
         }
       >
         {label}
