@@ -26,6 +26,11 @@ const initialState: CreateProjectState = { error: null };
  * the Client field is rendered as read-only text — no dropdown is offered.
  * The company id is submitted via a hidden input; the DAL also enforces this
  * server-side regardless of what the form sends.
+ *
+ * Stage 11 (Batch 6): restyled to Sage Ease tokens — labels, inputs, select,
+ * read-only display, error banner, submit button. No behavior changes.
+ *
+ * namespace: "projects" — wired in app/[orgSlug]/projects/layout.tsx clientMessages.
  */
 export function CreateProjectForm({ orgSlug, lockedCompany, externalCompanies }: CreateProjectFormProps) {
   const t = useTranslations("projects");
@@ -36,20 +41,20 @@ export function CreateProjectForm({ orgSlug, lockedCompany, externalCompanies }:
       <LoadingOverlay visible={isPending} />
 
       {state.error && (
-        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 dark:border-red-700 dark:bg-red-950">
-          <p className="text-sm text-red-700 dark:text-red-300">{state.error}</p>
+        <div className="mb-4 rounded-sm border border-red-300 bg-red-50 px-4 py-3">
+          <p className="text-sm text-red-700">{state.error}</p>
         </div>
       )}
 
-      <form action={formAction} className="mt-6 flex flex-col gap-5">
+      <form action={formAction} className="flex flex-col gap-5">
         <input type="hidden" name="orgSlug" value={orgSlug} />
         <input type="hidden" name="status" value="DRAFT" />
 
         {/* Project name */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           <label
             htmlFor="name"
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+            className="text-xs font-bold uppercase tracking-wide text-text-muted"
           >
             {t("fieldName")}
           </label>
@@ -59,15 +64,15 @@ export function CreateProjectForm({ orgSlug, lockedCompany, externalCompanies }:
             type="text"
             required
             autoComplete="off"
-            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+            className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body placeholder:text-text-placeholder transition-[border-color,box-shadow] duration-150 focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           />
         </div>
 
         {/* Destination country */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           <label
             htmlFor="destinationCountry"
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+            className="text-xs font-bold uppercase tracking-wide text-text-muted"
           >
             {t("fieldDestinationCountry")}
           </label>
@@ -77,15 +82,15 @@ export function CreateProjectForm({ orgSlug, lockedCompany, externalCompanies }:
             type="text"
             required
             autoComplete="off"
-            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+            className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body placeholder:text-text-placeholder transition-[border-color,box-shadow] duration-150 focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           />
         </div>
 
         {/* Currency */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           <label
             htmlFor="currency"
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+            className="text-xs font-bold uppercase tracking-wide text-text-muted"
           >
             {t("fieldCurrency")}
           </label>
@@ -97,22 +102,22 @@ export function CreateProjectForm({ orgSlug, lockedCompany, externalCompanies }:
             maxLength={10}
             placeholder="e.g. USD, AED"
             autoComplete="off"
-            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+            className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body placeholder:text-text-placeholder transition-[border-color,box-shadow] duration-150 focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           />
         </div>
 
         {/* External company — locked (external user) or free-choice dropdown (member/admin) */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           <label
             htmlFor={lockedCompany ? undefined : "externalCompanyId"}
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+            className="text-xs font-bold uppercase tracking-wide text-text-muted"
           >
             {t("fieldExternalCompany")}
           </label>
           {lockedCompany ? (
             <>
               <input type="hidden" name="externalCompanyId" value={lockedCompany.id} />
-              <p className="rounded-md border border-zinc-200 bg-zinc-100 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300">
+              <p className="rounded-sm border border-border bg-primary-softer/40 px-3 py-2.5 text-sm text-text-body">
                 {lockedCompany.name}
               </p>
             </>
@@ -120,7 +125,7 @@ export function CreateProjectForm({ orgSlug, lockedCompany, externalCompanies }:
             <select
               id="externalCompanyId"
               name="externalCompanyId"
-              className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:ring-zinc-50"
+              className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body transition-[border-color,box-shadow] duration-150 focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
             >
               <option value="">{t("fieldExternalCompanyNone")}</option>
               {externalCompanies.map((ec) => (
@@ -135,7 +140,7 @@ export function CreateProjectForm({ orgSlug, lockedCompany, externalCompanies }:
         <button
           type="submit"
           disabled={isPending}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="mt-1 rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary transition-colors hover:bg-primary-dark disabled:opacity-50"
         >
           {t("submitCreate")}
         </button>
