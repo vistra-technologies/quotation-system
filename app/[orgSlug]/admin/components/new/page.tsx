@@ -23,6 +23,7 @@ export default async function NewComponentTypePage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
 
   const [meRes, categoriesRes, t] = await Promise.all([
     internalFetch(`/api/v1/orgs/${orgSlug}/me`),
@@ -46,26 +47,31 @@ export default async function NewComponentTypePage({
 
   return (
     <div>
+      {/* Back link */}
       <Link
-        href={`/${orgSlug}/admin/components`}
-        className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+        href={`${base}/admin/components`}
+        className="mb-5 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text-heading"
       >
         {t("backToList")}
       </Link>
 
-      <h1 className="mt-4 text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-        {t("createPageTitle")}
-      </h1>
-      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-        {t("createPageSubtitle")}
-      </p>
+      {/* Page heading */}
+      <div className="mb-5">
+        <h1 className="text-[27px] font-extrabold text-text-heading leading-tight">
+          {t("createPageTitle")}
+        </h1>
+        <p className="mt-1 text-[13.5px] text-text-muted">
+          {t("createPageSubtitle")}
+        </p>
+      </div>
 
-      {/* Inert caveat — prominently displayed on the create form */}
-      <aside className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+      {/* Inert schema-only notice */}
+      <aside className="mb-5 rounded-sm border border-status-pending-bg bg-status-pending-bg px-4 py-2.5 text-sm text-status-pending-text">
         {t("inertCaveat")}
       </aside>
 
-      <div className="mt-6 max-w-2xl rounded-lg border border-zinc-200 bg-white px-5 py-4 dark:border-zinc-800 dark:bg-zinc-900">
+      {/* Form card */}
+      <div className="max-w-2xl rounded-md border border-border bg-bg-card shadow-card px-6 py-5">
         <CreateComponentForm
           orgSlug={orgSlug}
           categories={categories}

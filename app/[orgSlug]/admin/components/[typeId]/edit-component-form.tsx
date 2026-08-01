@@ -19,7 +19,7 @@ function SubmitButton({ label, disabled: extraDisabled }: { label: string; disab
     <button
       type="submit"
       disabled={pending || extraDisabled}
-      className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+      className="inline-flex items-center rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
     >
       {label}
     </button>
@@ -77,7 +77,7 @@ function OptionsBuilder({
 }) {
   const [draft, setDraft] = useState("");
   const inputBase =
-    "rounded-md border border-zinc-300 bg-zinc-50 px-2 py-1 text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:ring-zinc-50";
+    "rounded-sm border border-border bg-bg-white px-2 py-1 text-xs text-text-body focus:outline-none focus:ring-2 focus:ring-primary-soft focus:border-primary-soft";
 
   const addOption = () => {
     const trimmed = draft.trim();
@@ -94,13 +94,13 @@ function OptionsBuilder({
           {options.map((opt, oi) => (
             <span
               key={oi}
-              className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
+              className="inline-flex items-center gap-1 rounded-pill bg-primary-softer px-2 py-0.5 text-xs text-primary-dark"
             >
               {opt}
               <button
                 type="button"
                 onClick={() => onChange(options.filter((_, i) => i !== oi))}
-                className="ml-0.5 text-zinc-400 hover:text-red-500 dark:hover:text-red-400"
+                className="ml-0.5 text-text-muted hover:text-status-failed-text"
                 aria-label={`Remove option ${opt}`}
               >
                 ×
@@ -126,7 +126,7 @@ function OptionsBuilder({
         <button
           type="button"
           onClick={addOption}
-          className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:border-zinc-400 dark:border-zinc-600 dark:text-zinc-300 dark:hover:border-zinc-500"
+          className="rounded-sm border border-border px-2 py-1 text-xs font-bold text-text-body hover:border-primary-soft hover:bg-primary-softer"
         >
           {addOptionLabel}
         </button>
@@ -174,7 +174,7 @@ function FieldRow({
   };
 }) {
   const inputBase =
-    "rounded-md border border-zinc-300 bg-zinc-50 px-2 py-1.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:ring-zinc-50";
+    "rounded-sm border border-border bg-bg-white px-2 py-1.5 text-sm text-text-body focus:outline-none focus:ring-2 focus:ring-primary-soft focus:border-primary-soft";
 
   const typeLabels: Record<FieldEntry["type"], string> = {
     field: labels.fieldTypeField,
@@ -186,11 +186,11 @@ function FieldRow({
   const needsOptions = entry.type === "radio" || entry.type === "dropdown";
 
   return (
-    <div className="flex flex-col gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2.5 dark:border-zinc-700 dark:bg-zinc-900">
+    <div className="flex flex-col gap-2 rounded-sm border border-border bg-bg-page px-3 py-2.5">
       {/* Row 1: key, label, type, move/remove */}
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex min-w-[8rem] flex-1 flex-col gap-0.5">
-          <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+          <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
             {labels.keyLabel}
           </label>
           <input
@@ -202,7 +202,7 @@ function FieldRow({
           />
         </div>
         <div className="flex min-w-[10rem] flex-1 flex-col gap-0.5">
-          <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+          <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
             {labels.labelLabel}
           </label>
           <input
@@ -214,7 +214,7 @@ function FieldRow({
           />
         </div>
         <div className="flex flex-col gap-0.5">
-          <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+          <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
             {labels.typeLabel}
           </label>
           <select
@@ -249,7 +249,7 @@ function FieldRow({
             disabled={sectionPos === 0}
             aria-label={labels.moveUp}
             title={labels.moveUp}
-            className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs font-medium text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:opacity-30 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-500 dark:hover:text-zinc-200"
+            className="rounded-sm border border-border px-2 py-1.5 text-xs font-bold text-text-muted hover:border-primary-soft hover:text-text-heading disabled:opacity-30"
           >
             ↑
           </button>
@@ -259,14 +259,14 @@ function FieldRow({
             disabled={sectionPos === sectionLength - 1}
             aria-label={labels.moveDown}
             title={labels.moveDown}
-            className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs font-medium text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 disabled:opacity-30 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-500 dark:hover:text-zinc-200"
+            className="rounded-sm border border-border px-2 py-1.5 text-xs font-bold text-text-muted hover:border-primary-soft hover:text-text-heading disabled:opacity-30"
           >
             ↓
           </button>
           <button
             type="button"
             onClick={onRemove}
-            className="rounded-md border border-zinc-200 px-2 py-1.5 text-xs font-medium text-zinc-500 hover:border-red-200 hover:text-red-600 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-red-800 dark:hover:text-red-400"
+            className="rounded-sm border border-border px-2 py-1.5 text-xs font-bold text-text-muted hover:border-status-failed-bg hover:text-status-failed-text"
           >
             {labels.removeLabel}
           </button>
@@ -276,7 +276,7 @@ function FieldRow({
       {/* Row 2: options builder (radio/dropdown only) */}
       {needsOptions && (
         <div className="flex flex-col gap-0.5">
-          <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+          <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
             {labels.fieldOptions}
           </label>
           <OptionsBuilder
@@ -290,7 +290,7 @@ function FieldRow({
       {/* Row 3: hint, required, core */}
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex min-w-[12rem] flex-1 flex-col gap-0.5">
-          <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+          <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
             {labels.fieldHint}
           </label>
           <input
@@ -304,14 +304,14 @@ function FieldRow({
           />
         </div>
         <div className="flex flex-col items-center gap-0.5">
-          <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+          <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
             {labels.requiredLabel}
           </label>
           <input
             type="checkbox"
             checked={entry.required}
             onChange={(e) => onChange({ ...entry, required: e.target.checked })}
-            className="mt-1.5 h-4 w-4 rounded border-zinc-300 text-zinc-900 dark:border-zinc-600"
+            className="mt-1.5 h-4 w-4 rounded border-border accent-primary"
           />
         </div>
       </div>
@@ -356,19 +356,19 @@ function SectionEditor({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-zinc-600 dark:text-zinc-300">
+        <span className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
           {sectionLabel}
         </span>
         <button
           type="button"
           onClick={addField}
-          className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium text-zinc-700 hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-600 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:text-zinc-50"
+          className="rounded-sm border border-border px-2.5 py-1 text-xs font-bold text-text-body hover:border-primary-soft hover:bg-primary-softer"
         >
           + {addFieldLabel}
         </button>
       </div>
       {sectionEntries.length === 0 ? (
-        <p className="rounded-md border border-dashed border-zinc-200 px-4 py-3 text-xs text-zinc-400 dark:border-zinc-700 dark:text-zinc-500">
+        <p className="rounded-sm border border-dashed border-border px-4 py-3 text-xs text-text-placeholder italic">
           No fields yet — click &quot;+ {addFieldLabel}&quot; to add one.
         </p>
       ) : (
@@ -502,6 +502,9 @@ interface EditComponentFormProps {
  * Fields are stored in a flat array; the UI splits them into Basic / Advanced
  * sections by the `basic` boolean on each entry.
  * Serialises the fields array to JSON in a hidden input before submission.
+ *
+ * Stage 11 Batch 7: restyled to Sage Ease tokens. All logic (JSON toggle,
+ * field reordering, active toggle, validation) is unchanged.
  */
 export function EditComponentForm({
   orgSlug,
@@ -562,6 +565,9 @@ export function EditComponentForm({
     removeLabel: labels.removeFieldLabel,
   };
 
+  const inputBase =
+    "rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary-soft focus:border-primary-soft";
+
   return (
     <form action={updateComponentType} className="flex flex-col gap-5">
       <PendingOverlay />
@@ -576,7 +582,7 @@ export function EditComponentForm({
       <div className="flex flex-col gap-1">
         <label
           htmlFor="name"
-          className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+          className="text-[10px] font-bold uppercase tracking-wide text-text-muted"
         >
           {labels.fieldNameLabel}
         </label>
@@ -587,7 +593,7 @@ export function EditComponentForm({
           required
           defaultValue={initialName}
           autoComplete="off"
-          className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+          className={inputBase}
         />
       </div>
 
@@ -595,7 +601,7 @@ export function EditComponentForm({
       <div className="flex flex-col gap-1">
         <label
           htmlFor="categoryId"
-          className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+          className="text-[10px] font-bold uppercase tracking-wide text-text-muted"
         >
           {labels.fieldCategoryLabel}
         </label>
@@ -604,7 +610,7 @@ export function EditComponentForm({
           name="categoryId"
           required
           defaultValue={initialCategoryId}
-          className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:ring-zinc-50"
+          className={inputBase}
         >
           <option value="" disabled>
             {labels.fieldCategoryPlaceholder}
@@ -618,17 +624,17 @@ export function EditComponentForm({
       </div>
 
       {/* Active toggle */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2.5">
         <input
           id="activeToggle"
           type="checkbox"
           checked={active}
           onChange={(e) => setActive(e.target.checked)}
-          className="h-4 w-4 rounded border-zinc-300 text-zinc-900 dark:border-zinc-600"
+          className="h-4 w-4 rounded border-border accent-primary"
         />
         <label
           htmlFor="activeToggle"
-          className="text-sm font-medium text-zinc-700 dark:text-zinc-300"
+          className="text-sm font-bold text-text-body"
         >
           {labels.fieldStatusLabel}
         </label>
@@ -637,18 +643,18 @@ export function EditComponentForm({
       {/* Field list editor — Basic / Advanced sections, with Form / JSON toggle */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+          <span className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
             {labels.fieldsSchemaLabel}
           </span>
-          {/* Form / JSON view toggle */}
-          <div className="flex text-xs font-medium">
+          {/* Form / JSON view toggle — behavior untouched */}
+          <div className="flex text-xs font-bold">
             <button
               type="button"
               onClick={switchToForm}
-              className={`rounded-l-md border px-2.5 py-1 ${
+              className={`rounded-l-sm border px-2.5 py-1 ${
                 mode === "form"
-                  ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-                  : "border-zinc-300 text-zinc-700 hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-600 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:text-zinc-50"
+                  ? "border-primary bg-primary text-text-on-primary"
+                  : "border-border text-text-body hover:border-primary-soft hover:bg-primary-softer"
               }`}
             >
               {labels.modeForm}
@@ -656,10 +662,10 @@ export function EditComponentForm({
             <button
               type="button"
               onClick={switchToJson}
-              className={`rounded-r-md border-b border-r border-t px-2.5 py-1 ${
+              className={`rounded-r-sm border-b border-r border-t px-2.5 py-1 ${
                 mode === "json"
-                  ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-50 dark:bg-zinc-50 dark:text-zinc-900"
-                  : "border-zinc-300 text-zinc-700 hover:border-zinc-400 hover:text-zinc-900 dark:border-zinc-600 dark:text-zinc-300 dark:hover:border-zinc-500 dark:hover:text-zinc-50"
+                  ? "border-primary bg-primary text-text-on-primary"
+                  : "border-border text-text-body hover:border-primary-soft hover:bg-primary-softer"
               }`}
             >
               {labels.modeJson}
@@ -696,17 +702,17 @@ export function EditComponentForm({
               }}
               rows={20}
               spellCheck={false}
-              className="w-full rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 font-mono text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:ring-zinc-50"
+              className="w-full rounded-sm border border-border bg-bg-page px-3 py-2 font-mono text-xs text-text-body focus:outline-none focus:ring-2 focus:ring-primary-soft focus:border-primary-soft"
             />
             {jsonError && (
-              <p className="mt-1 text-sm text-red-600 dark:text-red-400">{jsonError}</p>
+              <p className="mt-1 text-sm text-status-failed-text">{jsonError}</p>
             )}
           </div>
         )}
       </div>
 
       {mode === "json" && (
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="text-xs text-text-muted">
           Switch to Form mode to save.
         </p>
       )}

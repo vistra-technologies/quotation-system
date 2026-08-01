@@ -27,6 +27,7 @@ export default async function ComponentTypesPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
 
   const [meRes, typesRes, t] = await Promise.all([
     internalFetch(`/api/v1/orgs/${orgSlug}/me`),
@@ -59,97 +60,183 @@ export default async function ComponentTypesPage({
 
   return (
     <div>
-      {/* Inert caveat — always visible; all schemas are inert until Stage 6 wiring */}
-      <aside className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-        {t("inertCaveat")}
-      </aside>
-
-      <div className="flex items-center justify-between">
+      {/* Title row */}
+      <div className="flex items-start justify-between gap-4 mb-1">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-[27px] font-extrabold text-text-heading leading-tight">
             {t("pageTitle")}
           </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-1 text-[13.5px] text-text-muted">
             {t("pageSubtitle")}
           </p>
         </div>
         <Link
-          href={`/${orgSlug}/admin/components/new`}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          href={`${base}/admin/components/new`}
+          className="inline-flex items-center rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark shrink-0"
         >
           {t("createType")}
         </Link>
       </div>
 
-      <div className="mt-6 rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-zinc-200 text-left dark:border-zinc-800">
-                <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
-                  {t("colCode")}
-                </th>
-                <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
-                  {t("colName")}
-                </th>
-                <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
-                  {t("colCategory")}
-                </th>
-                <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
-                  {t("colFields")}
-                </th>
-                <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
-                  {t("colStatus")}
-                </th>
-                <th className="px-5 py-3 text-right font-medium text-zinc-500 dark:text-zinc-400">
-                  {t("colActions")}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {types.map((ct) => (
-                <tr
-                  key={ct.id}
-                  className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
-                >
-                  <td className="px-5 py-3 font-mono text-xs font-medium text-zinc-900 dark:text-zinc-50">
-                    {ct.code}
-                  </td>
-                  <td className="px-5 py-3 font-medium text-zinc-900 dark:text-zinc-50">
-                    {ct.name}
-                  </td>
-                  <td className="px-5 py-3 text-zinc-500 dark:text-zinc-400">
-                    {ct.category.name}
-                  </td>
-                  <td className="px-5 py-3 text-zinc-500 dark:text-zinc-400">
-                    {ct.fieldsSchema.length === 0
-                      ? "—"
-                      : `${ct.fieldsSchema.length} field${ct.fieldsSchema.length !== 1 ? "s" : ""}`}
-                  </td>
-                  <td className="px-5 py-3">
-                    <span
-                      className={
-                        ct.active
-                          ? "inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-900 dark:text-green-300"
-                          : "inline-flex rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-                      }
-                    >
-                      {ct.active ? t("statusActive") : t("statusInactive")}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    <Link
-                      href={`/${orgSlug}/admin/components/${ct.id}`}
-                      className="text-sm font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-50"
-                    >
-                      {t("editPageTitle")}
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Inert schema-only notice */}
+      <aside className="mt-5 rounded-sm border border-status-pending-bg bg-status-pending-bg px-4 py-2.5 text-sm text-status-pending-text">
+        {t("inertCaveat")}
+      </aside>
+
+      {/* Types card */}
+      <div className="mt-5 rounded-md border border-border bg-bg-card shadow-card">
+        {/* Card header */}
+        <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-border">
+          <div>
+            <h2 className="text-base font-extrabold text-text-heading">Registered Types</h2>
+            <p className="mt-0.5 text-xs font-medium text-text-muted">
+              Every component kind an admin can add on the Design step, and the fields captured for each.
+            </p>
+          </div>
+          <span className="shrink-0 rounded-pill bg-primary-softer px-3 py-1.5 text-xs font-bold text-primary-dark whitespace-nowrap">
+            {types.length} {types.length === 1 ? "type" : "types"}
+          </span>
         </div>
+
+        {types.length === 0 ? (
+          /* Empty state */
+          <div className="px-6 py-12 text-center">
+            <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-[10px] bg-primary-softer text-primary">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                <circle cx="6.5" cy="6.5" r="1.1" fill="currentColor" stroke="none" />
+              </svg>
+            </div>
+            <p className="text-sm font-semibold text-text-heading">No component types found</p>
+            <p className="mt-1 text-xs text-text-muted">Create your first component type to get started.</p>
+          </div>
+        ) : (
+          <div className="px-4 py-2">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left">
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-text-muted">
+                    {t("colCode")}
+                  </th>
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-text-muted">
+                    {t("colName")}
+                  </th>
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-text-muted">
+                    {t("colCategory")}
+                  </th>
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-text-muted">
+                    {t("colFields")}
+                  </th>
+                  <th className="px-3 py-3 text-xs font-bold uppercase tracking-wide text-text-muted">
+                    {t("colStatus")}
+                  </th>
+                  <th className="px-3 py-3 text-right text-xs font-bold uppercase tracking-wide text-text-muted">
+                    {t("colActions")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {types.map((ct) => (
+                  <tr
+                    key={ct.id}
+                    className={`border-b border-border last:border-0 transition-colors hover:bg-bg-page ${!ct.active ? "opacity-[0.55]" : ""}`}
+                  >
+                    {/* Code chip */}
+                    <td className="px-3 py-3">
+                      <span className="inline-block rounded-sm border border-border bg-bg-page px-2 py-0.5 font-mono text-xs text-text-muted">
+                        {ct.code}
+                      </span>
+                    </td>
+
+                    {/* Name */}
+                    <td className="px-3 py-3 font-semibold text-text-body">
+                      {ct.name}
+                    </td>
+
+                    {/* Category chip */}
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-2 font-bold text-[12.5px] text-text-heading">
+                        <span className="flex h-[23px] w-[23px] shrink-0 items-center justify-center rounded-md bg-primary-softer text-primary-dark">
+                          <svg
+                            width="13"
+                            height="13"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <path d="M20.59 13.41L13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                            <circle cx="6.5" cy="6.5" r="1.1" fill="currentColor" stroke="none" />
+                          </svg>
+                        </span>
+                        <span>{ct.category.name}</span>
+                      </div>
+                    </td>
+
+                    {/* Fields count badge */}
+                    <td className="px-3 py-3">
+                      <span className="inline-flex items-center rounded-pill bg-primary-softer px-3 py-1 text-xs font-bold text-primary-dark">
+                        {ct.fieldsSchema.length === 0
+                          ? "—"
+                          : `${ct.fieldsSchema.length} ${ct.fieldsSchema.length === 1 ? "field" : "fields"}`}
+                      </span>
+                    </td>
+
+                    {/* Status pill */}
+                    <td className="px-3 py-3">
+                      {ct.active ? (
+                        <span className="inline-flex items-center rounded-pill bg-status-paid-bg px-3 py-0.5 text-xs font-bold text-status-paid-text">
+                          {t("statusActive")}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-pill bg-bg-page px-3 py-0.5 text-xs font-bold text-text-muted">
+                          {t("statusInactive")}
+                        </span>
+                      )}
+                    </td>
+
+                    {/* Edit action */}
+                    <td className="px-3 py-3 text-right">
+                      <Link
+                        href={`${base}/admin/components/${ct.id}`}
+                        className="inline-flex items-center gap-1.5 rounded-sm bg-primary-softer px-3 py-1.5 text-xs font-bold text-primary-dark hover:bg-primary-soft transition-colors"
+                      >
+                        <svg
+                          width="11"
+                          height="11"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden="true"
+                        >
+                          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                          <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                        {t("editPageTitle")}
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

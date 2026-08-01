@@ -32,6 +32,8 @@ interface UserRow {
  *
  * Batch 7g: added Full Name column; added Delete row action (client component
  * with window.confirm() before proceeding).
+ *
+ * Stage 11 Batch 8: restyled to Sage Ease tokens.
  */
 export default async function UsersPage({
   params,
@@ -39,6 +41,7 @@ export default async function UsersPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
 
   const [usersRes, t] = await Promise.all([
     internalFetch(`/api/v1/orgs/${orgSlug}/users`),
@@ -57,72 +60,72 @@ export default async function UsersPage({
     <div>
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+          <h1 className="text-2xl font-bold text-text-heading">
             {t("pageTitle")}
           </h1>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          <p className="mt-1 text-sm text-text-muted">
             {t("pageSubtitle")}
           </p>
         </div>
         <Link
-          href={`/${orgSlug}/admin/users/new`}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          href={`${base}/admin/users/new`}
+          className="rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark"
         >
           {t("createUser")}
         </Link>
       </div>
 
-      <div className="mt-6 rounded-lg border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="mt-6 rounded-md border border-border bg-bg-card shadow-card">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-zinc-200 text-left dark:border-zinc-800">
-                <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
+              <tr className="border-b border-border">
+                <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
                   {t("colUsername")}
                 </th>
-                <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
+                <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
                   {t("colFullName")}
                 </th>
-                <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
+                <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
                   {t("colRole")}
                 </th>
-                <th className="px-5 py-3 font-medium text-zinc-500 dark:text-zinc-400">
+                <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
                   {t("colStatus")}
                 </th>
-                <th className="px-5 py-3" />
+                <th className="px-5 py-3.5" />
               </tr>
             </thead>
             <tbody>
               {users.map((user) => (
                 <tr
                   key={user.id}
-                  className="border-b border-zinc-100 last:border-0 dark:border-zinc-800"
+                  className="border-b border-border last:border-0 hover:bg-primary-softer/40"
                 >
-                  <td className="px-5 py-3 font-medium text-zinc-900 dark:text-zinc-50">
+                  <td className="px-5 py-4 font-bold text-text-heading">
                     {user.username}
                   </td>
-                  <td className="px-5 py-3 text-zinc-700 dark:text-zinc-300">
+                  <td className="px-5 py-4 text-text-body">
                     {user.firstName} {user.lastName}
                   </td>
-                  <td className="px-5 py-3 text-zinc-600 dark:text-zinc-400">
+                  <td className="px-5 py-4 text-text-body">
                     {user.role.name}
                   </td>
-                  <td className="px-5 py-3">
+                  <td className="px-5 py-4">
                     <span
                       className={
                         user.active
-                          ? "inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs font-medium text-green-700 dark:bg-green-950 dark:text-green-300"
-                          : "inline-flex items-center rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                          ? "inline-flex items-center rounded-pill bg-status-paid-bg px-2.5 py-0.5 text-xs font-bold text-status-paid-text"
+                          : "inline-flex items-center rounded-pill bg-border px-2.5 py-0.5 text-xs font-bold text-text-muted"
                       }
                     >
                       {user.active ? t("statusActive") : t("statusInactive")}
                     </span>
                   </td>
-                  <td className="px-5 py-3 text-right">
+                  <td className="px-5 py-4 text-right">
                     <div className="flex items-center justify-end gap-4">
                       <Link
-                        href={`/${orgSlug}/admin/users/${user.id}`}
-                        className="text-sm font-medium text-zinc-900 underline-offset-2 hover:underline dark:text-zinc-50"
+                        href={`${base}/admin/users/${user.id}`}
+                        className="text-sm font-bold text-primary-dark underline-offset-2 hover:underline"
                       >
                         {t("colActions")}
                       </Link>
