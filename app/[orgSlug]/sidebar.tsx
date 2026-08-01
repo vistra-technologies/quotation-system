@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { useOrgHref } from "@/lib/useOrgHref";
 
 interface SidebarProps {
   orgSlug: string;
@@ -36,6 +37,7 @@ export function Sidebar({
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+  const href = useOrgHref(orgSlug);
 
   // Handle both path-based routing (/orgSlug/...) and subdomain-based routing
   // (/... without orgSlug prefix). After Batch 2's proxy rewrite, users on
@@ -73,8 +75,11 @@ export function Sidebar({
             : "justify-between gap-2 px-[18px] py-4"
         }`}
       >
-        {/* Logo mark square + wordmark */}
-        <div className="flex items-center gap-2 overflow-hidden">
+        {/* Logo mark square + wordmark — clicks to org dashboard */}
+        <Link
+          href={href("/dashboard")}
+          className="flex items-center gap-2 overflow-hidden"
+        >
           {/* Green square with document-checkmark icon — always visible */}
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-primary">
             <svg
@@ -114,7 +119,7 @@ export function Sidebar({
               EaseeTool
             </span>
           )}
-        </div>
+        </Link>
 
         {/* Collapse button — visible only when expanded */}
         {!collapsed && (
