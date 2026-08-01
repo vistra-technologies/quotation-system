@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
@@ -11,6 +12,8 @@ interface CreateInquiryFormProps {
   lockedCompany: { id: string; name: string } | null;
   /** Free-choice list for org members/admins (null lockedCompany). Empty when lockedCompany is set. */
   externalCompanies: { id: string; name: string }[];
+  /** Back-navigation href for the Cancel button. */
+  backHref: string;
 }
 
 const initialState: CreateInquiryState = { error: null };
@@ -29,8 +32,17 @@ const initialState: CreateInquiryState = { error: null };
  *
  * The `inquiries` namespace is forwarded in the ancestor layout's clientMessages —
  * verified in app/[orgSlug]/inquiries/layout.tsx.
+ *
+ * Stage 11 (Batch 5): restyled to Sage Ease tokens — two-column card layout
+ * (Inquiry Details / Client Info panels), Sage Ease form fields, Cancel link,
+ * Sage Ease primary submit button. No logic changes.
  */
-export function CreateInquiryForm({ orgSlug, lockedCompany, externalCompanies }: CreateInquiryFormProps) {
+export function CreateInquiryForm({
+  orgSlug,
+  lockedCompany,
+  externalCompanies,
+  backHref,
+}: CreateInquiryFormProps) {
   const t = useTranslations("inquiries");
   const [state, formAction, isPending] = useActionState(createInquiry, initialState);
 
@@ -38,109 +50,161 @@ export function CreateInquiryForm({ orgSlug, lockedCompany, externalCompanies }:
     <>
       <LoadingOverlay visible={isPending} />
 
+      {/* Error banner */}
       {state.error && (
-        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 dark:border-red-700 dark:bg-red-950">
-          <p className="text-sm text-red-700 dark:text-red-300">{state.error}</p>
+        <div className="mb-5 rounded-sm border border-status-failed-text/20 bg-status-failed-bg px-4 py-3">
+          <p className="text-sm font-semibold text-status-failed-text">{state.error}</p>
         </div>
       )}
 
-      <form action={formAction} className="mt-6 flex flex-col gap-5">
+      <form action={formAction}>
         <input type="hidden" name="orgSlug" value={orgSlug} />
 
-        {/* Inquiry name */}
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor="name"
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
-          >
-            {t("fieldName")}
-          </label>
-          <input
-            id="name"
-            name="name"
-            type="text"
-            required
-            autoComplete="off"
-            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
-          />
-        </div>
+        {/* Two-column card */}
+        <div className="overflow-hidden rounded-md border border-border bg-bg-card shadow-card">
+          <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
 
-        {/* Destination country */}
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor="destinationCountry"
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
-          >
-            {t("fieldDestinationCountry")}
-          </label>
-          <input
-            id="destinationCountry"
-            name="destinationCountry"
-            type="text"
-            required
-            autoComplete="off"
-            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
-          />
-        </div>
+            {/* ── Left panel: Inquiry Details ──────────────────────────────── */}
+            <div>
+              {/* Panel title */}
+              <div className="bg-primary-softer px-5 py-3.5">
+                <h2 className="text-base font-extrabold text-primary-dark">
+                  Inquiry Details
+                </h2>
+                <p className="mt-0.5 text-xs font-medium text-text-muted">
+                  Core details about this inquiry
+                </p>
+              </div>
 
-        {/* Currency */}
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor="currency"
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
-          >
-            {t("fieldCurrency")}
-          </label>
-          <input
-            id="currency"
-            name="currency"
-            type="text"
-            required
-            maxLength={10}
-            placeholder="e.g. USD, AED"
-            autoComplete="off"
-            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
-          />
-        </div>
+              {/* Panel body */}
+              <div className="space-y-4 p-5">
+                {/* Inquiry Name */}
+                <div className="flex flex-col gap-1">
+                  <label
+                    htmlFor="name"
+                    className="text-[10px] font-bold uppercase tracking-wider text-text-muted"
+                  >
+                    {t("fieldName")}
+                  </label>
+                  <input
+                    id="name"
+                    name="name"
+                    type="text"
+                    required
+                    autoComplete="off"
+                    className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
 
-        {/* External company — locked (external user) or free-choice dropdown (member/admin) */}
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor={lockedCompany ? undefined : "externalCompanyId"}
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
-          >
-            {t("fieldExternalCompany")}
-          </label>
-          {lockedCompany ? (
-            <>
-              <input type="hidden" name="externalCompanyId" value={lockedCompany.id} />
-              <p className="rounded-md border border-zinc-200 bg-zinc-100 px-3 py-2 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-800/50 dark:text-zinc-300">
-                {lockedCompany.name}
-              </p>
-            </>
-          ) : (
-            <select
-              id="externalCompanyId"
-              name="externalCompanyId"
-              className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:ring-zinc-50"
+                {/* Destination Country */}
+                <div className="flex flex-col gap-1">
+                  <label
+                    htmlFor="destinationCountry"
+                    className="text-[10px] font-bold uppercase tracking-wider text-text-muted"
+                  >
+                    {t("fieldDestinationCountry")}
+                  </label>
+                  <input
+                    id="destinationCountry"
+                    name="destinationCountry"
+                    type="text"
+                    required
+                    autoComplete="off"
+                    className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+
+                {/* Currency */}
+                <div className="flex flex-col gap-1">
+                  <label
+                    htmlFor="currency"
+                    className="text-[10px] font-bold uppercase tracking-wider text-text-muted"
+                  >
+                    {t("fieldCurrency")}
+                  </label>
+                  <input
+                    id="currency"
+                    name="currency"
+                    type="text"
+                    required
+                    maxLength={10}
+                    placeholder="e.g. USD, AED"
+                    autoComplete="off"
+                    className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* ── Right panel: Client Information ──────────────────────────── */}
+            <div>
+              {/* Panel title */}
+              <div className="bg-primary-softer px-5 py-3.5">
+                <h2 className="text-base font-extrabold text-primary-dark">
+                  Client Information
+                </h2>
+                <p className="mt-0.5 text-xs font-medium text-text-muted">
+                  The client company tied to this inquiry
+                </p>
+              </div>
+
+              {/* Panel body */}
+              <div className="space-y-4 p-5">
+                {/* External company — locked or free-choice */}
+                <div className="flex flex-col gap-1">
+                  <label
+                    htmlFor={lockedCompany ? undefined : "externalCompanyId"}
+                    className="text-[10px] font-bold uppercase tracking-wider text-text-muted"
+                  >
+                    {t("fieldExternalCompany")}
+                  </label>
+                  {lockedCompany ? (
+                    <>
+                      <input
+                        type="hidden"
+                        name="externalCompanyId"
+                        value={lockedCompany.id}
+                      />
+                      <p className="rounded-sm border border-border bg-primary-softer/60 px-3 py-2.5 text-sm font-semibold text-text-body">
+                        {lockedCompany.name}
+                      </p>
+                    </>
+                  ) : (
+                    <select
+                      id="externalCompanyId"
+                      name="externalCompanyId"
+                      className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body focus:outline-none focus:ring-2 focus:ring-primary/40"
+                    >
+                      <option value="">{t("fieldExternalCompanyNone")}</option>
+                      {externalCompanies.map((ec) => (
+                        <option key={ec.id} value={ec.id}>
+                          {ec.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card footer */}
+          <div className="flex items-center justify-end gap-3 border-t border-border px-6 py-4">
+            <Link
+              href={backHref}
+              className="inline-flex items-center rounded-sm border border-border bg-bg-white px-5 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
             >
-              <option value="">{t("fieldExternalCompanyNone")}</option>
-              {externalCompanies.map((ec) => (
-                <option key={ec.id} value={ec.id}>
-                  {ec.name}
-                </option>
-              ))}
-            </select>
-          )}
+              Cancel
+            </Link>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="inline-flex items-center rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t("submitCreate")}
+            </button>
+          </div>
         </div>
-
-        <button
-          type="submit"
-          disabled={isPending}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
-        >
-          {t("submitCreate")}
-        </button>
       </form>
     </>
   );
