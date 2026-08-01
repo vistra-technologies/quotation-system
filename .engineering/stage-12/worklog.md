@@ -672,3 +672,15 @@ nits not blocking.
 - Pushed to `feature/batch7d-projects-list-pattern` at `ecb708f`
 - Vercel preview deployment pending (push just completed)
 - Full functional verification (scope toggle, search, date filter, externalCompany filter, pagination, cross-tenant 403) to be covered by end-of-stage tester pass.
+
+### Batch 7d — reviewer (2026-08-01)
+
+**Verdict:** APPROVE-WITH-NITS · 0 CRITICAL · 0 IMPORTANT · 2 MINOR
+
+**Findings in reviewer final response** (no separate report file).
+
+All priority checks passed: `organizationId` unconditional first AND condition in `listProjectsPaginated` ✓ · `externalCompanyId` filter gated to `session.externalCompanyId === null` (internal users only — external users' company enforced from session, URL param ignored) ✓ · frozen `lib/api-auth.ts`/`lib/api-error.ts`/`lib/internal-fetch.ts` byte-for-byte unchanged (diff confirms no changes) ✓ · `components/list-page-controls.tsx` not in diff (unmodified) ✓ · `[projectId]/layout.tsx` line 55 has its own `mx-auto w-full max-w-5xl px-6 py-8` inner wrapper — margin change to list layout does not leak to project detail ✓ · no `@/lib/data/*` imports in `projects/page.tsx` ✓ · `npm run lint` 0 errors (1 pre-existing warning in org-nav.spec.ts) ✓ · `npx tsc --noEmit` 0 errors ✓ · `by-page.sql` updated in docs repo (commit `65b1c87`) ✓ · old `listProjects` deprecated, no active callers ✓ · schema gaps (value, submittedAt) flagged and rendered "—", consistent with Batch 7c D1 treatment ✓
+
+MINOR-1 (developer's discretion): `listProjectsPaginated` `findMany` includes `createdBy: { select: { id, name, username } }` but the page renders no "Created By" column — superfluous JOIN on every list request. Fix: remove `createdBy` from the `include` clause (and the type definition in `page.tsx`) until a column requiring it is added.
+
+MINOR-2 (developer's discretion): Empty-state text condition (`search || dateRange || scope === "mine"`) doesn't check `externalCompanyId`, so filtering by company alone with no results shows "No projects yet. Create your first project." instead of "No projects match your filters." Pre-existing pattern from Batch 7c (same gap in inquiries/page.tsx) — fix both together if taken.
