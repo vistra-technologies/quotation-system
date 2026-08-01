@@ -22,6 +22,9 @@ export const dynamic = "force-dynamic";
  *
  * Auth gate: requireSession (any authenticated org user).
  * Tenancy guard: getProjectById returns null → 404 if project belongs to another org.
+ *
+ * Batch 8: restyled zinc-* classes to Sage Ease tokens. Functional behavior
+ * (floors/partitions DAL, canvas deferral) unchanged.
  */
 export default async function DesignPage({
   params,
@@ -53,14 +56,14 @@ export default async function DesignPage({
   return (
     <div className="flex h-full flex-col">
       {/* Page header */}
-      <div className="border-b border-zinc-200 px-6 py-4 dark:border-zinc-800">
+      <div className="border-b border-border px-6 py-4">
         <Link
           href={`${base}/projects/${projectId}`}
-          className="mb-2 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+          className="mb-2 inline-block text-sm text-text-muted hover:text-text-heading"
         >
           {t("backToProject")}
         </Link>
-        <h1 className="text-xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-xl font-extrabold tracking-tight text-text-heading">
           {t("pageTitle")} — #{project.projectNumber} {project.name}
         </h1>
       </div>
@@ -68,27 +71,27 @@ export default async function DesignPage({
       {/* Three-column body */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left rail — floor-grouped walls */}
-        <aside className="w-64 shrink-0 overflow-y-auto border-r border-zinc-200 bg-white px-4 py-5 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+        <aside className="w-64 shrink-0 overflow-y-auto border-r border-border bg-bg-card px-4 py-5">
+          <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-text-muted">
             {t("wallsTitle")}
           </h2>
 
           {floorsWithPartitions.length === 0 ? (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="text-sm text-text-muted">
               {t("noWalls")}
             </p>
           ) : (
             <div className="flex flex-col gap-4">
               {floorsWithPartitions.map((floor) => (
                 <div key={floor.id}>
-                  <h3 className="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">
+                  <h3 className="mb-1 text-xs font-bold uppercase tracking-wider text-text-body">
                     {floor.label}
                   </h3>
                   <ul className="flex flex-col gap-1">
                     {floor.partitions.map((partition) => (
                       <li
                         key={partition.id}
-                        className="rounded-md border border-zinc-100 bg-zinc-50 px-3 py-2 text-xs text-zinc-700 dark:border-zinc-800 dark:bg-zinc-800/50 dark:text-zinc-300"
+                        className="rounded-sm border border-border bg-primary-softer px-3 py-2 text-xs text-text-body"
                       >
                         {partition.location} — {partition.heightMm} &times;{" "}
                         {partition.widthMm} mm
@@ -103,7 +106,7 @@ export default async function DesignPage({
           <div className="mt-5">
             <Link
               href={`${base}/projects/${projectId}/design/add-wall`}
-              className="block w-full rounded-md bg-zinc-900 px-4 py-2 text-center text-sm font-medium text-white hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+              className="block w-full rounded-sm bg-primary px-4 py-2 text-center text-sm font-bold text-text-on-primary hover:bg-primary-dark"
             >
               {t("addWall")}
             </Link>
@@ -111,19 +114,19 @@ export default async function DesignPage({
         </aside>
 
         {/* Center — canvas placeholder */}
-        <div className="flex flex-1 items-center justify-center bg-zinc-50 dark:bg-zinc-950">
-          <p className="text-sm text-zinc-400 dark:text-zinc-600">
+        <div className="flex flex-1 items-center justify-center bg-bg-page">
+          <p className="text-sm text-text-muted">
             {t("canvasPlaceholder")}
           </p>
         </div>
 
         {/* Right — read-only Selections palette */}
-        <aside className="w-64 shrink-0 overflow-y-auto border-l border-zinc-200 bg-white px-4 py-5 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+        <aside className="w-64 shrink-0 overflow-y-auto border-l border-border bg-bg-card px-4 py-5">
+          <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-text-muted">
             {t("selectionsTitle")}
           </h2>
           {selections.length === 0 ? (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="text-sm text-text-muted">
               No components added yet.
             </p>
           ) : (
@@ -131,12 +134,12 @@ export default async function DesignPage({
               {selections.map((sel) => (
                 <li
                   key={sel.id}
-                  className="rounded-md border border-zinc-100 bg-zinc-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-800/50"
+                  className="rounded-sm border border-border bg-primary-softer px-3 py-2"
                 >
-                  <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                  <p className="text-sm font-semibold text-text-heading">
                     {sel.label}
                   </p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  <p className="text-xs text-text-muted">
                     {sel.componentType.name}
                   </p>
                 </li>

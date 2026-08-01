@@ -19,6 +19,8 @@ export const dynamic = "force-dynamic";
  * only that company's name is fetched for display.  Otherwise the full
  * org list is fetched for the free-choice dropdown (current behavior).
  *
+ * Stage 11 (Batch 6): outer chrome restyled to Sage Ease tokens — back
+ * link, page heading, card wrapper. No data/prop changes.
  * Stage 12 Batch 6: switched requireSession → internalFetch /me.
  * externalCompanyId now comes from the /me response (plan-batch6.md D2).
  */
@@ -67,7 +69,10 @@ export default async function NewProjectPage({
     }
   }
 
-  const t = await getTranslations("projects");
+  const [t, base] = await Promise.all([
+    getTranslations("projects"),
+    orgHref(orgSlug, ""),
+  ]);
 
   return (
     <div className="mx-auto max-w-lg">

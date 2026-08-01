@@ -235,48 +235,48 @@ export default async function InquiriesPage({
                 </thead>
                 <tbody>
                   {inquiries.map((inquiry) => (
-                    <tr
-                      key={inquiry.id}
-                      className="border-b border-border/60 last:border-0 hover:bg-primary-softer"
-                    >
-                      {/* Project Name — links to inquiry detail */}
-                      <td className="px-3 py-[11px] text-[13px] font-semibold text-text-heading">
-                        <Link
-                          href={`/${orgSlug}/inquiries/${inquiry.id}`}
-                          className="hover:underline"
-                        >
-                          {inquiry.name}
-                        </Link>
-                      </td>
-                      {/* Client Name / Company */}
-                      <td className="px-3 py-[11px] text-[13px] text-text-body">
-                        {inquiry.externalCompany?.name ?? (
-                          <span className="text-text-placeholder">—</span>
-                        )}
-                      </td>
-                      {/* Location (destinationCountry) */}
-                      <td className="px-3 py-[11px] text-[13px] text-text-body">
-                        {inquiry.destinationCountry || (
-                          <span className="text-text-placeholder">—</span>
-                        )}
-                      </td>
-                      {/* Status badge */}
-                      <td className="px-3 py-[11px]">
-                        {statusBadge(inquiry.status)}
-                      </td>
-                      {/* Created On */}
-                      <td className="px-3 py-[11px] text-[13px] text-text-muted">
-                        {new Date(inquiry.createdAt).toLocaleDateString()}
-                      </td>
-                      {/* Submission Date — no submittedAt field in current schema */}
-                      <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
-                        —
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  <tr
+                    key={inquiry.id}
+                    className="border-b border-border/60 last:border-0 hover:bg-primary-softer"
+                  >
+                    {/* Project Name — links to inquiry detail */}
+                    <td className="px-3 py-[11px] text-[13px] font-semibold text-text-heading">
+                      <Link
+                        href={`/${orgSlug}/inquiries/${inquiry.id}`}
+                        className="hover:underline"
+                      >
+                        {inquiry.name}
+                      </Link>
+                    </td>
+                    {/* Client Name / Company */}
+                    <td className="px-3 py-[11px] text-[13px] text-text-body">
+                      {inquiry.externalCompany?.name ?? (
+                        <span className="text-text-placeholder">—</span>
+                      )}
+                    </td>
+                    {/* Location (destinationCountry) */}
+                    <td className="px-3 py-[11px] text-[13px] text-text-body">
+                      {inquiry.destinationCountry || (
+                        <span className="text-text-placeholder">—</span>
+                      )}
+                    </td>
+                    {/* Status badge */}
+                    <td className="px-3 py-[11px]">
+                      {statusBadge(inquiry.status)}
+                    </td>
+                    {/* Created On */}
+                    <td className="px-3 py-[11px] text-[13px] text-text-muted">
+                      {new Date(inquiry.createdAt).toLocaleDateString()}
+                    </td>
+                    {/* Submission Date — no submittedAt field in current schema */}
+                    <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
+                      —
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           )}
         </div>
 

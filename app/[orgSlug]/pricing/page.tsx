@@ -30,7 +30,10 @@ interface CatalogItemRow {
  * Pricing management list page (Server Component).
  *
  * Lists all active catalog items for the org with their current prices.
+ * Gated on MANAGE_PRICING — wrong-role requests are redirected to the dashboard.
  *
+ * Stage 11 (Batch 9): restyled to Sage Ease tokens; removed incorrect
+ * min-h-screen outer wrapper (page renders inside the org app shell).
  * Stage 12: switched from direct requireSession + DAL calls to internalFetch
  * against GET /api/v1/orgs/[orgSlug]/catalog. RBAC (MANAGE_PRICING) is
  * enforced by the route handler — 403 here redirects to login.
@@ -55,6 +58,8 @@ export default async function PricingPage({
   const items: CatalogItemRow[] = catalogRes.ok
     ? ((await catalogRes.json()) as { items: CatalogItemRow[] }).items
     : [];
+
+  const base = await orgHref(orgSlug, "");
 
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-8">

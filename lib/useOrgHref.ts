@@ -17,6 +17,9 @@
  * server during Next.js SSR; hostname defaults to "" which produces path-based output,
  * the correct server-side fallback).
  *
+ * Ported from Stage 11 — Stage 11 merged to staging but not yet to master when
+ * Stage 12 branched from master.
+ *
  * Usage ("use client" components):
  *   const href = useOrgHref(orgSlug);
  *   router.push(href("/dashboard"));

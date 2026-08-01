@@ -77,8 +77,11 @@ export function Sidebar({
             : "justify-between gap-2 px-[18px] py-4"
         }`}
       >
-        {/* Logo mark square + wordmark */}
-        <div className="flex items-center gap-2 overflow-hidden">
+        {/* Logo mark square + wordmark — clicks to org dashboard */}
+        <Link
+          href={href("/dashboard")}
+          className="flex items-center gap-2 overflow-hidden"
+        >
           {/* Green square with document-checkmark icon — always visible */}
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-primary">
             <svg
@@ -118,7 +121,7 @@ export function Sidebar({
               EaseeTool
             </span>
           )}
-        </div>
+        </Link>
 
         {/* Collapse button — visible only when expanded */}
         {!collapsed && (

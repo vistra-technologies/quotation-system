@@ -13,11 +13,12 @@ export const dynamic = "force-dynamic";
  * absolute subdomain URLs for the org selector (apex → org), while
  * lib/orgHref.ts is used inside org-scoped pages to emit subpath vs. subdomain
  * URLs relative to the current org. Do not replace this helper.
+ *
+ * Stage 12 (Batch 6): switched listOrganizationsForSelector DAL to internalFetch
+ * against the public GET /api/v1/orgs endpoint (no auth required).
  */
 export default async function Home() {
   // Apex — render the organization selector.
-  // Stage 12 Batch 6: switched listOrganizationsForSelector DAL to internalFetch
-  // against the public GET /api/v1/orgs endpoint (no auth required).
   const orgsRes = await internalFetch("/api/v1/orgs");
   const { orgs } = orgsRes.ok
     ? ((await orgsRes.json()) as { orgs: Array<{ id: string; slug: string; name: string }> })

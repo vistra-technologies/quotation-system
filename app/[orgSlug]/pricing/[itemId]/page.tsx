@@ -31,8 +31,10 @@ interface CatalogItemDetail {
  * Pricing item edit page (Server Component).
  *
  * Shows the current prices for one CatalogItem and lets company members add,
- * update, or delete ItemPrice rows.
+ * update, or delete ItemPrice rows.  Gated on MANAGE_PRICING.
  *
+ * Stage 11 (Batch 9): restyled to Sage Ease tokens; removed incorrect
+ * min-h-screen outer wrapper (page renders inside the org app shell).
  * Stage 12: switched from direct requireSession + DAL calls to internalFetch
  * against GET /api/v1/orgs/[orgSlug]/catalog/[itemId]. RBAC (MANAGE_PRICING)
  * is enforced by the route handler — 401/403 redirect to login, 404 → notFound().
@@ -66,6 +68,8 @@ export default async function PricingItemPage({
   }
 
   const item = ((await itemRes.json()) as { item: CatalogItemDetail }).item;
+
+  const base = await orgHref(orgSlug, "");
 
   return (
     <div className="mx-auto w-full max-w-lg px-6 py-8">

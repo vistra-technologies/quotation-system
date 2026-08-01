@@ -40,6 +40,7 @@ export default async function NewUserPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
+  const base = await orgHref(orgSlug, "");
 
   const [rolesRes, companiesRes, t] = await Promise.all([
     internalFetch(`/api/v1/orgs/${orgSlug}/roles`),
@@ -63,24 +64,26 @@ export default async function NewUserPage({
   return (
     <div className="mx-auto max-w-lg">
       <Link
-        href={`/${orgSlug}/admin/users`}
-        className="mb-4 inline-block text-sm text-zinc-500 underline-offset-2 hover:underline dark:text-zinc-400"
+        href={`${base}/admin/users`}
+        className="mb-4 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text-heading"
       >
         {t("backToList")}
       </Link>
 
-      <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+      <h1 className="mt-2 text-2xl font-bold text-text-heading">
         {t("createPageTitle")}
       </h1>
-      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="mt-1 text-sm text-text-muted">
         {t("createPageSubtitle")}
       </p>
 
-      <CreateUserForm
-        orgSlug={orgSlug}
-        roles={roles}
-        externalCompanies={externalCompanies}
-      />
+      <div className="mt-6 rounded-md border border-border bg-bg-card p-6 shadow-card">
+        <CreateUserForm
+          orgSlug={orgSlug}
+          roles={roles}
+          externalCompanies={externalCompanies}
+        />
+      </div>
     </div>
   );
 }

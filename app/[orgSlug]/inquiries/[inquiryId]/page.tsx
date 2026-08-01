@@ -32,6 +32,10 @@ interface InquiryDetail {
  * Tenancy guard: the API route's getApiSession() enforces cross-org isolation,
  * and getInquiryById() returns null for wrong-org inquiries → 404.
  *
+ * Stage 11 (Batch 5): restyled to Sage Ease tokens — back link, heading, meta row,
+ * status badge, action buttons, two-column read-only card. Dismiss form and
+ * StartProjectButton behavior unchanged.
+ *
  * Stage 12: switched from direct requireSession + getInquiryById DAL call to
  * internalFetch against GET /api/v1/orgs/[orgSlug]/inquiries/[inquiryId].
  */

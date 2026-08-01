@@ -348,9 +348,9 @@ export function ListPagePagination({
   return (
     <div className="flex items-center justify-between px-3 pt-3">
       <span className="text-[12.5px] text-text-muted">
-        {totalCount === 0
-          ? `No ${entityLabel.toLowerCase()} found`
-          : `${startRecord}–${endRecord} of ${totalCount} ${entityLabel.toLowerCase()} · Page ${page} of ${totalPages}`}
+        {totalCount > 0
+          ? `${startRecord}–${endRecord} of ${totalCount} ${entityLabel.toLowerCase()} · Page ${page} of ${totalPages}`
+          : ""}
       </span>
       {totalPages > 1 && (
         <div className="flex items-center gap-1">

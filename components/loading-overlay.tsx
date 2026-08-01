@@ -32,9 +32,9 @@ export function LoadingOverlay({ visible }: LoadingOverlayProps) {
     >
       <div
         aria-hidden="true"
-        className="h-10 w-10 animate-spin rounded-full border-4 border-zinc-300 border-t-zinc-50"
+        className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white"
       />
-      <p className="mt-3 text-sm font-medium text-zinc-50">{t("loading")}</p>
+      <p className="mt-3 text-sm font-medium text-text-on-primary">{t("loading")}</p>
     </div>
   );
 }

@@ -19,6 +19,10 @@ export const dynamic = "force-dynamic";
  * only that company's name is fetched for display.  Otherwise the full
  * org list is fetched for the free-choice dropdown (current behavior).
  *
+ * Stage 11 (Batch 5): restyled to Sage Ease tokens — back link, page heading,
+ * wider layout (removes max-w-lg), backHref passed to form for Cancel button.
+ * No logic changes.
+ *
  * Stage 12 Batch 6: switched requireSession → internalFetch /me.
  * externalCompanyId now comes from the /me response (plan-batch6.md D2).
  */
@@ -68,6 +72,7 @@ export default async function NewInquiryPage({
   }
 
   const t = await getTranslations("inquiries");
+  const backHref = `${base}/inquiries`;
 
   const backHref = `${base}/inquiries`;
 
