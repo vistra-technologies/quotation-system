@@ -1,244 +1,303 @@
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
-import { listProjects } from "@/lib/data/projects";
-import { requireSession } from "@/lib/data/session";
+import { notFound, redirect } from "next/navigation";
+import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import {
+  ListPageControls,
+  ListPagePagination,
+} from "@/components/list-page-controls";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
 
-/**
- * Projects list page (Server Component).
- *
- * Lists all projects within the session's org, newest-first.
- * Auth-protected (any authenticated user); no special RBAC permission required.
- *
- * Stage 11 (Batch 4): restyled to Sage Ease tokens matching
- * project-list-page-2026-07-23-v1.html. Toolbar controls (date filter, search,
- * My/All segmented) are rendered as inert HTML — filtering is a future-stage
- * concern. No queries or behavior changed.
- */
+// ─── Types ───────────────────────────────────────────────────────────────────
 
-/** Map a project status string to Sage Ease status-pill token classes. */
-function statusClasses(status: string): string {
-  switch (status.toUpperCase()) {
-    case "COMPLETED":
-      return "bg-status-paid-bg text-status-paid-text";
-    case "IN_PROGRESS":
-      return "bg-status-pending-bg text-status-pending-text";
-    case "QUOTATION_SENT":
-      return "bg-status-shipped-bg text-status-shipped-text";
+interface ProjectListItem {
+  id: string;
+  projectNumber: number;
+  name: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  destinationCountry: string;
+  externalCompany: { id: string; name: string } | null;
+  createdBy: { id: string; name: string; username: string };
+}
+
+interface ExternalCompanyOption {
+  id: string;
+  name: string;
+}
+
+// ─── Status badge helper ──────────────────────────────────────────────────────
+
+function statusBadge(status: string) {
+  switch (status) {
     case "DRAFT":
+      return (
+        <span className="inline-flex items-center rounded-pill bg-status-shipped-bg px-2 py-[2px] text-xs font-semibold text-status-shipped-text">
+          Draft
+        </span>
+      );
+    case "COMPLETED":
+      return (
+        <span className="inline-flex items-center rounded-pill bg-status-paid-bg px-2 py-[2px] text-xs font-semibold text-status-paid-text">
+          Completed
+        </span>
+      );
+    case "CANCELLED":
+      return (
+        <span className="inline-flex items-center rounded-pill bg-status-refunded-bg px-2 py-[2px] text-xs font-semibold text-status-refunded-text">
+          Cancelled
+        </span>
+      );
     default:
-      return "bg-status-refunded-bg text-status-refunded-text";
+      return (
+        <span className="inline-flex items-center rounded-pill bg-bg-white px-2 py-[2px] text-xs font-semibold text-text-muted">
+          {status}
+        </span>
+      );
   }
 }
 
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Projects list page (Server Component).
+ *
+ * Stage 12 Batch 7d: upgraded to the shared list-page pattern —
+ * reduced margins, date-range filter, search, My/All toggle with RBAC visibility
+ * rules, external-company filter for internal users, pagination, and updated column schema.
+ *
+ * Column schema: Project Name, Client Name / Company, Location, Status,
+ * Value ("—" — no value field in current schema), Created On,
+ * Submission Date ("—" — no submittedAt field in current schema).
+ *
+ * "Client Name" column header shown to external users; "Company" shown to internal
+ * users (Admin / Company Member). Discriminator: me.externalCompanyId === null.
+ *
+ * RBAC visibility enforced in the API route + DAL (scope + externalCompanyId filtering).
+ *
+ * Row checkboxes removed per stage-12.md Projects-specific requirements.
+ */
 export default async function ProjectsPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orgSlug: string }>;
+  searchParams: Promise<{
+    scope?: string;
+    search?: string;
+    dateRange?: string;
+    page?: string;
+    externalCompanyId?: string;
+  }>;
 }) {
   const { orgSlug } = await params;
-  const base = await orgHref(orgSlug, "");
-  const session = await requireSession(orgSlug);
+  const sp = await searchParams;
 
-  const [projects, t] = await Promise.all([
-    listProjects(session),
-    getTranslations("projects"),
+  // Parse and validate URL params — defaults match API route defaults.
+  const scope = sp.scope === "mine" ? "mine" : "all";
+  const search = typeof sp.search === "string" ? sp.search : "";
+  const dateRange = typeof sp.dateRange === "string" ? sp.dateRange : "";
+  const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 20;
+  const externalCompanyId =
+    typeof sp.externalCompanyId === "string" ? sp.externalCompanyId : "";
+
+  // Build API query string.
+  const apiParams = new URLSearchParams({
+    scope,
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  if (search) apiParams.set("search", search);
+  if (dateRange) apiParams.set("dateRange", dateRange);
+  if (externalCompanyId) apiParams.set("externalCompanyId", externalCompanyId);
+
+  // Fetch session identity (/me) and project list in parallel.
+  const [meRes, listRes] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/me`),
+    internalFetch(
+      `/api/v1/orgs/${orgSlug}/projects?${apiParams.toString()}`,
+    ),
   ]);
 
+  // Auth / tenant guard — redirect to login on 401/403.
+  if (meRes.status === 401 || meRes.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+  if (listRes.status === 401 || listRes.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+  if (!meRes.ok || !listRes.ok) {
+    notFound();
+  }
+
+  const me = (await meRes.json()) as {
+    externalCompanyId: string | null;
+    name: string;
+  };
+
+  const { projects, total } = (await listRes.json()) as {
+    projects: ProjectListItem[];
+    total: number;
+    page: number;
+    pageSize: number;
+  };
+
+  // Internal user = externalCompanyId is null (Admin or Company Member).
+  // External user = externalCompanyId is non-null (Distributor / Architectural Firm).
+  const isInternal = me.externalCompanyId === null;
+
+  // External-company filter list — only shown to internal users.
+  // External users are already pinned to their own company (enforced in the DAL).
+  let externalCompanies: ExternalCompanyOption[] | null = null;
+  if (isInternal) {
+    const companiesRes = await internalFetch(
+      `/api/v1/orgs/${orgSlug}/external-companies`,
+    );
+    if (companiesRes.ok) {
+      const data = (await companiesRes.json()) as {
+        companies: ExternalCompanyOption[];
+      };
+      externalCompanies = data.companies;
+    }
+  }
+
+  // Column header label differs by user type.
+  const clientColumnHeader = isInternal ? "Company" : "Client Name";
+
   return (
-    <>
-      {/* Page header */}
+    <div>
+      {/* ── Page header ─────────────────────────────────────────────── */}
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="flex items-center gap-2 text-[27px] font-extrabold text-text-heading">
-            {t("pageTitle")}
-            <span className="rounded-pill bg-primary-softer px-2.5 py-0.5 text-[12.5px] font-bold text-primary-dark">
-              {projects.length}
+            Projects
+            <span className="rounded-pill bg-primary-softer px-[10px] py-[2px] text-[12.5px] font-bold text-primary-dark">
+              {total}
             </span>
           </h1>
-          <p className="mt-1 text-[13.5px] text-text-muted">{t("pageSubtitle")}</p>
+          <p className="mt-1 text-[13.5px] text-text-muted">
+            Manage your organization&apos;s projects.
+          </p>
         </div>
         <Link
-          href={`${base}/projects/new`}
-          className="rounded-sm bg-primary px-4 py-2.5 text-[13px] font-bold text-text-on-primary hover:bg-primary-dark"
+          href={`/${orgSlug}/projects/new`}
+          className="rounded-sm bg-primary px-4 py-[9px] text-[13px] font-semibold text-text-on-primary hover:bg-primary-dark"
         >
-          + {t("createProject")}
+          + New Project
         </Link>
       </div>
 
-      {/* Toolbar (inert — filtering is a future-stage feature) */}
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        {/* Left: date filter button */}
-        <button
-          type="button"
-          disabled
-          className="flex items-center gap-1.5 rounded-sm border border-border bg-bg-white px-3 py-2 text-[13px] font-semibold text-text-body opacity-60 cursor-not-allowed"
-        >
-          <svg
-            className="h-3.5 w-3.5 text-text-muted"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-            <line x1="16" y1="2" x2="16" y2="6" />
-            <line x1="8" y1="2" x2="8" y2="6" />
-            <line x1="3" y1="10" x2="21" y2="10" />
-          </svg>
-          All dates
-          <svg
-            className="h-3 w-3 text-text-muted"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </button>
+      {/* ── Toolbar ──────────────────────────────────────────────────── */}
+      <ListPageControls
+        entityLabel="Projects"
+        searchPlaceholder="Search projects..."
+        scope={scope}
+        search={search}
+        dateRange={dateRange}
+        externalCompanies={externalCompanies}
+        externalCompanyId={externalCompanyId}
+      />
 
-        {/* Right: search + segmented */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <input
-            type="text"
-            placeholder="Search projects..."
-            disabled
-            className="w-[230px] rounded-sm border border-border bg-bg-white px-3 py-2 text-[13px] text-text-placeholder placeholder:text-text-placeholder opacity-60 cursor-not-allowed focus:outline-none"
-          />
-          <div className="flex overflow-hidden rounded-sm border border-border bg-bg-white text-[13px] font-semibold">
-            <button
-              type="button"
-              disabled
-              className="border-r border-border px-3 py-2 text-text-muted opacity-60 cursor-not-allowed"
-            >
-              My Projects
-            </button>
-            <button
-              type="button"
-              disabled
-              className="bg-primary-softer px-3 py-2 text-text-heading opacity-60 cursor-not-allowed"
-            >
-              All Projects
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Table card */}
+      {/* ── Table card ───────────────────────────────────────────────── */}
       <div className="rounded-md border border-border bg-bg-card shadow-card">
-        <div className="overflow-x-auto px-4 py-2">
+        <div className="px-4">
           {projects.length === 0 ? (
-            <p className="py-10 text-center text-sm text-text-muted">
-              {t("noProjects")}
+            <p className="py-8 text-center text-[13px] text-text-muted">
+              {search || dateRange || scope === "mine"
+                ? "No projects match your filters."
+                : "No projects yet. Create your first project."}
             </p>
           ) : (
-            <>
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full">
                 <thead>
-                  <tr className="border-b border-border text-left text-[10px] font-extrabold uppercase tracking-wide text-text-muted">
-                    <th className="w-7 py-2.5 pr-3">
-                      <input
-                        type="checkbox"
-                        disabled
-                        className="cursor-not-allowed opacity-60"
-                        readOnly
-                      />
+                  <tr className="border-b border-border">
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Project Name
                     </th>
-                    <th className="py-2.5 pr-4">Project ID</th>
-                    <th className="py-2.5 pr-4">{t("colName")}</th>
-                    <th className="py-2.5 pr-4">{t("colExternalCompany")}</th>
-                    <th className="py-2.5 pr-4">{t("colStatus")}</th>
-                    <th className="py-2.5 pr-4">{t("colDate")}</th>
-                    <th className="py-2.5"></th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      {clientColumnHeader}
+                    </th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Location
+                    </th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Status
+                    </th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Value
+                    </th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Created On
+                    </th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Submission Date
+                    </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-border">
+                <tbody>
                   {projects.map((project) => (
                     <tr
                       key={project.id}
-                      className="text-text-body hover:bg-primary-softer"
+                      className="border-b border-border/60 last:border-0 hover:bg-primary-softer"
                     >
-                      <td className="py-3 pr-3">
-                        <input
-                          type="checkbox"
-                          disabled
-                          className="cursor-not-allowed opacity-60"
-                          readOnly
-                        />
-                      </td>
-                      <td className="py-3 pr-4 font-bold text-text-heading">
+                      {/* Project Name — links to project detail */}
+                      <td className="px-3 py-[11px] text-[13px] font-semibold text-text-heading">
                         <Link
-                          href={`${base}/projects/${project.id}`}
-                          className="hover:underline"
-                        >
-                          #{project.projectNumber}
-                        </Link>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <Link
-                          href={`${base}/projects/${project.id}`}
+                          href={`/${orgSlug}/projects/${project.id}`}
                           className="hover:underline"
                         >
                           {project.name}
                         </Link>
                       </td>
-                      <td className="py-3 pr-4 text-text-muted">
+                      {/* Client Name / Company */}
+                      <td className="px-3 py-[11px] text-[13px] text-text-body">
                         {project.externalCompany?.name ?? (
                           <span className="text-text-placeholder">—</span>
                         )}
                       </td>
-                      <td className="py-3 pr-4">
-                        <span
-                          className={`inline-flex items-center rounded-pill px-2.5 py-0.5 text-xs font-bold ${statusClasses(project.status)}`}
-                        >
-                          {project.status}
-                        </span>
+                      {/* Location (destinationCountry) */}
+                      <td className="px-3 py-[11px] text-[13px] text-text-body">
+                        {project.destinationCountry || (
+                          <span className="text-text-placeholder">—</span>
+                        )}
                       </td>
-                      <td className="py-3 pr-4 text-text-muted">
+                      {/* Status badge */}
+                      <td className="px-3 py-[11px]">
+                        {statusBadge(project.status)}
+                      </td>
+                      {/* Value — no value field in current schema (Stage 12 Batch 7d gap D1) */}
+                      <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
+                        —
+                      </td>
+                      {/* Created On */}
+                      <td className="px-3 py-[11px] text-[13px] text-text-muted">
                         {new Date(project.createdAt).toLocaleDateString()}
                       </td>
-                      <td className="py-3">
-                        <Link
-                          href={`${base}/projects/${project.id}`}
-                          className="rounded-sm border border-border bg-bg-white px-3 py-1.5 text-[12.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
-                        >
-                          View
-                        </Link>
+                      {/* Submission Date — no submittedAt field in current schema (Stage 12 Batch 7d gap D2) */}
+                      <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
+                        —
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-
-              {/* Table footer */}
-              <div className="flex items-center justify-between border-t border-border px-3 pb-1 pt-[14px]">
-                <span className="text-[12.5px] text-text-muted">
-                  {projects.length} project{projects.length === 1 ? "" : "s"} &middot; Page 1 of 1
-                </span>
-                <div className="flex gap-1">
-                  <button
-                    type="button"
-                    disabled
-                    className="flex h-7 w-7 items-center justify-center rounded-sm bg-primary text-[13px] font-bold text-text-on-primary"
-                  >
-                    1
-                  </button>
-                </div>
-              </div>
-            </>
+            </div>
           )}
         </div>
+
+        {/* ── Pagination footer ─────────────────────────────────────── */}
+        <ListPagePagination
+          totalCount={total}
+          page={page}
+          pageSize={pageSize}
+          entityLabel="Projects"
+        />
       </div>
-    </>
+    </div>
   );
 }

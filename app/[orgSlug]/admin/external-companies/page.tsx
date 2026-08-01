@@ -1,8 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { PERMISSIONS } from "@/lib/rbac";
-import { listExternalCompanies } from "@/lib/data/external-companies";
-import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 
 // Always render live — reads session cookie and DB.
@@ -14,7 +13,8 @@ export const dynamic = "force-dynamic";
  * Lists all external companies within the session's org, ordered A→Z by name.
  * Gated on MANAGE_USERS — wrong-role requests redirect to the dashboard.
  *
- * Stage 11 Batch 8: restyled to Sage Ease tokens. No logic changes.
+ * Stage 12 Batch 6: switched from requireSession/requirePermissionFor/listExternalCompanies
+ * DAL to internalFetch against /me and /external-companies.
  */
 export default async function ExternalCompaniesPage({
   params,
@@ -23,13 +23,26 @@ export default async function ExternalCompaniesPage({
 }) {
   const { orgSlug } = await params;
   const base = await orgHref(orgSlug, "");
-  const session = await requireSession(orgSlug);
-  await requirePermissionFor(session, PERMISSIONS.MANAGE_USERS, orgSlug);
 
-  const [companies, t] = await Promise.all([
-    listExternalCompanies(session),
+  const [meRes, companiesRes, t] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/me`),
+    internalFetch(`/api/v1/orgs/${orgSlug}/external-companies`),
     getTranslations("externalCompanies"),
   ]);
+
+  if (meRes.status === 401 || companiesRes.status === 401) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+  if (meRes.status === 403) redirect(await orgHref(orgSlug, "/dashboard"));
+
+  const me = (await meRes.json()) as { adminPermissions: string[] };
+  if (!me.adminPermissions.includes("MANAGE_USERS")) {
+    redirect(await orgHref(orgSlug, "/dashboard"));
+  }
+
+  const { companies } = (await companiesRes.json()) as {
+    companies: Array<{ id: string; name: string; type: string }>;
+  };
 
   return (
     <div>

@@ -2,29 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
-import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import {
-  createComponentType as dalCreate,
-  updateComponentType as dalUpdate,
-} from "@/lib/data/components";
-import type { FieldEntry } from "@/lib/data/components";
-import { requireSession } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import type { FieldEntry } from "@/lib/types/field-entry";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
-
-async function getSessionWithManageFeatures(orgSlug: string) {
-  const session = await requireSession(orgSlug);
-  try {
-    await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
-  } catch (e) {
-    if (e instanceof ForbiddenError) {
-      throw new Error("Forbidden: missing MANAGE_FEATURES permission");
-    }
-    throw e;
-  }
-  return session;
-}
 
 /**
  * Parse the serialised fieldsSchema JSON string from FormData.
@@ -82,12 +64,13 @@ function parseFieldsSchema(raw: string | null): FieldEntry[] {
 
 /**
  * Create a new ComponentType scoped to the session org.
- * Gate: MANAGE_FEATURES.
+ * Gate: MANAGE_FEATURES (enforced by POST /api/v1/orgs/[orgSlug]/component-types).
  * On success, revalidates the list and redirects to the new type's edit page.
+ *
+ * Stage 12 Batch 6: thin marshaler — FormData → internalFetch → redirect or throw.
  */
 export async function createComponentType(formData: FormData): Promise<void> {
   const orgSlug = formData.get("orgSlug") as string | null;
-  const session = await getSessionWithManageFeatures(orgSlug ?? "");
 
   const code = (formData.get("code") as string | null)?.trim().toUpperCase();
   const name = (formData.get("name") as string | null)?.trim();
@@ -97,24 +80,38 @@ export async function createComponentType(formData: FormData): Promise<void> {
   if (!code) throw new Error("Code is required");
   if (!name) throw new Error("Name is required");
   if (!categoryId) throw new Error("Category is required");
+  if (!orgSlug) throw new Error("Missing orgSlug");
 
-  const created = await dalCreate(session, { code, name, categoryId, fieldsSchema });
+  const res = await internalFetch(`/api/v1/orgs/${orgSlug}/component-types`, {
+    method: "POST",
+    body: JSON.stringify({ code, name, categoryId, fieldsSchema }),
+  });
+
+  if (res.status === 401) redirect(await orgHref(orgSlug, "/login"));
+
+  if (!res.ok) {
+    const body = (await res.json()) as { error?: string };
+    throw new Error(body.error ?? "Failed to create component type");
+  }
+
+  const { componentType } = (await res.json()) as { componentType: { id: string } };
 
   revalidatePath(`/${orgSlug}/admin/components`);
-  redirect(await orgHref(orgSlug ?? "", `/admin/components/${created.id}`), RedirectType.replace);
+  redirect(`/${orgSlug}/admin/components/${componentType.id}`, RedirectType.replace);
 }
 
 /**
  * Update an existing ComponentType's name, fieldsSchema, and active flag.
- * Gate: MANAGE_FEATURES.
- * Tenancy guard: delegated to lib/data/components.ts updateComponentType.
+ * Gate: MANAGE_FEATURES (enforced by PATCH /api/v1/orgs/[orgSlug]/component-types/[typeId]).
+ *
+ * Stage 12 Batch 6: thin marshaler — FormData → internalFetch → redirect or throw.
  */
 export async function updateComponentType(formData: FormData): Promise<void> {
   const orgSlug = formData.get("orgSlug") as string | null;
   const typeId = formData.get("typeId") as string | null;
-  const session = await getSessionWithManageFeatures(orgSlug ?? "");
 
   if (!typeId) throw new Error("typeId is required");
+  if (!orgSlug) throw new Error("Missing orgSlug");
 
   const name = (formData.get("name") as string | null)?.trim();
   const categoryId = ((formData.get("categoryId") as string | null) ?? "").trim();
@@ -124,7 +121,20 @@ export async function updateComponentType(formData: FormData): Promise<void> {
   if (!name) throw new Error("Name is required");
   if (!categoryId) throw new Error("Category is required");
 
-  await dalUpdate(session, typeId, { name, categoryId, fieldsSchema, active });
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/component-types/${typeId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ name, categoryId, fieldsSchema, active }),
+    },
+  );
+
+  if (res.status === 401) redirect(await orgHref(orgSlug, "/login"));
+
+  if (!res.ok) {
+    const body = (await res.json()) as { error?: string };
+    throw new Error(body.error ?? "Failed to update component type");
+  }
 
   revalidatePath(`/${orgSlug}/admin/components`);
   revalidatePath(`/${orgSlug}/admin/components/${typeId}`);

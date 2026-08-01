@@ -1,32 +1,34 @@
 import { headers } from "next/headers";
 
 /**
- * Server-side org-href resolver.
+ * Server-side helper that constructs an org-scoped href.
  *
- * Returns the correct href for an org-scoped subpath depending on whether the
- * current request is running in subdomain mode (`{orgSlug}.easeetool.com` /
- * `{orgSlug}.test.easeetool.com`) or in the localhost/CI/apex-preview
- * path-based fallback.
+ * In subdomain mode (e.g. acme-glass.easeetool.com, acme-glass.test.easeetool.com),
+ * returns `subpath` bare — the orgSlug is already encoded in the host and does NOT
+ * belong in the path.  Adding it would produce a double-prefix (/{orgSlug}/{orgSlug}/...)
+ * after the proxy rewrites the request.
  *
- * Subdomain mode  → returns `subpath` as-is (e.g. "/dashboard").
- * Path-based mode → returns `/${orgSlug}${subpath}` (e.g. "/vistra/dashboard").
+ * In path mode (localhost, Vercel hash preview URLs, any non-easeetool.com host),
+ * returns `/${orgSlug}${subpath}`.
  *
- * Detection mirrors `proxy.ts`'s `fromSubdomain` logic: the hostname exactly
- * matches `{orgSlug}.easeetool.com` or `{orgSlug}.test.easeetool.com`.
+ * Detection logic mirrors `proxy.ts`'s `fromSubdomain` branches exactly so that
+ * links and redirects stay consistent with how the proxy routes requests.
  *
- * Usage (Server Actions, RSC pages, layouts):
- *   redirect(await orgHref(orgSlug, "/dashboard"));
- *   <Link href={await orgHref(orgSlug, "/projects")} />
+ * Ported from Stage 11 — Stage 11 merged to staging but not yet to master when
+ * Stage 12 branched from master.
+ *
+ * @param orgSlug  The org's URL slug (e.g. "acme-glass").
+ * @param subpath  The path within the org (must start with "/" or be "").
+ * @returns        The href to use in a redirect() or Link href attribute.
  */
 export async function orgHref(orgSlug: string, subpath: string): Promise<string> {
   const requestHeaders = await headers();
   const host = requestHeaders.get("host") ?? "";
-  // Strip port — "localhost:3000" → "localhost", "vistra.easeetool.com:443" → "vistra.easeetool.com"
   const hostname = host.split(":")[0];
 
-  const isSubdomainHost =
+  const isSubdomain =
     hostname === `${orgSlug}.easeetool.com` ||
     hostname === `${orgSlug}.test.easeetool.com`;
 
-  return isSubdomainHost ? subpath : `/${orgSlug}${subpath}`;
+  return isSubdomain ? subpath || "/" : `/${orgSlug}${subpath}`;
 }

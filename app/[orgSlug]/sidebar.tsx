@@ -73,8 +73,8 @@ export function Sidebar({
       <div
         className={`flex items-center border-b border-border ${
           collapsed
-            ? "justify-center gap-1 px-2 py-5"
-            : "justify-between gap-2 px-[18px] py-5"
+            ? "justify-center gap-1 px-2 py-4"
+            : "justify-between gap-2 px-[18px] py-4"
         }`}
       >
         {/* Logo mark square + wordmark */}
@@ -114,7 +114,7 @@ export function Sidebar({
 
           {/* Wordmark — hidden when collapsed */}
           {!collapsed && (
-            <span className="whitespace-nowrap text-sm font-extrabold text-text-heading">
+            <span className="whitespace-nowrap text-base font-extrabold text-text-heading">
               EaseeTool
             </span>
           )}

@@ -1,7 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { PERMISSIONS } from "@/lib/rbac";
-import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { CreateExternalCompanyForm } from "./create-external-company-form";
 
@@ -14,7 +14,8 @@ export const dynamic = "force-dynamic";
  * Gates on MANAGE_USERS; delegates the interactive form to the
  * CreateExternalCompanyForm Client Component.
  *
- * Stage 11 Batch 8: restyled to Sage Ease tokens. No logic changes.
+ * Stage 12 Batch 6: switched from requireSession/requirePermissionFor to
+ * internalFetch against /api/v1/orgs/[orgSlug]/me for MANAGE_USERS check.
  */
 export default async function NewExternalCompanyPage({
   params,
@@ -23,8 +24,15 @@ export default async function NewExternalCompanyPage({
 }) {
   const { orgSlug } = await params;
   const base = await orgHref(orgSlug, "");
-  const session = await requireSession(orgSlug);
-  await requirePermissionFor(session, PERMISSIONS.MANAGE_USERS, orgSlug);
+
+  const meRes = await internalFetch(`/api/v1/orgs/${orgSlug}/me`);
+  if (meRes.status === 401) redirect(await orgHref(orgSlug, "/login"));
+  if (meRes.status === 403) redirect(await orgHref(orgSlug, "/dashboard"));
+
+  const me = (await meRes.json()) as { adminPermissions: string[] };
+  if (!me.adminPermissions.includes("MANAGE_USERS")) {
+    redirect(await orgHref(orgSlug, "/dashboard"));
+  }
 
   const t = await getTranslations("externalCompanies");
 

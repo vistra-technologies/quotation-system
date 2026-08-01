@@ -2,8 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
-import { createProject as dalCreateProject } from "@/lib/data/projects";
-import { requireSession } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 
 // ---------------------------------------------------------------------------
@@ -15,16 +14,19 @@ export type CreateProjectState = { error: string | null };
 /**
  * Create a new project within the session's org.
  *
+ * Thin marshaler (Stage 12): parses FormData, delegates to
+ * POST /api/v1/orgs/[orgSlug]/projects via internalFetch.
+ * All tenancy enforcement and business logic live in the route handler.
+ *
  * Uses the useActionState signature so the client form can surface errors
  * (e.g. project number conflict on concurrent creates) rather than crashing
- * to an error boundary. All DB work and tenancy is delegated to lib/data/projects.ts.
+ * to an error boundary.
  */
 export async function createProject(
   prevState: CreateProjectState,
   formData: FormData,
 ): Promise<CreateProjectState> {
-  const orgSlug = formData.get("orgSlug") as string | null;
-  const session = await requireSession(orgSlug ?? "");
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
 
   const name = (formData.get("name") as string | null)?.trim();
   const destinationCountry = (formData.get("destinationCountry") as string | null)?.trim();
@@ -36,35 +38,35 @@ export async function createProject(
     return { error: "Name, destination country, and currency are required." };
   }
 
-  let project;
-  try {
-    project = await dalCreateProject(session, {
+  const res = await internalFetch(`/api/v1/orgs/${orgSlug}/projects`, {
+    method: "POST",
+    body: JSON.stringify({
       name,
       destinationCountry,
       currency,
       status,
       externalCompanyId,
-    });
-  } catch (err) {
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "code" in err &&
-      (err as { code: string }).code === "SEQUENCE_CONFLICT"
-    ) {
-      return { error: "A project number conflict occurred — please try again." };
-    }
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "code" in err &&
-      (err as { code: string }).code === "INVALID_EXTERNAL_COMPANY"
-    ) {
-      return { error: "Selected company is invalid." };
-    }
-    throw err;
+    }),
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
   }
 
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    return { error: errorMessage };
+  }
+
+  const body = (await res.json()) as { project: { id: string } };
+  const projectId = body.project.id;
+
   revalidatePath(`/${orgSlug}/projects`);
-  redirect(await orgHref(orgSlug ?? "", `/projects/${project.id}`), RedirectType.replace);
+  redirect(await orgHref(orgSlug, `/projects/${projectId}`), RedirectType.replace);
 }

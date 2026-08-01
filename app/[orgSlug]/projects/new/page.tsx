@@ -1,8 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { listExternalCompanies } from "@/lib/data/admin";
-import { getExternalCompanyById } from "@/lib/data/external-companies";
-import { requireSession } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { CreateProjectForm } from "./create-project-form";
 
@@ -20,8 +19,8 @@ export const dynamic = "force-dynamic";
  * only that company's name is fetched for display.  Otherwise the full
  * org list is fetched for the free-choice dropdown (current behavior).
  *
- * Stage 11 (Batch 6): outer chrome restyled to Sage Ease tokens — back
- * link, page heading, card wrapper. No data/prop changes.
+ * Stage 12 Batch 6: switched requireSession → internalFetch /me.
+ * externalCompanyId now comes from the /me response (plan-batch6.md D2).
  */
 export default async function NewProjectPage({
   params,
@@ -30,17 +29,45 @@ export default async function NewProjectPage({
 }) {
   const { orgSlug } = await params;
   const base = await orgHref(orgSlug, "");
-  const session = await requireSession(orgSlug);
 
-  const [lockedCompany, externalCompanies, t] = await Promise.all([
-    session.externalCompanyId
-      ? getExternalCompanyById(session, session.externalCompanyId)
-      : Promise.resolve(null),
-    session.externalCompanyId
-      ? Promise.resolve([] as { id: string; name: string }[])
-      : listExternalCompanies(session),
-    getTranslations("projects"),
-  ]);
+  const meRes = await internalFetch(`/api/v1/orgs/${orgSlug}/me`);
+  if (meRes.status === 401) redirect(await orgHref(orgSlug, "/login"));
+  if (!meRes.ok) redirect(await orgHref(orgSlug, "/login"));
+
+  const me = (await meRes.json()) as { externalCompanyId: string | null };
+
+  let lockedCompany: { id: string; name: string } | null = null;
+  let externalCompanies: { id: string; name: string }[] = [];
+
+  if (me.externalCompanyId) {
+    // External user — fetch only their locked company for read-only display.
+    const res = await internalFetch(
+      `/api/v1/orgs/${orgSlug}/external-companies/${me.externalCompanyId}`,
+    );
+    if (res.status === 401 || res.status === 403) {
+      redirect(await orgHref(orgSlug, "/login"));
+    }
+    if (res.ok) {
+      const body = (await res.json()) as { company: { id: string; name: string } };
+      lockedCompany = body.company;
+    }
+  } else {
+    // Member/admin — fetch the full org company list for the dropdown.
+    const res = await internalFetch(
+      `/api/v1/orgs/${orgSlug}/external-companies`,
+    );
+    if (res.status === 401 || res.status === 403) {
+      redirect(await orgHref(orgSlug, "/login"));
+    }
+    if (res.ok) {
+      const body = (await res.json()) as {
+        companies: { id: string; name: string }[];
+      };
+      externalCompanies = body.companies;
+    }
+  }
+
+  const t = await getTranslations("projects");
 
   return (
     <div className="mx-auto max-w-lg">

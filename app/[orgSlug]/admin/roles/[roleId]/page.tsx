@@ -1,9 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { PERMISSIONS } from "@/lib/rbac";
-import { getRoleById, listRolePermissions, listPermissions } from "@/lib/data/admin";
-import { requireSession, requirePermissionFor } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { PermissionActionButton } from "./permission-buttons";
 
@@ -16,14 +14,15 @@ export const dynamic = "force-dynamic";
  * Shows the role's currently granted permissions and the full global permission
  * catalog, with Add / Remove buttons for each entry.
  *
- * Tenancy asymmetry enforced here:
- *   - Role is org-scoped: getRoleById filters by organizationId.
- *   - Permission catalog is global: listPermissions has no organizationId filter.
- *   - RolePermission writes re-verify via assertRoleInOrg in lib/data/admin.ts.
+ * Tenancy asymmetry preserved:
+ *   - Role is org-scoped: GET /roles/[roleId] filters by organizationId.
+ *   - Permission catalog is global: GET /permissions has no org filter.
+ *   - RolePermission writes re-verify via assertRoleInOrg in route handlers.
  *
- * Gated on MANAGE_FEATURES.
+ * Gated on MANAGE_FEATURES (enforced by the /roles/[roleId] and /permissions routes).
  *
- * Stage 11 (Batch 9): restyled to Sage Ease tokens.
+ * Stage 12 Batch 6: switched from requireSession/requirePermissionFor/DAL calls
+ * to parallel internalFetch against the three relevant API routes.
  */
 export default async function RoleDetailPage({
   params,
@@ -32,23 +31,45 @@ export default async function RoleDetailPage({
 }) {
   const { orgSlug, roleId } = await params;
   const base = await orgHref(orgSlug, "");
-  const session = await requireSession(orgSlug);
-  await requirePermissionFor(session, PERMISSIONS.MANAGE_FEATURES, orgSlug);
 
-  // Tenancy guard on read: role must belong to this session's org.
-  const [role, t] = await Promise.all([
-    getRoleById(session, roleId),
+  // Fetch role detail, granted permissions, and global permission catalog in parallel.
+  // All three routes require MANAGE_FEATURES — a 403 from any means redirect to dashboard.
+  const [roleRes, rolePermsRes, allPermsRes, t] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/roles/${roleId}`),
+    internalFetch(`/api/v1/orgs/${orgSlug}/roles/${roleId}/permissions`),
+    internalFetch(`/api/v1/permissions`),
     getTranslations("roles"),
   ]);
 
-  if (!role) notFound();
+  if (
+    roleRes.status === 401 ||
+    rolePermsRes.status === 401 ||
+    allPermsRes.status === 401
+  ) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+  if (
+    roleRes.status === 403 ||
+    rolePermsRes.status === 403 ||
+    allPermsRes.status === 403
+  ) {
+    redirect(await orgHref(orgSlug, "/dashboard"));
+  }
+  if (roleRes.status === 404) notFound();
+  if (!roleRes.ok || !rolePermsRes.ok || !allPermsRes.ok) notFound();
 
-  // Fetch current grants and the full global permission catalog in parallel.
-  const [grantedRps, allPerms] = await Promise.all([
-    listRolePermissions(roleId),
-    // Permission is a global table — no organizationId filter.
-    listPermissions(),
-  ]);
+  const { role } = (await roleRes.json()) as {
+    role: { id: string; name: string };
+  };
+  const { rolePermissions: grantedRps } = (await rolePermsRes.json()) as {
+    rolePermissions: Array<{
+      permissionId: string;
+      permission: { id: string; code: string; description: string };
+    }>;
+  };
+  const { permissions: allPerms } = (await allPermsRes.json()) as {
+    permissions: Array<{ id: string; code: string; description: string }>;
+  };
 
   const grantedPermissionIds = new Set(grantedRps.map((rp) => rp.permissionId));
   const availablePerms = allPerms.filter((p) => !grantedPermissionIds.has(p.id));

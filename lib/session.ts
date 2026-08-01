@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 
@@ -22,8 +23,11 @@ export type SessionData = {
  * - The user's `active` flag is false (instant deactivation — no session purge needed), or
  * - The proxy's x-org-id header is absent or does not match the session's organizationId
  *   (cross-tenant session replay guard — fail-closed).
+ *
+ * Wrapped in React.cache() so multiple calls within one RSC render pass (e.g. from
+ * both a layout and its child page) hit the DB only once.
  */
-export async function getSession(): Promise<SessionData | null> {
+async function getSessionImpl(): Promise<SessionData | null> {
   // Capture once so we can both pass to auth and inspect for the org-id check below.
   const requestHeaders = await headers();
 
@@ -75,3 +79,10 @@ export async function getSession(): Promise<SessionData | null> {
     name: u.name as string,
   };
 }
+
+/**
+ * React.cache()-wrapped export — deduplicates repeated getSession() calls within
+ * one server render pass.  Drop-in replacement for the previous plain export;
+ * all existing callers continue to work without changes.
+ */
+export const getSession = cache(getSessionImpl);

@@ -19,7 +19,8 @@ const initialState: CreateUserState = { error: null };
  * Uses useActionState (React 19) so the server action can return a user-readable
  * error (e.g. duplicate username) rather than crashing to an error boundary.
  *
- * Stage 11 Batch 8: restyled to Sage Ease tokens. No logic changes.
+ * Batch 7g: added First Name, Last Name (required), Mobile, Email (optional);
+ * password minLength=8 enforced client-side (HTML5) and server-side (route handler).
  */
 export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUserFormProps) {
   const t = useTranslations("users");
@@ -30,19 +31,55 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
       <LoadingOverlay visible={isPending} />
 
       {state.error && (
-        <div className="mb-4 rounded-sm border border-status-failed-bg bg-status-failed-bg px-4 py-3">
-          <p className="text-sm text-status-failed-text">{state.error}</p>
+        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 dark:border-red-700 dark:bg-red-950">
+          <p className="text-sm text-red-700 dark:text-red-300">{state.error}</p>
         </div>
       )}
 
-      <form action={formAction} className="flex flex-col gap-5">
+      <form action={formAction} className="mt-6 flex flex-col gap-5">
         <input type="hidden" name="orgSlug" value={orgSlug} />
+
+        {/* First Name + Last Name — side by side */}
+        <div className="flex gap-4">
+          <div className="flex flex-1 flex-col gap-1">
+            <label
+              htmlFor="firstName"
+              className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+            >
+              {t("fieldFirstName")}
+            </label>
+            <input
+              id="firstName"
+              name="firstName"
+              type="text"
+              required
+              autoComplete="given-name"
+              className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+            />
+          </div>
+          <div className="flex flex-1 flex-col gap-1">
+            <label
+              htmlFor="lastName"
+              className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+            >
+              {t("fieldLastName")}
+            </label>
+            <input
+              id="lastName"
+              name="lastName"
+              type="text"
+              required
+              autoComplete="family-name"
+              className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+            />
+          </div>
+        </div>
 
         {/* Username */}
         <div className="flex flex-col gap-1">
           <label
             htmlFor="username"
-            className="text-xs font-bold uppercase tracking-wide text-text-muted"
+            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
           >
             {t("fieldUsername")}
           </label>
@@ -52,7 +89,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
             type="text"
             required
             autoComplete="off"
-            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
+            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
           />
         </div>
 
@@ -60,7 +97,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
         <div className="flex flex-col gap-1">
           <label
             htmlFor="roleId"
-            className="text-xs font-bold uppercase tracking-wide text-text-muted"
+            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
           >
             {t("fieldRole")}
           </label>
@@ -68,7 +105,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
             id="roleId"
             name="roleId"
             required
-            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
+            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:ring-zinc-50"
           >
             {roles.map((r) => (
               <option key={r.id} value={r.id}>
@@ -78,18 +115,72 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
           </select>
         </div>
 
+        {/* Initial password */}
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="password"
+            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+          >
+            {t("fieldPassword")}
+          </label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+          />
+          <p className="text-xs text-zinc-400 dark:text-zinc-500">{t("fieldPasswordHint")}</p>
+        </div>
+
+        {/* Mobile (optional) */}
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="mobile"
+            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+          >
+            {t("fieldMobile")}
+          </label>
+          <input
+            id="mobile"
+            name="mobile"
+            type="tel"
+            autoComplete="tel"
+            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+          />
+        </div>
+
+        {/* Email (optional) */}
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="profileEmail"
+            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+          >
+            {t("fieldEmail")}
+          </label>
+          <input
+            id="profileEmail"
+            name="profileEmail"
+            type="email"
+            autoComplete="email"
+            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+          />
+        </div>
+
         {/* External Company (optional) */}
         <div className="flex flex-col gap-1">
           <label
             htmlFor="externalCompanyId"
-            className="text-xs font-bold uppercase tracking-wide text-text-muted"
+            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
           >
             {t("fieldExternalCompany")}
           </label>
           <select
             id="externalCompanyId"
             name="externalCompanyId"
-            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
+            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:ring-zinc-50"
           >
             <option value="">{t("fieldExternalCompanyNone")}</option>
             {externalCompanies.map((ec) => (
@@ -100,28 +191,10 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
           </select>
         </div>
 
-        {/* Initial password */}
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor="password"
-            className="text-xs font-bold uppercase tracking-wide text-text-muted"
-          >
-            {t("fieldPassword")}
-          </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            required
-            autoComplete="new-password"
-            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
-          />
-        </div>
-
         <button
           type="submit"
           disabled={isPending}
-          className="rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
+          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           {t("submitCreate")}
         </button>

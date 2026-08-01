@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { getTranslations } from "next-intl/server";
 import { auth } from "@/lib/auth";
 import { getSession } from "@/lib/session";
-import { getOrgBySlug, getOrgById } from "@/lib/data/admin";
+import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { CrossOrgNotice } from "./cross-org-notice";
 import { LoginForm } from "./login-form";
@@ -45,8 +45,18 @@ export default async function LoginPage({
 }) {
   const { orgSlug } = await params;
 
-  const org = await getOrgBySlug(orgSlug);
+  // Load all orgs from the public API endpoint, then find this org by slug.
+  // The proxy returns 404 for unknown slugs before reaching here, so missing
+  // org after API call is a defensive guard only.
+  //
+  // Stage 12 Batch 6: switched getOrgBySlug/getOrgById from lib/data/admin to
+  // internalFetch against the public GET /api/v1/orgs endpoint (plan D6).
+  const orgsRes = await internalFetch("/api/v1/orgs");
+  const { orgs } = orgsRes.ok
+    ? ((await orgsRes.json()) as { orgs: Array<{ id: string; slug: string; name: string }> })
+    : { orgs: [] };
 
+  const org = orgs.find((o) => o.slug === orgSlug);
   if (!org) {
     // Defensive guard — proxy should have returned 404 before reaching here.
     redirect("/");
@@ -69,7 +79,7 @@ export default async function LoginPage({
     // generic fully (same reason lib/session.ts uses `const u = user as any`).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawUser = rawSession.user as any;
-    const sessionOrg = await getOrgById(rawUser.organizationId as string);
+    const sessionOrg = orgs.find((o) => o.id === (rawUser.organizationId as string));
 
     const t = await getTranslations("login");
     const sessionOrgName = sessionOrg?.name ?? "your organization";

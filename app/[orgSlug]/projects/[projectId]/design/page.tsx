@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-imports -- deferred per stage-12.md: design page uses floors/partitions DAL; migration blocked until interactive canvas stage */
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
