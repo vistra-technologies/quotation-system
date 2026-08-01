@@ -11,11 +11,35 @@ export interface CreateProjectInput {
   externalCompanyId?: string | null;
 }
 
+export interface ListProjectsParams {
+  /** "mine" = current user's own; "all" = scoped by role (see below). */
+  scope: "mine" | "all";
+  /** Full-text search across project name and external company name. */
+  search?: string;
+  /** Earliest createdAt to include (inclusive). */
+  dateFrom?: Date;
+  /** Latest createdAt to include (inclusive). */
+  dateTo?: Date;
+  /** 1-based page number. */
+  page: number;
+  /** Records per page. */
+  pageSize: number;
+  /**
+   * Additional external-company filter for internal users viewing "All" scope.
+   * When set, narrows results to projects with this externalCompanyId, within
+   * the session's org. Ignored for external users (they're already scoped to
+   * their own company by the scope=all condition).
+   */
+  externalCompanyId?: string;
+}
+
 // ─── Queries ────────────────────────────────────────────────────────────────
 
 /**
  * List all projects for the session org, newest-first.
  * Includes externalCompany name (nullable) for the list table.
+ *
+ * @deprecated Use listProjectsPaginated for all new callers.
  */
 export async function listProjects(session: SessionData) {
   return prisma.project.findMany({
@@ -25,6 +49,93 @@ export async function listProjects(session: SessionData) {
       externalCompany: { select: { id: true, name: true } },
     },
   });
+}
+
+/**
+ * Paginated, filtered project list with RBAC visibility rules.
+ *
+ * Visibility rules (enforced server-side from session — never from URL params):
+ *   scope="mine"  — always filters to createdByUserId = session.userId
+ *   scope="all"   — external user (externalCompanyId != null): own company only
+ *                 — internal user (externalCompanyId === null): full org scope
+ *
+ * Returns { projects, total } — total is the count before pagination, used
+ * by the caller to compute page count.
+ *
+ * Tenancy: organizationId always scoped to session.organizationId.
+ */
+// Extract Prisma's ProjectWhereInput type without explicitly importing from @prisma/client.
+// NonNullable strips the `| undefined` from the optional `where` property.
+type ProjectWhereInput = NonNullable<
+  NonNullable<Parameters<typeof prisma.project.findMany>[0]>["where"]
+>;
+
+export async function listProjectsPaginated(
+  session: SessionData,
+  params: ListProjectsParams,
+) {
+  const { scope, search, dateFrom, dateTo, page, pageSize } = params;
+
+  // Build AND conditions incrementally to keep the where clause type-safe
+  // without explicitly importing Prisma namespace types.
+  const andConditions: ProjectWhereInput[] = [
+    { organizationId: session.organizationId },
+  ];
+
+  // Scope: my own vs. role-scoped "all"
+  if (scope === "mine") {
+    andConditions.push({ createdByUserId: session.userId });
+  } else if (session.externalCompanyId !== null) {
+    // External user: "all" = only their external company's projects.
+    // Value from server-side session — cannot be spoofed by URL params.
+    andConditions.push({ externalCompanyId: session.externalCompanyId });
+  }
+  // Internal user + scope=all: no extra condition — sees all org projects.
+
+  // Optional external-company filter — internal users only.
+  // Narrows within the org; never replaces the org-level scope above.
+  // Ignored for external users (their externalCompanyId is already enforced above).
+  if (params.externalCompanyId && session.externalCompanyId === null) {
+    andConditions.push({ externalCompanyId: params.externalCompanyId });
+  }
+
+  // Date range filter on createdAt
+  if (dateFrom || dateTo) {
+    andConditions.push({
+      createdAt: {
+        ...(dateFrom ? { gte: dateFrom } : {}),
+        ...(dateTo ? { lte: dateTo } : {}),
+      },
+    });
+  }
+
+  // Full-text search across name and external company name
+  if (search && search.trim()) {
+    andConditions.push({
+      OR: [
+        { name: { contains: search, mode: "insensitive" } },
+        { externalCompany: { name: { contains: search, mode: "insensitive" } } },
+      ],
+    });
+  }
+
+  const where: ProjectWhereInput = { AND: andConditions };
+
+  const [total, projects] = await Promise.all([
+    prisma.project.count({ where }),
+    prisma.project.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
+        externalCompany: { select: { id: true, name: true } },
+        createdBy: { select: { id: true, name: true, username: true } },
+      },
+    }),
+  ]);
+
+  return { projects, total };
 }
 
 /**
