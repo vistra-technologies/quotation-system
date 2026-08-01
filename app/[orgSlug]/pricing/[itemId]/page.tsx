@@ -69,8 +69,6 @@ export default async function PricingItemPage({
 
   const item = ((await itemRes.json()) as { item: CatalogItemDetail }).item;
 
-  const base = await orgHref(orgSlug, "");
-
   return (
     <div className="mx-auto w-full max-w-lg px-6 py-8">
       <Link

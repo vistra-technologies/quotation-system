@@ -74,8 +74,6 @@ export default async function NewInquiryPage({
   const t = await getTranslations("inquiries");
   const backHref = `${base}/inquiries`;
 
-  const backHref = `${base}/inquiries`;
-
   return (
     <div>
       {/* Back link */}

@@ -69,10 +69,7 @@ export default async function NewProjectPage({
     }
   }
 
-  const [t, base] = await Promise.all([
-    getTranslations("projects"),
-    orgHref(orgSlug, ""),
-  ]);
+  const t = await getTranslations("projects");
 
   return (
     <div className="mx-auto max-w-lg">

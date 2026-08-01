@@ -59,8 +59,6 @@ export default async function PricingPage({
     ? ((await catalogRes.json()) as { items: CatalogItemRow[] }).items
     : [];
 
-  const base = await orgHref(orgSlug, "");
-
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-8">
       <h1 className="text-2xl font-extrabold tracking-tight text-text-heading">
