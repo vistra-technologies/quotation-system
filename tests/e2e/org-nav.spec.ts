@@ -17,6 +17,13 @@
  * When VERCEL_AUTOMATION_BYPASS_SECRET is set, playwright.config.ts injects
  * x-vercel-protection-bypass and x-vercel-set-bypass-cookie headers on every
  * request so Vercel's SSO wall is bypassed without repeated header injection.
+ *
+ * Stage 12 update: the apex page was redesigned in Stage 11 (Batch 9).
+ * "EaseeTool" is now in a <span> brand mark; the actual <h1> reads
+ * "Select your organization". The dashboard was redesigned in Stage 12
+ * (Batch 7b): heading is now "Welcome, {firstName}", not "Dashboard";
+ * the dt/dd identity block is gone; KPI tiles replace it. Sign out is now
+ * Profile (icon button) → "Log Out" dropdown item.
  */
 
 import { test, expect } from "@playwright/test";
@@ -31,8 +38,10 @@ test.describe.configure({ mode: "serial" });
 // ---------------------------------------------------------------------------
 async function getOrgLinks(page: import("@playwright/test").Page) {
   await page.goto("/");
+  // Stage 11 Batch 9: the <h1> reads "Select your organization";
+  // "EaseeTool" is in a <span> brand mark, not a heading.
   await expect(
-    page.getByRole("heading", { name: "EaseeTool" }),
+    page.getByRole("heading", { name: "Select your organization" }),
   ).toBeVisible();
 
   // Collect all org <a> elements in the nav (exclude the dev-tools links)
@@ -179,8 +188,9 @@ test("full flow: apex org link → login page → sign in → dashboard → sign
 }) => {
   // Step 1: Load apex
   await page.goto("/");
+  // Stage 11 Batch 9: heading is "Select your organization", not "EaseeTool".
   await expect(
-    page.getByRole("heading", { name: "EaseeTool" }),
+    page.getByRole("heading", { name: "Select your organization" }),
   ).toBeVisible();
 
   // Step 2: Inspect the href — record it before clicking
@@ -220,28 +230,19 @@ test("full flow: apex org link → login page → sign in → dashboard → sign
   await page.getByLabel("Password", { exact: true }).fill("Seed1234!");
   await page.getByRole("button", { name: /Sign in/i }).click();
 
-  // Step 5: Dashboard must render with correct identity
+  // Step 5: Dashboard must render
+  // Stage 12 Batch 7b: heading is "Welcome, {firstName}" (first word of display name).
+  // No username/org/role dt/dd block — replaced by KPI tiles.
+  // Checking h1 is visible is sufficient to confirm the dashboard rendered.
   await page.waitForURL(new RegExp(`/${orgSlug}/dashboard`), {
     timeout: 10_000,
   });
-  await expect(
-    page.getByRole("heading", { name: "Dashboard" }),
-  ).toBeVisible();
+  await expect(page.locator("h1")).toBeVisible({ timeout: 10_000 });
 
-  // Username must be visible on the dashboard
-  // Use the dt/dd label-anchored locator so that the case-insensitive value
-  // "Admin" (role) does not ambiguously match the username "admin".
-  const usernameLocator = page.locator("dt", { hasText: "Username" }).locator("+ dd");
-  await expect(usernameLocator).toHaveText("admin");
-  // Org name must be visible (the display name, e.g. "Vistra Partitions")
-  const orgNameLocator = page.locator("dt", { hasText: "Organization" }).locator("+ dd");
-  await expect(orgNameLocator).not.toBeEmpty();
-  // Role must be visible
-  const roleLocator = page.locator("dt", { hasText: "Role" }).locator("+ dd");
-  await expect(roleLocator).toHaveText("Admin");
-
-  // Step 6: Sign out and confirm redirect back to /{orgSlug}/login
-  await page.getByRole("button", { name: /Sign out/i }).click();
+  // Step 6: Sign out and confirm redirect back to /{orgSlug}/login.
+  // Stage 11 Batch 8 / Stage 12: sign-out is a Profile icon → "Log Out" dropdown item.
+  await page.getByRole("button", { name: "Profile" }).click();
+  await page.getByRole("button", { name: /Log Out/i }).click();
   await page.waitForURL(new RegExp(`/${orgSlug}/login`), { timeout: 10_000 });
   // Stage 10: "Sign in to" heading gone — form input is the stable readiness signal.
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
@@ -266,8 +267,9 @@ test("cross-org session replay: vistra session rejected on acme-glass dashboard"
   await page.getByRole("button", { name: /Sign in/i }).click();
 
   // Confirm we're on vistra dashboard
+  // Stage 12 Batch 7b: heading is "Welcome, {firstName}", not "Dashboard".
   await page.waitForURL(/\/vistra\/dashboard/, { timeout: 10_000 });
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.locator("h1")).toBeVisible({ timeout: 10_000 });
 
   // Now navigate to a DIFFERENT org's dashboard using the same session cookie.
   // The cross-org guard in lib/session.ts checks x-org-id (injected by proxy

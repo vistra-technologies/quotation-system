@@ -79,7 +79,8 @@ test("distributor role is redirected away from /pricing to /dashboard", async ({
   // Pricing table heading must NOT be visible
   await expect(page.getByRole("heading", { name: "Pricing Management" })).not.toBeVisible();
   // Dashboard heading MUST be visible
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  // Stage 12 Batch 7b: heading is "Welcome, {firstName}", not "Dashboard".
+  await expect(page.locator("h1")).toContainText(/Welcome/i, { timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -99,7 +100,8 @@ test("architect role is redirected away from /pricing to /dashboard", async ({
   await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 20_000 });
 
   await expect(page.getByRole("heading", { name: "Pricing Management" })).not.toBeVisible();
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  // Stage 12 Batch 7b: heading is "Welcome, {firstName}", not "Dashboard".
+  await expect(page.locator("h1")).toContainText(/Welcome/i, { timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -120,7 +122,8 @@ test("unauthorized direct navigation to pricing item edit page redirects to dash
 
   // Must redirect to dashboard (RBAC gate fires before item lookup)
   await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 20_000 });
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  // Stage 12 Batch 7b: heading is "Welcome, {firstName}", not "Dashboard".
+  await expect(page.locator("h1")).toContainText(/Welcome/i, { timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -199,8 +202,8 @@ test("stage-2 regression: admin login and dashboard still work after Stage 3 mig
   page,
 }) => {
   await signIn(page, "admin");
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  // Username visible on dashboard
-  const usernameLocator = page.locator("dt", { hasText: "Username" }).locator("+ dd");
-  await expect(usernameLocator).toHaveText("admin");
+  // Stage 12 Batch 7b: heading is "Welcome, {firstName}", not "Dashboard".
+  await expect(page.locator("h1")).toContainText(/Welcome/i, { timeout: 10_000 });
+  // Stage 12 Batch 7b: the dt/dd identity block was replaced by KPI tiles.
+  // The h1 check above confirms the dashboard rendered successfully.
 });

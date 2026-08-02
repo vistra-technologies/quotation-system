@@ -45,7 +45,7 @@ const APEX_NON_ROOT = "https://test.easeetool.com/nonexistent-org/login";
 test("test.easeetool.com/ → 200 with EaseeTool heading", async ({ page }) => {
   const response = await page.goto(APEX, { waitUntil: "commit" });
   expect(response?.status()).toBe(200);
-  await expect(page.getByRole("heading", { name: "EaseeTool" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Select your organization/i })).toBeVisible({ timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -55,7 +55,7 @@ test("test.easeetool.com/ org links point at org subdomains, not path-based URLs
   page,
 }) => {
   await page.goto(APEX);
-  await expect(page.getByRole("heading", { name: "EaseeTool" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Select your organization/i })).toBeVisible({ timeout: 10_000 });
 
   const nav = page.locator("nav");
   const links = await nav.locator("a").all();
@@ -167,11 +167,12 @@ test("full sign-in via vistra.test.easeetool.com/login → dashboard → sign ou
   // Dashboard must render
   await page.waitForURL(/vistra.*\/dashboard/, { timeout: 30_000 });
   await expect(
-    page.getByRole("heading", { name: "Dashboard" }),
+    page.getByRole("heading", { name: /Welcome/i }),
   ).toBeVisible();
 
   // Sign out and confirm redirect back to login
-  await page.getByRole("button", { name: /Sign out/i }).click();
+  await page.getByRole("button", { name: "Profile" }).click();
+  await page.getByRole("button", { name: "Log Out" }).click();
   await page.waitForURL(/vistra.*\/login/, { timeout: 10_000 });
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
     timeout: 5_000,

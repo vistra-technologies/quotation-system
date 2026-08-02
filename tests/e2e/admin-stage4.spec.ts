@@ -28,6 +28,13 @@ import { signIn } from "./helpers";
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
 
+// Rate-limit pacing: better-auth limits sign-in to 3 per 10 seconds per IP.
+// Almost every test in this file signs in; 7-second beforeEach spaces sign-in
+// calls 11+ seconds apart so the rate-limit window always resets.
+test.beforeEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 7_000));
+});
+
 // ---------------------------------------------------------------------------
 // Auth-UX: login page behaviour for authenticated users (Stage 4 item 4)
 // ---------------------------------------------------------------------------
@@ -82,7 +89,8 @@ test("cross-org notice: logout clears session and shows destination org login fo
   ).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: /log out|sign out/i }).click();
   // After logout, the login form must be present (username input signals we're on the real login page)
-  await expect(page.getByLabel(/username/i)).toBeVisible({ timeout: 15_000 });
+  // Stage 10 Task 1.4: login label changed "Username" → "User ID"; use autocomplete attribute as stable anchor.
+  await expect(page.locator('input[autocomplete="username"]')).toBeVisible({ timeout: 15_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -94,37 +102,37 @@ test("unauthenticated request to admin/users redirects to login", async ({ page 
   await expect(page).toHaveURL(/\/acme-glass\/login/);
 });
 
-test("distributor role (no MANAGE_USERS) cannot access admin/users — redirected to dashboard", async ({
+test("distributor role is denied MANAGE_USERS + MANAGE_FEATURES admin pages (combined to limit sign-ins)", async ({
   page,
 }) => {
+  // Rate-limit pacing: tests 1-4 each sign in within ~11s. Wait for the window to clear
+  // before the next sign-in so better-auth's 3/10s limit is not hit.
+  await page.waitForTimeout(8_000);
   await signIn(page, "distributor");
+  // MANAGE_USERS gate: admin/users must redirect to dashboard for distributor
   await page.goto("/acme-glass/admin/users", { waitUntil: "commit" });
   await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
-});
-
-test("distributor role (no MANAGE_FEATURES) cannot access admin/roles — redirected to dashboard", async ({
-  page,
-}) => {
-  await signIn(page, "distributor");
+  // MANAGE_FEATURES gate: admin/roles must redirect to dashboard (same session)
   await page.goto("/acme-glass/admin/roles", { waitUntil: "commit" });
   await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
-});
-
-test("distributor role (no MANAGE_FEATURES) cannot access admin/permissions — redirected to dashboard", async ({
-  page,
-}) => {
-  await signIn(page, "distributor");
+  // MANAGE_FEATURES gate: admin/permissions must redirect to dashboard (same session)
   await page.goto("/acme-glass/admin/permissions", { waitUntil: "commit" });
   await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
 });
 
 test("admin side panel shows admin section links (Users link visible)", async ({ page }) => {
+  // Rate-limit pause: the 3 preceding RBAC tests each sign in within ~10 seconds total.
+  // better-auth limits sign-ins to 3/10s per IP; wait for the window to clear.
+  await page.waitForTimeout(5_000);
   await signIn(page, "admin");
-  // Stage 8 restructured navigation from a top-bar "Admin" link to a side panel
-  // with an "Admin" section header (span) plus individual admin links beneath it.
-  // Verify the admin section is accessible by checking the "Users" link, which
-  // only appears in the Admin section for users with MANAGE_USERS permission.
-  await expect(page.getByRole("link", { name: "Users" })).toBeVisible({ timeout: 15_000 });
+  // Stage 11: Admin links moved into a CSS hover flyout (group-hover:visible).
+  // Must hover over the "Admin" trigger button first to reveal the flyout,
+  // otherwise the link exists in the DOM but has visibility:hidden → toBeVisible() fails.
+  const adminTrigger = page.getByRole("button", { name: "Admin" });
+  await expect(adminTrigger).toBeVisible({ timeout: 15_000 });
+  await adminTrigger.hover();
+  // Flyout is visible; now the Users link must be visible too.
+  await expect(page.getByRole("link", { name: "Users" })).toBeVisible({ timeout: 5_000 });
 });
 
 test("distributor dashboard does not show admin section links", async ({ page }) => {
@@ -142,8 +150,11 @@ test("create user: duplicate username shows inline error, stays on create page",
 }) => {
   await signIn(page, "admin");
   await page.goto("/acme-glass/admin/users/new");
+  // Batch 7g: First Name and Last Name are now required — must fill to reach server-side validation.
+  await page.getByRole("textbox", { name: "First Name" }).fill("Test");
+  await page.getByRole("textbox", { name: "Last Name" }).fill("User");
   await page.getByRole("textbox", { name: "Username" }).fill("admin");
-  await page.getByRole("textbox", { name: "Initial Password" }).fill("Test1234!");
+  await page.getByRole("textbox", { name: "Initial Password" }).fill("Test12345!");
   await page.getByRole("button", { name: "Create User" }).click();
   // Must stay on the create page (not crash to error boundary)
   await expect(page).toHaveURL(/\/acme-glass\/admin\/users\/new/);
@@ -154,6 +165,9 @@ test("create user: valid user appears in the users list", async ({ page }) => {
   const username = `e2e_${Date.now()}`;
   await signIn(page, "admin");
   await page.goto("/acme-glass/admin/users/new");
+  // Batch 7g: First Name and Last Name are now required.
+  await page.getByRole("textbox", { name: "First Name" }).fill("E2E");
+  await page.getByRole("textbox", { name: "Last Name" }).fill("Tester");
   await page.getByRole("textbox", { name: "Username" }).fill(username);
   await page.getByLabel("Role").selectOption("Distributor");
   await page.getByRole("textbox", { name: "Initial Password" }).fill("Test1234!");

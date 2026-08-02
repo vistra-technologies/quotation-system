@@ -80,7 +80,7 @@ Automated: `tests/e2e/pricing-stage3.spec.ts` (serial mode, 90 s timeout per tes
 35. **Project tenancy:** org A's session cannot read org B's Projects.
 36. **Project `projectNumber` per-org:** org A and org B can each have a project #1 without conflict.
 37. **Stage 2/3/4 regression after DAL refactor:** per-org login, cross-org session rejection, pricing CRUD, instant deactivation, and admin user/role/permission flows all still pass.
-38. **Cross-tenant ExternalCompany guard:** a crafted `createProject` form submission containing another org's `externalCompanyId` UUID is rejected by the DAL (`lib/data/projects.ts` org-scoped `findFirst` guard) with `INVALID_EXTERNAL_COMPANY`, surfaced as "Selected company is invalid." on the form — no cross-tenant FK is created. Verified E2E: stage5.spec.ts test 12.
+38. **Cross-tenant ExternalCompany guard:** a crafted `createProject` API request containing another org's `externalCompanyId` UUID is rejected by the DAL (`lib/data/projects.ts` org-scoped `findFirst` guard) with `INVALID_EXTERNAL_COMPANY`, surfaced as 400 + `{ error: "Selected company is invalid." }` — no cross-tenant FK is created. Verified via `stage5.spec.ts` test 12 using `page.request.post()` directly to the API route (bypasses React form reconciler). Stage 12 test pass confirmed the DAL guard and route-handler error-propagation path are both correct; the original test failure was a test-design flaw (DOM injection did not survive React re-render before submit).
 
 ## Stage 6 — Selection, ComponentType overhaul, External Company UI
 Automated: `tests/e2e/stage6.spec.ts` (19 tests, serial mode).
@@ -223,3 +223,87 @@ All checks: verify via the Vercel preview URL for the merged `release/stage-11` 
     (`/{orgSlug}/some-bogus-path`) renders `app/[orgSlug]/not-found.tsx` inside the org shell (sidebar
     present). An unknown org slug itself must still return `proxy.ts`'s existing JSON 404 (unchanged,
     out of scope for this batch).
+
+## Stage 12 — UI/API Layer Separation
+
+Automated: `tests/e2e/stage12.spec.ts` (10 tests, serial mode).
+Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_URL`.
+
+### API layer architecture
+
+78. **No direct `lib/data/*` imports in `app/**` pages:** `npm run lint` passes with zero errors — the
+    ESLint rule in `eslint.config.mjs` enforcing that `lib/data/*` is importable only from `app/api/**`
+    catches any violation at lint time (stage 5 item 30, extended by stage 12 capstone).
+
+79. **API tenancy isolation (cross-org 403):** every protected API route under
+    `/api/v1/orgs/{orgA}/**` returns `403 {"error":"Access denied"}` when called with a valid
+    session from org B. Verified via curl for all key routes: users, inquiries, catalog,
+    external-companies, projects, component-types. `getApiSession()` cross-tenant guard is the
+    enforcement point.
+
+80. **API RBAC gating:** distributor session (no MANAGE_USERS, no MANAGE_PRICING) is denied
+    `GET /api/v1/orgs/{orgSlug}/admin/users` (403) and `GET /api/v1/orgs/{orgSlug}/catalog` (403).
+    Distributor IS allowed `GET /api/v1/orgs/{orgSlug}/inquiries` and
+    `GET /api/v1/orgs/{orgSlug}/component-types` (no gate on GET).
+
+### Dashboard redesign (Batch 7b)
+
+81. **Dashboard heading is "Welcome, {firstName}":** `/{orgSlug}/dashboard` renders an `<h1>` containing
+    "Welcome" (not the literal string "Dashboard"). `firstName` is the first word of the user's
+    display name (e.g., "vistra" for the vistra admin, "acme-glass" for the acme-glass admin).
+    Automated: `stage12.spec.ts` "Dashboard: heading is 'Welcome, {firstName}'".
+
+82. **Dashboard KPI tiles present:** three tiles (Orders, Projects, Inquiries) are rendered. Orders is
+    always 0 (no Order model yet). Projects and Inquiries show real counts from the
+    `/api/v1/orgs/{orgSlug}/stats` API. Loading skeleton disappears once data loads.
+    Automated: `stage12.spec.ts` "Dashboard: three KPI tiles" and "Dashboard stats API".
+
+83. **Home icon → dashboard link:** the Home icon in `TopBarActions` links to `/{orgSlug}/dashboard`
+    (or `/dashboard` on subdomain hosts). Clicking it from any page navigates back to dashboard without
+    a doubled org segment. This was a bugfix in Stage 12 Correction 3.
+    Automated: `stage12.spec.ts` "Dashboard: Home icon in top-bar links to dashboard".
+
+### Inquiries list redesign (Batch 7c)
+
+84. **Inquiries list column schema:** the table has exactly these columns: "Project Name" (link to
+    detail), "Company" (internal users) / "Client Name" (external users), "Location",
+    "Status", "Created On", "Submission Date". There is NO `#N` inquiry-number column on the list.
+    Automated: `stage12.spec.ts` "Inquiries list: column headers match Batch 7c schema".
+
+85. **Inquiry name is the detail link:** in the inquiries list, the inquiry name in the "Project Name"
+    column links to `/{orgSlug}/inquiries/{uuid}`. There are no `#N`-format links anywhere on the
+    list page.
+    Automated: `stage12.spec.ts` "Inquiries list: each inquiry row has a link to the detail page".
+
+86. **Inquiry number visible on detail page, not list:** `/{orgSlug}/inquiries/{id}` shows the inquiry
+    number in the `<h1>` as `#{N} — {name}`. The number is also in the "Inquiry Details" card.
+    Automated: `stage12.spec.ts` "Inquiries list: inquiry number (#N) is visible on the detail page".
+
+87. **Inquiries list empty state:** no-filter empty list shows "No inquiries yet. Create your first
+    inquiry." Filtered with no matches shows "No inquiries match your filters." Neither shows a table.
+    Automated: `stage12.spec.ts` "Inquiries list: empty state shown when search returns no results".
+
+88. **Inquiries list toolbar (My/All + search):** the scope toggle and search input are present on
+    `/{orgSlug}/inquiries` regardless of filter state. The `scope=mine` URL param scopes results
+    to the current user's inquiries; `search=` filters by name/country.
+    Automated: `stage12.spec.ts` "Inquiries list toolbar: My/All toggle and search input".
+
+### Inquiries/new back link (Bug 4 fix)
+
+89. **"Back to Inquiries" link on /inquiries/new:** the create-inquiry page has a functional back link
+    (text from i18n key `backToList`, e.g. "← Back to Inquiries") above the form. Clicking it
+    navigates to `/{orgSlug}/inquiries`.
+    Automated: `stage12.spec.ts` "Inquiries/new: 'Back to Inquiries' link".
+
+### Proxy TTL cache (Batch 8)
+
+90. **Proxy slug cache correctness:** the in-process 60-second TTL cache in `proxy.ts` returns the
+    correct org for repeated requests. An org that exists in the cache must NOT serve a different
+    org's pages, and a cache miss for a new org must trigger a fresh DB lookup. (Manual/load-test
+    verification; no automated spec needed unless cache invalidation logic changes.)
+
+### Stage 11 regression (post-Stage 12)
+
+91. **All Stage 11 Playwright specs pass:** `subdomain-url-hygiene.spec.ts` (4 tests),
+    `login.spec.ts` (13 tests), and `stage7.spec.ts` (all tests) pass without modification against
+    the Stage 12 build. Stage 12 touched pages that Stage 11 tests cover; no regressions introduced.

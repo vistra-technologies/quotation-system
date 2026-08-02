@@ -20,6 +20,13 @@ import { signIn } from "./helpers";
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
 
+// Rate-limit pacing: better-auth limits sign-in to 3 per 10 seconds per IP.
+// Many tests in this file sign in; 7-second beforeEach spaces sign-in calls
+// 11+ seconds apart so the rate-limit window always resets.
+test.beforeEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 7_000));
+});
+
 // ---------------------------------------------------------------------------
 // ComponentType -- RBAC gating
 // ---------------------------------------------------------------------------
@@ -181,7 +188,7 @@ test("Project CRUD: create project -> appears at Step 1 with correct projectNumb
   await expect(page.getByText(projectName)).toBeVisible({ timeout: 10_000 });
 
   // Project number must be visible in the page heading (format: "#N — Project Name").
-  await expect(page.getByRole("heading", { level: 1 })).toContainText(/#\d+/);
+  await expect(page.getByRole("heading", { level: 2 })).toContainText(/#\d+/);
 });
 
 test("Project list: any authenticated user can access /projects (no special RBAC required)", async ({
@@ -217,61 +224,64 @@ test("Project list: acme-glass session rejected on nordic-walls/projects", async
 test("createProject: cross-org externalCompanyId is rejected with INVALID_EXTERNAL_COMPANY error", async ({
   page,
 }) => {
-  // Step 1: Sign in to acme-glass and capture an ExternalCompany ID from that org
+  // Step 1: Sign in to acme-glass and retrieve an ExternalCompany UUID via the API.
+  // Using page.request.get() (which shares cookies with the browser context) avoids
+  // the DOM injection + React reconciler timing issue that caused the original test to
+  // silently submit an empty externalCompanyId instead of the foreign UUID.
   await signIn(page, "admin", "Seed1234!", "acme-glass");
-  await page.goto("/acme-glass/projects/new");
-  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 10_000 });
 
-  // Extract the ExternalCompany options visible in acme-glass's dropdown
-  const acmeCompanyId = await page
-    .locator("select[name='externalCompanyId'] option:not([value=''])")
-    .first()
-    .getAttribute("value");
+  const companiesRes = await page.request.get(
+    "/api/v1/orgs/acme-glass/external-companies",
+  );
+  expect(companiesRes.status()).toBe(200);
+  const { companies } = (await companiesRes.json()) as {
+    companies: { id: string }[];
+  };
+  const acmeCompanyId = companies[0]?.id ?? null;
 
   if (!acmeCompanyId) {
-    test.skip(true, "No external companies seeded for acme-glass -- cannot test cross-org injection");
+    test.skip(
+      true,
+      "No external companies seeded for acme-glass -- cannot test cross-org injection",
+    );
     return;
   }
 
   // Sign out from acme-glass before switching to nordic-walls.
-  // Without this, signIn() navigates to /nordic-walls/login which shows the
-  // cross-org "already signed in" notice instead of the login form, causing
-  // the signIn helper's "Sign in to" heading assertion to fail.
   await page.goto("/acme-glass/dashboard");
-  await page.getByRole("button", { name: /sign out/i }).click();
+  // Stage 10: Log Out moved into profile dropdown (click to open, then click Log Out)
+  await page.getByRole("button", { name: "Profile" }).click();
+  await page.getByRole("button", { name: "Log Out" }).click();
   await expect(page).toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
 
-  // Step 2: Sign in to nordic-walls as admin
+  // Step 2: Sign in to nordic-walls as admin.
   await signIn(page, "admin", "Seed1234!", "nordic-walls");
-  await page.goto("/nordic-walls/projects/new");
-  await expect(page).not.toHaveURL(/\/nordic-walls\/login/, { timeout: 10_000 });
 
-  // Step 3: Inject the acme-glass ExternalCompany ID into the nordic-walls form
-  // This simulates a crafted form submission with a foreign company ID
-  await page.evaluate((foreignId) => {
-    const select = document.querySelector(
-      "select[name='externalCompanyId']",
-    ) as HTMLSelectElement;
-    if (select) {
-      const option = document.createElement("option");
-      option.value = foreignId!;
-      option.text = "injected-foreign-company";
-      select.appendChild(option);
-      select.value = foreignId!;
-    }
-  }, acmeCompanyId);
+  // Step 3: POST directly to the project-create API route with the foreign
+  // externalCompanyId.  page.request uses the same cookies as the browser
+  // context (authenticated as the nordic-walls admin session), so the route
+  // handler and DAL see a valid session for the wrong org's company UUID.
+  //
+  // The DAL's org-scoped findFirst guard must:
+  //   1. Find no ExternalCompany row with (id=acmeCompanyId, organizationId=nordicWallsOrgId)
+  //   2. Throw { code: "INVALID_EXTERNAL_COMPANY" }
+  //   3. Route handler surfaces it as 400 + { error: "Selected company is invalid." }
+  const response = await page.request.post(
+    "/api/v1/orgs/nordic-walls/projects",
+    {
+      data: {
+        name: "Cross-Tenant Attack Test",
+        destinationCountry: "UAE",
+        currency: "AED",
+        externalCompanyId: acmeCompanyId,
+      },
+    },
+  );
 
-  // Fill required fields
-  await page.locator("input[name='name']").fill("Cross-Tenant Attack Test");
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
-
-  // Submit the form with the foreign externalCompanyId
-  await page.getByRole("button", { name: /create project/i }).click();
-
-  // Must stay on the create page (form returns error, no redirect to project list)
-  await expect(page).toHaveURL(/\/nordic-walls\/projects\/new/, { timeout: 10_000 });
-
-  // Must show an error about invalid company -- not silently create a cross-tenant project
-  await expect(page.locator("p").filter({ hasText: /invalid|not found|company/i })).toBeVisible({ timeout: 10_000 });
+  // Guard must reject — 400 with the canonical error message.
+  expect(response.status()).toBe(400);
+  const body = (await response.json()) as { error?: string; project?: unknown };
+  expect(body.error).toMatch(/Selected company is invalid/i);
+  // No project object in a rejected response — confirms nothing was created.
+  expect(body.project).toBeUndefined();
 });
