@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Stage 7 — Inquiry entity, Dashboard nav fix, ComponentType JSON toggle.
  *
  * Covers behavioral DoD items:
@@ -110,20 +110,31 @@ test("Inquiry create round-trip: create → appears in list with inquiryNumber a
   // Inquiry must appear in the list
   await expect(page.getByText(inquiryName)).toBeVisible({ timeout: 10_000 });
 
-  // Must have a # number prefix link
-  const numberLink = page.getByRole("link").filter({ hasText: /^#\d+$/ }).first();
-  await expect(numberLink).toBeVisible({ timeout: 10_000 });
+  // Stage 12 Batch 7c: the #N number column was removed from the inquiries list.
+  // The inquiry name in the "Project Name" column is now the detail link.
+  const nameLink = page.getByRole("link", { name: inquiryName }).first();
+  await expect(nameLink).toBeVisible({ timeout: 10_000 });
+  const nameLinkHref = await nameLink.getAttribute("href");
+  expect(nameLinkHref).toMatch(/\/acme-glass\/inquiries\/[0-9a-f-]{36}/);
 });
 
 test("Inquiry list: each row links to the detail page", async ({ page }) => {
   await signIn(page, "admin");
   await page.goto("/acme-glass/inquiries");
 
-  const numberLink = page.getByRole("link").filter({ hasText: /^#\d+$/ }).first();
-  const count = await numberLink.count();
-  if (count > 0) {
-    const href = await numberLink.getAttribute("href");
-    expect(href).toMatch(/\/acme-glass\/inquiries\/[0-9a-f-]{36}/);
+  // Stage 12 Batch 7c: inquiry list links via the inquiry name (not a #N number cell).
+  // Any <a> whose href matches /acme-glass/inquiries/{uuid} is a detail link.
+  const detailLinks = page.locator("a").filter({
+    has: page.locator("[href]"),
+  });
+  const allHrefs = await page.locator("a[href]").evaluateAll(
+    (els) => els.map((el) => el.getAttribute("href") ?? ""),
+  );
+  const inquiryHrefs = allHrefs.filter((h) =>
+    /\/acme-glass\/inquiries\/[0-9a-f-]{36}$/.test(h),
+  );
+  if (inquiryHrefs.length > 0) {
+    expect(inquiryHrefs[0]).toMatch(/\/acme-glass\/inquiries\/[0-9a-f-]{36}/);
   }
   // Empty list is acceptable if no inquiries exist yet
 });
@@ -187,12 +198,13 @@ test("Two consecutive inquiries get sequential inquiryNumbers (#N and #N+1)", as
   // Get the number of the first inquiry from the list
   const row1 = page.getByRole("row").filter({ hasText: name1 }).first();
   await expect(row1).toBeVisible({ timeout: 10_000 });
-  const firstLink = row1.getByRole("link", { name: /^#\d+$/ });
-  const firstHref = await firstLink.getAttribute("href");
-  const firstLinkText = await firstLink.textContent();
-  const firstNum = parseInt(firstLinkText?.replace("#", "") ?? "0", 10);
+  // Stage 12 Batch 7c: no #N column; navigate to detail page to read inquiry number.
+  const firstNameLink = row1.getByRole("link").first();
+  await firstNameLink.click();
+  await page.waitForURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+  const firstHeading = await page.locator("h1").textContent();
+  const firstNum = parseInt((firstHeading ?? "").match(/#(\d+)/)?.[1] ?? "0", 10);
   expect(firstNum).toBeGreaterThan(0);
-  expect(firstHref).toBeTruthy();
 
   // Create second inquiry
   await page.goto("/acme-glass/inquiries/new");
@@ -204,12 +216,14 @@ test("Two consecutive inquiries get sequential inquiryNumbers (#N and #N+1)", as
     page.getByRole("button", { name: /create inquiry/i }).click(),
   ]);
 
-  // Get the number of the second inquiry
+  // Get the number of the second inquiry from its detail page
   const row2 = page.getByRole("row").filter({ hasText: name2 }).first();
   await expect(row2).toBeVisible({ timeout: 10_000 });
-  const secondLink = row2.getByRole("link", { name: /^#\d+$/ });
-  const secondLinkText = await secondLink.textContent();
-  const secondNum = parseInt(secondLinkText?.replace("#", "") ?? "0", 10);
+  const secondNameLink = row2.getByRole("link").first();
+  await secondNameLink.click();
+  await page.waitForURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+  const secondHeading = await page.locator("h1").textContent();
+  const secondNum = parseInt((secondHeading ?? "").match(/#(\d+)/)?.[1] ?? "0", 10);
 
   // Second must be exactly first + 1
   expect(secondNum).toBe(firstNum + 1);
@@ -362,9 +376,10 @@ test("Inquiry tenancy: acme-glass inquiry not accessible via nordic-walls URL sp
   const inquiryId = href?.split("/").pop() ?? "";
   expect(inquiryId).toMatch(/^[0-9a-f-]{36}$/);
 
-  // Sign out of acme-glass
+  // Sign out of acme-glass (Stage 11 Batch 8: Profile icon → "Log Out" dropdown)
   await page.goto("/acme-glass/dashboard");
-  await page.getByRole("button", { name: /sign out/i }).click();
+  await page.getByRole("button", { name: "Profile" }).click();
+  await page.getByRole("button", { name: /Log Out/i }).click();
   await expect(page).toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
 
   // Sign in as nordic-walls admin

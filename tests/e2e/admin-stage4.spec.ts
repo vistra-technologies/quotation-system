@@ -82,7 +82,8 @@ test("cross-org notice: logout clears session and shows destination org login fo
   ).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: /log out|sign out/i }).click();
   // After logout, the login form must be present (username input signals we're on the real login page)
-  await expect(page.getByLabel(/username/i)).toBeVisible({ timeout: 15_000 });
+  // Stage 10 Task 1.4: login label changed "Username" → "User ID"; use autocomplete attribute as stable anchor.
+  await expect(page.locator('input[autocomplete="username"]')).toBeVisible({ timeout: 15_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -120,11 +121,14 @@ test("distributor role (no MANAGE_FEATURES) cannot access admin/permissions — 
 
 test("admin side panel shows admin section links (Users link visible)", async ({ page }) => {
   await signIn(page, "admin");
-  // Stage 8 restructured navigation from a top-bar "Admin" link to a side panel
-  // with an "Admin" section header (span) plus individual admin links beneath it.
-  // Verify the admin section is accessible by checking the "Users" link, which
-  // only appears in the Admin section for users with MANAGE_USERS permission.
-  await expect(page.getByRole("link", { name: "Users" })).toBeVisible({ timeout: 15_000 });
+  // Stage 11: Admin links moved into a CSS hover flyout (group-hover:visible).
+  // Must hover over the "Admin" trigger button first to reveal the flyout,
+  // otherwise the link exists in the DOM but has visibility:hidden → toBeVisible() fails.
+  const adminTrigger = page.getByRole("button", { name: "Admin" });
+  await expect(adminTrigger).toBeVisible({ timeout: 15_000 });
+  await adminTrigger.hover();
+  // Flyout is visible; now the Users link must be visible too.
+  await expect(page.getByRole("link", { name: "Users" })).toBeVisible({ timeout: 5_000 });
 });
 
 test("distributor dashboard does not show admin section links", async ({ page }) => {
