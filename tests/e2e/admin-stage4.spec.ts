@@ -95,31 +95,28 @@ test("unauthenticated request to admin/users redirects to login", async ({ page 
   await expect(page).toHaveURL(/\/acme-glass\/login/);
 });
 
-test("distributor role (no MANAGE_USERS) cannot access admin/users — redirected to dashboard", async ({
+test("distributor role is denied MANAGE_USERS + MANAGE_FEATURES admin pages (combined to limit sign-ins)", async ({
   page,
 }) => {
+  // Rate-limit pacing: tests 1-4 each sign in within ~11s. Wait for the window to clear
+  // before the next sign-in so better-auth's 3/10s limit is not hit.
+  await page.waitForTimeout(8_000);
   await signIn(page, "distributor");
+  // MANAGE_USERS gate: admin/users must redirect to dashboard for distributor
   await page.goto("/acme-glass/admin/users", { waitUntil: "commit" });
   await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
-});
-
-test("distributor role (no MANAGE_FEATURES) cannot access admin/roles — redirected to dashboard", async ({
-  page,
-}) => {
-  await signIn(page, "distributor");
+  // MANAGE_FEATURES gate: admin/roles must redirect to dashboard (same session)
   await page.goto("/acme-glass/admin/roles", { waitUntil: "commit" });
   await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
-});
-
-test("distributor role (no MANAGE_FEATURES) cannot access admin/permissions — redirected to dashboard", async ({
-  page,
-}) => {
-  await signIn(page, "distributor");
+  // MANAGE_FEATURES gate: admin/permissions must redirect to dashboard (same session)
   await page.goto("/acme-glass/admin/permissions", { waitUntil: "commit" });
   await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
 });
 
 test("admin side panel shows admin section links (Users link visible)", async ({ page }) => {
+  // Rate-limit pause: the 3 preceding RBAC tests each sign in within ~10 seconds total.
+  // better-auth limits sign-ins to 3/10s per IP; wait for the window to clear.
+  await page.waitForTimeout(5_000);
   await signIn(page, "admin");
   // Stage 11: Admin links moved into a CSS hover flyout (group-hover:visible).
   // Must hover over the "Admin" trigger button first to reveal the flyout,
@@ -146,8 +143,11 @@ test("create user: duplicate username shows inline error, stays on create page",
 }) => {
   await signIn(page, "admin");
   await page.goto("/acme-glass/admin/users/new");
+  // Batch 7g: First Name and Last Name are now required — must fill to reach server-side validation.
+  await page.getByRole("textbox", { name: "First Name" }).fill("Test");
+  await page.getByRole("textbox", { name: "Last Name" }).fill("User");
   await page.getByRole("textbox", { name: "Username" }).fill("admin");
-  await page.getByRole("textbox", { name: "Initial Password" }).fill("Test1234!");
+  await page.getByRole("textbox", { name: "Initial Password" }).fill("Test12345!");
   await page.getByRole("button", { name: "Create User" }).click();
   // Must stay on the create page (not crash to error boundary)
   await expect(page).toHaveURL(/\/acme-glass\/admin\/users\/new/);
@@ -158,6 +158,9 @@ test("create user: valid user appears in the users list", async ({ page }) => {
   const username = `e2e_${Date.now()}`;
   await signIn(page, "admin");
   await page.goto("/acme-glass/admin/users/new");
+  // Batch 7g: First Name and Last Name are now required.
+  await page.getByRole("textbox", { name: "First Name" }).fill("E2E");
+  await page.getByRole("textbox", { name: "Last Name" }).fill("Tester");
   await page.getByRole("textbox", { name: "Username" }).fill(username);
   await page.getByLabel("Role").selectOption("Distributor");
   await page.getByRole("textbox", { name: "Initial Password" }).fill("Test1234!");

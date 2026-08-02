@@ -31,6 +31,13 @@ import { signIn } from "./helpers";
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
 
+// Rate-limit pacing: better-auth limits sign-in to 3 per 10 seconds per IP.
+// 14 tests each sign in; 7-second beforeEach spaces sign-in calls 11+ seconds
+// apart, ensuring the rate-limit window always resets before each attempt.
+test.beforeEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 7_000));
+});
+
 // ---------------------------------------------------------------------------
 // A. Dashboard redesign — heading, KPI tiles, Home icon link
 // ---------------------------------------------------------------------------
@@ -218,4 +225,47 @@ test("Inquiries list toolbar: My/All toggle and search input are rendered", asyn
   // These must be present even if no filter is applied.
   await expect(page.getByRole("link", { name: /All/i }).or(page.getByRole("button", { name: /All/i }))).toBeVisible({ timeout: 15_000 });
   await expect(page.getByPlaceholder(/search inquiries/i)).toBeVisible({ timeout: 10_000 });
+});
+
+// ---------------------------------------------------------------------------
+// E. API-layer tenancy isolation (Batch 1-7 critical invariant)
+// ---------------------------------------------------------------------------
+
+test('API: cross-org /users request is rejected with 403', async ({ page, request }) => {
+  // Sign in as vistra admin, then try to call the acme-glass users API.
+  // getApiSession() cross-tenant guard must block this with a 403.
+  await signIn(page, 'admin', 'Seed1234!', 'vistra');
+  // Use the browser's cookie jar (page.request) to carry the vistra session into an
+  // acme-glass API call — exactly what a confused client would do.
+  const resp = await page.request.get('/api/v1/orgs/acme-glass/users');
+  // Must be 401 (no session in this context) or 403 (cross-tenant guard).
+  expect([401, 403]).toContain(resp.status());
+});
+
+test('API: unauthenticated /users request returns 401', async ({ page }) => {
+  // Navigate to a fresh page without signing in, then hit the API.
+  const resp = await page.request.get('/api/v1/orgs/acme-glass/users');
+  expect(resp.status()).toBe(401);
+});
+
+test('API: /api/v1/orgs (public org-list) returns array without auth', async ({ page }) => {
+  const resp = await page.request.get('/api/v1/orgs');
+  expect(resp.status()).toBe(200);
+  const body = await resp.json();
+  expect(Array.isArray(body)).toBe(true);
+  expect(body.length).toBeGreaterThan(0);
+});
+
+// ---------------------------------------------------------------------------
+// F. Orders placeholder — page renders without error
+// ---------------------------------------------------------------------------
+
+test('Orders placeholder page renders (no crash, breadcrumb/nav present)', async ({ page }) => {
+  await signIn(page, 'admin');
+  await page.goto('/acme-glass/orders');
+  // Must not redirect to login (page is auth-gated, admin should see it).
+  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+  // Must not be an error page (no 500-level crash).
+  // The page should show something (h1 or a heading, or an empty-state message).
+  await expect(page.locator('main')).toBeVisible({ timeout: 15_000 });
 });

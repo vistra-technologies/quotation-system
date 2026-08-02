@@ -30,6 +30,15 @@ import { signIn } from "./helpers";
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
 
+// Rate-limit pacing: better-auth limits sign-in to 3 per 10 seconds per IP.
+// This file has ~25 tests that each sign in. Without pacing, the rate limit
+// triggers mid-suite causing cascade failures. A 7-second beforeEach delay
+// spaces sign-in calls 11+ seconds apart (7s wait + ~4s test body), ensuring
+// the "last-request" window always resets before the next sign-in attempt.
+test.beforeEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 7_000));
+});
+
 // ---------------------------------------------------------------------------
 // Dashboard nav fix
 // ---------------------------------------------------------------------------
