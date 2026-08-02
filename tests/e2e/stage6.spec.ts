@@ -22,6 +22,13 @@ import { signIn } from "./helpers";
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
 
+// Rate-limit pacing: better-auth limits sign-in to 3 per 10 seconds per IP.
+// Many tests in this file sign in; 7-second beforeEach spaces sign-in calls
+// 11+ seconds apart so the rate-limit window always resets.
+test.beforeEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 7_000));
+});
+
 // ---------------------------------------------------------------------------
 // External Company — RBAC gating
 // ---------------------------------------------------------------------------
@@ -139,6 +146,10 @@ test("Admin nav shows External Companies link for MANAGE_USERS role", async ({ p
   // Admin section is reachable via any admin page
   await page.goto("/acme-glass/admin/users");
   // The nav must have the External Companies link.
+  // Stage 11: Admin links are in a CSS hover flyout. Hover Admin button to reveal.
+  const adminTrigger6 = page.getByRole("button", { name: "Admin" });
+  await expect(adminTrigger6).toBeVisible({ timeout: 15_000 });
+  await adminTrigger6.hover();
   // Use .first() because the admin layout's top nav AND the org-level side panel
   // both render an "External Companies" link — two links is expected behavior
   // after Stage 8 added the side panel (strict mode would fail without .first()).
@@ -473,7 +484,9 @@ test("Selection tenancy: direct access to a different org's project returns 404 
 
   // Sign out of acme-glass
   await page.goto("/acme-glass/dashboard");
-  await page.getByRole("button", { name: /sign out/i }).click();
+  // Stage 10: Log Out moved into profile dropdown (click to open, then click Log Out)
+  await page.getByRole("button", { name: "Profile" }).click();
+  await page.getByRole("button", { name: "Log Out" }).click();
   await expect(page).toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
 
   // Sign in to nordic-walls as admin

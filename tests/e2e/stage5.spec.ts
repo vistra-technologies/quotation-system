@@ -20,6 +20,13 @@ import { signIn } from "./helpers";
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
 
+// Rate-limit pacing: better-auth limits sign-in to 3 per 10 seconds per IP.
+// Many tests in this file sign in; 7-second beforeEach spaces sign-in calls
+// 11+ seconds apart so the rate-limit window always resets.
+test.beforeEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 7_000));
+});
+
 // ---------------------------------------------------------------------------
 // ComponentType -- RBAC gating
 // ---------------------------------------------------------------------------
@@ -181,7 +188,7 @@ test("Project CRUD: create project -> appears at Step 1 with correct projectNumb
   await expect(page.getByText(projectName)).toBeVisible({ timeout: 10_000 });
 
   // Project number must be visible in the page heading (format: "#N — Project Name").
-  await expect(page.getByRole("heading", { level: 1 })).toContainText(/#\d+/);
+  await expect(page.getByRole("heading", { level: 2 })).toContainText(/#\d+/);
 });
 
 test("Project list: any authenticated user can access /projects (no special RBAC required)", async ({
@@ -238,7 +245,9 @@ test("createProject: cross-org externalCompanyId is rejected with INVALID_EXTERN
   // cross-org "already signed in" notice instead of the login form, causing
   // the signIn helper's "Sign in to" heading assertion to fail.
   await page.goto("/acme-glass/dashboard");
-  await page.getByRole("button", { name: /sign out/i }).click();
+  // Stage 10: Log Out moved into profile dropdown (click to open, then click Log Out)
+  await page.getByRole("button", { name: "Profile" }).click();
+  await page.getByRole("button", { name: "Log Out" }).click();
   await expect(page).toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
 
   // Step 2: Sign in to nordic-walls as admin

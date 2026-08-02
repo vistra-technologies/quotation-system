@@ -28,6 +28,13 @@ import { signIn } from "./helpers";
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
 
+// Rate-limit pacing: better-auth limits sign-in to 3 per 10 seconds per IP.
+// Almost every test in this file signs in; 7-second beforeEach spaces sign-in
+// calls 11+ seconds apart so the rate-limit window always resets.
+test.beforeEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 7_000));
+});
+
 // ---------------------------------------------------------------------------
 // Auth-UX: login page behaviour for authenticated users (Stage 4 item 4)
 // ---------------------------------------------------------------------------

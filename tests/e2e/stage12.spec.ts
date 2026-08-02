@@ -62,9 +62,9 @@ test("Dashboard: three KPI tiles (Orders, Projects, Inquiries) are present", asy
   await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
 
   // The three KPI tiles each have a label in muted small text below the count.
-  await expect(page.getByText("Orders")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Projects")).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Inquiries")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("main").getByText("Orders", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("main").getByText("Projects", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("main").getByText("Inquiries", { exact: true })).toBeVisible({ timeout: 15_000 });
 });
 
 test("Dashboard: Home icon in top-bar links to dashboard", async ({ page }) => {
@@ -223,7 +223,7 @@ test("Inquiries list toolbar: My/All toggle and search input are rendered", asyn
 
   // Stage 12 Batch 7c: the shared list-page toolbar renders scope toggle and search.
   // These must be present even if no filter is applied.
-  await expect(page.getByRole("link", { name: /All/i }).or(page.getByRole("button", { name: /All/i }))).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: /All Inquiries/i })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByPlaceholder(/search inquiries/i)).toBeVisible({ timeout: 10_000 });
 });
 
@@ -248,12 +248,14 @@ test('API: unauthenticated /users request returns 401', async ({ page }) => {
   expect(resp.status()).toBe(401);
 });
 
-test('API: /api/v1/orgs (public org-list) returns array without auth', async ({ page }) => {
+test('API: /api/v1/orgs (public org-list) returns org list without auth', async ({ page }) => {
   const resp = await page.request.get('/api/v1/orgs');
   expect(resp.status()).toBe(200);
   const body = await resp.json();
-  expect(Array.isArray(body)).toBe(true);
-  expect(body.length).toBeGreaterThan(0);
+  // API returns { orgs: [...] } shape, not a bare array
+  expect(typeof body).toBe('object');
+  expect(Array.isArray(body.orgs)).toBe(true);
+  expect(body.orgs.length).toBeGreaterThan(0);
 });
 
 // ---------------------------------------------------------------------------
