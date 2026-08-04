@@ -38,3 +38,22 @@ export async function orgHref(orgSlug: string, subpath: string): Promise<string>
 
   return isSubdomain ? subpath : `/${orgSlug}${subpath}`;
 }
+
+/**
+ * Returns true when the request is arriving via a subdomain host
+ * (`{orgSlug}.easeetool.com` or `{orgSlug}.test.easeetool.com`).
+ *
+ * Intended for Server Components that need to forward subdomain-mode
+ * awareness to child Client Components as a plain boolean prop, eliminating
+ * the `useOrgHref` client-side `window.location.hostname` read and the
+ * resulting SSR/hydration mismatch.
+ */
+export async function detectIsSubdomain(orgSlug: string): Promise<boolean> {
+  const requestHeaders = await headers();
+  const host = requestHeaders.get("host") ?? "";
+  const hostname = host.split(":")[0];
+  return (
+    hostname === `${orgSlug}.easeetool.com` ||
+    hostname === `${orgSlug}.test.easeetool.com`
+  );
+}

@@ -13,6 +13,12 @@
  *            Back links on all ~23 pages were broken. Fixed by removing the `|| "/"` fallback.
  *   Bug 2 — List page row links and action buttons hardcoded `/${orgSlug}/...` hrefs,
  *            leaking the org slug into the URL bar on subdomain hosts.
+ *   Bug 3 — sidebar.tsx and top-bar-actions.tsx used `useOrgHref` (client hook reading
+ *            window.location.hostname), producing incorrect hrefs in the SSR HTML.  React
+ *            corrected the hrefs after client hydration so navigation worked in practice,
+ *            but the server-rendered HTML was wrong.  Fixed by forwarding `isSubdomain` as
+ *            a server-computed prop from layout.tsx (detectIsSubdomain()) so the correct
+ *            href is rendered from the first SSR paint — no hydration mismatch.
  *
  * Seed data available in vistra org (from prisma/seed.ts):
  *   4 roles (Admin, Company Member, Distributor, Architectural Firm)
@@ -102,7 +108,21 @@ test("sidebar: EaseeTool logo → dashboard (clean URL)", async () => {
 test("sidebar: Inquiries link → inquiries list (clean URL)", async () => {
   const page = await ctx.newPage();
   await page.goto(DASHBOARD);
-  await page.getByRole("link", { name: "Inquiries" }).click();
+
+  // Assert the href attribute of the sidebar Inquiries link directly — this
+  // guards against Bug 3 (SSR hydration mismatch).  With the server-prop fix
+  // (isSubdomain forwarded from layout.tsx) the href is correct from the
+  // initial SSR paint.  Wait for networkidle to ensure React has hydrated
+  // before reading the attribute.
+  await page.waitForLoadState("networkidle");
+  const inquiriesLink = page.getByRole("link", { name: "Inquiries" });
+  const linkHref = await inquiriesLink.getAttribute("href");
+  expect(
+    linkHref,
+    `Inquiries sidebar link href must be "/inquiries" (no /vistra/ prefix), got: "${linkHref}"`,
+  ).toBe("/inquiries");
+
+  await inquiriesLink.click();
   await page.waitForURL(`${BASE}/inquiries`, { timeout: 15_000 });
   assertCleanSubdomainUrl(page.url(), "/inquiries");
   await expect(page.getByRole("heading", { name: /Inquiries/i })).toBeVisible({

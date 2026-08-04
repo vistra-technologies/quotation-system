@@ -3,10 +3,13 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { useOrgHref } from "@/lib/useOrgHref";
 
 interface SidebarProps {
   orgSlug: string;
+  /** Forwarded from the server layout — true when the request arrived via an
+   * org subdomain (e.g. acme.easeetool.com).  Eliminates the client-side
+   * window.location.hostname read and the resulting SSR/hydration mismatch. */
+  isSubdomain: boolean;
   canManageUsers: boolean;
   canManageFeatures: boolean;
 }
@@ -32,12 +35,17 @@ interface SidebarProps {
  */
 export function Sidebar({
   orgSlug,
+  isSubdomain,
   canManageUsers,
   canManageFeatures,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
-  const href = useOrgHref(orgSlug);
+  // Build org-scoped hrefs using the server-computed isSubdomain flag.
+  // In subdomain mode the orgSlug belongs in the host, not the path; in
+  // path mode (localhost / Vercel preview) it prefixes every route.
+  const href = (subpath: string) =>
+    isSubdomain ? subpath : `/${orgSlug}${subpath}`;
 
   // Handle both path-based routing (/orgSlug/...) and subdomain-based routing
   // (/... without orgSlug prefix). After Batch 2's proxy rewrite, users on
