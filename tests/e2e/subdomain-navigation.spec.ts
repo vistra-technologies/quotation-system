@@ -110,17 +110,20 @@ test("sidebar: Inquiries link → inquiries list (clean URL)", async () => {
   await page.goto(DASHBOARD);
 
   // Assert the href attribute of the sidebar Inquiries link directly — this
-  // guards against Bug 3 (SSR hydration mismatch).  With the server-prop fix
-  // (isSubdomain forwarded from layout.tsx) the href is correct from the
-  // initial SSR paint.  Wait for networkidle to ensure React has hydrated
-  // before reading the attribute.
-  await page.waitForLoadState("networkidle");
+  // guards against Bug 3 (SSR/hydration mismatch).
+  //
+  // With the server-prop fix (isSubdomain forwarded from layout.tsx) the href
+  // is correct from the very first SSR paint so expect() succeeds immediately.
+  //
+  // Against unfixed staging (useOrgHref client-side detection) the SSR HTML
+  // has href="/vistra/inquiries"; React corrects it to "/inquiries" during
+  // hydration.  toHaveAttribute() polls with retries so it naturally waits for
+  // hydration to settle without needing waitForLoadState("networkidle") (which
+  // hangs on apps with persistent connections).
   const inquiriesLink = page.getByRole("link", { name: "Inquiries" });
-  const linkHref = await inquiriesLink.getAttribute("href");
-  expect(
-    linkHref,
-    `Inquiries sidebar link href must be "/inquiries" (no /vistra/ prefix), got: "${linkHref}"`,
-  ).toBe("/inquiries");
+  await expect(inquiriesLink).toHaveAttribute("href", "/inquiries", {
+    timeout: 10_000,
+  });
 
   await inquiriesLink.click();
   await page.waitForURL(`${BASE}/inquiries`, { timeout: 15_000 });
