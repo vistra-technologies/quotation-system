@@ -31,6 +31,21 @@ const eslintConfig = defineConfig([
       }],
     },
   },
+  // Ban direct lib/data/* imports from org-scoped pages and actions.
+  // Stage 12 layer separation: all DB access from app/[orgSlug]/** must go through
+  // internalFetch → API route handler → DAL. API routes (app/api/**) are exempt.
+  // Deferred files (design/*, design/add-wall/*) use eslint-disable with a note per stage-12.md.
+  {
+    files: ["app/\\[orgSlug\\]/**/*.ts", "app/\\[orgSlug\\]/**/*.tsx"],
+    rules: {
+      "no-restricted-imports": ["error", {
+        patterns: [{
+          group: ["@/lib/data/*"],
+          message: "Org-scoped pages/actions must not import lib/data/* — use internalFetch against API routes instead (Stage 12 layer separation). Deferred files may use eslint-disable with a note per stage-12.md.",
+        }],
+      }],
+    },
+  },
 ]);
 
 export default eslintConfig;

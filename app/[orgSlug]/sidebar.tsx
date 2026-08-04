@@ -6,6 +6,10 @@ import Link from "next/link";
 
 interface SidebarProps {
   orgSlug: string;
+  /** Forwarded from the server layout — true when the request arrived via an
+   * org subdomain (e.g. acme.easeetool.com).  Eliminates the client-side
+   * window.location.hostname read and the resulting SSR/hydration mismatch. */
+  isSubdomain: boolean;
   canManageUsers: boolean;
   canManageFeatures: boolean;
 }
@@ -31,15 +35,23 @@ interface SidebarProps {
  */
 export function Sidebar({
   orgSlug,
+  isSubdomain,
   canManageUsers,
   canManageFeatures,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+  // Build org-scoped hrefs using the server-computed isSubdomain flag.
+  // In subdomain mode the orgSlug belongs in the host, not the path; in
+  // path mode (localhost / Vercel preview) it prefixes every route.
+  const href = (subpath: string) =>
+    isSubdomain ? subpath : `/${orgSlug}${subpath}`;
 
   // Handle both path-based routing (/orgSlug/...) and subdomain-based routing
   // (/... without orgSlug prefix). After Batch 2's proxy rewrite, users on
   // orgSlug.easeetool.com see /projects in the address bar (no orgSlug).
+  // usePathname() always returns the internal path-based route regardless of
+  // subdomain mode, so this path-strip logic remains path-based.
   const sectionPath = pathname.startsWith(`/${orgSlug}`)
     ? pathname.slice(`/${orgSlug}`.length) || "/"
     : pathname;
@@ -69,12 +81,15 @@ export function Sidebar({
       <div
         className={`flex items-center border-b border-border ${
           collapsed
-            ? "justify-center gap-1 px-2 py-5"
-            : "justify-between gap-2 px-[18px] py-5"
+            ? "justify-center gap-1 px-2 py-4"
+            : "justify-between gap-2 px-[18px] py-4"
         }`}
       >
-        {/* Logo mark square + wordmark */}
-        <div className="flex items-center gap-2 overflow-hidden">
+        {/* Logo mark square + wordmark — clicks to org dashboard */}
+        <Link
+          href={href("/dashboard")}
+          className="flex items-center gap-2 overflow-hidden"
+        >
           {/* Green square with document-checkmark icon — always visible */}
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm bg-primary">
             <svg
@@ -110,11 +125,11 @@ export function Sidebar({
 
           {/* Wordmark — hidden when collapsed */}
           {!collapsed && (
-            <span className="whitespace-nowrap text-sm font-extrabold text-text-heading">
+            <span className="whitespace-nowrap text-base font-extrabold text-text-heading">
               EaseeTool
             </span>
           )}
-        </div>
+        </Link>
 
         {/* Collapse button — visible only when expanded */}
         {!collapsed && (
@@ -173,7 +188,7 @@ export function Sidebar({
       <nav className="flex flex-1 flex-col gap-1 p-[14px]">
         {/* Inquiries */}
         <Link
-          href={`/${orgSlug}/inquiries`}
+          href={href("/inquiries")}
           title="Inquiries"
           className={navItemClass("/inquiries")}
         >
@@ -194,7 +209,7 @@ export function Sidebar({
 
         {/* Orders — new in Stage 10, no permission gate */}
         <Link
-          href={`/${orgSlug}/orders`}
+          href={href("/orders")}
           title="Orders"
           className={navItemClass("/orders")}
         >
@@ -215,7 +230,7 @@ export function Sidebar({
 
         {/* Projects */}
         <Link
-          href={`/${orgSlug}/projects`}
+          href={href("/projects")}
           title="Projects"
           className={navItemClass("/projects")}
         >
@@ -297,19 +312,19 @@ export function Sidebar({
               {canManageUsers && (
                 <>
                   <Link
-                    href={`/${orgSlug}/admin/users`}
+                    href={href("/admin/users")}
                     className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                   >
                     Users
                   </Link>
                   <Link
-                    href={`/${orgSlug}/admin/external-companies`}
+                    href={href("/admin/external-companies")}
                     className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                   >
                     External Companies
                   </Link>
                   <Link
-                    href={`/${orgSlug}/pricing`}
+                    href={href("/pricing")}
                     className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                   >
                     Pricing
@@ -320,19 +335,19 @@ export function Sidebar({
               {canManageFeatures && (
                 <>
                   <Link
-                    href={`/${orgSlug}/admin/roles`}
+                    href={href("/admin/roles")}
                     className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                   >
                     Roles
                   </Link>
                   <Link
-                    href={`/${orgSlug}/admin/permissions`}
+                    href={href("/admin/permissions")}
                     className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                   >
                     Permissions
                   </Link>
                   <Link
-                    href={`/${orgSlug}/admin/components`}
+                    href={href("/admin/components")}
                     className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                   >
                     Component Types

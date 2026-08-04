@@ -45,6 +45,43 @@ import { prisma } from "@/lib/prisma";
 // Performance note (out of scope Stage 2): the DB lookup on every request is fine for dev
 // load.  A future optimization is a short-lived in-process Map cache keyed on slug,
 // invalidated on Organization updates.
+//
+// Stage 12 — org-slug TTL cache (in-process, 60 s).
+// Wraps the per-request findUnique below.  TTL chosen as short enough that a slug rename
+// propagates within a minute, long enough to absorb the burst on heavily-visited pages.
+// Only the slug → { id, slug } lookup is cached; nothing about the user session is stored here.
+
+interface OrgCacheEntry {
+  id: string;
+  slug: string;
+  expiresAt: number;
+}
+const _orgCache = new Map<string, OrgCacheEntry>();
+
+function _getCachedOrg(slug: string): { id: string; slug: string } | null {
+  const entry = _orgCache.get(slug);
+  if (entry && Date.now() < entry.expiresAt) {
+    return { id: entry.id, slug: entry.slug };
+  }
+  _orgCache.delete(slug);
+  return null;
+}
+
+function _setCachedOrg(org: { id: string; slug: string }): void {
+  _orgCache.set(org.slug, { id: org.id, slug: org.slug, expiresAt: Date.now() + 60_000 });
+}
+
+/**
+ * Invalidate the in-process org cache for a given slug.
+ *
+ * Call this whenever an Organization's slug is changed so that the next request
+ * picks up the updated slug from the DB rather than serving a stale cached entry.
+ * (No org-update routes exist yet; exported now so future callers don't have to
+ * reach into the module internals.)
+ */
+export function invalidateOrgCache(slug: string): void {
+  _orgCache.delete(slug);
+}
 
 export async function proxy(request: NextRequest) {
   const host = request.headers.get("host") ?? "";
@@ -105,18 +142,22 @@ export async function proxy(request: NextRequest) {
   }
 
   // ---------------------------------------------------------------------------
-  // DB lookup
+  // DB lookup (with in-process TTL cache)
   // ---------------------------------------------------------------------------
-  const org = await prisma.organization.findUnique({
-    where: { slug: orgSlug },
-    select: { id: true, slug: true },
-  });
-
+  let org = _getCachedOrg(orgSlug);
   if (!org) {
-    return NextResponse.json(
-      { error: "Organization not found" },
-      { status: 404 },
-    );
+    const dbOrg = await prisma.organization.findUnique({
+      where: { slug: orgSlug },
+      select: { id: true, slug: true },
+    });
+    if (!dbOrg) {
+      return NextResponse.json(
+        { error: "Organization not found" },
+        { status: 404 },
+      );
+    }
+    _setCachedOrg(dbOrg);
+    org = dbOrg;
   }
 
   // Attach org headers so Server Components downstream can read them.

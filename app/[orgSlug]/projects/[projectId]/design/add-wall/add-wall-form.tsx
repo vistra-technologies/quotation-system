@@ -25,6 +25,8 @@ const initialState: CreateWallState = { error: null };
  *
  * Unit normalisation is performed server-side in actions.ts before the DAL call.
  * Uses useActionState (React 19) so server-side validation errors surface in the form.
+ *
+ * Batch 8: restyled zinc-* classes to Sage Ease tokens. No behavior changes.
  */
 export function AddWallForm({
   orgSlug,
@@ -39,8 +41,8 @@ export function AddWallForm({
       <LoadingOverlay visible={isPending} />
 
       {state.error && (
-        <div className="rounded-md border border-red-300 bg-red-50 px-4 py-3 dark:border-red-700 dark:bg-red-950">
-          <p className="text-sm text-red-700 dark:text-red-300">{state.error}</p>
+        <div className="rounded-sm border border-red-300 bg-red-50 px-4 py-3">
+          <p className="text-sm text-red-700">{state.error}</p>
         </div>
       )}
 
@@ -50,10 +52,10 @@ export function AddWallForm({
         <input type="hidden" name="projectId" value={projectId} />
 
         {/* Location */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           <label
             htmlFor="location"
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+            className="text-xs font-bold uppercase tracking-wide text-text-muted"
           >
             {t("fieldLocation")}
           </label>
@@ -63,15 +65,15 @@ export function AddWallForm({
             type="text"
             required
             autoComplete="off"
-            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+            className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           />
         </div>
 
         {/* Floor label — free text with datalist suggestions */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           <label
             htmlFor="floorLabel"
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+            className="text-xs font-bold uppercase tracking-wide text-text-muted"
           >
             {t("fieldFloor")}
           </label>
@@ -83,7 +85,7 @@ export function AddWallForm({
             required
             autoComplete="off"
             placeholder={t("fieldFloorPlaceholder")}
-            className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+            className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           />
           <datalist id="floor-suggestions">
             {existingFloorLabels.map((label) => (
@@ -93,10 +95,10 @@ export function AddWallForm({
         </div>
 
         {/* Height + unit */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           <label
             htmlFor="height"
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+            className="text-xs font-bold uppercase tracking-wide text-text-muted"
           >
             {t("fieldHeight")}
           </label>
@@ -108,11 +110,11 @@ export function AddWallForm({
               required
               min="0.01"
               step="any"
-              className="flex-1 rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+              className="flex-1 rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
             />
             <select
               name="unit_h"
-              className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:focus:ring-zinc-50"
+              className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
             >
               <option value="mm">{t("unitMm")}</option>
               <option value="feet">{t("unitFeet")}</option>
@@ -121,10 +123,10 @@ export function AddWallForm({
         </div>
 
         {/* Width + unit */}
-        <div className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1.5">
           <label
             htmlFor="width"
-            className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-400"
+            className="text-xs font-bold uppercase tracking-wide text-text-muted"
           >
             {t("fieldWidth")}
           </label>
@@ -136,11 +138,11 @@ export function AddWallForm({
               required
               min="0.01"
               step="any"
-              className="flex-1 rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+              className="flex-1 rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
             />
             <select
               name="unit_w"
-              className="rounded-md border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-50 dark:placeholder:text-zinc-500 dark:focus:ring-zinc-50"
+              className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
             >
               <option value="mm">{t("unitMm")}</option>
               <option value="feet">{t("unitFeet")}</option>
@@ -151,7 +153,7 @@ export function AddWallForm({
         <button
           type="submit"
           disabled={isPending}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-50 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="rounded-sm bg-primary px-4 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
         >
           {t("submitAddWall")}
         </button>

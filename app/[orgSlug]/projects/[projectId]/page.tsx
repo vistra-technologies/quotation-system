@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { requireSession } from "@/lib/data/session";
-import { getProjectById } from "@/lib/data/projects";
+import { orgHref } from "@/lib/orgHref";
+import { fetchProjectDetail } from "./_project-fetch";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -17,7 +17,11 @@ export const dynamic = "force-dynamic";
  * Stage 10 (Task 1.6): restyled to Sage Ease tokens — heading, metadata card,
  * status badge, and "Next" button. No logic changes.
  *
- * Auth gate: requireSession only — no special permission required.
+ * Stage 12: switched from direct requireSession + getProjectById DAL calls to
+ * internalFetch via the shared React.cache()-wrapped fetchProjectDetail helper.
+ * The layout and this page share one HTTP round-trip per render pass.
+ *
+ * Auth gate: fetchProjectDetail returns 401 → redirect to login; 404 → notFound().
  */
 export default async function ProjectDetailPage({
   params,
@@ -25,12 +29,16 @@ export default async function ProjectDetailPage({
   params: Promise<{ orgSlug: string; projectId: string }>;
 }) {
   const { orgSlug, projectId } = await params;
-  const session = await requireSession(orgSlug);
+  const base = await orgHref(orgSlug, "");
 
-  const [project, tProjects] = await Promise.all([
-    getProjectById(session, projectId),
+  const [{ status, project }, tProjects] = await Promise.all([
+    fetchProjectDetail(orgSlug, projectId),
     getTranslations("projects"),
   ]);
+
+  if (status === 401 || status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
 
   // Tenancy guard: project not found or belongs to a different org.
   if (!project) notFound();
@@ -39,7 +47,7 @@ export default async function ProjectDetailPage({
     <div>
       {/* Back link */}
       <Link
-        href={`/${orgSlug}/projects`}
+        href={`${base}/projects`}
         className="mb-6 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text-heading"
       >
         {tProjects("backToList")}
@@ -89,13 +97,13 @@ export default async function ProjectDetailPage({
       {/* Card footer: navigate to next step */}
       <div className="flex items-center justify-end gap-3">
         <Link
-          href={`/${orgSlug}/projects`}
+          href={`${base}/projects`}
           className="inline-flex items-center rounded-sm border border-border bg-bg-white px-5 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
         >
           Back to Projects
         </Link>
         <Link
-          href={`/${orgSlug}/projects/${projectId}/configuration`}
+          href={`${base}/projects/${projectId}/configuration`}
           className="inline-flex items-center rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark"
         >
           Next: Configuration →

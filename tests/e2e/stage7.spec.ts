@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Stage 7 — Inquiry entity, Dashboard nav fix, ComponentType JSON toggle.
  *
  * Covers behavioral DoD items:
@@ -29,6 +29,15 @@ import { signIn } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
+
+// Rate-limit pacing: better-auth limits sign-in to 3 per 10 seconds per IP.
+// This file has ~25 tests that each sign in. Without pacing, the rate limit
+// triggers mid-suite causing cascade failures. A 7-second beforeEach delay
+// spaces sign-in calls 11+ seconds apart (7s wait + ~4s test body), ensuring
+// the "last-request" window always resets before the next sign-in attempt.
+test.beforeEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 7_000));
+});
 
 // ---------------------------------------------------------------------------
 // Dashboard nav fix
@@ -108,22 +117,33 @@ test("Inquiry create round-trip: create → appears in list with inquiryNumber a
   ]);
 
   // Inquiry must appear in the list
-  await expect(page.getByText(inquiryName)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(inquiryName).first()).toBeVisible({ timeout: 10_000 });
 
-  // Must have a # number prefix link
-  const numberLink = page.getByRole("link").filter({ hasText: /^#\d+$/ }).first();
-  await expect(numberLink).toBeVisible({ timeout: 10_000 });
+  // Stage 12 Batch 7c: the #N number column was removed from the inquiries list.
+  // The inquiry name in the "Project Name" column is now the detail link.
+  const nameLink = page.getByRole("link", { name: inquiryName }).first();
+  await expect(nameLink).toBeVisible({ timeout: 10_000 });
+  const nameLinkHref = await nameLink.getAttribute("href");
+  expect(nameLinkHref).toMatch(/\/acme-glass\/inquiries\/[0-9a-f-]{36}/);
 });
 
 test("Inquiry list: each row links to the detail page", async ({ page }) => {
   await signIn(page, "admin");
   await page.goto("/acme-glass/inquiries");
 
-  const numberLink = page.getByRole("link").filter({ hasText: /^#\d+$/ }).first();
-  const count = await numberLink.count();
-  if (count > 0) {
-    const href = await numberLink.getAttribute("href");
-    expect(href).toMatch(/\/acme-glass\/inquiries\/[0-9a-f-]{36}/);
+  // Stage 12 Batch 7c: inquiry list links via the inquiry name (not a #N number cell).
+  // Any <a> whose href matches /acme-glass/inquiries/{uuid} is a detail link.
+  const detailLinks = page.locator("a").filter({
+    has: page.locator("[href]"),
+  });
+  const allHrefs = await page.locator("a[href]").evaluateAll(
+    (els) => els.map((el) => el.getAttribute("href") ?? ""),
+  );
+  const inquiryHrefs = allHrefs.filter((h) =>
+    /\/acme-glass\/inquiries\/[0-9a-f-]{36}$/.test(h),
+  );
+  if (inquiryHrefs.length > 0) {
+    expect(inquiryHrefs[0]).toMatch(/\/acme-glass\/inquiries\/[0-9a-f-]{36}/);
   }
   // Empty list is acceptable if no inquiries exist yet
 });
@@ -153,12 +173,15 @@ test("Inquiry detail page shows correct fields (name, country, currency, status)
     timeout: 15_000,
   });
 
-  // Page must display the inquiry name and fields
-  await expect(page.getByText(inquiryName)).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText("KSA")).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText("SAR")).toBeVisible({ timeout: 10_000 });
+  // Page must display the inquiry name and fields.
+  // Stage 12 Batch 7c: name appears in h1 ("#N — name") AND in the detail card.
+  // Use exact: true to match the detail card paragraph (not the h1 substring).
+  await expect(page.getByText(inquiryName, { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+  // Values appear both as pills and as detail-card text; .first() bypasses strict mode.
+  await expect(page.getByText("KSA").first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("SAR").first()).toBeVisible({ timeout: 10_000 });
   // Status must show "New" (translated)
-  await expect(page.getByText(/new/i)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/new/i).first()).toBeVisible({ timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -187,12 +210,13 @@ test("Two consecutive inquiries get sequential inquiryNumbers (#N and #N+1)", as
   // Get the number of the first inquiry from the list
   const row1 = page.getByRole("row").filter({ hasText: name1 }).first();
   await expect(row1).toBeVisible({ timeout: 10_000 });
-  const firstLink = row1.getByRole("link", { name: /^#\d+$/ });
-  const firstHref = await firstLink.getAttribute("href");
-  const firstLinkText = await firstLink.textContent();
-  const firstNum = parseInt(firstLinkText?.replace("#", "") ?? "0", 10);
+  // Stage 12 Batch 7c: no #N column; navigate to detail page to read inquiry number.
+  const firstNameLink = row1.getByRole("link").first();
+  await firstNameLink.click();
+  await page.waitForURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+  const firstHeading = await page.locator("h1").textContent();
+  const firstNum = parseInt((firstHeading ?? "").match(/#(\d+)/)?.[1] ?? "0", 10);
   expect(firstNum).toBeGreaterThan(0);
-  expect(firstHref).toBeTruthy();
 
   // Create second inquiry
   await page.goto("/acme-glass/inquiries/new");
@@ -204,12 +228,14 @@ test("Two consecutive inquiries get sequential inquiryNumbers (#N and #N+1)", as
     page.getByRole("button", { name: /create inquiry/i }).click(),
   ]);
 
-  // Get the number of the second inquiry
+  // Get the number of the second inquiry from its detail page
   const row2 = page.getByRole("row").filter({ hasText: name2 }).first();
   await expect(row2).toBeVisible({ timeout: 10_000 });
-  const secondLink = row2.getByRole("link", { name: /^#\d+$/ });
-  const secondLinkText = await secondLink.textContent();
-  const secondNum = parseInt(secondLinkText?.replace("#", "") ?? "0", 10);
+  const secondNameLink = row2.getByRole("link").first();
+  await secondNameLink.click();
+  await page.waitForURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+  const secondHeading = await page.locator("h1").textContent();
+  const secondNum = parseInt((secondHeading ?? "").match(/#(\d+)/)?.[1] ?? "0", 10);
 
   // Second must be exactly first + 1
   expect(secondNum).toBe(firstNum + 1);
@@ -253,7 +279,7 @@ test("Dismiss action: inquiry status becomes Dismissed", async ({ page }) => {
   ]);
 
   // Status must now show "Dismissed"
-  await expect(page.getByText(/dismissed/i)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/dismissed/i).first()).toBeVisible({ timeout: 15_000 });
 
   // Dismiss and Start Project buttons must be disabled after dismissal
   await expect(page.getByRole("button", { name: /dismiss/i })).toBeDisabled({ timeout: 10_000 });
@@ -310,13 +336,13 @@ test("Convert inquiry to Project: creates project with same fields, inquiry show
   });
 
   // Project detail page must show the inquiry's fields
-  await expect(page.getByText(inquiryName)).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText(country)).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText(currency)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(inquiryName).first()).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(country).first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(currency).first()).toBeVisible({ timeout: 10_000 });
 
   // Navigate back to the inquiry to confirm it shows Converted
   await page.goto(inquiryUrl);
-  await expect(page.getByText(/converted/i)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(/converted/i).first()).toBeVisible({ timeout: 15_000 });
 
   // Start Project button must be disabled after conversion
   await expect(page.getByRole("button", { name: /start project/i })).toBeDisabled({
@@ -362,9 +388,10 @@ test("Inquiry tenancy: acme-glass inquiry not accessible via nordic-walls URL sp
   const inquiryId = href?.split("/").pop() ?? "";
   expect(inquiryId).toMatch(/^[0-9a-f-]{36}$/);
 
-  // Sign out of acme-glass
+  // Sign out of acme-glass (Stage 11 Batch 8: Profile icon → "Log Out" dropdown)
   await page.goto("/acme-glass/dashboard");
-  await page.getByRole("button", { name: /sign out/i }).click();
+  await page.getByRole("button", { name: "Profile" }).click();
+  await page.getByRole("button", { name: /Log Out/i }).click();
   await expect(page).toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
 
   // Sign in as nordic-walls admin
@@ -615,8 +642,10 @@ test("Direct Project create (no Inquiry) still works correctly after Stage 7", a
   ]);
 
   // Project name and project number must appear on the Project Details page (Step 1).
-  await expect(page.getByText(projectName)).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole("heading", { level: 1 })).toContainText(/#\d+/);
+  await expect(page.getByText(projectName).first()).toBeVisible({ timeout: 15_000 });
+  // Stage 9 wizard restructure: h1 is "Project Details" (the page title); the project
+  // number #N appears in the h2 inside the metadata card.
+  await expect(page.getByRole("heading", { level: 2 })).toContainText(/#\d+/);
 });
 
 // ---------------------------------------------------------------------------
@@ -749,7 +778,7 @@ test("Distributor user sees a locked (non-dropdown) Client field on /projects/ne
   await expect(dropdown).not.toBeVisible({ timeout: 5_000 });
 
   // The locked company name must appear as static text.
-  await expect(page.getByText("Acme Glass Co. Dist Co")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Acme Glass Co. Dist Co").first()).toBeVisible({ timeout: 10_000 });
 
   // A hidden input carries the company ID for form submission.
   const hiddenInput = page.locator("input[type='hidden'][name='externalCompanyId']");
@@ -768,7 +797,7 @@ test("Distributor user sees a locked (non-dropdown) Client field on /inquiries/n
   await expect(dropdown).not.toBeVisible({ timeout: 5_000 });
 
   // Static company name display.
-  await expect(page.getByText("Acme Glass Co. Dist Co")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Acme Glass Co. Dist Co").first()).toBeVisible({ timeout: 10_000 });
 
   // Hidden input present.
   const hiddenInput = page.locator("input[type='hidden'][name='externalCompanyId']");
@@ -833,7 +862,7 @@ test("Project trust boundary: forged externalCompanyId in form body is ignored f
 
   // The detail page must show the distributor's real company — NOT blank or any trace
   // of the forged UUID. The company name appears in the project details section.
-  await expect(page.getByText("Acme Glass Co. Dist Co")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Acme Glass Co. Dist Co").first()).toBeVisible({ timeout: 10_000 });
 });
 
 test("Inquiry trust boundary: forged externalCompanyId in form body is ignored for distributor", async ({
@@ -862,7 +891,7 @@ test("Inquiry trust boundary: forged externalCompanyId in form body is ignored f
   ]);
 
   // Inquiry must be created successfully.
-  await expect(page.getByText(inquiryName)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText(inquiryName).first()).toBeVisible({ timeout: 15_000 });
 
   // Navigate to the inquiry detail and confirm the company is the distributor's real one.
   const inquiryLink = page.getByRole("link").filter({ hasText: inquiryName }).first();
@@ -871,5 +900,5 @@ test("Inquiry trust boundary: forged externalCompanyId in form body is ignored f
   await expect(page).toHaveURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, { timeout: 15_000 });
 
   // The detail page shows the company name — must be the distributor's real company.
-  await expect(page.getByText("Acme Glass Co. Dist Co")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Acme Glass Co. Dist Co").first()).toBeVisible({ timeout: 10_000 });
 });

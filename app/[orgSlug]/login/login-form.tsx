@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { toAuthEmail } from "@/lib/auth-utils";
+import { useOrgHref } from "@/lib/useOrgHref";
 
 interface LoginFormProps {
   orgSlug: string;
@@ -33,6 +34,7 @@ export function LoginForm({ orgSlug }: LoginFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showContact, setShowContact] = useState(false);
+  const orgHref = useOrgHref(orgSlug);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -50,7 +52,8 @@ export function LoginForm({ orgSlug }: LoginFormProps) {
       } else {
         // Hard redirect so the [orgSlug] layout re-renders server-side with the
         // new session cookie, making the nav chrome appear immediately.
-        window.location.href = `/${orgSlug}/dashboard`;
+        // orgHref resolves to bare subpath on subdomain hosts, /{orgSlug}/... otherwise.
+        window.location.href = orgHref("/dashboard");
       }
     } finally {
       setLoading(false);

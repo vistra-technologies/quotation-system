@@ -6,6 +6,10 @@ import { authClient } from "@/lib/auth-client";
 
 interface TopBarActionsProps {
   orgSlug: string;
+  /** Forwarded from the server layout — true when the request arrived via an
+   * org subdomain (e.g. acme.easeetool.com).  Eliminates the client-side
+   * window.location.hostname read and the resulting SSR/hydration mismatch. */
+  isSubdomain: boolean;
   name: string;
   username: string;
 }
@@ -23,13 +27,16 @@ interface TopBarActionsProps {
  * dashboard/logout-button.tsx (window.location.href, not router.push) so the
  * router cache doesn't restore a stale authenticated view on browser Back.
  */
-export function TopBarActions({ orgSlug, name, username }: TopBarActionsProps) {
+export function TopBarActions({ orgSlug, isSubdomain, name, username }: TopBarActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [comingSoon, setComingSoon] = useState<string | null>(null);
+  // Build org-scoped hrefs using the server-computed isSubdomain flag.
+  const href = (subpath: string) =>
+    isSubdomain ? subpath : `/${orgSlug}${subpath}`;
 
   async function handleLogout() {
     await authClient.signOut();
-    window.location.href = `/${orgSlug}/login`;
+    window.location.href = href("/login");
   }
 
   const initial = name.trim().charAt(0).toUpperCase() || "?";
@@ -37,7 +44,7 @@ export function TopBarActions({ orgSlug, name, username }: TopBarActionsProps) {
   return (
     <div className="flex items-center gap-2">
       <Link
-        href={`/${orgSlug}/dashboard`}
+        href={href("/dashboard")}
         title="Home"
         aria-label="Home"
         className="flex h-9 w-9 items-center justify-center rounded-sm border border-border bg-bg-white text-text-body transition-colors hover:bg-primary-softer"

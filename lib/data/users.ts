@@ -42,6 +42,10 @@ export async function assertUserInOrg(userId: string, organizationId: string): P
 
 export type CreateUserInput = {
   username: string;
+  firstName: string;
+  lastName: string;
+  mobile: string | null;
+  profileEmail: string | null;
   roleId: string;
   externalCompanyId: string | null;
   password: string;
@@ -59,7 +63,7 @@ export type CreateUserInput = {
  * The synthetic email uses toAuthEmail(username, orgSlug) so better-auth can route sign-ins.
  */
 export async function createUser(session: SessionData, input: CreateUserInput): Promise<void> {
-  const { username, roleId, externalCompanyId, password } = input;
+  const { username, firstName, lastName, mobile, profileEmail, roleId, externalCompanyId, password } = input;
 
   // Tenancy guard: role must belong to this org.
   const role = await prisma.role.findFirst({
@@ -101,11 +105,16 @@ export async function createUser(session: SessionData, input: CreateUserInput): 
   await prisma.$transaction(async (tx) => {
     const newUser = await tx.user.create({
       data: {
-        name: username,
+        // better-auth core display name — use full name going forward
+        name: `${firstName} ${lastName}`,
         email: synthEmail,
         emailVerified: false,
         organizationId: session.organizationId,
         username,
+        firstName,
+        lastName,
+        mobile: mobile ?? null,
+        profileEmail: profileEmail ?? null,
         active: true,
         roleId,
         externalCompanyId: externalCompanyId ?? null,
@@ -157,6 +166,34 @@ export async function changeUserRole(
   });
   if (!role) throw new Error("Role not found or access denied");
   await prisma.user.update({ where: { id: userId }, data: { roleId: newRoleId } });
+}
+
+/**
+ * Delete a user and their credential account (cascades via DB).
+ * Tenancy guard: user must be in session org.
+ * Prevents self-deletion (admin would lose their own account).
+ * Returns a descriptive error if the user has created projects or inquiries that
+ * would violate FK constraints — admin should deactivate them instead.
+ */
+export async function deleteUser(session: SessionData, userId: string): Promise<void> {
+  await assertUserInOrg(userId, session.organizationId);
+  if (userId === session.userId) {
+    throw new Error("You cannot delete your own account");
+  }
+
+  // Proactive FK check: block if user has created projects or inquiries (no cascade).
+  const [projectCount, inquiryCount] = await Promise.all([
+    prisma.project.count({ where: { createdByUserId: userId } }),
+    prisma.inquiry.count({ where: { createdByUserId: userId } }),
+  ]);
+  if (projectCount > 0 || inquiryCount > 0) {
+    throw new Error(
+      "Cannot delete this user — they have associated projects or inquiries. Deactivate them instead.",
+    );
+  }
+
+  // Session and Account rows cascade automatically (onDelete: Cascade in schema).
+  await prisma.user.delete({ where: { id: userId } });
 }
 
 /**

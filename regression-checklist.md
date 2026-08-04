@@ -80,7 +80,7 @@ Automated: `tests/e2e/pricing-stage3.spec.ts` (serial mode, 90 s timeout per tes
 35. **Project tenancy:** org A's session cannot read org B's Projects.
 36. **Project `projectNumber` per-org:** org A and org B can each have a project #1 without conflict.
 37. **Stage 2/3/4 regression after DAL refactor:** per-org login, cross-org session rejection, pricing CRUD, instant deactivation, and admin user/role/permission flows all still pass.
-38. **Cross-tenant ExternalCompany guard:** a crafted `createProject` form submission containing another org's `externalCompanyId` UUID is rejected by the DAL (`lib/data/projects.ts` org-scoped `findFirst` guard) with `INVALID_EXTERNAL_COMPANY`, surfaced as "Selected company is invalid." on the form — no cross-tenant FK is created. Verified E2E: stage5.spec.ts test 12.
+38. **Cross-tenant ExternalCompany guard:** a crafted `createProject` API request containing another org's `externalCompanyId` UUID is rejected by the DAL (`lib/data/projects.ts` org-scoped `findFirst` guard) with `INVALID_EXTERNAL_COMPANY`, surfaced as 400 + `{ error: "Selected company is invalid." }` — no cross-tenant FK is created. Verified via `stage5.spec.ts` test 12 using `page.request.post()` directly to the API route (bypasses React form reconciler). Stage 12 test pass confirmed the DAL guard and route-handler error-propagation path are both correct; the original test failure was a test-design flaw (DOM injection did not survive React re-render before submit).
 
 ## Stage 6 — Selection, ComponentType overhaul, External Company UI
 Automated: `tests/e2e/stage6.spec.ts` (19 tests, serial mode).
@@ -111,3 +111,325 @@ Manual (verified against `test.easeetool.com` after each staging deploy — Play
 51. **Localhost / CI path-based fallback unchanged:** `http://localhost:3000/vistra/login` → 200 login
     page; `http://localhost:3000/nonexistent/login` → 404 JSON. (Automated: existing `org-nav.spec.ts`
     and `smoke.spec.ts` cover these via the path-based fallback that runs on any non-easeetool.com host.)
+
+## Stage 11 — Subdomain URL Hygiene (Part A, Batches 1–3)
+
+Automated: `tests/e2e/subdomain-url-hygiene.spec.ts` (4 tests, serial mode).
+Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_URL`
+(not the custom domain — `trustedOrigins` is scoped to `VERCEL_URL`).
+
+52. **No doubled org segment after login:** after signing in via `/{orgSlug}/login`, the post-redirect
+    URL must be `/{orgSlug}/dashboard` (path-based mode on `*.vercel.app`). Must NOT contain
+    `/{orgSlug}/{orgSlug}` (the doubled-slug bug fixed in Stage 11).
+
+53. **Sidebar nav links produce clean URLs:** clicking "Inquiries", "Projects", and the "Home" top-bar
+    icon each navigate to `/{orgSlug}/<section>` without a doubled org segment. Admin flyout links
+    (`/admin/users`, `/admin/roles`, etc.) must also produce clean URLs (manual check on a subdomain
+    host, as the flyout requires CSS hover which is harder to automate).
+
+54. **Logout redirects to clean login URL:** clicking Log Out navigates to `/{orgSlug}/login` without a
+    doubled segment. On a subdomain host (`vistra.easeetool.com`), the URL must be `/login`, not
+    `/vistra/login`.
+
+55. **Server redirect from unauthenticated access is clean:** an unauthenticated request to
+    `/{orgSlug}/dashboard` (path-based) or `vistra.easeetool.com/dashboard` (subdomain) is
+    server-redirected to the login page without a doubled org segment.
+
+**Manual check on a subdomain host (e.g., `vistra.test.easeetool.com`) once all batches are merged:**
+- After login: URL is `vistra.easeetool.com/dashboard` (NOT `vistra.easeetool.com/vistra/dashboard`).
+- After sidebar nav: URL is `vistra.easeetool.com/projects` (NOT `.../vistra/projects`).
+- After logout: URL is `vistra.easeetool.com/login` (NOT `.../vistra/login`).
+- After unauthenticated access: server redirect lands on `vistra.easeetool.com/login` (NOT `.../vistra/login`).
+
+## Stage 11 — Part B (Batches 4–9, UI restyle)
+
+Manual (no per-batch tester pass — full regression runs once at end-of-stage against `test.easeetool.com`).
+All checks: verify via the Vercel preview URL for the merged `release/stage-11` branch.
+
+### Batch 5 — Inquiries cluster
+
+56. **Inquiry list page:** `/{orgSlug}/inquiries` renders Sage Ease card/table with correct status badge
+    colors (NEW=orange, DISMISSED=gray, CONVERTED=green), count badge in heading, "New Inquiry" primary
+    button, and a "Start Project" button per row (disabled for closed inquiries).
+57. **New inquiry form:** `/{orgSlug}/inquiries/new` renders a two-column card (Inquiry Details / Client
+    Information panels with sage-green panel titles), Sage Ease field inputs, and Cancel + Create Inquiry
+    buttons in the card footer. Cancel returns to the list.
+58. **Inquiry detail page:** `/{orgSlug}/inquiries/{id}` renders back link, heading with inquiry number,
+    metadata row (country, currency, status badge, client, date, created-by), Dismiss + Start Project
+    buttons, and a two-column read-only card. Both buttons remain disabled when the inquiry is closed.
+59. **Dismiss behavior:** Dismiss form submits without error for a NEW inquiry, flipping status to
+    DISMISSED and redirecting back to the detail page. Button is disabled for DISMISSED/CONVERTED inquiries.
+60. **Start Project behavior:** Start Project converts a NEW inquiry to a project, redirects to the new
+    project's detail page. Button is disabled for DISMISSED/CONVERTED inquiries. A SEQUENCE_CONFLICT error
+    is displayed inline (not a crash). (Also verifiable from the list page row button.)
+
+### Batch 6 — Project wizard interior + New Project form
+
+61. **Summary page chrome:** navigating to a project's Summary step renders the page heading "Summary",
+    the card placeholder, and Back / Next: Quotation navigation links. The page must NOT render any
+    Floor/Partition data, SVG shop drawings, or cut-list tables (still inert).
+62. **Quotation page chrome:** navigating to a project's Quotation step renders the page heading "Quotation",
+    the card placeholder, and a Back navigation link. Page must stay inert.
+63. **New Project form — Sage Ease styling:** the New Project page renders the page heading, card wrapper,
+    and all form fields (Project Name, Destination Country, Currency, Client) with Sage Ease input styling.
+    Submitting the form still creates a project and redirects to the project detail page (behavior unchanged).
+
+### Batch 7 — Component Types admin cluster
+
+64. **Component Types list page — Sage Ease restyle:** `/{orgSlug}/admin/components` renders with
+    Sage Ease heading, card wrapper, count badge, code chip (monospace), category chip (icon + label),
+    fields badge (pill), status pill (green = Active, muted = Inactive), and Edit button. No
+    interactive search/filter (not in the original RSC — was a JS-only mockup feature).
+65. **Create Component Type page — Sage Ease restyle:** `/{orgSlug}/admin/components/new` renders
+    with Sage Ease back link, heading, inert-caveat notice (status-pending amber tokens), form card.
+    All form fields (Code, Name, Category, Field Schema) use Sage Ease token classes. Form / JSON
+    toggle visually matches the design; field reordering (↑↓) and option builder still function.
+66. **Edit Component Type page — Sage Ease restyle:** `/{orgSlug}/admin/components/[id]` renders
+    with Sage Ease back link, heading + code monospace subtitle, inert-caveat, form card. Active
+    checkbox, JSON view/edit toggle, all field-row controls (move, remove, required) still function.
+    Stage 7 field-schema round-trip (item 33) must still pass.
+
+### Batch 8 — Admin: Users + External Companies
+
+67. **Users list page renders correctly:** `/admin/users` loads, shows the users table with username, role,
+    and status columns. Active users show a green badge; inactive users show a muted badge.
+68. **Create-user form works end-to-end:** `/admin/users/new` renders the form; submitting with valid data
+    creates the user and redirects to the list. Submitting a duplicate username shows the inline error
+    message without a page crash.
+69. **User detail page renders correctly:** `/admin/users/[userId]` shows the metadata card (username, role,
+    status) and the three action sections (activate/deactivate, change role, set password). Self-user
+    cannot deactivate themselves (button disabled, helper text shown).
+70. **Activate/deactivate, change-role, and set-password actions still work:** each form submission triggers
+    the correct server action and the page reflects the updated state after redirect.
+71. **External Companies list page renders correctly:** `/admin/external-companies` loads, shows the table
+    with name and type columns.
+72. **Create-external-company form works end-to-end:** `/admin/external-companies/new` renders; submitting
+    creates the company and redirects to the list. Duplicate-name error shows inline.
+
+### Batch 9 — Admin: Roles + Permissions + Pricing + apex + 404 pages
+
+73. **Roles cluster renders correctly:** `/admin/roles` list, `/admin/roles/new`, and `/admin/roles/[roleId]`
+    (with permission toggle buttons) render with Sage Ease tokens; create-role and permission-toggle actions
+    still work end-to-end.
+74. **Permissions cluster renders correctly:** `/admin/permissions` list and `/admin/permissions/new` render
+    with Sage Ease tokens; create-permission action still works.
+75. **Pricing cluster renders correctly:** `/pricing` list and `/pricing/[itemId]` edit page render with
+    Sage Ease tokens (no stray `min-h-screen` wrapper); price CRUD still works.
+76. **Apex org selector renders correctly:** `/` renders the org-selector cards with Sage Ease tokens;
+    clicking an org still navigates to that org's own subdomain login page (local `orgHref()` helper
+    unchanged).
+77. **404 pages render correctly:** an unknown path at the apex (`/some-bogus-path`) renders the standalone
+    `app/not-found.tsx` page (no org shell) with a link back to `/`; an unknown path within a known org
+    (`/{orgSlug}/some-bogus-path`) renders `app/[orgSlug]/not-found.tsx` inside the org shell (sidebar
+    present). An unknown org slug itself must still return `proxy.ts`'s existing JSON 404 (unchanged,
+    out of scope for this batch).
+
+## Stage 12 — UI/API Layer Separation
+
+Automated: `tests/e2e/stage12.spec.ts` (10 tests, serial mode).
+Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_URL`.
+
+### API layer architecture
+
+78. **No direct `lib/data/*` imports in `app/**` pages:** `npm run lint` passes with zero errors — the
+    ESLint rule in `eslint.config.mjs` enforcing that `lib/data/*` is importable only from `app/api/**`
+    catches any violation at lint time (stage 5 item 30, extended by stage 12 capstone).
+
+79. **API tenancy isolation (cross-org 403):** every protected API route under
+    `/api/v1/orgs/{orgA}/**` returns `403 {"error":"Access denied"}` when called with a valid
+    session from org B. Verified via curl for all key routes: users, inquiries, catalog,
+    external-companies, projects, component-types. `getApiSession()` cross-tenant guard is the
+    enforcement point.
+
+80. **API RBAC gating:** distributor session (no MANAGE_USERS, no MANAGE_PRICING) is denied
+    `GET /api/v1/orgs/{orgSlug}/admin/users` (403) and `GET /api/v1/orgs/{orgSlug}/catalog` (403).
+    Distributor IS allowed `GET /api/v1/orgs/{orgSlug}/inquiries` and
+    `GET /api/v1/orgs/{orgSlug}/component-types` (no gate on GET).
+
+### Dashboard redesign (Batch 7b)
+
+81. **Dashboard heading is "Welcome, {firstName}":** `/{orgSlug}/dashboard` renders an `<h1>` containing
+    "Welcome" (not the literal string "Dashboard"). `firstName` is the first word of the user's
+    display name (e.g., "vistra" for the vistra admin, "acme-glass" for the acme-glass admin).
+    Automated: `stage12.spec.ts` "Dashboard: heading is 'Welcome, {firstName}'".
+
+82. **Dashboard KPI tiles present:** three tiles (Orders, Projects, Inquiries) are rendered. Orders is
+    always 0 (no Order model yet). Projects and Inquiries show real counts from the
+    `/api/v1/orgs/{orgSlug}/stats` API. Loading skeleton disappears once data loads.
+    Automated: `stage12.spec.ts` "Dashboard: three KPI tiles" and "Dashboard stats API".
+
+83. **Home icon → dashboard link:** the Home icon in `TopBarActions` links to `/{orgSlug}/dashboard`
+    (or `/dashboard` on subdomain hosts). Clicking it from any page navigates back to dashboard without
+    a doubled org segment. This was a bugfix in Stage 12 Correction 3.
+    Automated: `stage12.spec.ts` "Dashboard: Home icon in top-bar links to dashboard".
+
+### Inquiries list redesign (Batch 7c)
+
+84. **Inquiries list column schema:** the table has exactly these columns: "Project Name" (link to
+    detail), "Company" (internal users) / "Client Name" (external users), "Location",
+    "Status", "Created On", "Submission Date". There is NO `#N` inquiry-number column on the list.
+    Automated: `stage12.spec.ts` "Inquiries list: column headers match Batch 7c schema".
+
+85. **Inquiry name is the detail link:** in the inquiries list, the inquiry name in the "Project Name"
+    column links to `/{orgSlug}/inquiries/{uuid}`. There are no `#N`-format links anywhere on the
+    list page.
+    Automated: `stage12.spec.ts` "Inquiries list: each inquiry row has a link to the detail page".
+
+86. **Inquiry number visible on detail page, not list:** `/{orgSlug}/inquiries/{id}` shows the inquiry
+    number in the `<h1>` as `#{N} — {name}`. The number is also in the "Inquiry Details" card.
+    Automated: `stage12.spec.ts` "Inquiries list: inquiry number (#N) is visible on the detail page".
+
+87. **Inquiries list empty state:** no-filter empty list shows "No inquiries yet. Create your first
+    inquiry." Filtered with no matches shows "No inquiries match your filters." Neither shows a table.
+    Automated: `stage12.spec.ts` "Inquiries list: empty state shown when search returns no results".
+
+88. **Inquiries list toolbar (My/All + search):** the scope toggle and search input are present on
+    `/{orgSlug}/inquiries` regardless of filter state. The `scope=mine` URL param scopes results
+    to the current user's inquiries; `search=` filters by name/country.
+    Automated: `stage12.spec.ts` "Inquiries list toolbar: My/All toggle and search input".
+
+### Inquiries/new back link (Bug 4 fix)
+
+89. **"Back to Inquiries" link on /inquiries/new:** the create-inquiry page has a functional back link
+    (text from i18n key `backToList`, e.g. "← Back to Inquiries") above the form. Clicking it
+    navigates to `/{orgSlug}/inquiries`.
+    Automated: `stage12.spec.ts` "Inquiries/new: 'Back to Inquiries' link".
+
+### Proxy TTL cache (Batch 8)
+
+90. **Proxy slug cache correctness:** the in-process 60-second TTL cache in `proxy.ts` returns the
+    correct org for repeated requests. An org that exists in the cache must NOT serve a different
+    org's pages, and a cache miss for a new org must trigger a fresh DB lookup. (Manual/load-test
+    verification; no automated spec needed unless cache invalidation logic changes.)
+
+### Stage 11 regression (post-Stage 12)
+
+91. **All Stage 11 Playwright specs pass:** `subdomain-url-hygiene.spec.ts` (4 tests),
+    `login.spec.ts` (13 tests), and `stage7.spec.ts` (all tests) pass without modification against
+    the Stage 12 build. Stage 12 touched pages that Stage 11 tests cover; no regressions introduced.
+
+## Stage 12 — Subdomain Navigation Fix (bugs-2.md, 2026-08-04)
+
+Automated: `tests/e2e/subdomain-routing.spec.ts` tests 9–10.
+These tests run against `vistra.test.easeetool.com` (staging alias) — NOT the feature-branch preview,
+which has no `*.test.easeetool.com` alias. They pass once the fix is merged to staging.
+
+### Bug 1 — `orgHref(orgSlug, "")` empty-base issue
+
+92. **`orgHref(orgSlug, "")` returns `""` in subdomain mode, not `"/"`:** Callers that do
+    `` `${base}/inquiries` `` get `"/inquiries"` (correct), not `"//inquiries"` (protocol-relative,
+    broken navigation). Root cause was `subpath || "/"` in `lib/orgHref.ts`; fixed to `subpath`.
+    All 23 pages that use `const base = await orgHref(orgSlug, "")` are fixed by this one-line change.
+
+93. **Inquiry detail "Back to Inquiries" link navigates cleanly on subdomain hosts:** On
+    `vistra.test.easeetool.com`, the `href` attribute of the back link on `/inquiries/{id}` must be
+    `/inquiries` (not `//inquiries`). Clicking it must navigate to `vistra.test.easeetool.com/inquiries`
+    with the inquiries list rendered — navigation must complete (not hang on a protocol-relative URL).
+    Automated: `subdomain-routing.spec.ts` test 10.
+    Also applies to: project detail back-link (`/projects`), all admin page back-links.
+
+### Bug 2 — List page row links and action buttons with hardcoded `/{orgSlug}/…`
+
+94. **Projects and Inquiries list page links are subdomain-safe:** On `vistra.test.easeetool.com`, the
+    row links in the Projects list (`/projects/{id}`) and Inquiries list (`/inquiries/{id}`) must have
+    `href="/projects/{id}"` and `href="/inquiries/{id}"` respectively — NOT `href="/vistra/projects/{id}"`.
+    Same applies to the "+ New Project" and "+ New Inquiry" button links. Clicking a row link must keep
+    the URL clean (no org slug leaked into the path bar).
+    Automated: `subdomain-routing.spec.ts` test 9 (inquiries row link href assertion).
+
+### Known remaining concern (not fixed in this pass)
+
+95. **Sidebar SSR hydration mismatch (cosmetic, not blocking):** `sidebar.tsx` uses `useOrgHref` which
+    reads `window.location.hostname` — during server-side rendering, `window` is undefined, so links
+    render as path-based in the initial HTML. After React hydrates on the client, they update to the
+    correct subdomain-safe hrefs. This creates a hydration mismatch warning in dev mode; in production
+    React recovers correctly and navigation works. A proper fix requires passing `isSubdomain` as a
+    server-computed prop from `layout.tsx` to `Sidebar`. Out of scope for this fix; tracked here for
+    future work.
+
+---
+
+## Stage 12 — Intensive subdomain navigation coverage (subdomain-navigation.spec.ts)
+
+All 17 tests below target `https://vistra.test.easeetool.com` (staging alias) and use a shared
+authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
+
+### A. Sidebar navigation
+
+96. **EaseeTool logo → dashboard (clean URL):** Clicking the logo link in the sidebar navigates to
+    `/dashboard` with no `/{orgSlug}/` prefix in the URL bar.
+    Automated: `subdomain-navigation.spec.ts` — "EaseeTool logo → dashboard".
+
+97. **Inquiries sidebar link → list page (clean URL):** Clicking "Inquiries" in the sidebar navigates
+    to `/inquiries` with no slug prefix, and the Inquiries h1 renders.
+    Automated: `subdomain-navigation.spec.ts` — "Inquiries link".
+
+98. **Orders sidebar link → placeholder page (clean URL):** Clicking "Orders" navigates to `/orders`
+    with no slug prefix, and the page renders (Orders is a Coming Soon placeholder).
+    Automated: `subdomain-navigation.spec.ts` — "Orders link".
+
+99. **Projects sidebar link → list page (clean URL):** Clicking "Projects" navigates to `/projects`
+    with no slug prefix, and the Projects h1 renders.
+    Automated: `subdomain-navigation.spec.ts` — "Projects link".
+
+100. **Admin flyout — Users → admin/users (clean URL):** Hovering Admin, clicking Users navigates to
+     `/admin/users` with no slug prefix, "User Management" h1 renders.
+     Automated: `subdomain-navigation.spec.ts` — "flyout: Users".
+
+101. **Admin flyout — External Companies → admin/external-companies (clean URL):** Hovering Admin,
+     clicking External Companies navigates to `/admin/external-companies` with no slug prefix.
+     Automated: `subdomain-navigation.spec.ts` — "flyout: External Companies".
+
+102. **Admin flyout — Pricing → /pricing (clean URL):** Hovering Admin, clicking Pricing navigates
+     to `/pricing` with no slug prefix, "Pricing Management" h1 renders.
+     Automated: `subdomain-navigation.spec.ts` — "flyout: Pricing".
+
+103. **Admin flyout — Roles → admin/roles (clean URL):** Hovering Admin, clicking Roles navigates to
+     `/admin/roles` with no slug prefix.
+     Automated: `subdomain-navigation.spec.ts` — "flyout: Roles".
+
+104. **Admin flyout — Permissions → admin/permissions (clean URL):** Hovering Admin, clicking
+     Permissions navigates to `/admin/permissions` with no slug prefix, "Permission Catalog" h1 renders.
+     Automated: `subdomain-navigation.spec.ts` — "flyout: Permissions".
+
+105. **Admin flyout — Component Types → admin/components (clean URL):** Hovering Admin, clicking
+     Component Types navigates to `/admin/components` with no slug prefix.
+     Automated: `subdomain-navigation.spec.ts` — "flyout: Component Types".
+
+### B. List → detail → back-link flows
+
+106. **Projects list→detail→back:** Row link href = `/projects/{id}` (no slug), click navigates to
+     detail, "Back to Projects" back-link href = `/projects`, click returns to list.
+     Automated: `subdomain-navigation.spec.ts` — "projects: list row link + back-link".
+
+107. **Admin Users list→detail→back:** "Actions" link href starts with `/admin/users/` (no slug),
+     click navigates to user detail, "← Back to Users" back-link href = `/admin/users`, click returns.
+     Automated: `subdomain-navigation.spec.ts` — "admin users: Actions link + back-link".
+
+108. **Admin Roles list→detail→back:** "Role Permissions" link href starts with `/admin/roles/` (no
+     slug), click navigates to role detail, "← Back to Roles" back-link href = `/admin/roles`, returns.
+     Automated: `subdomain-navigation.spec.ts` — "admin roles: Role Permissions link + back-link".
+
+109. **Admin Component Types list→detail→back:** "Edit Component Type" link href starts with
+     `/admin/components/` (no slug), click navigates to edit page, "← Back to Component Types"
+     back-link href = `/admin/components`, click returns.
+     Automated: `subdomain-navigation.spec.ts` — "admin component types: Edit link + back-link".
+
+110. **Pricing list→detail→back:** "Edit Prices" link href starts with `/pricing/` (no slug), click
+     navigates to pricing detail, "← Back to Pricing" back-link href = `/pricing`, click returns.
+     Automated: `subdomain-navigation.spec.ts` — "pricing: Edit Prices link + back-link".
+
+### C. Project wizard breadcrumb
+
+111. **Project wizard — all 5 breadcrumb step hrefs are subdomain-clean:** Under `vistra.test.easeetool.com`,
+     all 5 breadcrumb links (Project Details, Configuration, Design, Summary, Quotation) must have hrefs
+     matching `/projects/{id}/…` with no `/{orgSlug}/` prefix and no `//` protocol-relative prefix.
+     Clicking each navigates without hanging. Verified by round-tripping all steps.
+     Automated: `subdomain-navigation.spec.ts` — "project wizard: all 5 breadcrumb steps".
+
+### D. New/create entry-point buttons
+
+112. **New entry-point buttons across all list pages produce clean subdomain URLs:** "New Inquiry",
+     "New Project", "Create User", "Create Role", "Create Permission", "Create Company", "Create Type"
+     buttons all navigate to `/…/new` with no `/{orgSlug}/` prefix in the URL bar.
+     Automated: `subdomain-navigation.spec.ts` — "new-entry-point buttons across all list pages".

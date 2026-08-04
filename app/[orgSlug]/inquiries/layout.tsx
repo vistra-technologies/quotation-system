@@ -13,6 +13,9 @@ import allMessages from "@/messages/en.json";
  *
  * Only the `inquiries` and `common` namespaces are forwarded to the client —
  * the full messages/en.json is never sent wholesale.
+ *
+ * Stage 12 Batch 7c: reduced page margins to match the list-page mockup
+ * (28px top × 32px sides × 48px bottom; max-width 1180px).
  */
 export default function InquiriesLayout({ children }: { children: React.ReactNode }) {
   const clientMessages = {
@@ -22,7 +25,9 @@ export default function InquiriesLayout({ children }: { children: React.ReactNod
 
   return (
     <NextIntlClientProvider messages={clientMessages}>
-      <div className="mx-auto w-full max-w-5xl px-6 py-8">{children}</div>
+      <div className="mx-auto w-full max-w-[1180px] px-8 pb-12 pt-7">
+        {children}
+      </div>
     </NextIntlClientProvider>
   );
 }
