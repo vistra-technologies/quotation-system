@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useOrgHref } from "@/lib/useOrgHref";
 
 interface ProjectWizardBreadcrumbProps {
   orgSlug: string;
   projectId: string;
+  /** Forwarded from the server layout — true when the request arrived via an
+   * org subdomain (e.g. acme.easeetool.com).  Eliminates the client-side
+   * window.location.hostname read and the resulting SSR/hydration mismatch. */
+  isSubdomain: boolean;
 }
 
 /**
@@ -23,17 +26,17 @@ interface ProjectWizardBreadcrumbProps {
  *
  * namespace: "wizard" — wired in app/[orgSlug]/projects/layout.tsx clientMessages.
  */
-export function ProjectWizardBreadcrumb({ orgSlug, projectId }: ProjectWizardBreadcrumbProps) {
+export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain }: ProjectWizardBreadcrumbProps) {
   const t = useTranslations("wizard");
   const pathname = usePathname();
-  const orgHref = useOrgHref(orgSlug);
 
   // base: path-based (internal route), used for active-step detection.
   // usePathname() always returns the internal path-based route even in subdomain
   // mode, so active detection must compare against path-based strings.
   const base = `/${orgSlug}/projects/${projectId}`;
-  // hrefBase: user-facing href, resolves to bare subpath on subdomain hosts.
-  const hrefBase = orgHref(`/projects/${projectId}`);
+  // hrefBase: user-facing href — uses the server-computed isSubdomain flag so
+  // the correct href is rendered in the SSR HTML without a hydration mismatch.
+  const hrefBase = isSubdomain ? `/projects/${projectId}` : `/${orgSlug}/projects/${projectId}`;
 
   const steps = [
     { label: t("step1"), href: base, linkHref: hrefBase, exact: true },
