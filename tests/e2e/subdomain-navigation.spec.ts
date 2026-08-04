@@ -533,28 +533,33 @@ test("project wizard: all 5 breadcrumb steps navigate with clean subdomain URLs"
     ).toMatch(new RegExp(`^/projects/${pid}`));
   }
 
+  // Scope all breadcrumb clicks to the nav element — other pages have action
+  // buttons (e.g. "Next: Configuration →") that also match the step names and
+  // would cause Playwright strict-mode "ambiguous locator" errors.
+  const breadcrumbNav = page.locator("nav[aria-label='Project wizard steps']");
+
   // Step 2: Configuration
-  await page.getByRole("link", { name: /Configuration/i }).click();
+  await breadcrumbNav.getByRole("link", { name: /Configuration/i }).click();
   await page.waitForURL(`${BASE}/projects/${pid}/configuration`, { timeout: 15_000 });
   assertCleanSubdomainUrl(page.url(), `/projects/${pid}/configuration`);
 
   // Step 3: Design (placeholder — just verify navigation succeeds, not content)
-  await page.getByRole("link", { name: /Design/i }).click();
+  await breadcrumbNav.getByRole("link", { name: /Design/i }).click();
   await page.waitForURL(`${BASE}/projects/${pid}/design`, { timeout: 15_000 });
   assertCleanSubdomainUrl(page.url(), `/projects/${pid}/design`);
 
   // Step 4: Summary
-  await page.getByRole("link", { name: /Summary/i }).click();
+  await breadcrumbNav.getByRole("link", { name: /Summary/i }).click();
   await page.waitForURL(`${BASE}/projects/${pid}/summary`, { timeout: 15_000 });
   assertCleanSubdomainUrl(page.url(), `/projects/${pid}/summary`);
 
   // Step 5: Quotation
-  await page.getByRole("link", { name: /Quotation/i }).click();
+  await breadcrumbNav.getByRole("link", { name: /Quotation/i }).click();
   await page.waitForURL(`${BASE}/projects/${pid}/quotation`, { timeout: 15_000 });
   assertCleanSubdomainUrl(page.url(), `/projects/${pid}/quotation`);
 
   // Navigate back to Step 1 (Project Details) to confirm round-trip.
-  await page.getByRole("link", { name: /Project Details/i }).click();
+  await breadcrumbNav.getByRole("link", { name: /Project Details/i }).click();
   await page.waitForURL(`${BASE}/projects/${pid}`, { timeout: 15_000 });
   assertCleanSubdomainUrl(page.url(), `/projects/${pid}`);
 
