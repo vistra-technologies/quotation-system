@@ -178,3 +178,121 @@ test("full sign-in via vistra.test.easeetool.com/login → dashboard → sign ou
     timeout: 5_000,
   });
 });
+
+// ---------------------------------------------------------------------------
+// 9.  Subdomain: inquiries list → detail navigation produces clean URLs
+//     (Bug 2 regression guard — row links must not embed /{orgSlug}/ in path)
+// ---------------------------------------------------------------------------
+test("vistra.test.easeetool.com inquiries list row links have no org-slug prefix", async ({
+  page,
+}) => {
+  // Sign in via the subdomain login page.
+  await page.goto(VISTRA_LOGIN);
+  await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
+    timeout: 15_000,
+  });
+  await page.getByLabel("User ID").fill("admin");
+  await page.getByLabel("Password", { exact: true }).fill(
+    process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!",
+  );
+  await page.getByRole("button", { name: /Sign in/i }).click();
+  await page.waitForURL(/vistra.*\/dashboard/, { timeout: 30_000 });
+
+  // Create a test inquiry via the API so this test is self-contained.
+  // page.request shares the authenticated browser context cookies.
+  const createRes = await page.request.post(
+    "https://vistra.test.easeetool.com/api/v1/orgs/vistra/inquiries",
+    {
+      data: {
+        name: "Subdomain back-link regression",
+        destinationCountry: "SG",
+        currency: "SGD",
+      },
+    },
+  );
+  expect(createRes.status()).toBe(201);
+  const { inquiry } = (await createRes.json()) as { inquiry: { id: string } };
+  const inquiryId = inquiry.id;
+
+  // Navigate to the inquiries list.
+  await page.goto("https://vistra.test.easeetool.com/inquiries");
+  await expect(
+    page.getByRole("heading", { name: /Inquiries/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  // The row link for our test inquiry must point at /inquiries/{id} — NOT
+  // /vistra/inquiries/{id}.  href="/vistra/…" on a subdomain host (Bug 2)
+  // causes the URL bar to show the slug in the path, defeating subdomain routing.
+  const rowLink = page.locator(`a[href="/inquiries/${inquiryId}"]`);
+  await expect(rowLink).toBeVisible({ timeout: 10_000 });
+  const href = await rowLink.getAttribute("href");
+  expect(href, `Row link href must not contain org slug prefix, got: "${href}"`).not.toMatch(
+    /^\/vistra\//,
+  );
+  expect(href).toBe(`/inquiries/${inquiryId}`);
+});
+
+// ---------------------------------------------------------------------------
+// 10.  Subdomain: inquiry detail "back" link navigates without protocol-relative error
+//      (Bug 1 regression guard — orgHref(orgSlug, "") must not produce "//…" hrefs)
+// ---------------------------------------------------------------------------
+test("vistra.test.easeetool.com inquiry detail back link navigates cleanly", async ({
+  page,
+}) => {
+  // Sign in via the subdomain login page.
+  await page.goto(VISTRA_LOGIN);
+  await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
+    timeout: 15_000,
+  });
+  await page.getByLabel("User ID").fill("admin");
+  await page.getByLabel("Password", { exact: true }).fill(
+    process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!",
+  );
+  await page.getByRole("button", { name: /Sign in/i }).click();
+  await page.waitForURL(/vistra.*\/dashboard/, { timeout: 30_000 });
+
+  // Create a test inquiry via the API so this test is self-contained.
+  const createRes = await page.request.post(
+    "https://vistra.test.easeetool.com/api/v1/orgs/vistra/inquiries",
+    {
+      data: {
+        name: "Back-link click-through regression",
+        destinationCountry: "MY",
+        currency: "MYR",
+      },
+    },
+  );
+  expect(createRes.status()).toBe(201);
+  const { inquiry } = (await createRes.json()) as { inquiry: { id: string } };
+
+  // Navigate to the inquiry detail page directly.
+  await page.goto(`https://vistra.test.easeetool.com/inquiries/${inquiry.id}`);
+  // Detail page must render — the back link is the key assertion target.
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // The back link must point at /inquiries — NOT //inquiries (protocol-relative)
+  // and NOT /vistra/inquiries (path-based).  Before the Bug 1 fix, orgHref(orgSlug, "")
+  // returned "/" in subdomain mode, so `${base}/inquiries` = "//inquiries".
+  const backLink = page.getByRole("link", { name: /Back to Inquiries/i });
+  await expect(backLink).toBeVisible({ timeout: 5_000 });
+  const backHref = await backLink.getAttribute("href");
+  expect(
+    backHref,
+    `Back link href must be "/inquiries", got: "${backHref}"`,
+  ).toBe("/inquiries");
+
+  // Click the back link and verify we land on the inquiries list — not a broken
+  // protocol-relative navigation that hangs or redirects to an external host.
+  await backLink.click();
+  await page.waitForURL("https://vistra.test.easeetool.com/inquiries", {
+    timeout: 15_000,
+  });
+  // Inquiries list must actually render (not a blank page or error).
+  await expect(
+    page.getByRole("heading", { name: /Inquiries/i }),
+  ).toBeVisible({ timeout: 10_000 });
+  // URL must be the clean subdomain URL — no org slug leaked into the path.
+  expect(page.url()).toBe("https://vistra.test.easeetool.com/inquiries");
+});

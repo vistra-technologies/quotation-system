@@ -1,4 +1,5 @@
 import { internalFetch } from "@/lib/internal-fetch";
+import { detectIsSubdomain } from "@/lib/orgHref";
 import { TopBarActions } from "./top-bar-actions";
 import { Sidebar } from "./sidebar";
 
@@ -34,6 +35,11 @@ export default async function OrgSlugLayout({
 }) {
   const { orgSlug } = await params;
 
+  // Compute subdomain mode once on the server so Sidebar and TopBarActions
+  // receive the correct value as a prop — no client-side window.location read
+  // required, no SSR/hydration mismatch.
+  const isSubdomain = await detectIsSubdomain(orgSlug);
+
   const meRes = await internalFetch(`/api/v1/orgs/${orgSlug}/me`);
 
   // No session (401) or cross-org guard (403) → render page without chrome.
@@ -57,6 +63,7 @@ export default async function OrgSlugLayout({
       {/* Sidebar — Client Component owning collapse state */}
       <Sidebar
         orgSlug={orgSlug}
+        isSubdomain={isSubdomain}
         canManageUsers={canManageUsers}
         canManageFeatures={canManageFeatures}
       />
@@ -82,7 +89,7 @@ export default async function OrgSlugLayout({
             {me.orgName}
           </div>
           {/* Home + Profile actions — right side */}
-          <TopBarActions orgSlug={orgSlug} name={me.name} username={me.username} />
+          <TopBarActions orgSlug={orgSlug} isSubdomain={isSubdomain} name={me.name} username={me.username} />
         </header>
 
         {/* Main content area */}

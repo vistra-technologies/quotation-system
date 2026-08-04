@@ -3,10 +3,13 @@
 import { useState } from "react";
 import Link from "next/link";
 import { authClient } from "@/lib/auth-client";
-import { useOrgHref } from "@/lib/useOrgHref";
 
 interface TopBarActionsProps {
   orgSlug: string;
+  /** Forwarded from the server layout — true when the request arrived via an
+   * org subdomain (e.g. acme.easeetool.com).  Eliminates the client-side
+   * window.location.hostname read and the resulting SSR/hydration mismatch. */
+  isSubdomain: boolean;
   name: string;
   username: string;
 }
@@ -24,10 +27,12 @@ interface TopBarActionsProps {
  * dashboard/logout-button.tsx (window.location.href, not router.push) so the
  * router cache doesn't restore a stale authenticated view on browser Back.
  */
-export function TopBarActions({ orgSlug, name, username }: TopBarActionsProps) {
+export function TopBarActions({ orgSlug, isSubdomain, name, username }: TopBarActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [comingSoon, setComingSoon] = useState<string | null>(null);
-  const href = useOrgHref(orgSlug);
+  // Build org-scoped hrefs using the server-computed isSubdomain flag.
+  const href = (subpath: string) =>
+    isSubdomain ? subpath : `/${orgSlug}${subpath}`;
 
   async function handleLogout() {
     await authClient.signOut();

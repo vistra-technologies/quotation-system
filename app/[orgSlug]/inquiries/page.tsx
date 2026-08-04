@@ -92,6 +92,7 @@ export default async function InquiriesPage({
 }) {
   const { orgSlug } = await params;
   const sp = await searchParams;
+  const base = await orgHref(orgSlug, "");
 
   // Parse and validate URL params — defaults match API route defaults.
   const scope = sp.scope === "mine" ? "mine" : "all";
@@ -181,7 +182,7 @@ export default async function InquiriesPage({
           </p>
         </div>
         <Link
-          href={`/${orgSlug}/inquiries/new`}
+          href={`${base}/inquiries/new`}
           className="rounded-sm bg-primary px-4 py-[9px] text-[13px] font-semibold text-text-on-primary hover:bg-primary-dark"
         >
           + New Inquiry
@@ -242,7 +243,7 @@ export default async function InquiriesPage({
                     {/* Project Name — links to inquiry detail */}
                     <td className="px-3 py-[11px] text-[13px] font-semibold text-text-heading">
                       <Link
-                        href={`/${orgSlug}/inquiries/${inquiry.id}`}
+                        href={`${base}/inquiries/${inquiry.id}`}
                         className="hover:underline"
                       >
                         {inquiry.name}
