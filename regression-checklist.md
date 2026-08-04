@@ -346,3 +346,90 @@ which has no `*.test.easeetool.com` alias. They pass once the fix is merged to s
     React recovers correctly and navigation works. A proper fix requires passing `isSubdomain` as a
     server-computed prop from `layout.tsx` to `Sidebar`. Out of scope for this fix; tracked here for
     future work.
+
+---
+
+## Stage 12 — Intensive subdomain navigation coverage (subdomain-navigation.spec.ts)
+
+All 17 tests below target `https://vistra.test.easeetool.com` (staging alias) and use a shared
+authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
+
+### A. Sidebar navigation
+
+96. **EaseeTool logo → dashboard (clean URL):** Clicking the logo link in the sidebar navigates to
+    `/dashboard` with no `/{orgSlug}/` prefix in the URL bar.
+    Automated: `subdomain-navigation.spec.ts` — "EaseeTool logo → dashboard".
+
+97. **Inquiries sidebar link → list page (clean URL):** Clicking "Inquiries" in the sidebar navigates
+    to `/inquiries` with no slug prefix, and the Inquiries h1 renders.
+    Automated: `subdomain-navigation.spec.ts` — "Inquiries link".
+
+98. **Orders sidebar link → placeholder page (clean URL):** Clicking "Orders" navigates to `/orders`
+    with no slug prefix, and the page renders (Orders is a Coming Soon placeholder).
+    Automated: `subdomain-navigation.spec.ts` — "Orders link".
+
+99. **Projects sidebar link → list page (clean URL):** Clicking "Projects" navigates to `/projects`
+    with no slug prefix, and the Projects h1 renders.
+    Automated: `subdomain-navigation.spec.ts` — "Projects link".
+
+100. **Admin flyout — Users → admin/users (clean URL):** Hovering Admin, clicking Users navigates to
+     `/admin/users` with no slug prefix, "User Management" h1 renders.
+     Automated: `subdomain-navigation.spec.ts` — "flyout: Users".
+
+101. **Admin flyout — External Companies → admin/external-companies (clean URL):** Hovering Admin,
+     clicking External Companies navigates to `/admin/external-companies` with no slug prefix.
+     Automated: `subdomain-navigation.spec.ts` — "flyout: External Companies".
+
+102. **Admin flyout — Pricing → /pricing (clean URL):** Hovering Admin, clicking Pricing navigates
+     to `/pricing` with no slug prefix, "Pricing Management" h1 renders.
+     Automated: `subdomain-navigation.spec.ts` — "flyout: Pricing".
+
+103. **Admin flyout — Roles → admin/roles (clean URL):** Hovering Admin, clicking Roles navigates to
+     `/admin/roles` with no slug prefix.
+     Automated: `subdomain-navigation.spec.ts` — "flyout: Roles".
+
+104. **Admin flyout — Permissions → admin/permissions (clean URL):** Hovering Admin, clicking
+     Permissions navigates to `/admin/permissions` with no slug prefix, "Permission Catalog" h1 renders.
+     Automated: `subdomain-navigation.spec.ts` — "flyout: Permissions".
+
+105. **Admin flyout — Component Types → admin/components (clean URL):** Hovering Admin, clicking
+     Component Types navigates to `/admin/components` with no slug prefix.
+     Automated: `subdomain-navigation.spec.ts` — "flyout: Component Types".
+
+### B. List → detail → back-link flows
+
+106. **Projects list→detail→back:** Row link href = `/projects/{id}` (no slug), click navigates to
+     detail, "Back to Projects" back-link href = `/projects`, click returns to list.
+     Automated: `subdomain-navigation.spec.ts` — "projects: list row link + back-link".
+
+107. **Admin Users list→detail→back:** "Actions" link href starts with `/admin/users/` (no slug),
+     click navigates to user detail, "← Back to Users" back-link href = `/admin/users`, click returns.
+     Automated: `subdomain-navigation.spec.ts` — "admin users: Actions link + back-link".
+
+108. **Admin Roles list→detail→back:** "Role Permissions" link href starts with `/admin/roles/` (no
+     slug), click navigates to role detail, "← Back to Roles" back-link href = `/admin/roles`, returns.
+     Automated: `subdomain-navigation.spec.ts` — "admin roles: Role Permissions link + back-link".
+
+109. **Admin Component Types list→detail→back:** "Edit Component Type" link href starts with
+     `/admin/components/` (no slug), click navigates to edit page, "← Back to Component Types"
+     back-link href = `/admin/components`, click returns.
+     Automated: `subdomain-navigation.spec.ts` — "admin component types: Edit link + back-link".
+
+110. **Pricing list→detail→back:** "Edit Prices" link href starts with `/pricing/` (no slug), click
+     navigates to pricing detail, "← Back to Pricing" back-link href = `/pricing`, click returns.
+     Automated: `subdomain-navigation.spec.ts` — "pricing: Edit Prices link + back-link".
+
+### C. Project wizard breadcrumb
+
+111. **Project wizard — all 5 breadcrumb step hrefs are subdomain-clean:** Under `vistra.test.easeetool.com`,
+     all 5 breadcrumb links (Project Details, Configuration, Design, Summary, Quotation) must have hrefs
+     matching `/projects/{id}/…` with no `/{orgSlug}/` prefix and no `//` protocol-relative prefix.
+     Clicking each navigates without hanging. Verified by round-tripping all steps.
+     Automated: `subdomain-navigation.spec.ts` — "project wizard: all 5 breadcrumb steps".
+
+### D. New/create entry-point buttons
+
+112. **New entry-point buttons across all list pages produce clean subdomain URLs:** "New Inquiry",
+     "New Project", "Create User", "Create Role", "Create Permission", "Create Company", "Create Type"
+     buttons all navigate to `/…/new` with no `/{orgSlug}/` prefix in the URL bar.
+     Automated: `subdomain-navigation.spec.ts` — "new-entry-point buttons across all list pages".
