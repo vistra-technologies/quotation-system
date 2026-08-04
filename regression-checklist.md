@@ -307,3 +307,42 @@ Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_UR
 91. **All Stage 11 Playwright specs pass:** `subdomain-url-hygiene.spec.ts` (4 tests),
     `login.spec.ts` (13 tests), and `stage7.spec.ts` (all tests) pass without modification against
     the Stage 12 build. Stage 12 touched pages that Stage 11 tests cover; no regressions introduced.
+
+## Stage 12 — Subdomain Navigation Fix (bugs-2.md, 2026-08-04)
+
+Automated: `tests/e2e/subdomain-routing.spec.ts` tests 9–10.
+These tests run against `vistra.test.easeetool.com` (staging alias) — NOT the feature-branch preview,
+which has no `*.test.easeetool.com` alias. They pass once the fix is merged to staging.
+
+### Bug 1 — `orgHref(orgSlug, "")` empty-base issue
+
+92. **`orgHref(orgSlug, "")` returns `""` in subdomain mode, not `"/"`:** Callers that do
+    `` `${base}/inquiries` `` get `"/inquiries"` (correct), not `"//inquiries"` (protocol-relative,
+    broken navigation). Root cause was `subpath || "/"` in `lib/orgHref.ts`; fixed to `subpath`.
+    All 23 pages that use `const base = await orgHref(orgSlug, "")` are fixed by this one-line change.
+
+93. **Inquiry detail "Back to Inquiries" link navigates cleanly on subdomain hosts:** On
+    `vistra.test.easeetool.com`, the `href` attribute of the back link on `/inquiries/{id}` must be
+    `/inquiries` (not `//inquiries`). Clicking it must navigate to `vistra.test.easeetool.com/inquiries`
+    with the inquiries list rendered — navigation must complete (not hang on a protocol-relative URL).
+    Automated: `subdomain-routing.spec.ts` test 10.
+    Also applies to: project detail back-link (`/projects`), all admin page back-links.
+
+### Bug 2 — List page row links and action buttons with hardcoded `/{orgSlug}/…`
+
+94. **Projects and Inquiries list page links are subdomain-safe:** On `vistra.test.easeetool.com`, the
+    row links in the Projects list (`/projects/{id}`) and Inquiries list (`/inquiries/{id}`) must have
+    `href="/projects/{id}"` and `href="/inquiries/{id}"` respectively — NOT `href="/vistra/projects/{id}"`.
+    Same applies to the "+ New Project" and "+ New Inquiry" button links. Clicking a row link must keep
+    the URL clean (no org slug leaked into the path bar).
+    Automated: `subdomain-routing.spec.ts` test 9 (inquiries row link href assertion).
+
+### Known remaining concern (not fixed in this pass)
+
+95. **Sidebar SSR hydration mismatch (cosmetic, not blocking):** `sidebar.tsx` uses `useOrgHref` which
+    reads `window.location.hostname` — during server-side rendering, `window` is undefined, so links
+    render as path-based in the initial HTML. After React hydrates on the client, they update to the
+    correct subdomain-safe hrefs. This creates a hydration mismatch warning in dev mode; in production
+    React recovers correctly and navigation works. A proper fix requires passing `isSubdomain` as a
+    server-computed prop from `layout.tsx` to `Sidebar`. Out of scope for this fix; tracked here for
+    future work.

@@ -95,6 +95,7 @@ export default async function ProjectsPage({
 }) {
   const { orgSlug } = await params;
   const sp = await searchParams;
+  const base = await orgHref(orgSlug, "");
 
   // Parse and validate URL params — defaults match API route defaults.
   const scope = sp.scope === "mine" ? "mine" : "all";
@@ -184,7 +185,7 @@ export default async function ProjectsPage({
           </p>
         </div>
         <Link
-          href={`/${orgSlug}/projects/new`}
+          href={`${base}/projects/new`}
           className="rounded-sm bg-primary px-4 py-[9px] text-[13px] font-semibold text-text-on-primary hover:bg-primary-dark"
         >
           + New Project
@@ -248,7 +249,7 @@ export default async function ProjectsPage({
                       {/* Project Name — links to project detail */}
                       <td className="px-3 py-[11px] text-[13px] font-semibold text-text-heading">
                         <Link
-                          href={`/${orgSlug}/projects/${project.id}`}
+                          href={`${base}/projects/${project.id}`}
                           className="hover:underline"
                         >
                           {project.name}

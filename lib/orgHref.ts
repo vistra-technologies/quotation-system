@@ -8,6 +8,12 @@ import { headers } from "next/headers";
  * belong in the path.  Adding it would produce a double-prefix (/{orgSlug}/{orgSlug}/...)
  * after the proxy rewrites the request.
  *
+ * When `subpath` is "" (the empty string) in subdomain mode, this function returns ""
+ * (not "/").  Callers that compute a base prefix via `orgHref(orgSlug, "")` and then
+ * build links as `\`${base}/inquiries\`` get "/inquiries" — correct.  Returning "/"
+ * would cause `\`${base}/inquiries\`` = "//inquiries", a protocol-relative URL that
+ * browsers treat as an external host reference, breaking navigation (bugs-2.md Bug 1).
+ *
  * In path mode (localhost, Vercel hash preview URLs, any non-easeetool.com host),
  * returns `/${orgSlug}${subpath}`.
  *
@@ -30,5 +36,5 @@ export async function orgHref(orgSlug: string, subpath: string): Promise<string>
     hostname === `${orgSlug}.easeetool.com` ||
     hostname === `${orgSlug}.test.easeetool.com`;
 
-  return isSubdomain ? subpath || "/" : `/${orgSlug}${subpath}`;
+  return isSubdomain ? subpath : `/${orgSlug}${subpath}`;
 }
