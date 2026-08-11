@@ -92,6 +92,14 @@ export function ListPageControls({
   const [dateOpen, setDateOpen] = useState(false);
   const dateRef = useRef<HTMLDivElement>(null);
 
+  // H3: cleanup the search debounce timer on unmount to prevent navigate() firing
+  // against an unmounted component if the user leaves the page mid-type.
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
   // Close date dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -123,7 +131,15 @@ export function ListPageControls({
     [router, pathname, searchParams],
   );
 
-  const handleScopeChange = (s: "mine" | "all") => navigate({ scope: s });
+  const handleScopeChange = (s: "mine" | "all") => {
+    // H2: when switching to "mine" scope, clear the externalCompanyId param —
+    // it's only meaningful on "all" scope and leaving it in the URL is misleading.
+    if (s === "mine") {
+      navigate({ scope: s, externalCompanyId: "" });
+    } else {
+      navigate({ scope: s });
+    }
+  };
 
   const handleDateRange = (v: string) => {
     setDateOpen(false);

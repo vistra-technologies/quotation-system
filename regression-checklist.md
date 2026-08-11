@@ -433,3 +433,14 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      "New Project", "Create User", "Create Role", "Create Permission", "Create Company", "Create Type"
      buttons all navigate to `/…/new` with no `/{orgSlug}/` prefix in the URL bar.
      Automated: `subdomain-navigation.spec.ts` — "new-entry-point buttons across all list pages".
+
+## Stage 12 — Production regression pass (2026-08-04)
+
+113. **CrossSubDomainCookies: session cookie carries `Domain=.easeetool.com` in production.**
+     `POST https://acme-glass.easeetool.com/api/auth/sign-in/email` → `Set-Cookie` header must
+     include `Domain=.easeetool.com`. Without this attribute the session cookie is host-only and
+     the CrossOrgNotice component (login/page.tsx branch 3) will not trigger when a logged-in user
+     navigates to a different org's subdomain.
+     Manual check: `curl -v -X POST https://{orgSlug}.easeetool.com/api/auth/sign-in/email ...`
+     and confirm `Domain=.easeetool.com` appears in the response `Set-Cookie` header.
+     *Discovered 2026-08-04 post-deploy regression pass; Domain attribute absent in production.*

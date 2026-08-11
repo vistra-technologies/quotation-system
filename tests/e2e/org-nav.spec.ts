@@ -152,9 +152,12 @@ test("unknown org slug in URL returns 404", async ({ page }) => {
 
   expect(response?.status()).toBe(404);
 
-  // The proxy returns a JSON error body
+  // The proxy returns a JSON error body.
+  // Loosen to a case-insensitive regex: path-based mode returns "Organization not found"
+  // while the apex-domain non-root-path guard returns the shorter "Not found" — both are
+  // correct 404 responses and both must pass this test.
   const body = await response?.text();
-  expect(body).toContain("Organization not found");
+  expect(body).toMatch(/not found/i);
 });
 
 // ---------------------------------------------------------------------------
