@@ -11,7 +11,8 @@ interface TopBarActionsProps {
    * window.location.hostname read and the resulting SSR/hydration mismatch. */
   isSubdomain: boolean;
   name: string;
-  username: string;
+  /** The user's role display name (e.g. "Admin", "Company Member"). */
+  roleName: string;
 }
 
 /**
@@ -19,7 +20,7 @@ interface TopBarActionsProps {
  *
  * Matches quotation-system-docs/ui-mockups/finalized/project-details-page's
  * .eq-topbar — a Home icon-button plus a Profile icon-button that opens a
- * dropdown (avatar initial, name, username, My Profile / Change Password
+ * dropdown (avatar initial, full name, role name, My Profile / Change Password
  * placeholders, Log Out). "My Profile" and "Change Password" have no page
  * yet, so they show an inline "Coming soon" note instead of navigating.
  *
@@ -27,7 +28,7 @@ interface TopBarActionsProps {
  * dashboard/logout-button.tsx (window.location.href, not router.push) so the
  * router cache doesn't restore a stale authenticated view on browser Back.
  */
-export function TopBarActions({ orgSlug, isSubdomain, name, username }: TopBarActionsProps) {
+export function TopBarActions({ orgSlug, isSubdomain, name, roleName }: TopBarActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [comingSoon, setComingSoon] = useState<string | null>(null);
   // Build org-scoped hrefs using the server-computed isSubdomain flag.
@@ -109,7 +110,7 @@ export function TopBarActions({ orgSlug, isSubdomain, name, username }: TopBarAc
                   <div className="truncate text-[13.5px] font-extrabold text-text-heading">
                     {name}
                   </div>
-                  <div className="truncate text-[11.5px] text-text-muted">{username}</div>
+                  <div className="truncate text-[11.5px] text-text-muted">{roleName}</div>
                 </div>
               </div>
 

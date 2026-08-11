@@ -11,6 +11,7 @@ import {
   getSessionRole,
   getSessionRolePermissions,
 } from "@/lib/data/admin";
+import { getExternalCompanyById } from "@/lib/data/external-companies";
 import { PERMISSIONS } from "@/lib/rbac";
 
 // Never cached — reads session cookie and live DB data.
@@ -29,6 +30,7 @@ export const dynamic = "force-dynamic";
  *   {
  *     userId, name, username,          // identity
  *     externalCompanyId,               // null for internal users
+ *     externalCompanyName,             // null for internal users or unknown company
  *     orgName,                         // organization display name
  *     roleName,                        // user's role display name
  *     permissionCodes: string[],       // ALL effective permission codes for this role
@@ -36,7 +38,7 @@ export const dynamic = "force-dynamic";
  *   }
  *
  * Consumers:
- *   - app/[orgSlug]/layout.tsx  — uses name, username, adminPermissions for shell chrome
+ *   - app/[orgSlug]/layout.tsx  — uses name, roleName, externalCompanyName, adminPermissions for shell chrome
  *   - app/[orgSlug]/admin/layout.tsx  — uses adminPermissions for admin gate + nav links
  *   - app/[orgSlug]/dashboard/page.tsx  — uses orgName, roleName, permissionCodes
  *   - admin/roles/*, admin/permissions/*, admin/components/*, admin/external-companies/*
@@ -64,11 +66,15 @@ export async function GET(
   }
 
   try {
-    // Parallel: org name, role name, all permission codes.
-    const [org, role, permissionCodes] = await Promise.all([
+    // Parallel: org name, role name, all permission codes, and (if applicable)
+    // the linked external company name.
+    const [org, role, permissionCodes, externalCompany] = await Promise.all([
       getOrgById(session.organizationId),
       getSessionRole(session),
       getSessionRolePermissions(session),
+      session.externalCompanyId
+        ? getExternalCompanyById(session, session.externalCompanyId)
+        : Promise.resolve(null),
     ]);
 
     const adminPermissions = permissionCodes.filter(
@@ -80,6 +86,7 @@ export async function GET(
       name: session.name,
       username: session.username,
       externalCompanyId: session.externalCompanyId,
+      externalCompanyName: externalCompany?.name ?? null,
       orgName: org?.name ?? session.organizationId,
       roleName: role?.name ?? session.roleId,
       permissionCodes,

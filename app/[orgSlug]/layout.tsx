@@ -52,6 +52,8 @@ export default async function OrgSlugLayout({
     name: string;
     username: string;
     orgName: string;
+    roleName: string;
+    externalCompanyName: string | null;
     adminPermissions: string[];
   };
 
@@ -72,24 +74,48 @@ export default async function OrgSlugLayout({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top bar */}
         <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-border bg-bg-card px-10 shadow-header">
-          {/* Organisation chip — left side */}
-          <div className="flex items-center gap-[7px] rounded-full bg-primary-softer px-3 py-[5px] text-[11.5px] font-bold text-primary-dark">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-[13px] w-[13px] shrink-0"
-              aria-hidden="true"
-            >
-              <path d="M3 21h18M6 21V7l6-4 6 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1" />
-            </svg>
-            {me.orgName}
+          {/* Left side: org chip + optional external company chip */}
+          <div className="flex items-center gap-2">
+            {/* Organisation chip */}
+            <div className="flex items-center gap-[7px] rounded-full bg-primary-softer px-3 py-[5px] text-[11.5px] font-bold text-primary-dark">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="h-[13px] w-[13px] shrink-0"
+                aria-hidden="true"
+              >
+                <path d="M3 21h18M6 21V7l6-4 6 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1" />
+              </svg>
+              {me.orgName}
+            </div>
+            {/* External company chip — only for users linked to an external company */}
+            {me.externalCompanyName && (
+              <div className="flex items-center gap-[7px] rounded-full bg-status-shipped-bg px-3 py-[5px] text-[11.5px] font-bold text-status-shipped-text">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-[13px] w-[13px] shrink-0"
+                  aria-hidden="true"
+                >
+                  <rect x="2" y="7" width="20" height="14" rx="2" />
+                  <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+                  <line x1="12" y1="12" x2="12" y2="16" />
+                  <line x1="10" y1="14" x2="14" y2="14" />
+                </svg>
+                {me.externalCompanyName}
+              </div>
+            )}
           </div>
           {/* Home + Profile actions — right side */}
-          <TopBarActions orgSlug={orgSlug} isSubdomain={isSubdomain} name={me.name} username={me.username} />
+          <TopBarActions orgSlug={orgSlug} isSubdomain={isSubdomain} name={me.name} roleName={me.roleName} />
         </header>
 
         {/* Main content area */}
