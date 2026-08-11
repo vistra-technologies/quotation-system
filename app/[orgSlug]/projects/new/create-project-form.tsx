@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { CompanyDropdown } from "@/components/company-dropdown";
 import { createProject, type CreateProjectState } from "../actions";
 
 interface CreateProjectFormProps {
@@ -35,6 +36,7 @@ const initialState: CreateProjectState = { error: null };
 export function CreateProjectForm({ orgSlug, lockedCompany, externalCompanies }: CreateProjectFormProps) {
   const t = useTranslations("projects");
   const [state, formAction, isPending] = useActionState(createProject, initialState);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
 
   return (
     <>
@@ -140,18 +142,15 @@ export function CreateProjectForm({ orgSlug, lockedCompany, externalCompanies }:
               </p>
             </>
           ) : (
-            <select
+            <CompanyDropdown
               id="externalCompanyId"
               name="externalCompanyId"
-              className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body transition-[border-color,box-shadow] duration-150 focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
-            >
-              <option value="">{t("fieldExternalCompanyNone")}</option>
-              {externalCompanies.map((ec) => (
-                <option key={ec.id} value={ec.id}>
-                  {ec.name}
-                </option>
-              ))}
-            </select>
+              options={externalCompanies}
+              value={selectedCompanyId}
+              onChange={setSelectedCompanyId}
+              noneLabel={t("fieldExternalCompanyNone")}
+              ariaLabel={t("fieldExternalCompany")}
+            />
           )}
         </div>
 

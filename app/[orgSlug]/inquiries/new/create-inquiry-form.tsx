@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { CompanyDropdown } from "@/components/company-dropdown";
 import { createInquiry, type CreateInquiryState } from "../actions";
 
 interface CreateInquiryFormProps {
@@ -45,6 +46,7 @@ export function CreateInquiryForm({
 }: CreateInquiryFormProps) {
   const t = useTranslations("inquiries");
   const [state, formAction, isPending] = useActionState(createInquiry, initialState);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
 
   return (
     <>
@@ -188,18 +190,15 @@ export function CreateInquiryForm({
                       </p>
                     </>
                   ) : (
-                    <select
+                    <CompanyDropdown
                       id="externalCompanyId"
                       name="externalCompanyId"
-                      className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    >
-                      <option value="">{t("fieldExternalCompanyNone")}</option>
-                      {externalCompanies.map((ec) => (
-                        <option key={ec.id} value={ec.id}>
-                          {ec.name}
-                        </option>
-                      ))}
-                    </select>
+                      options={externalCompanies}
+                      value={selectedCompanyId}
+                      onChange={setSelectedCompanyId}
+                      noneLabel={t("fieldExternalCompanyNone")}
+                      ariaLabel={t("fieldExternalCompany")}
+                    />
                   )}
                 </div>
               </div>

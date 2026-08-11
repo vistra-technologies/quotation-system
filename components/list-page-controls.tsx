@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { CompanyDropdown } from "@/components/company-dropdown";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -249,19 +250,13 @@ export function ListPageControls({
             Narrows the list to inquiries associated with a specific client
             company, within this org. Never navigates cross-org. */}
         {showCompanyFilter && externalCompanies && (
-          <select
+          <CompanyDropdown
+            options={externalCompanies}
             value={externalCompanyId}
-            onChange={(e) => handleCompanyChange(e.target.value)}
-            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-[13px] font-semibold text-text-body focus:outline-none focus:ring-1 focus:ring-primary"
-            aria-label="Filter by company"
-          >
-            <option value="">All companies</option>
-            {externalCompanies.map((co) => (
-              <option key={co.id} value={co.id}>
-                {co.name}
-              </option>
-            ))}
-          </select>
+            onChange={handleCompanyChange}
+            noneLabel="All companies"
+            ariaLabel="Filter by company"
+          />
         )}
 
         {/* My / All segmented toggle */}
