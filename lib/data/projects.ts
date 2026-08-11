@@ -163,12 +163,18 @@ export async function getProjectById(session: SessionData, projectId: string) {
  * real guard against concurrent creates duplicating a number — a P2002 on that
  * pair is surfaced as a { code: "SEQUENCE_CONFLICT" } error.
  *
+ * When `externalCompanyId` is resolved to a non-null value, `companyProjectNumber`
+ * is additionally assigned as MAX(companyProjectNumber) + 1 scoped to that company,
+ * inside the same transaction. The @@unique([externalCompanyId, companyProjectNumber])
+ * DB constraint guards against concurrent per-company race collisions (also P2002 →
+ * SEQUENCE_CONFLICT). When no company is linked, `companyProjectNumber` is left null.
+ *
  * Also verifies `externalCompanyId` (if given) belongs to the session's org before
  * inserting, to prevent cross-tenant references.
  *
- * Throws { code: "SEQUENCE_CONFLICT" } on a projectNumber race collision, or
- * { code: "INVALID_EXTERNAL_COMPANY" } if externalCompanyId doesn't resolve within
- * the org. All other errors propagate to the caller.
+ * Throws { code: "SEQUENCE_CONFLICT" } on a projectNumber or companyProjectNumber
+ * race collision, or { code: "INVALID_EXTERNAL_COMPANY" } if externalCompanyId
+ * doesn't resolve within the org. All other errors propagate to the caller.
  */
 export async function createProject(
   session: SessionData,
@@ -196,17 +202,29 @@ export async function createProject(
         }
       }
 
-      const max = await tx.project.aggregate({
+      // Org-wide sequence number (existing pattern)
+      const orgMax = await tx.project.aggregate({
         where: { organizationId: session.organizationId },
         _max: { projectNumber: true },
       });
-      const projectNumber = (max._max.projectNumber ?? 0) + 1;
+      const projectNumber = (orgMax._max.projectNumber ?? 0) + 1;
+
+      // Per-company sequence number — only when a company is linked
+      let companyProjectNumber: number | null = null;
+      if (resolvedExternalCompanyId) {
+        const companyMax = await tx.project.aggregate({
+          where: { externalCompanyId: resolvedExternalCompanyId },
+          _max: { companyProjectNumber: true },
+        });
+        companyProjectNumber = (companyMax._max.companyProjectNumber ?? 0) + 1;
+      }
 
       return tx.project.create({
         data: {
           organizationId: session.organizationId,
           createdByUserId: session.userId,
           projectNumber,
+          companyProjectNumber,
           name: input.name,
           destinationCountry: input.destinationCountry,
           currency: input.currency,
@@ -217,7 +235,8 @@ export async function createProject(
       });
     });
   } catch (err) {
-    // P2002 on (organizationId, projectNumber) = concurrent race collision
+    // P2002 on (organizationId, projectNumber) or (externalCompanyId, companyProjectNumber)
+    // = concurrent race collision on either sequence
     if (
       typeof err === "object" &&
       err !== null &&

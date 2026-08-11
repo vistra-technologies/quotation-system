@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 interface InquiryDetail {
   id: string;
   inquiryNumber: number;
+  companyInquiryNumber: number | null;
   name: string;
   destinationCountry: string;
   currency: string;
@@ -92,7 +93,10 @@ export default async function InquiryDetailPage({
       {/* ── Detail header ────────────────────────────────────────────────────── */}
       <div className="mb-6">
         <h1 className="mb-3 text-[27px] font-extrabold text-text-heading">
-          #{inquiry.inquiryNumber} — {inquiry.name}
+          {inquiry.companyInquiryNumber != null
+            ? `INQ-${inquiry.companyInquiryNumber}`
+            : `#${inquiry.inquiryNumber}`}{" "}
+          — {inquiry.name}
         </h1>
 
         {/* Metadata row */}
@@ -215,7 +219,9 @@ export default async function InquiryDetailPage({
                   {t("colNumber")}
                 </p>
                 <p className="mt-1 text-sm text-text-body">
-                  #{inquiry.inquiryNumber}
+                  {inquiry.companyInquiryNumber != null
+                    ? `INQ-${inquiry.companyInquiryNumber}`
+                    : `#${inquiry.inquiryNumber}`}
                 </p>
               </div>
             </div>

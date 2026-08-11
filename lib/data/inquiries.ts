@@ -162,12 +162,18 @@ export async function getInquiryById(session: SessionData, inquiryId: string) {
  * real guard against concurrent creates duplicating a number — a P2002 on that
  * pair is surfaced as a { code: "SEQUENCE_CONFLICT" } error.
  *
+ * When `externalCompanyId` is resolved to a non-null value, `companyInquiryNumber`
+ * is additionally assigned as MAX(companyInquiryNumber) + 1 scoped to that company,
+ * inside the same transaction. The @@unique([externalCompanyId, companyInquiryNumber])
+ * DB constraint guards against concurrent per-company race collisions (also P2002 →
+ * SEQUENCE_CONFLICT). When no company is linked, `companyInquiryNumber` is left null.
+ *
  * Also verifies `externalCompanyId` (if given) belongs to the session's org before
  * inserting, to prevent cross-tenant references.
  *
- * Throws { code: "SEQUENCE_CONFLICT" } on an inquiryNumber race collision, or
- * { code: "INVALID_EXTERNAL_COMPANY" } if externalCompanyId doesn't resolve within
- * the org. All other errors propagate to the caller.
+ * Throws { code: "SEQUENCE_CONFLICT" } on an inquiryNumber or companyInquiryNumber
+ * race collision, or { code: "INVALID_EXTERNAL_COMPANY" } if externalCompanyId
+ * doesn't resolve within the org. All other errors propagate to the caller.
  */
 export async function createInquiry(
   session: SessionData,
@@ -195,17 +201,29 @@ export async function createInquiry(
         }
       }
 
-      const max = await tx.inquiry.aggregate({
+      // Org-wide sequence number (existing pattern)
+      const orgMax = await tx.inquiry.aggregate({
         where: { organizationId: session.organizationId },
         _max: { inquiryNumber: true },
       });
-      const inquiryNumber = (max._max.inquiryNumber ?? 0) + 1;
+      const inquiryNumber = (orgMax._max.inquiryNumber ?? 0) + 1;
+
+      // Per-company sequence number — only when a company is linked
+      let companyInquiryNumber: number | null = null;
+      if (resolvedExternalCompanyId) {
+        const companyMax = await tx.inquiry.aggregate({
+          where: { externalCompanyId: resolvedExternalCompanyId },
+          _max: { companyInquiryNumber: true },
+        });
+        companyInquiryNumber = (companyMax._max.companyInquiryNumber ?? 0) + 1;
+      }
 
       return tx.inquiry.create({
         data: {
           organizationId: session.organizationId,
           createdByUserId: session.userId,
           inquiryNumber,
+          companyInquiryNumber,
           name: input.name,
           destinationCountry: input.destinationCountry,
           currency: input.currency,
@@ -216,7 +234,8 @@ export async function createInquiry(
       });
     });
   } catch (err) {
-    // P2002 on (organizationId, inquiryNumber) = concurrent race collision
+    // P2002 on (organizationId, inquiryNumber) or (externalCompanyId, companyInquiryNumber)
+    // = concurrent race collision on either sequence
     if (
       typeof err === "object" &&
       err !== null &&
@@ -266,14 +285,18 @@ export async function dismissInquiry(session: SessionData, inquiryId: string) {
  *   1. Fetch + tenancy-guard the inquiry (must be NEW).
  *   2. MAX+1 `projectNumber` for the org (inlined from createProject pattern to
  *      keep the entire operation in one atomic transaction).
- *   3. Create the Project with the inquiry's 4 fields + `inquiryId`.
- *   4. Flip `Inquiry.status → "CONVERTED"`.
+ *   3. If the inquiry has a linked company, MAX+1 `companyProjectNumber` scoped
+ *      to that company — independently assigned for the new Project (not copied
+ *      from the Inquiry's companyInquiryNumber, which is a different sequence).
+ *   4. Create the Project with the inquiry's fields + `inquiryId`.
+ *   5. Flip `Inquiry.status → "CONVERTED"`.
  *
  * Returns the newly created Project.
  *
  * Throws { code: "NOT_FOUND" } if the inquiry doesn't exist or is from another org.
  * Throws { code: "ALREADY_CLOSED" } if already DISMISSED or CONVERTED.
- * Throws { code: "SEQUENCE_CONFLICT" } on a concurrent projectNumber P2002.
+ * Throws { code: "SEQUENCE_CONFLICT" } on a concurrent projectNumber or
+ * companyProjectNumber P2002.
  */
 export async function convertInquiryToProject(
   session: SessionData,
@@ -295,18 +318,30 @@ export async function convertInquiryToProject(
       }
 
       // Step 2: MAX+1 projectNumber for this org (mirrors createProject pattern)
-      const max = await tx.project.aggregate({
+      const orgMax = await tx.project.aggregate({
         where: { organizationId: session.organizationId },
         _max: { projectNumber: true },
       });
-      const projectNumber = (max._max.projectNumber ?? 0) + 1;
+      const projectNumber = (orgMax._max.projectNumber ?? 0) + 1;
 
-      // Step 3: create the Project populated from the Inquiry's fields
+      // Step 3: per-company sequence number for the new Project — independently assigned,
+      // not copied from the Inquiry's companyInquiryNumber (those are separate sequences).
+      let companyProjectNumber: number | null = null;
+      if (inquiry.externalCompanyId) {
+        const companyMax = await tx.project.aggregate({
+          where: { externalCompanyId: inquiry.externalCompanyId },
+          _max: { companyProjectNumber: true },
+        });
+        companyProjectNumber = (companyMax._max.companyProjectNumber ?? 0) + 1;
+      }
+
+      // Step 4: create the Project populated from the Inquiry's fields
       const project = await tx.project.create({
         data: {
           organizationId: session.organizationId,
           createdByUserId: session.userId,
           projectNumber,
+          companyProjectNumber,
           name: inquiry.name,
           destinationCountry: inquiry.destinationCountry,
           currency: inquiry.currency,
@@ -317,7 +352,7 @@ export async function convertInquiryToProject(
         },
       });
 
-      // Step 4: mark the inquiry as converted
+      // Step 5: mark the inquiry as converted
       await tx.inquiry.update({
         where: { id: inquiryId },
         data: { status: "CONVERTED" },
@@ -326,7 +361,8 @@ export async function convertInquiryToProject(
       return project;
     });
   } catch (err) {
-    // P2002 on (organizationId, projectNumber) = concurrent race collision
+    // P2002 on (organizationId, projectNumber) or (externalCompanyId, companyProjectNumber)
+    // = concurrent race collision on either sequence
     if (
       typeof err === "object" &&
       err !== null &&
