@@ -7,6 +7,7 @@ export interface CreateInquiryInput {
   name: string;
   destinationCountry: string;
   currency: string;
+  projectLocation?: string | null;
   externalCompanyId?: string | null;
 }
 
@@ -208,6 +209,7 @@ export async function createInquiry(
           name: input.name,
           destinationCountry: input.destinationCountry,
           currency: input.currency,
+          projectLocation: input.projectLocation ?? null,
           status: "NEW",
           externalCompanyId: resolvedExternalCompanyId,
         },
@@ -308,6 +310,7 @@ export async function convertInquiryToProject(
           name: inquiry.name,
           destinationCountry: inquiry.destinationCountry,
           currency: inquiry.currency,
+          projectLocation: inquiry.projectLocation ?? null,
           status: "DRAFT",
           externalCompanyId: inquiry.externalCompanyId ?? null,
           inquiryId: inquiry.id,

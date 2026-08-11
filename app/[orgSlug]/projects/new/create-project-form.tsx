@@ -106,6 +106,24 @@ export function CreateProjectForm({ orgSlug, lockedCompany, externalCompanies }:
           />
         </div>
 
+        {/* Project Location (optional) */}
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="projectLocation"
+            className="text-xs font-bold uppercase tracking-wide text-text-muted"
+          >
+            {t("fieldProjectLocation")}
+            <span className="ml-1 font-normal normal-case text-text-placeholder">(optional)</span>
+          </label>
+          <input
+            id="projectLocation"
+            name="projectLocation"
+            type="text"
+            autoComplete="off"
+            className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body placeholder:text-text-placeholder transition-[border-color,box-shadow] duration-150 focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
+          />
+        </div>
+
         {/* External company — locked (external user) or free-choice dropdown (member/admin) */}
         <div className="flex flex-col gap-1.5">
           <label

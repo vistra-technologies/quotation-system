@@ -14,6 +14,7 @@ export interface ProjectDetail {
   name: string;
   destinationCountry: string;
   currency: string;
+  projectLocation: string | null;
   status: string;
   createdAt: string;
   updatedAt: string;

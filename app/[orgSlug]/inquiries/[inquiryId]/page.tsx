@@ -15,6 +15,7 @@ interface InquiryDetail {
   name: string;
   destinationCountry: string;
   currency: string;
+  projectLocation: string | null;
   status: string;
   createdAt: string;
   externalCompany: { id: string; name: string } | null;
@@ -194,6 +195,18 @@ export default async function InquiryDetailPage({
                   {t("fieldCurrency")}
                 </p>
                 <p className="mt-1 text-sm text-text-body">{inquiry.currency}</p>
+              </div>
+
+              {/* Project Location */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                  {t("fieldProjectLocation")}
+                </p>
+                <p className="mt-1 text-sm text-text-body">
+                  {inquiry.projectLocation ?? (
+                    <span className="text-text-placeholder">—</span>
+                  )}
+                </p>
               </div>
 
               {/* Inquiry number */}

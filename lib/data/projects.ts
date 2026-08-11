@@ -7,6 +7,7 @@ export interface CreateProjectInput {
   name: string;
   destinationCountry: string;
   currency: string;
+  projectLocation?: string | null;
   status: string;
   externalCompanyId?: string | null;
 }
@@ -209,6 +210,7 @@ export async function createProject(
           name: input.name,
           destinationCountry: input.destinationCountry,
           currency: input.currency,
+          projectLocation: input.projectLocation ?? null,
           status: input.status,
           externalCompanyId: resolvedExternalCompanyId,
         },

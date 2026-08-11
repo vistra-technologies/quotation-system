@@ -73,6 +73,14 @@ export default async function ProjectDetailPage({
           <span>{project.destinationCountry}</span>
           <span aria-hidden="true">·</span>
           <span>{project.currency}</span>
+
+          {project.projectLocation && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>{project.projectLocation}</span>
+            </>
+          )}
+
           <span aria-hidden="true">·</span>
 
           {/* Status badge */}

@@ -133,6 +133,24 @@ export function CreateInquiryForm({
                     className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/40"
                   />
                 </div>
+
+                {/* Project Location (optional) */}
+                <div className="flex flex-col gap-1">
+                  <label
+                    htmlFor="projectLocation"
+                    className="text-[10px] font-bold uppercase tracking-wider text-text-muted"
+                  >
+                    {t("fieldProjectLocation")}
+                    <span className="ml-1 font-normal normal-case text-text-placeholder">(optional)</span>
+                  </label>
+                  <input
+                    id="projectLocation"
+                    name="projectLocation"
+                    type="text"
+                    autoComplete="off"
+                    className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
               </div>
             </div>
 

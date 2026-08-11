@@ -31,6 +31,8 @@ export async function createProject(
   const name = (formData.get("name") as string | null)?.trim();
   const destinationCountry = (formData.get("destinationCountry") as string | null)?.trim();
   const currency = (formData.get("currency") as string | null)?.trim().toUpperCase();
+  const projectLocation =
+    ((formData.get("projectLocation") as string | null)?.trim()) || null;
   const externalCompanyId = (formData.get("externalCompanyId") as string | null) || null;
   const status = (formData.get("status") as string | null)?.trim() || "DRAFT";
 
@@ -44,6 +46,7 @@ export async function createProject(
       name,
       destinationCountry,
       currency,
+      projectLocation,
       status,
       externalCompanyId,
     }),
