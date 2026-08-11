@@ -3,9 +3,21 @@ import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import { DeleteCompanyButton } from "./delete-company-button";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
+
+// ─── API response types ──────────────────────────────────────────────────────
+
+interface CompanyRow {
+  id: string;
+  name: string;
+  type: string;
+  country: string;
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 
 /**
  * External Companies list page (Server Component).
@@ -15,6 +27,7 @@ export const dynamic = "force-dynamic";
  *
  * Stage 12 Batch 6: switched from requireSession/requirePermissionFor/listExternalCompanies
  * DAL to internalFetch against /me and /external-companies.
+ * Stage 13 Batch 2: added Country column; added Edit link and Delete button per row.
  */
 export default async function ExternalCompaniesPage({
   params,
@@ -41,8 +54,14 @@ export default async function ExternalCompaniesPage({
   }
 
   const { companies } = (await companiesRes.json()) as {
-    companies: Array<{ id: string; name: string; type: string }>;
+    companies: CompanyRow[];
   };
+
+  function countryLabel(country: string) {
+    if (country === "INDIA") return t("countryIndia");
+    if (country === "UAE") return t("countryUAE");
+    return country;
+  }
 
   return (
     <div>
@@ -74,6 +93,9 @@ export default async function ExternalCompaniesPage({
                 <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
                   {t("colType")}
                 </th>
+                <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
+                  {t("colCountry")}
+                </th>
                 <th className="px-5 py-3.5" />
               </tr>
             </thead>
@@ -91,7 +113,24 @@ export default async function ExternalCompaniesPage({
                       ? t("typeDistributor")
                       : t("typeArchitecturalFirm")}
                   </td>
-                  <td className="px-5 py-4" />
+                  <td className="px-5 py-4 text-text-body">
+                    {countryLabel(company.country)}
+                  </td>
+                  <td className="px-5 py-4 text-right">
+                    <div className="flex items-center justify-end gap-4">
+                      <Link
+                        href={`${base}/admin/external-companies/${company.id}`}
+                        className="text-sm font-bold text-primary-dark underline-offset-2 hover:underline"
+                      >
+                        Edit
+                      </Link>
+                      <DeleteCompanyButton
+                        orgSlug={orgSlug}
+                        companyId={company.id}
+                        companyName={company.name}
+                      />
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

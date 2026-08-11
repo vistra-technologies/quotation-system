@@ -55,6 +55,19 @@ enum ExternalCompanyType {
   ARCHITECTURAL_FIRM
 }
 
+// Stage 13 Batch 2 — constrained to the two markets the app serves today.
+enum CompanyCountry {
+  INDIA
+  UAE
+}
+
+// Stage 13 Batch 2 — currencies the app supports (one per market + USD).
+enum CompanyDefaultCurrency {
+  INR
+  AED
+  USD
+}
+
 // ────────────────────────────────────────────────────────────
 // better-auth tables (hand-authored — do NOT run better-auth
 // CLI generate; it uses Kysely and doesn't understand Prisma 7's
@@ -187,17 +200,20 @@ model RolePermission {
 }
 
 // External companies (distributors, architectural firms) that belong to an org.
+// Stage 13 Batch 2 adds country + defaultCurrency (both mandatory).
 model ExternalCompany {
-  id             String              @id @default(uuid())
-  organizationId String
-  type           ExternalCompanyType
-  name           String
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  organization   Organization        @relation(fields: [organizationId], references: [id])
-  users          User[]
-  projects       Project[]
-  inquiries      Inquiry[]
+  id              String                 @id @default(uuid())
+  organizationId  String
+  type            ExternalCompanyType
+  name            String
+  country         CompanyCountry         @default(INDIA)
+  defaultCurrency CompanyDefaultCurrency @default(INR)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  organization    Organization           @relation(fields: [organizationId], references: [id])
+  users           User[]
+  projects        Project[]
+  inquiries       Inquiry[]
 }
 
 // ────────────────────────────────────────────────────────────
