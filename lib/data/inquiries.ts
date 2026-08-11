@@ -11,6 +11,16 @@ export interface CreateInquiryInput {
   externalCompanyId?: string | null;
 }
 
+export interface UpdateInquiryInput {
+  name?: string;
+  destinationCountry?: string;
+  currency?: string;
+  projectLocation?: string | null;
+  // externalCompanyId is intentionally excluded — it is locked for the life
+  // of an Inquiry record so the per-company sequence number never needs
+  // recomputing (see stage-13.md "Decisions made during scoping").
+}
+
 export interface ListInquiriesParams {
   /** "mine" = current user's own; "all" = scoped by role (see below). */
   scope: "mine" | "all";
@@ -248,6 +258,60 @@ export async function createInquiry(
     }
     throw err;
   }
+}
+
+/**
+ * Update editable fields on an inquiry.
+ *
+ * Only inquiries with status === "NEW" are editable.
+ * Throws { code: "NOT_FOUND" } if the inquiry doesn't exist or belongs to a
+ * different org. Throws { code: "NOT_EDITABLE" } if status !== "NEW".
+ *
+ * `externalCompanyId` is never touched — it is locked for the life of the
+ * record (see stage-13.md "Decisions made during scoping").
+ */
+export async function updateInquiry(
+  session: SessionData,
+  inquiryId: string,
+  input: UpdateInquiryInput,
+) {
+  const inquiry = await prisma.inquiry.findFirst({
+    where: { id: inquiryId, organizationId: session.organizationId },
+    select: { id: true, status: true },
+  });
+
+  if (!inquiry) {
+    throw Object.assign(new Error("Inquiry not found."), { code: "NOT_FOUND" });
+  }
+  if (inquiry.status !== "NEW") {
+    throw Object.assign(
+      new Error("Only NEW inquiries can be edited."),
+      { code: "NOT_EDITABLE" },
+    );
+  }
+
+  // Build the update data from only the provided (non-undefined) fields.
+  // externalCompanyId is explicitly excluded.
+  const data: {
+    name?: string;
+    destinationCountry?: string;
+    currency?: string;
+    projectLocation?: string | null;
+  } = {};
+  if (input.name !== undefined) data.name = input.name;
+  if (input.destinationCountry !== undefined)
+    data.destinationCountry = input.destinationCountry;
+  if (input.currency !== undefined) data.currency = input.currency;
+  if (input.projectLocation !== undefined)
+    data.projectLocation = input.projectLocation;
+
+  return prisma.inquiry.update({
+    where: { id: inquiryId },
+    data,
+    include: {
+      externalCompany: { select: { id: true, name: true } },
+    },
+  });
 }
 
 /**

@@ -136,6 +136,16 @@ export default async function InquiryDetailPage({
 
         {/* ── Action buttons ─────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
+          {/* Edit — only shown while status is NEW */}
+          {!isClosed && (
+            <Link
+              href={`${base}/inquiries/${inquiryId}/edit`}
+              className="inline-flex items-center rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
+            >
+              {t("editAction")}
+            </Link>
+          )}
+
           {/* Dismiss — RSC form, no client component needed; behavior unchanged */}
           <form action={dismissInquiry}>
             <input type="hidden" name="orgSlug" value={orgSlug} />

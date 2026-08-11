@@ -199,7 +199,13 @@
     "startProject": "Start Project",
     "detailPageTitle": "Inquiry",
     "alreadyClosed": "This inquiry is already closed.",
-    "sequenceConflict": "A project number conflict occurred — please try again."
+    "sequenceConflict": "A project number conflict occurred — please try again.",
+    "editPageTitle": "Edit Inquiry",
+    "editPageSubtitle": "Update the details for this inquiry.",
+    "submitEdit": "Save Changes",
+    "backToInquiry": "← Back to Inquiry",
+    "editAction": "Edit",
+    "fieldExternalCompanyReadOnly": "Client (read-only)"
   },
   "externalCompanies": {
     "pageTitle": "External Companies",

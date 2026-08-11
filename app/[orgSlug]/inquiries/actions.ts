@@ -75,6 +75,85 @@ export async function createInquiry(
 }
 
 // ---------------------------------------------------------------------------
+// updateInquiry
+// ---------------------------------------------------------------------------
+
+export type UpdateInquiryState = { error: string | null };
+
+/**
+ * Update editable fields on an existing inquiry.
+ *
+ * Thin marshaler: parses FormData, delegates to
+ * PATCH /api/v1/orgs/[orgSlug]/inquiries/[inquiryId] via internalFetch.
+ * All tenancy enforcement and business logic live in the route handler.
+ *
+ * Uses the useActionState signature so the client form can surface errors
+ * rather than crashing to an error boundary.
+ *
+ * On success, revalidates and redirects to the inquiry detail page.
+ *
+ * Stage 13 Batch 6.
+ */
+export async function updateInquiry(
+  prevState: UpdateInquiryState,
+  formData: FormData,
+): Promise<UpdateInquiryState> {
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
+  const inquiryId = formData.get("inquiryId") as string | null;
+
+  if (!inquiryId) return { error: "Missing inquiry ID." };
+
+  const name = (formData.get("name") as string | null)?.trim();
+  const destinationCountry = (formData.get("destinationCountry") as string | null)?.trim();
+  const currency = (formData.get("currency") as string | null)?.trim().toUpperCase();
+  const projectLocation =
+    ((formData.get("projectLocation") as string | null)?.trim()) || null;
+
+  if (!name || !destinationCountry || !currency) {
+    return { error: "Name, destination country, and currency are required." };
+  }
+
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/inquiries/${inquiryId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        name,
+        destinationCountry,
+        currency,
+        projectLocation,
+      }),
+    },
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (res.status === 409) {
+    return { error: "This inquiry can no longer be edited (already dismissed or converted)." };
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    return { error: errorMessage };
+  }
+
+  revalidatePath(`/${orgSlug}/inquiries`);
+  revalidatePath(`/${orgSlug}/inquiries/${inquiryId}`);
+  redirect(
+    await orgHref(orgSlug, `/inquiries/${inquiryId}`),
+    RedirectType.replace,
+  );
+}
+
+// ---------------------------------------------------------------------------
 // dismissInquiry
 // ---------------------------------------------------------------------------
 
