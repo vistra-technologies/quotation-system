@@ -65,7 +65,10 @@ export default async function ProjectDetailPage({
       <div className="mb-6 rounded-md border border-border bg-bg-card p-7 shadow-card">
         {/* Project number + name */}
         <h2 className="mb-4 text-xl font-extrabold text-primary-dark">
-          #{project.projectNumber} — {project.name}
+          {project.companyProjectNumber != null
+            ? `JOB-${project.companyProjectNumber}`
+            : `#${project.projectNumber}`}{" "}
+          — {project.name}
         </h2>
 
         {/* Metadata row */}
@@ -73,6 +76,14 @@ export default async function ProjectDetailPage({
           <span>{project.destinationCountry}</span>
           <span aria-hidden="true">·</span>
           <span>{project.currency}</span>
+
+          {project.projectLocation && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>{project.projectLocation}</span>
+            </>
+          )}
+
           <span aria-hidden="true">·</span>
 
           {/* Status badge */}

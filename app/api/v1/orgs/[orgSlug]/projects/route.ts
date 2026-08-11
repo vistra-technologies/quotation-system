@@ -179,6 +179,10 @@ export async function POST(
     typeof body.currency === "string"
       ? body.currency.trim().toUpperCase()
       : null;
+  const projectLocation =
+    typeof body.projectLocation === "string" && body.projectLocation.trim()
+      ? body.projectLocation.trim()
+      : null;
   const status =
     typeof body.status === "string" ? body.status.trim() : "DRAFT";
   const externalCompanyId =
@@ -195,6 +199,7 @@ export async function POST(
       name,
       destinationCountry,
       currency,
+      projectLocation,
       status,
       externalCompanyId,
     });

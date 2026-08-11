@@ -11,9 +11,11 @@ export interface ProjectDetail {
   id: string;
   organizationId: string;
   projectNumber: number;
+  companyProjectNumber: number | null;
   name: string;
   destinationCountry: string;
   currency: string;
+  projectLocation: string | null;
   status: string;
   createdAt: string;
   updatedAt: string;

@@ -35,6 +35,8 @@ export async function createInquiry(
   const currency = (formData.get("currency") as string | null)
     ?.trim()
     .toUpperCase();
+  const projectLocation =
+    ((formData.get("projectLocation") as string | null)?.trim()) || null;
   const externalCompanyId =
     (formData.get("externalCompanyId") as string | null) || null;
 
@@ -48,6 +50,7 @@ export async function createInquiry(
       name,
       destinationCountry,
       currency,
+      projectLocation,
       externalCompanyId,
     }),
   });

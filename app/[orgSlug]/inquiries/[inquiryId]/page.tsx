@@ -12,9 +12,11 @@ export const dynamic = "force-dynamic";
 interface InquiryDetail {
   id: string;
   inquiryNumber: number;
+  companyInquiryNumber: number | null;
   name: string;
   destinationCountry: string;
   currency: string;
+  projectLocation: string | null;
   status: string;
   createdAt: string;
   externalCompany: { id: string; name: string } | null;
@@ -91,7 +93,10 @@ export default async function InquiryDetailPage({
       {/* ── Detail header ────────────────────────────────────────────────────── */}
       <div className="mb-6">
         <h1 className="mb-3 text-[27px] font-extrabold text-text-heading">
-          #{inquiry.inquiryNumber} — {inquiry.name}
+          {inquiry.companyInquiryNumber != null
+            ? `INQ-${inquiry.companyInquiryNumber}`
+            : `#${inquiry.inquiryNumber}`}{" "}
+          — {inquiry.name}
         </h1>
 
         {/* Metadata row */}
@@ -196,13 +201,27 @@ export default async function InquiryDetailPage({
                 <p className="mt-1 text-sm text-text-body">{inquiry.currency}</p>
               </div>
 
+              {/* Project Location */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
+                  {t("fieldProjectLocation")}
+                </p>
+                <p className="mt-1 text-sm text-text-body">
+                  {inquiry.projectLocation ?? (
+                    <span className="text-text-placeholder">—</span>
+                  )}
+                </p>
+              </div>
+
               {/* Inquiry number */}
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
                   {t("colNumber")}
                 </p>
                 <p className="mt-1 text-sm text-text-body">
-                  #{inquiry.inquiryNumber}
+                  {inquiry.companyInquiryNumber != null
+                    ? `INQ-${inquiry.companyInquiryNumber}`
+                    : `#${inquiry.inquiryNumber}`}
                 </p>
               </div>
             </div>

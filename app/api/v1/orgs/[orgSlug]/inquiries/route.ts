@@ -179,6 +179,10 @@ export async function POST(
     typeof body.currency === "string"
       ? body.currency.trim().toUpperCase()
       : null;
+  const projectLocation =
+    typeof body.projectLocation === "string" && body.projectLocation.trim()
+      ? body.projectLocation.trim()
+      : null;
   const externalCompanyId =
     typeof body.externalCompanyId === "string" && body.externalCompanyId
       ? body.externalCompanyId
@@ -193,6 +197,7 @@ export async function POST(
       name,
       destinationCountry,
       currency,
+      projectLocation,
       externalCompanyId,
     });
     return NextResponse.json({ inquiry }, { status: 201 });
