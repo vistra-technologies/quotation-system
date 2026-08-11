@@ -3,26 +3,40 @@
 import { useActionState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
-import { createExternalCompany, type CreateExternalCompanyState } from "../actions";
+import { updateExternalCompany, type UpdateExternalCompanyState } from "../actions";
 
-interface CreateExternalCompanyFormProps {
+interface EditExternalCompanyFormProps {
   orgSlug: string;
+  companyId: string;
+  initialName: string;
+  initialType: string;
+  initialCountry: string;
+  initialDefaultCurrency: string;
 }
 
-const initialState: CreateExternalCompanyState = { error: null };
+const initialState: UpdateExternalCompanyState = { error: null };
 
 /**
- * Client Component form for creating a new external company.
+ * Client Component form for editing an existing external company.
  *
  * Uses useActionState (React 19) so the server action can return a user-readable
  * error rather than crashing to an error boundary.
  *
- * Stage 11 Batch 8: restyled to Sage Ease tokens. No logic changes.
- * Stage 13 Batch 2: added country + defaultCurrency fields (both required).
+ * Mirrors CreateExternalCompanyForm with all fields editable (name, type,
+ * country, defaultCurrency). The backend-generated id is not editable.
+ *
+ * Stage 13 Batch 2.
  */
-export function CreateExternalCompanyForm({ orgSlug }: CreateExternalCompanyFormProps) {
+export function EditExternalCompanyForm({
+  orgSlug,
+  companyId,
+  initialName,
+  initialType,
+  initialCountry,
+  initialDefaultCurrency,
+}: EditExternalCompanyFormProps) {
   const t = useTranslations("externalCompanies");
-  const [state, formAction, isPending] = useActionState(createExternalCompany, initialState);
+  const [state, formAction, isPending] = useActionState(updateExternalCompany, initialState);
 
   return (
     <>
@@ -36,6 +50,7 @@ export function CreateExternalCompanyForm({ orgSlug }: CreateExternalCompanyForm
 
       <form action={formAction} className="flex flex-col gap-5">
         <input type="hidden" name="orgSlug" value={orgSlug} />
+        <input type="hidden" name="companyId" value={companyId} />
 
         {/* Name */}
         <div className="flex flex-col gap-1">
@@ -51,6 +66,7 @@ export function CreateExternalCompanyForm({ orgSlug }: CreateExternalCompanyForm
             type="text"
             required
             autoComplete="off"
+            defaultValue={initialName}
             className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           />
         </div>
@@ -67,6 +83,7 @@ export function CreateExternalCompanyForm({ orgSlug }: CreateExternalCompanyForm
             id="type"
             name="type"
             required
+            defaultValue={initialType}
             className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           >
             <option value="DISTRIBUTOR">{t("typeDistributor")}</option>
@@ -86,6 +103,7 @@ export function CreateExternalCompanyForm({ orgSlug }: CreateExternalCompanyForm
             id="country"
             name="country"
             required
+            defaultValue={initialCountry}
             className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           >
             <option value="INDIA">{t("countryIndia")}</option>
@@ -105,6 +123,7 @@ export function CreateExternalCompanyForm({ orgSlug }: CreateExternalCompanyForm
             id="defaultCurrency"
             name="defaultCurrency"
             required
+            defaultValue={initialDefaultCurrency}
             className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           >
             <option value="INR">{t("currencyINR")}</option>
@@ -118,7 +137,7 @@ export function CreateExternalCompanyForm({ orgSlug }: CreateExternalCompanyForm
           disabled={isPending}
           className="rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
         >
-          {t("submitCreate")}
+          {t("submitEdit")}
         </button>
       </form>
     </>

@@ -65,11 +65,16 @@ export async function GET(
  * Create a new external company in the org.
  *
  * Auth: authenticated org member with MANAGE_USERS permission.
- * Body: { name, type } — type must be "DISTRIBUTOR" or "ARCHITECTURAL_FIRM".
+ * Body: { name, type, country, defaultCurrency } — all required.
+ *   type: "DISTRIBUTOR" | "ARCHITECTURAL_FIRM"
+ *   country: "INDIA" | "UAE"
+ *   defaultCurrency: "INR" | "AED" | "USD"
  *
  * Returns 201 on success.
  * Returns 400 on missing or invalid fields.
  * Returns 403 if the session role lacks MANAGE_USERS.
+ *
+ * Stage 13 Batch 2: added country + defaultCurrency (both required).
  */
 export async function POST(
   request: Request,
@@ -110,9 +115,12 @@ export async function POST(
 
   const name = typeof body.name === "string" ? body.name.trim() : null;
   const type = typeof body.type === "string" ? body.type : null;
+  const country = typeof body.country === "string" ? body.country : null;
+  const defaultCurrency =
+    typeof body.defaultCurrency === "string" ? body.defaultCurrency : null;
 
-  if (!name || !type) {
-    return apiBadRequest("name and type are required");
+  if (!name || !type || !country || !defaultCurrency) {
+    return apiBadRequest("name, type, country, and defaultCurrency are required");
   }
 
   if (type !== "DISTRIBUTOR" && type !== "ARCHITECTURAL_FIRM") {
@@ -121,8 +129,20 @@ export async function POST(
     );
   }
 
+  if (country !== "INDIA" && country !== "UAE") {
+    return apiBadRequest('country must be "INDIA" or "UAE"');
+  }
+
+  if (
+    defaultCurrency !== "INR" &&
+    defaultCurrency !== "AED" &&
+    defaultCurrency !== "USD"
+  ) {
+    return apiBadRequest('defaultCurrency must be "INR", "AED", or "USD"');
+  }
+
   try {
-    await createExternalCompany(session, { name, type });
+    await createExternalCompany(session, { name, type, country, defaultCurrency });
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (err) {
     console.error(
