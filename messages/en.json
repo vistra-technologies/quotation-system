@@ -170,6 +170,9 @@
     "fieldExternalCompany": "Client (optional)",
     "fieldExternalCompanyNone": "None",
     "submitCreate": "Create Project",
+    "submitEdit": "Save Changes",
+    "editPageTitle": "Edit Project",
+    "editPageSubtitle": "Update the details for this project.",
     "backToList": "← Back to Projects"
   },
   "inquiries": {

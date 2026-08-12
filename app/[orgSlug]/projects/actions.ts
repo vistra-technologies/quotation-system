@@ -73,3 +73,72 @@ export async function createProject(
   revalidatePath(`/${orgSlug}/projects`);
   redirect(await orgHref(orgSlug, `/projects/${projectId}`), RedirectType.replace);
 }
+
+// ---------------------------------------------------------------------------
+// updateProject
+// ---------------------------------------------------------------------------
+
+export type UpdateProjectState = { error: string | null };
+
+/**
+ * Update editable fields on an existing DRAFT project.
+ *
+ * Thin marshaler: parses FormData, delegates to
+ * PATCH /api/v1/orgs/[orgSlug]/projects/[projectId] via internalFetch.
+ * All tenancy enforcement and business logic live in the route handler.
+ */
+export async function updateProject(
+  prevState: UpdateProjectState,
+  formData: FormData,
+): Promise<UpdateProjectState> {
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
+  const projectId = (formData.get("projectId") as string | null) ?? "";
+
+  const name = (formData.get("name") as string | null)?.trim();
+  const destinationCountry = (formData.get("destinationCountry") as string | null)?.trim();
+  const currency = (formData.get("currency") as string | null)?.trim().toUpperCase();
+  const projectLocationRaw = (formData.get("projectLocation") as string | null)?.trim();
+  const projectLocation = projectLocationRaw || null;
+
+  if (!name || !destinationCountry || !currency) {
+    return { error: "Name, destination country, and currency are required." };
+  }
+
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/projects/${projectId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        name,
+        destinationCountry,
+        currency,
+        projectLocation,
+      }),
+    },
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (res.status === 409) {
+    return {
+      error:
+        "This project cannot be edited — only DRAFT projects are editable.",
+    };
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    return { error: errorMessage };
+  }
+
+  revalidatePath(`/${orgSlug}/projects/${projectId}`);
+  redirect(await orgHref(orgSlug, `/projects/${projectId}`), RedirectType.replace);
+}

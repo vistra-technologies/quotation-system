@@ -155,6 +155,14 @@ export async function getProjectById(session: SessionData, projectId: string) {
 
 // ─── Mutations ──────────────────────────────────────────────────────────────
 
+export interface UpdateProjectInput {
+  name?: string;
+  destinationCountry?: string;
+  currency?: string;
+  projectLocation?: string | null;
+  // externalCompanyId is intentionally absent — it is never updatable after creation.
+}
+
 /**
  * Create a new project scoped to the session org.
  *
@@ -249,4 +257,55 @@ export async function createProject(
     }
     throw err;
   }
+}
+
+/**
+ * Update editable fields on an existing project.
+ *
+ * Only DRAFT projects are editable — callers must check status before calling,
+ * but this function also enforces it server-side (returns null on wrong status
+ * so the route handler can surface a 409).
+ *
+ * `externalCompanyId` is never included in the update — the field is locked for
+ * the life of the record so the per-company sequence never needs recomputing.
+ *
+ * Tenancy: scoped by organizationId from the session — a project belonging to a
+ * different org will not be found and null is returned.
+ *
+ * Returns the updated project, or null if the project does not exist, belongs to
+ * a different org, or is not in DRAFT status.
+ */
+export async function updateProject(
+  session: SessionData,
+  projectId: string,
+  input: UpdateProjectInput,
+) {
+  // Verify the project exists, belongs to this org, and is still DRAFT.
+  const existing = await prisma.project.findFirst({
+    where: { id: projectId, organizationId: session.organizationId },
+    select: { id: true, status: true },
+  });
+
+  if (!existing) return null;
+  if (existing.status !== "DRAFT") return { notEditable: true as const };
+
+  const updated = await prisma.project.update({
+    where: { id: projectId },
+    data: {
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.destinationCountry !== undefined
+        ? { destinationCountry: input.destinationCountry }
+        : {}),
+      ...(input.currency !== undefined ? { currency: input.currency } : {}),
+      ...(input.projectLocation !== undefined
+        ? { projectLocation: input.projectLocation }
+        : {}),
+    },
+    include: {
+      externalCompany: { select: { id: true, name: true } },
+      createdBy: { select: { id: true, username: true } },
+    },
+  });
+
+  return { project: updated };
 }
