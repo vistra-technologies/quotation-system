@@ -105,7 +105,7 @@ export default async function ProjectDetailPage({
         </div>
       </div>
 
-      {/* Card footer: navigate to next step */}
+      {/* Card footer: actions */}
       <div className="flex items-center justify-end gap-3">
         <Link
           href={`${base}/projects`}
@@ -113,6 +113,17 @@ export default async function ProjectDetailPage({
         >
           Back to Projects
         </Link>
+
+        {/* Edit link — only shown while the project is still DRAFT */}
+        {project.status === "DRAFT" && (
+          <Link
+            href={`${base}/projects/${projectId}/edit`}
+            className="inline-flex items-center rounded-sm border border-border bg-bg-white px-5 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
+          >
+            Edit
+          </Link>
+        )}
+
         <Link
           href={`${base}/projects/${projectId}/configuration`}
           className="inline-flex items-center rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark"
