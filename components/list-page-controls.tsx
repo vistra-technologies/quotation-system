@@ -303,7 +303,6 @@ interface ListPagePaginationProps {
   totalCount: number;
   page: number;
   pageSize: number;
-  entityLabel: string;
 }
 
 /**
@@ -319,15 +318,12 @@ export function ListPagePagination({
   totalCount,
   page,
   pageSize,
-  entityLabel,
 }: ListPagePaginationProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const startRecord = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
-  const endRecord = Math.min(page * pageSize, totalCount);
 
   const goToPage = useCallback(
     (p: number) => {

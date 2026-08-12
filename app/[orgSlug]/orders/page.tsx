@@ -263,7 +263,6 @@ export default async function OrdersPage({
           totalCount={total}
           page={page}
           pageSize={pageSize}
-          entityLabel="Orders"
         />
       </div>
     </div>

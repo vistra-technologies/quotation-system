@@ -296,7 +296,6 @@ export default async function ProjectsPage({
           totalCount={total}
           page={page}
           pageSize={pageSize}
-          entityLabel="Projects"
         />
       </div>
     </div>
