@@ -210,14 +210,14 @@ test("ExternalCompany: delete removes the company from the list", async ({
 
   // Click the delete button in this company's row
   const row = page.locator("tr").filter({ hasText: companyName });
+  // Accept the native window.confirm() dialog that DeleteCompanyButton triggers.
+  // Playwright auto-dismisses unhandled native dialogs (returning false), so
+  // the delete would never fire without this handler.
+  page.once("dialog", async (dialog) => {
+    await dialog.accept();
+  });
   const deleteButton = row.getByRole("button", { name: /delete/i });
   await deleteButton.click();
-
-  // Confirm dialog — click confirm/yes
-  const confirmButton = page
-    .getByRole("button", { name: /confirm|yes|delete/i })
-    .last();
-  await confirmButton.click();
 
   // Company must disappear from the list
   await expect(page.getByText(companyName)).not.toBeVisible({ timeout: 15_000 });
@@ -426,8 +426,12 @@ test("Inquiry edit: editing a NEW inquiry persists all editable fields", async (
     page.getByRole("button", { name: /save|update/i }).click(),
   ]);
 
-  // Updated values must appear on the detail page
-  await expect(page.getByText(updatedName)).toBeVisible({ timeout: 10_000 });
+  // Updated values must appear on the detail page.
+  // Use .first() because updatedName appears in both the <h1> heading and a <p>
+  // element — strict mode would fail without scoping to a single match.
+  await expect(page.getByText(updatedName).first()).toBeVisible({
+    timeout: 10_000,
+  });
   await expect(page.getByText(updatedLocation)).toBeVisible({ timeout: 10_000 });
 });
 
