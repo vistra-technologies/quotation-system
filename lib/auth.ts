@@ -25,14 +25,23 @@ export const auth = betterAuth({
   // Origins trusted:
   //   1. The raw per-deploy Vercel URL — auto-injected as VERCEL_URL on every
   //      build (no manual config needed); absent on local dev.
-  //   2. All org subdomains — wildcard pattern supported natively by
-  //      better-auth 1.6.23 via matchesOriginPattern().
-  //      Covers both *.easeetool.com (prod) and *.test.easeetool.com (staging),
-  //      since test.easeetool.com is itself a subdomain of easeetool.com.
+  //   2. Every URL shape Vercel generates for this specific project+team:
+  //      - Per-deploy hash URLs: quotation-system-<hash>-vistra-indias-projects.vercel.app
+  //      - Branch-alias URLs:    quotation-system-git-<branch>-vistra-indias-projects.vercel.app
+  //      The wildcard covers both shapes and is scoped to this project+team prefix only
+  //      (does NOT trust all of *.vercel.app or other teams' projects).
+  //      better-auth 1.6.23 wildcardMatch() supports mid-label * in a hostname segment
+  //      (verified from dist/auth/trusted-origins.mjs + dist/utils/wildcard.mjs: * maps to
+  //      [^/\\]*? which matches any chars except the path separator — fine for hostnames).
+  //      Project name and team slug confirmed from .vercel/project.json and observed URLs.
+  //   3. All easeetool.com subdomains — covers both *.easeetool.com (prod) and
+  //      *.test.easeetool.com (staging), since test.easeetool.com is a subdomain
+  //      of easeetool.com and the single-label * matches "foo.test" as a whole.
   //
   // trustedOrigins is a top-level BetterAuthOptions field (string[] | async-function).
   trustedOrigins: [
     ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+    "https://quotation-system-*-vistra-indias-projects.vercel.app", // all preview URL shapes
     "https://*.easeetool.com", // all org subdomains (Stage 10 subdomain routing)
   ],
 
