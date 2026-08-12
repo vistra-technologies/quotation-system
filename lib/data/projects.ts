@@ -10,6 +10,22 @@ export interface CreateProjectInput {
   projectLocation?: string | null;
   status: string;
   externalCompanyId?: string | null;
+  // Stage 14 Batch A — extended intake fields
+  submissionDate?: Date | null;
+  projectDeadline?: Date | null;
+  projectBudget?: string | null;
+  mainContractorName?: string | null;
+  interiorContractorName?: string | null;
+  mainConsultantName?: string | null;
+  interiorConsultantName?: string | null;
+  endClientName?: string | null;
+  endClientPhone?: string | null;
+  endClientEmail?: string | null;
+  endClientAddressLine1?: string | null;
+  endClientAddressLine2?: string | null;
+  endClientCity?: string | null;
+  endClientState?: string | null;
+  endClientGstNumber?: string | null;
 }
 
 export interface ListProjectsParams {
@@ -161,6 +177,22 @@ export interface UpdateProjectInput {
   currency?: string;
   projectLocation?: string | null;
   // externalCompanyId is intentionally absent — it is never updatable after creation.
+  // Stage 14 Batch A — extended intake fields
+  submissionDate?: Date | null;
+  projectDeadline?: Date | null;
+  projectBudget?: string | null;
+  mainContractorName?: string | null;
+  interiorContractorName?: string | null;
+  mainConsultantName?: string | null;
+  interiorConsultantName?: string | null;
+  endClientName?: string | null;
+  endClientPhone?: string | null;
+  endClientEmail?: string | null;
+  endClientAddressLine1?: string | null;
+  endClientAddressLine2?: string | null;
+  endClientCity?: string | null;
+  endClientState?: string | null;
+  endClientGstNumber?: string | null;
 }
 
 /**
@@ -239,6 +271,22 @@ export async function createProject(
           projectLocation: input.projectLocation ?? null,
           status: input.status,
           externalCompanyId: resolvedExternalCompanyId,
+          // Stage 14 Batch A — extended intake fields
+          submissionDate: input.submissionDate ?? null,
+          projectDeadline: input.projectDeadline ?? null,
+          projectBudget: input.projectBudget ?? null,
+          mainContractorName: input.mainContractorName ?? null,
+          interiorContractorName: input.interiorContractorName ?? null,
+          mainConsultantName: input.mainConsultantName ?? null,
+          interiorConsultantName: input.interiorConsultantName ?? null,
+          endClientName: input.endClientName ?? null,
+          endClientPhone: input.endClientPhone ?? null,
+          endClientEmail: input.endClientEmail ?? null,
+          endClientAddressLine1: input.endClientAddressLine1 ?? null,
+          endClientAddressLine2: input.endClientAddressLine2 ?? null,
+          endClientCity: input.endClientCity ?? null,
+          endClientState: input.endClientState ?? null,
+          endClientGstNumber: input.endClientGstNumber ?? null,
         },
       });
     });
@@ -300,6 +348,22 @@ export async function updateProject(
       ...(input.projectLocation !== undefined
         ? { projectLocation: input.projectLocation }
         : {}),
+      // Stage 14 Batch A — extended intake fields
+      ...(input.submissionDate !== undefined ? { submissionDate: input.submissionDate } : {}),
+      ...(input.projectDeadline !== undefined ? { projectDeadline: input.projectDeadline } : {}),
+      ...(input.projectBudget !== undefined ? { projectBudget: input.projectBudget } : {}),
+      ...(input.mainContractorName !== undefined ? { mainContractorName: input.mainContractorName } : {}),
+      ...(input.interiorContractorName !== undefined ? { interiorContractorName: input.interiorContractorName } : {}),
+      ...(input.mainConsultantName !== undefined ? { mainConsultantName: input.mainConsultantName } : {}),
+      ...(input.interiorConsultantName !== undefined ? { interiorConsultantName: input.interiorConsultantName } : {}),
+      ...(input.endClientName !== undefined ? { endClientName: input.endClientName } : {}),
+      ...(input.endClientPhone !== undefined ? { endClientPhone: input.endClientPhone } : {}),
+      ...(input.endClientEmail !== undefined ? { endClientEmail: input.endClientEmail } : {}),
+      ...(input.endClientAddressLine1 !== undefined ? { endClientAddressLine1: input.endClientAddressLine1 } : {}),
+      ...(input.endClientAddressLine2 !== undefined ? { endClientAddressLine2: input.endClientAddressLine2 } : {}),
+      ...(input.endClientCity !== undefined ? { endClientCity: input.endClientCity } : {}),
+      ...(input.endClientState !== undefined ? { endClientState: input.endClientState } : {}),
+      ...(input.endClientGstNumber !== undefined ? { endClientGstNumber: input.endClientGstNumber } : {}),
     },
     include: {
       externalCompany: { select: { id: true, name: true } },

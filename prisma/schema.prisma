@@ -323,6 +323,22 @@ model Project {
   companyProjectNumber Int?             // per-ExternalCompany display sequence (Stage 13 Batch 4); null when no company linked
   status               String           // enum-like string; Stage 6 will tighten to a Prisma enum
   info                 Json?
+  // Stage 14 Batch A — extended intake fields (identical set on Inquiry and Project)
+  submissionDate           DateTime? // date formally submitted to client
+  projectDeadline          DateTime? // client-facing deadline
+  projectBudget            String?   // free text; avoids Decimal precision complexity
+  mainContractorName       String?
+  interiorContractorName   String?
+  mainConsultantName       String?
+  interiorConsultantName   String?
+  endClientName            String?
+  endClientPhone           String?
+  endClientEmail           String?
+  endClientAddressLine1    String?
+  endClientAddressLine2    String?
+  endClientCity            String?
+  endClientState           String?
+  endClientGstNumber       String?   // required for India, optional for UAE — form-layer only
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   // Stage 6 relations
@@ -363,6 +379,22 @@ model Inquiry {
   projectLocation      String?          // optional free-text installation site (Stage 13 Batch 4)
   companyInquiryNumber Int?             // per-ExternalCompany display sequence (Stage 13 Batch 4); null when no company linked
   status               String           // "NEW" | "DISMISSED" | "CONVERTED"
+  // Stage 14 Batch A — extended intake fields (identical set on Inquiry and Project)
+  submissionDate           DateTime? // date formally submitted to client
+  projectDeadline          DateTime? // client-facing deadline
+  projectBudget            String?   // free text; avoids Decimal precision complexity
+  mainContractorName       String?
+  interiorContractorName   String?
+  mainConsultantName       String?
+  interiorConsultantName   String?
+  endClientName            String?
+  endClientPhone           String?
+  endClientEmail           String?
+  endClientAddressLine1    String?
+  endClientAddressLine2    String?
+  endClientCity            String?
+  endClientState           String?
+  endClientGstNumber       String?   // required for India, optional for UAE — form-layer only
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   projects             Project[]        // back-relation: Projects created by converting this Inquiry

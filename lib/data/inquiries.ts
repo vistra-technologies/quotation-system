@@ -9,6 +9,22 @@ export interface CreateInquiryInput {
   currency: string;
   projectLocation?: string | null;
   externalCompanyId?: string | null;
+  // Stage 14 Batch A — extended intake fields
+  submissionDate?: Date | null;
+  projectDeadline?: Date | null;
+  projectBudget?: string | null;
+  mainContractorName?: string | null;
+  interiorContractorName?: string | null;
+  mainConsultantName?: string | null;
+  interiorConsultantName?: string | null;
+  endClientName?: string | null;
+  endClientPhone?: string | null;
+  endClientEmail?: string | null;
+  endClientAddressLine1?: string | null;
+  endClientAddressLine2?: string | null;
+  endClientCity?: string | null;
+  endClientState?: string | null;
+  endClientGstNumber?: string | null;
 }
 
 export interface UpdateInquiryInput {
@@ -19,6 +35,22 @@ export interface UpdateInquiryInput {
   // externalCompanyId is intentionally excluded — it is locked for the life
   // of an Inquiry record so the per-company sequence number never needs
   // recomputing (see stage-13.md "Decisions made during scoping").
+  // Stage 14 Batch A — extended intake fields
+  submissionDate?: Date | null;
+  projectDeadline?: Date | null;
+  projectBudget?: string | null;
+  mainContractorName?: string | null;
+  interiorContractorName?: string | null;
+  mainConsultantName?: string | null;
+  interiorConsultantName?: string | null;
+  endClientName?: string | null;
+  endClientPhone?: string | null;
+  endClientEmail?: string | null;
+  endClientAddressLine1?: string | null;
+  endClientAddressLine2?: string | null;
+  endClientCity?: string | null;
+  endClientState?: string | null;
+  endClientGstNumber?: string | null;
 }
 
 export interface ListInquiriesParams {
@@ -240,6 +272,22 @@ export async function createInquiry(
           projectLocation: input.projectLocation ?? null,
           status: "NEW",
           externalCompanyId: resolvedExternalCompanyId,
+          // Stage 14 Batch A — extended intake fields
+          submissionDate: input.submissionDate ?? null,
+          projectDeadline: input.projectDeadline ?? null,
+          projectBudget: input.projectBudget ?? null,
+          mainContractorName: input.mainContractorName ?? null,
+          interiorContractorName: input.interiorContractorName ?? null,
+          mainConsultantName: input.mainConsultantName ?? null,
+          interiorConsultantName: input.interiorConsultantName ?? null,
+          endClientName: input.endClientName ?? null,
+          endClientPhone: input.endClientPhone ?? null,
+          endClientEmail: input.endClientEmail ?? null,
+          endClientAddressLine1: input.endClientAddressLine1 ?? null,
+          endClientAddressLine2: input.endClientAddressLine2 ?? null,
+          endClientCity: input.endClientCity ?? null,
+          endClientState: input.endClientState ?? null,
+          endClientGstNumber: input.endClientGstNumber ?? null,
         },
       });
     });
@@ -297,6 +345,22 @@ export async function updateInquiry(
     destinationCountry?: string;
     currency?: string;
     projectLocation?: string | null;
+    // Stage 14 Batch A — extended intake fields
+    submissionDate?: Date | null;
+    projectDeadline?: Date | null;
+    projectBudget?: string | null;
+    mainContractorName?: string | null;
+    interiorContractorName?: string | null;
+    mainConsultantName?: string | null;
+    interiorConsultantName?: string | null;
+    endClientName?: string | null;
+    endClientPhone?: string | null;
+    endClientEmail?: string | null;
+    endClientAddressLine1?: string | null;
+    endClientAddressLine2?: string | null;
+    endClientCity?: string | null;
+    endClientState?: string | null;
+    endClientGstNumber?: string | null;
   } = {};
   if (input.name !== undefined) data.name = input.name;
   if (input.destinationCountry !== undefined)
@@ -304,6 +368,22 @@ export async function updateInquiry(
   if (input.currency !== undefined) data.currency = input.currency;
   if (input.projectLocation !== undefined)
     data.projectLocation = input.projectLocation;
+  // Stage 14 Batch A — extended intake fields
+  if (input.submissionDate !== undefined) data.submissionDate = input.submissionDate;
+  if (input.projectDeadline !== undefined) data.projectDeadline = input.projectDeadline;
+  if (input.projectBudget !== undefined) data.projectBudget = input.projectBudget;
+  if (input.mainContractorName !== undefined) data.mainContractorName = input.mainContractorName;
+  if (input.interiorContractorName !== undefined) data.interiorContractorName = input.interiorContractorName;
+  if (input.mainConsultantName !== undefined) data.mainConsultantName = input.mainConsultantName;
+  if (input.interiorConsultantName !== undefined) data.interiorConsultantName = input.interiorConsultantName;
+  if (input.endClientName !== undefined) data.endClientName = input.endClientName;
+  if (input.endClientPhone !== undefined) data.endClientPhone = input.endClientPhone;
+  if (input.endClientEmail !== undefined) data.endClientEmail = input.endClientEmail;
+  if (input.endClientAddressLine1 !== undefined) data.endClientAddressLine1 = input.endClientAddressLine1;
+  if (input.endClientAddressLine2 !== undefined) data.endClientAddressLine2 = input.endClientAddressLine2;
+  if (input.endClientCity !== undefined) data.endClientCity = input.endClientCity;
+  if (input.endClientState !== undefined) data.endClientState = input.endClientState;
+  if (input.endClientGstNumber !== undefined) data.endClientGstNumber = input.endClientGstNumber;
 
   return prisma.inquiry.update({
     where: { id: inquiryId },
@@ -413,6 +493,22 @@ export async function convertInquiryToProject(
           status: "DRAFT",
           externalCompanyId: inquiry.externalCompanyId ?? null,
           inquiryId: inquiry.id,
+          // Stage 14 Batch A — propagate all extended intake fields from Inquiry to Project
+          submissionDate: inquiry.submissionDate ?? null,
+          projectDeadline: inquiry.projectDeadline ?? null,
+          projectBudget: inquiry.projectBudget ?? null,
+          mainContractorName: inquiry.mainContractorName ?? null,
+          interiorContractorName: inquiry.interiorContractorName ?? null,
+          mainConsultantName: inquiry.mainConsultantName ?? null,
+          interiorConsultantName: inquiry.interiorConsultantName ?? null,
+          endClientName: inquiry.endClientName ?? null,
+          endClientPhone: inquiry.endClientPhone ?? null,
+          endClientEmail: inquiry.endClientEmail ?? null,
+          endClientAddressLine1: inquiry.endClientAddressLine1 ?? null,
+          endClientAddressLine2: inquiry.endClientAddressLine2 ?? null,
+          endClientCity: inquiry.endClientCity ?? null,
+          endClientState: inquiry.endClientState ?? null,
+          endClientGstNumber: inquiry.endClientGstNumber ?? null,
         },
       });
 
