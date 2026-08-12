@@ -164,9 +164,8 @@ export async function deleteExternalCompany(formData: FormData): Promise<void> {
     { method: "DELETE" },
   );
 
-  if (res.status === 401 || res.status === 403) {
-    redirect(await orgHref(orgSlug, "/login"));
-  }
+  if (res.status === 401) redirect(await orgHref(orgSlug, "/login"));
+  if (res.status === 403) redirect(await orgHref(orgSlug, "/dashboard"));
 
   if (!res.ok) {
     let errorMessage = "An unexpected error occurred — please try again.";
