@@ -247,3 +247,10 @@ All tenancy items clean: `destinationCountry` is not parsed, passed, or stored f
 **Verification:** `tsc --noEmit` — clean (no output). `npm run lint` — 0 errors, 4 warnings (all pre-existing in `tests/e2e/`).
 
 **Status:** DONE
+
+### Reviewer — Fix verification (2026-08-13)
+
+**Role:** reviewer · **Verdict:** APPROVE · **Findings:** 0 CRITICAL · 0 IMPORTANT · 0 MINOR
+**Report:** `.engineering/stage-14/review-bc.md` (appended "Fix verification (2026-08-13)" section)
+
+All B+C CHANGES-NEEDED items from prior round confirmed resolved. Inquiry No. join correct (single query, null-safe, format matches inquiry detail page). Three JSDoc fixes are comment-only — no executable code changed. Tenancy/derivation property intact. Stage 14 is clear for handoff to `engineering:test`.
