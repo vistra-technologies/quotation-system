@@ -214,12 +214,15 @@ test("self-deactivation: Deactivate button disabled on own account with explanat
   const adminRow = page
     .locator("tr")
     .filter({ has: page.getByRole("cell", { name: "admin", exact: true }) });
+  // Wait for the row to appear (users table renders after SSR stream completes).
+  await expect(adminRow).toBeVisible({ timeout: 15_000 });
   await adminRow.getByRole("link", { name: "Edit" }).click();
-  await page.waitForURL(/\/acme-glass\/admin\/users\/.+/);
-  await expect(page.getByRole("button", { name: "Deactivate" })).toBeDisabled();
+  await page.waitForURL(/\/acme-glass\/admin\/users\/.+/, { timeout: 15_000 });
+  // User edit page renders via RSC; allow 15 s for the Deactivate button to appear.
+  await expect(page.getByRole("button", { name: "Deactivate" })).toBeDisabled({ timeout: 15_000 });
   await expect(
     page.getByText(/cannot deactivate your own account/i),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------
