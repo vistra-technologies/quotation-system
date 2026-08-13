@@ -171,10 +171,7 @@ export async function POST(
   }
 
   const name = typeof body.name === "string" ? body.name.trim() : null;
-  const destinationCountry =
-    typeof body.destinationCountry === "string"
-      ? body.destinationCountry.trim()
-      : null;
+  // destinationCountry is derived server-side from the company's country (D19) — not parsed from body.
   const currency =
     typeof body.currency === "string"
       ? body.currency.trim().toUpperCase()
@@ -190,18 +187,38 @@ export async function POST(
       ? body.externalCompanyId
       : null;
 
-  if (!name || !destinationCountry || !currency) {
-    return apiBadRequest("name, destinationCountry, and currency are required");
+  // Stage 14 Batch C — extended intake fields
+  const parseStr = (v: unknown) =>
+    typeof v === "string" && v.trim() ? v.trim() : null;
+  const parseDate = (v: unknown): Date | null =>
+    typeof v === "string" && v ? new Date(`${v}T00:00:00.000Z`) : null;
+
+  if (!name || !currency) {
+    return apiBadRequest("name and currency are required");
   }
 
   try {
     const project = await createProject(session, {
       name,
-      destinationCountry,
       currency,
       projectLocation,
       status,
       externalCompanyId,
+      submissionDate: parseDate(body.submissionDate),
+      projectDeadline: parseDate(body.projectDeadline),
+      projectBudget: parseStr(body.projectBudget),
+      mainContractorName: parseStr(body.mainContractorName),
+      interiorContractorName: parseStr(body.interiorContractorName),
+      mainConsultantName: parseStr(body.mainConsultantName),
+      interiorConsultantName: parseStr(body.interiorConsultantName),
+      endClientName: parseStr(body.endClientName),
+      endClientPhone: parseStr(body.endClientPhone),
+      endClientEmail: parseStr(body.endClientEmail),
+      endClientAddressLine1: parseStr(body.endClientAddressLine1),
+      endClientAddressLine2: parseStr(body.endClientAddressLine2),
+      endClientCity: parseStr(body.endClientCity),
+      endClientState: parseStr(body.endClientState),
+      endClientGstNumber: parseStr(body.endClientGstNumber),
     });
     return NextResponse.json({ project }, { status: 201 });
   } catch (err) {

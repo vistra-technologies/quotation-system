@@ -19,10 +19,9 @@ export const dynamic = "force-dynamic";
  * only that company's name is fetched for display.  Otherwise the full
  * org list is fetched for the free-choice dropdown (current behavior).
  *
- * Stage 11 (Batch 6): outer chrome restyled to Sage Ease tokens — back
- * link, page heading, card wrapper. No data/prop changes.
- * Stage 12 Batch 6: switched requireSession → internalFetch /me.
- * externalCompanyId now comes from the /me response (plan-batch6.md D2).
+ * Stage 14 Batch C: widened lockedCompany / externalCompanies type casts to
+ * include `country` (for GST conditional derivation, D19/D20). Removed the
+ * single-card wrapper — form now renders its own 3-card layout per the mockup.
  */
 export default async function NewProjectPage({
   params,
@@ -38,8 +37,8 @@ export default async function NewProjectPage({
 
   const me = (await meRes.json()) as { externalCompanyId: string | null };
 
-  let lockedCompany: { id: string; name: string } | null = null;
-  let externalCompanies: { id: string; name: string }[] = [];
+  let lockedCompany: { id: string; name: string; country: "INDIA" | "UAE" } | null = null;
+  let externalCompanies: { id: string; name: string; country: "INDIA" | "UAE" }[] = [];
 
   if (me.externalCompanyId) {
     // External user — fetch only their locked company for read-only display.
@@ -50,7 +49,9 @@ export default async function NewProjectPage({
       redirect(await orgHref(orgSlug, "/login"));
     }
     if (res.ok) {
-      const body = (await res.json()) as { company: { id: string; name: string } };
+      const body = (await res.json()) as {
+        company: { id: string; name: string; country: "INDIA" | "UAE" };
+      };
       lockedCompany = body.company;
     }
   } else {
@@ -63,7 +64,7 @@ export default async function NewProjectPage({
     }
     if (res.ok) {
       const body = (await res.json()) as {
-        companies: { id: string; name: string }[];
+        companies: { id: string; name: string; country: "INDIA" | "UAE" }[];
       };
       externalCompanies = body.companies;
     }
@@ -72,7 +73,7 @@ export default async function NewProjectPage({
   const t = await getTranslations("projects");
 
   return (
-    <div className="mx-auto max-w-lg">
+    <div>
       {/* Back link */}
       <Link
         href={`${base}/projects`}
@@ -82,8 +83,8 @@ export default async function NewProjectPage({
       </Link>
 
       {/* Page heading */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-extrabold text-text-heading">
+      <div className="mb-6 text-center">
+        <h1 className="text-3xl font-extrabold text-text-heading">
           {t("createPageTitle")}
         </h1>
         <p className="mt-1 text-sm text-text-muted">
@@ -91,14 +92,13 @@ export default async function NewProjectPage({
         </p>
       </div>
 
-      {/* Form card */}
-      <div className="rounded-md border border-border bg-bg-card p-6 shadow-card">
-        <CreateProjectForm
-          orgSlug={orgSlug}
-          lockedCompany={lockedCompany}
-          externalCompanies={externalCompanies}
-        />
-      </div>
+      {/* 3-card form — no card wrapper; the form renders its own cards */}
+      <CreateProjectForm
+        orgSlug={orgSlug}
+        backHref={`${base}/projects`}
+        lockedCompany={lockedCompany}
+        externalCompanies={externalCompanies}
+      />
     </div>
   );
 }
