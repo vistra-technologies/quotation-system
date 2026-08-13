@@ -26,7 +26,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, fillCreateFormRequiredFields } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
@@ -118,12 +118,13 @@ test("Inquiries list: each inquiry row has a link to the detail page via its nam
   page,
 }) => {
   // Create an inquiry first to ensure the list is not empty.
+  // Stage 14: destinationCountry removed from form; currency is now a <select>;
+  // 7 end-client fields added as required.
   const inquiryName = `E2E Stage12 List ${Date.now()}`;
   await signIn(page, "admin");
   await page.goto("/acme-glass/inquiries/new");
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
@@ -144,12 +145,12 @@ test("Inquiries list: inquiry number (#N) is visible on the detail page (not the
   page,
 }) => {
   // Create an inquiry.
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   const inquiryName = `E2E Stage12 Number ${Date.now()}`;
   await signIn(page, "admin");
   await page.goto("/acme-glass/inquiries/new");
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
