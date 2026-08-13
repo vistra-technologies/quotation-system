@@ -5,7 +5,7 @@ import type { SessionData } from "@/lib/session";
 
 export interface CreateInquiryInput {
   name: string;
-  destinationCountry: string;
+  // destinationCountry is derived at create time from ExternalCompany.country (D19) — not accepted from callers
   currency: string;
   projectLocation?: string | null;
   externalCompanyId?: string | null;
@@ -29,7 +29,7 @@ export interface CreateInquiryInput {
 
 export interface UpdateInquiryInput {
   name?: string;
-  destinationCountry?: string;
+  // destinationCountry is excluded — derived at create time, locked for the life of the record (D19)
   currency?: string;
   projectLocation?: string | null;
   // externalCompanyId is intentionally excluded — it is locked for the life
@@ -188,7 +188,8 @@ export async function getInquiryById(session: SessionData, inquiryId: string) {
   return prisma.inquiry.findFirst({
     where: { id: inquiryId, organizationId: session.organizationId },
     include: {
-      externalCompany: { select: { id: true, name: true } },
+      // country included so the edit page can derive GST conditional (D20) without an extra fetch
+      externalCompany: { select: { id: true, name: true, country: true } },
       createdBy: { select: { id: true, username: true } },
     },
   });
@@ -231,16 +232,20 @@ export async function createInquiry(
 
   try {
     return await prisma.$transaction(async (tx) => {
+      // Derive destinationCountry from the linked company's country enum (D19).
+      // When no company is linked, store "" — the GST conditional does not fire (D21).
+      let destinationCountry = "";
       if (resolvedExternalCompanyId) {
         const company = await tx.externalCompany.findFirst({
           where: { id: resolvedExternalCompanyId, organizationId: session.organizationId },
-          select: { id: true },
+          select: { id: true, country: true },
         });
         if (!company) {
           throw Object.assign(new Error("External company not found."), {
             code: "INVALID_EXTERNAL_COMPANY",
           });
         }
+        destinationCountry = company.country === "INDIA" ? "India" : "UAE";
       }
 
       // Org-wide sequence number (existing pattern)
@@ -267,7 +272,8 @@ export async function createInquiry(
           inquiryNumber,
           companyInquiryNumber,
           name: input.name,
-          destinationCountry: input.destinationCountry,
+          // destinationCountry derived from company.country above (D19); "" when no company (D21)
+          destinationCountry,
           currency: input.currency,
           projectLocation: input.projectLocation ?? null,
           status: "NEW",
@@ -339,10 +345,10 @@ export async function updateInquiry(
   }
 
   // Build the update data from only the provided (non-undefined) fields.
-  // externalCompanyId is explicitly excluded.
+  // externalCompanyId and destinationCountry are explicitly excluded — both locked for the life of the record.
   const data: {
     name?: string;
-    destinationCountry?: string;
+    // destinationCountry excluded — derived at create time, never updated (D19)
     currency?: string;
     projectLocation?: string | null;
     // Stage 14 Batch A — extended intake fields
@@ -363,8 +369,7 @@ export async function updateInquiry(
     endClientGstNumber?: string | null;
   } = {};
   if (input.name !== undefined) data.name = input.name;
-  if (input.destinationCountry !== undefined)
-    data.destinationCountry = input.destinationCountry;
+  // destinationCountry: excluded from updates — locked at create time (D19)
   if (input.currency !== undefined) data.currency = input.currency;
   if (input.projectLocation !== undefined)
     data.projectLocation = input.projectLocation;

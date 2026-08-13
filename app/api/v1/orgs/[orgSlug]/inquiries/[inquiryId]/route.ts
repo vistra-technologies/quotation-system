@@ -117,7 +117,16 @@ export async function PATCH(
     // ignore — treat as empty
   }
 
-  const UPDATE_FIELDS = ["name", "destinationCountry", "currency", "projectLocation"] as const;
+  // destinationCountry excluded from UPDATE_FIELDS — locked at create time (D19)
+  const UPDATE_FIELDS = [
+    "name", "currency", "projectLocation",
+    // Stage 14 extended intake fields
+    "submissionDate", "projectDeadline", "projectBudget",
+    "mainContractorName", "interiorContractorName", "mainConsultantName", "interiorConsultantName",
+    "endClientName", "endClientPhone", "endClientEmail",
+    "endClientAddressLine1", "endClientAddressLine2", "endClientCity", "endClientState",
+    "endClientGstNumber",
+  ] as const;
 
   let parsedBody: Record<string, unknown> | null = null;
   if (bodyText) {
@@ -130,38 +139,37 @@ export async function PATCH(
 
   const isUpdate =
     parsedBody !== null &&
-    UPDATE_FIELDS.some((f) => f in parsedBody);
+    UPDATE_FIELDS.some((f) => f in (parsedBody as Record<string, unknown>));
 
   // ── Update path ──────────────────────────────────────────────────────────────
   if (isUpdate) {
-    // Silently strip externalCompanyId (locked for life of record).
-    const { name, destinationCountry, currency, projectLocation } = parsedBody as {
-      name?: string;
-      destinationCountry?: string;
-      currency?: string;
-      projectLocation?: string | null;
-      [key: string]: unknown;
-    };
+    // Silently strip externalCompanyId and destinationCountry (both locked for life of record).
+    const body = parsedBody as Record<string, unknown>;
+    const name = body.name as string | undefined;
+    // destinationCountry intentionally excluded (D19)
+    const currency = body.currency as string | undefined;
+    const projectLocation = body.projectLocation as string | null | undefined;
 
     // Basic validation: if a field is present it must be a non-empty string
     // (except projectLocation which may be null/empty = clear).
     if (name !== undefined && (typeof name !== "string" || !name.trim())) {
       return apiBadRequest("name must be a non-empty string.");
     }
-    if (
-      destinationCountry !== undefined &&
-      (typeof destinationCountry !== "string" || !destinationCountry.trim())
-    ) {
-      return apiBadRequest("destinationCountry must be a non-empty string.");
-    }
     if (currency !== undefined && (typeof currency !== "string" || !currency.trim())) {
       return apiBadRequest("currency must be a non-empty string.");
     }
 
+    // Stage 14 — extended intake field helpers
+    const parseDate = (v: unknown): Date | null | undefined =>
+      v === undefined ? undefined :
+      typeof v === "string" && v.trim() ? new Date(`${v.trim()}T00:00:00.000Z`) : null;
+    const parseStr = (v: unknown): string | null | undefined =>
+      v === undefined ? undefined :
+      typeof v === "string" && v.trim() ? v.trim() : null;
+
     try {
       const inquiry = await updateInquiry(session, inquiryId, {
         name: name?.trim(),
-        destinationCountry: destinationCountry?.trim(),
         currency: currency?.trim().toUpperCase(),
         projectLocation:
           projectLocation !== undefined
@@ -169,6 +177,22 @@ export async function PATCH(
               ? projectLocation.trim()
               : null)
             : undefined,
+        // Stage 14 extended intake fields
+        submissionDate: parseDate(body.submissionDate),
+        projectDeadline: parseDate(body.projectDeadline),
+        projectBudget: parseStr(body.projectBudget),
+        mainContractorName: parseStr(body.mainContractorName),
+        interiorContractorName: parseStr(body.interiorContractorName),
+        mainConsultantName: parseStr(body.mainConsultantName),
+        interiorConsultantName: parseStr(body.interiorConsultantName),
+        endClientName: parseStr(body.endClientName),
+        endClientPhone: parseStr(body.endClientPhone),
+        endClientEmail: parseStr(body.endClientEmail),
+        endClientAddressLine1: parseStr(body.endClientAddressLine1),
+        endClientAddressLine2: parseStr(body.endClientAddressLine2),
+        endClientCity: parseStr(body.endClientCity),
+        endClientState: parseStr(body.endClientState),
+        endClientGstNumber: parseStr(body.endClientGstNumber),
       });
       return NextResponse.json({ inquiry });
     } catch (err) {
