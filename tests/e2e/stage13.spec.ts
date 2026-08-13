@@ -221,13 +221,16 @@ test("ExternalCompany: delete removes the company from the list", async ({
   // Click the "Delete" confirm button inside the dialog.
   await confirmDialog.getByRole("button", { name: "Delete" }).click();
 
-  // Wait for the dialog to close (server action revalidates the list).
+  // Wait for the dialog to close.
   await expect(confirmDialog).not.toBeVisible({ timeout: 5_000 });
 
-  // Company must disappear from the list. Use .first() to avoid strict-mode
-  // violations in case the company name briefly appears in multiple elements
-  // (e.g., dialog still in the process of unmounting) — defensive guard only.
-  await expect(page.getByText(companyName).first()).not.toBeVisible({ timeout: 15_000 });
+  // The DeleteCompanyButton uses startTransition + LoadingOverlay (role="status").
+  // Wait for the overlay to disappear — this means the server action + Next.js
+  // revalidation completed. Allow 30 s for cold Vercel function starts.
+  await expect(page.getByRole("status")).not.toBeVisible({ timeout: 30_000 });
+
+  // Company must now be absent from the list.
+  await expect(page.getByText(companyName).first()).not.toBeVisible({ timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------
