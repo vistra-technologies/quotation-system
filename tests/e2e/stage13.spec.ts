@@ -464,14 +464,13 @@ test("Inquiry edit: Edit link NOT visible on a DISMISSED inquiry", async ({
     timeout: 15_000,
   });
 
-  // Dismiss the inquiry
+  // Dismiss the inquiry and wait for the server action to settle.
+  // URL doesn't change after dismiss, so waitForURL is not the right signal.
+  // Instead, wait for the Dismiss button to become disabled (isClosed=true in the
+  // re-rendered page), then assert the Edit link is gone.
   const dismissButton = page.getByRole("button", { name: /dismiss/i });
   await dismissButton.click();
-
-  // Wait for the page to reload / redirect back to the detail (now DISMISSED)
-  await page.waitForURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, {
-    timeout: 15_000,
-  });
+  await expect(dismissButton).toBeDisabled({ timeout: 15_000 });
 
   // Edit link must NOT be visible on a DISMISSED inquiry
   const editLink = page.getByRole("link", { name: /^edit$/i });
@@ -507,7 +506,10 @@ test("Inquiry edit: direct API PATCH on a DISMISSED inquiry returns 409", async 
     timeout: 15_000,
   });
   await page.getByRole("button", { name: /dismiss/i }).click();
-  await page.waitForURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, {
+  // waitForURL doesn't help here (URL stays the same after dismiss server action).
+  // Wait for the Dismiss button to become disabled — that signals the server action
+  // completed and the page re-rendered with isClosed=true.
+  await expect(page.getByRole("button", { name: /dismiss/i })).toBeDisabled({
     timeout: 15_000,
   });
 
