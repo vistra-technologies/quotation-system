@@ -303,7 +303,6 @@ interface ListPagePaginationProps {
   totalCount: number;
   page: number;
   pageSize: number;
-  entityLabel: string;
 }
 
 /**
@@ -319,15 +318,12 @@ export function ListPagePagination({
   totalCount,
   page,
   pageSize,
-  entityLabel,
 }: ListPagePaginationProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const startRecord = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
-  const endRecord = Math.min(page * pageSize, totalCount);
 
   const goToPage = useCallback(
     (p: number) => {
@@ -356,61 +352,56 @@ export function ListPagePagination({
     }
   }
 
+  if (totalPages <= 1) return null;
+
   return (
-    <div className="flex items-center justify-between px-3 pt-3">
-      <span className="text-[12.5px] text-text-muted">
-        {totalCount > 0
-          ? `${startRecord}–${endRecord} of ${totalCount} ${entityLabel.toLowerCase()} · Page ${page} of ${totalPages}`
-          : ""}
-      </span>
-      {totalPages > 1 && (
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => goToPage(page - 1)}
-            disabled={page <= 1}
-            className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-[13px] text-text-muted hover:bg-primary-softer disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Previous page"
-          >
-            ‹
-          </button>
-          {pageNumbers.map((n, i) =>
-            n === "…" ? (
-              <span
-                key={`ellipsis-${i}`}
-                className="flex h-7 w-7 items-center justify-center text-[12px] text-text-muted"
-              >
-                …
-              </span>
-            ) : (
-              <button
-                key={n}
-                type="button"
-                onClick={() => goToPage(n as number)}
-                className={[
-                  "flex h-7 w-7 items-center justify-center rounded-sm border text-[13px] font-semibold",
-                  n === page
-                    ? "border-primary bg-primary text-text-on-primary"
-                    : "border-border text-text-body hover:bg-primary-softer",
-                ].join(" ")}
-                aria-label={`Page ${n}`}
-                aria-current={n === page ? "page" : undefined}
-              >
-                {n}
-              </button>
-            ),
-          )}
-          <button
-            type="button"
-            onClick={() => goToPage(page + 1)}
-            disabled={page >= totalPages}
-            className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-[13px] text-text-muted hover:bg-primary-softer disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Next page"
-          >
-            ›
-          </button>
-        </div>
-      )}
+    <div className="flex items-center justify-center px-3 pt-3">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => goToPage(page - 1)}
+          disabled={page <= 1}
+          className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-[13px] text-text-muted hover:bg-primary-softer disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Previous page"
+        >
+          ‹
+        </button>
+        {pageNumbers.map((n, i) =>
+          n === "…" ? (
+            <span
+              key={`ellipsis-${i}`}
+              className="flex h-7 w-7 items-center justify-center text-[12px] text-text-muted"
+            >
+              …
+            </span>
+          ) : (
+            <button
+              key={n}
+              type="button"
+              onClick={() => goToPage(n as number)}
+              className={[
+                "flex h-7 w-7 items-center justify-center rounded-sm border text-[13px] font-semibold",
+                n === page
+                  ? "border-primary bg-primary text-text-on-primary"
+                  : "border-border text-text-body hover:bg-primary-softer",
+              ].join(" ")}
+              aria-label={`Page ${n}`}
+              aria-current={n === page ? "page" : undefined}
+            >
+              {n}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          onClick={() => goToPage(page + 1)}
+          disabled={page >= totalPages}
+          className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-[13px] text-text-muted hover:bg-primary-softer disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Next page"
+        >
+          ›
+        </button>
+      </div>
     </div>
   );
 }

@@ -39,18 +39,27 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain }: Pro
   const hrefBase = isSubdomain ? `/projects/${projectId}` : `/${orgSlug}/projects/${projectId}`;
 
   const steps = [
-    { label: t("step1"), href: base, linkHref: hrefBase, exact: true },
-    { label: t("step2"), href: `${base}/configuration`, linkHref: `${hrefBase}/configuration`, exact: false },
-    { label: t("step3"), href: `${base}/design`, linkHref: `${hrefBase}/design`, exact: false },
-    { label: t("step4"), href: `${base}/summary`, linkHref: `${hrefBase}/summary`, exact: false },
-    { label: t("step5"), href: `${base}/quotation`, linkHref: `${hrefBase}/quotation`, exact: false },
+    { label: t("step1"), href: base, linkHref: hrefBase },
+    { label: t("step2"), href: `${base}/configuration`, linkHref: `${hrefBase}/configuration` },
+    { label: t("step3"), href: `${base}/design`, linkHref: `${hrefBase}/design` },
+    { label: t("step4"), href: `${base}/summary`, linkHref: `${hrefBase}/summary` },
+    { label: t("step5"), href: `${base}/quotation`, linkHref: `${hrefBase}/quotation` },
   ];
 
   // Derive the active index so earlier steps can be shown as "done".
   // Uses step.href (path-based) to match against usePathname()'s internal route.
-  const activeIndex = steps.findIndex((step) =>
-    step.exact ? pathname === step.href : pathname.startsWith(step.href),
-  );
+  // Step 1 (index 0) uses a startsWith match combined with a negative check that
+  // none of steps 2–5's hrefs also match — so /edit and other step-1 sub-routes
+  // highlight Step 1 rather than leaving the breadcrumb unhighlighted (activeIndex -1).
+  const activeIndex = steps.findIndex((step, i) => {
+    if (i === 0) {
+      return (
+        pathname.startsWith(step.href) &&
+        !steps.slice(1).some((s) => pathname.startsWith(s.href))
+      );
+    }
+    return pathname.startsWith(step.href);
+  });
 
   return (
     <nav aria-label="Project wizard steps" className="py-4">

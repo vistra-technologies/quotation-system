@@ -18,9 +18,8 @@ export type CreateInquiryState = { error: string | null };
  * POST /api/v1/orgs/[orgSlug]/inquiries via internalFetch.
  * All tenancy enforcement and business logic live in the route handler.
  *
- * Uses the useActionState signature so the client form can surface errors
- * (e.g. inquiry number conflict on concurrent creates) rather than crashing
- * to an error boundary.
+ * Stage 14 Batch B: destinationCountry removed (derived server-side, D19);
+ * 15 new extended intake fields added; projectLocation now required (D22).
  */
 export async function createInquiry(
   prevState: CreateInquiryState,
@@ -29,29 +28,71 @@ export async function createInquiry(
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
 
   const name = (formData.get("name") as string | null)?.trim();
-  const destinationCountry = (
-    formData.get("destinationCountry") as string | null
-  )?.trim();
-  const currency = (formData.get("currency") as string | null)
-    ?.trim()
-    .toUpperCase();
+  const currency = (formData.get("currency") as string | null)?.trim().toUpperCase();
   const projectLocation =
     ((formData.get("projectLocation") as string | null)?.trim()) || null;
   const externalCompanyId =
     (formData.get("externalCompanyId") as string | null) || null;
 
-  if (!name || !destinationCountry || !currency) {
-    return { error: "Name, destination country, and currency are required." };
+  // Stage 14 — extended intake fields
+  const submissionDate =
+    ((formData.get("submissionDate") as string | null)?.trim()) || null;
+  const projectDeadline =
+    ((formData.get("projectDeadline") as string | null)?.trim()) || null;
+  const projectBudget =
+    ((formData.get("projectBudget") as string | null)?.trim()) || null;
+  const mainContractorName =
+    ((formData.get("mainContractorName") as string | null)?.trim()) || null;
+  const interiorContractorName =
+    ((formData.get("interiorContractorName") as string | null)?.trim()) || null;
+  const mainConsultantName =
+    ((formData.get("mainConsultantName") as string | null)?.trim()) || null;
+  const interiorConsultantName =
+    ((formData.get("interiorConsultantName") as string | null)?.trim()) || null;
+  const endClientName =
+    ((formData.get("endClientName") as string | null)?.trim()) || null;
+  const endClientPhone =
+    ((formData.get("endClientPhone") as string | null)?.trim()) || null;
+  const endClientEmail =
+    ((formData.get("endClientEmail") as string | null)?.trim()) || null;
+  const endClientAddressLine1 =
+    ((formData.get("endClientAddressLine1") as string | null)?.trim()) || null;
+  const endClientAddressLine2 =
+    ((formData.get("endClientAddressLine2") as string | null)?.trim()) || null;
+  const endClientCity =
+    ((formData.get("endClientCity") as string | null)?.trim()) || null;
+  const endClientState =
+    ((formData.get("endClientState") as string | null)?.trim()) || null;
+  const endClientGstNumber =
+    ((formData.get("endClientGstNumber") as string | null)?.trim()) || null;
+
+  if (!name || !currency) {
+    return { error: "Name and currency are required." };
   }
 
   const res = await internalFetch(`/api/v1/orgs/${orgSlug}/inquiries`, {
     method: "POST",
     body: JSON.stringify({
       name,
-      destinationCountry,
       currency,
       projectLocation,
       externalCompanyId,
+      // Stage 14 — extended intake fields (dates sent as ISO date strings)
+      submissionDate,
+      projectDeadline,
+      projectBudget,
+      mainContractorName,
+      interiorContractorName,
+      mainConsultantName,
+      interiorConsultantName,
+      endClientName,
+      endClientPhone,
+      endClientEmail,
+      endClientAddressLine1,
+      endClientAddressLine2,
+      endClientCity,
+      endClientState,
+      endClientGstNumber,
     }),
   });
 
@@ -87,12 +128,8 @@ export type UpdateInquiryState = { error: string | null };
  * PATCH /api/v1/orgs/[orgSlug]/inquiries/[inquiryId] via internalFetch.
  * All tenancy enforcement and business logic live in the route handler.
  *
- * Uses the useActionState signature so the client form can surface errors
- * rather than crashing to an error boundary.
- *
- * On success, revalidates and redirects to the inquiry detail page.
- *
- * Stage 13 Batch 6.
+ * Stage 14 Batch B: destinationCountry removed (locked at create time, D19);
+ * 15 new extended intake fields added.
  */
 export async function updateInquiry(
   prevState: UpdateInquiryState,
@@ -104,13 +141,44 @@ export async function updateInquiry(
   if (!inquiryId) return { error: "Missing inquiry ID." };
 
   const name = (formData.get("name") as string | null)?.trim();
-  const destinationCountry = (formData.get("destinationCountry") as string | null)?.trim();
   const currency = (formData.get("currency") as string | null)?.trim().toUpperCase();
   const projectLocation =
     ((formData.get("projectLocation") as string | null)?.trim()) || null;
 
-  if (!name || !destinationCountry || !currency) {
-    return { error: "Name, destination country, and currency are required." };
+  // Stage 14 — extended intake fields
+  const submissionDate =
+    ((formData.get("submissionDate") as string | null)?.trim()) || null;
+  const projectDeadline =
+    ((formData.get("projectDeadline") as string | null)?.trim()) || null;
+  const projectBudget =
+    ((formData.get("projectBudget") as string | null)?.trim()) || null;
+  const mainContractorName =
+    ((formData.get("mainContractorName") as string | null)?.trim()) || null;
+  const interiorContractorName =
+    ((formData.get("interiorContractorName") as string | null)?.trim()) || null;
+  const mainConsultantName =
+    ((formData.get("mainConsultantName") as string | null)?.trim()) || null;
+  const interiorConsultantName =
+    ((formData.get("interiorConsultantName") as string | null)?.trim()) || null;
+  const endClientName =
+    ((formData.get("endClientName") as string | null)?.trim()) || null;
+  const endClientPhone =
+    ((formData.get("endClientPhone") as string | null)?.trim()) || null;
+  const endClientEmail =
+    ((formData.get("endClientEmail") as string | null)?.trim()) || null;
+  const endClientAddressLine1 =
+    ((formData.get("endClientAddressLine1") as string | null)?.trim()) || null;
+  const endClientAddressLine2 =
+    ((formData.get("endClientAddressLine2") as string | null)?.trim()) || null;
+  const endClientCity =
+    ((formData.get("endClientCity") as string | null)?.trim()) || null;
+  const endClientState =
+    ((formData.get("endClientState") as string | null)?.trim()) || null;
+  const endClientGstNumber =
+    ((formData.get("endClientGstNumber") as string | null)?.trim()) || null;
+
+  if (!name || !currency) {
+    return { error: "Name and currency are required." };
   }
 
   const res = await internalFetch(
@@ -119,9 +187,24 @@ export async function updateInquiry(
       method: "PATCH",
       body: JSON.stringify({
         name,
-        destinationCountry,
         currency,
         projectLocation,
+        // Stage 14 — extended intake fields
+        submissionDate,
+        projectDeadline,
+        projectBudget,
+        mainContractorName,
+        interiorContractorName,
+        mainConsultantName,
+        interiorConsultantName,
+        endClientName,
+        endClientPhone,
+        endClientEmail,
+        endClientAddressLine1,
+        endClientAddressLine2,
+        endClientCity,
+        endClientState,
+        endClientGstNumber,
       }),
     },
   );

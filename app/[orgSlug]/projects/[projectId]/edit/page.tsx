@@ -19,6 +19,9 @@ export const dynamic = "force-dynamic";
  *
  * Data: shares the React.cache()-wrapped fetchProjectDetail helper with the
  * wizard layout and the project detail page — one HTTP round-trip for all three.
+ *
+ * Stage 14 Batch C: passes all 15 new fields + companyCountry to EditProjectForm.
+ * Removed initialDestinationCountry (derived, never edited, D19).
  */
 export default async function ProjectEditPage({
   params,
@@ -40,6 +43,14 @@ export default async function ProjectEditPage({
   if (!project) notFound();
 
   const isDraft = project.status === "DRAFT";
+
+  // Format the linked inquiry's display number identically to the inquiry detail page.
+  // Null for projects not converted from an inquiry — the edit form renders "—".
+  const formattedInquiryNumber = project.inquiry
+    ? project.inquiry.companyInquiryNumber != null
+      ? `INQ-${project.inquiry.companyInquiryNumber}`
+      : `#${project.inquiry.inquiryNumber}`
+    : null;
 
   return (
     <div>
@@ -68,17 +79,32 @@ export default async function ProjectEditPage({
           </a>
         </div>
       ) : (
-        <div className="rounded-md border border-border bg-bg-card p-7 shadow-card">
-          <EditProjectForm
-            orgSlug={orgSlug}
-            projectId={projectId}
-            initialName={project.name}
-            initialDestinationCountry={project.destinationCountry}
-            initialCurrency={project.currency}
-            initialProjectLocation={project.projectLocation}
-            lockedCompany={project.externalCompany}
-          />
-        </div>
+        <EditProjectForm
+          orgSlug={orgSlug}
+          projectId={projectId}
+          backHref={`${base}/projects/${projectId}`}
+          inquiryNumber={formattedInquiryNumber}
+          initialName={project.name}
+          initialCurrency={project.currency}
+          initialProjectLocation={project.projectLocation}
+          lockedCompany={project.externalCompany}
+          companyCountry={project.externalCompany?.country ?? null}
+          initialSubmissionDate={project.submissionDate ? project.submissionDate.split("T")[0] : null}
+          initialProjectDeadline={project.projectDeadline ? project.projectDeadline.split("T")[0] : null}
+          initialProjectBudget={project.projectBudget}
+          initialMainContractorName={project.mainContractorName}
+          initialInteriorContractorName={project.interiorContractorName}
+          initialMainConsultantName={project.mainConsultantName}
+          initialInteriorConsultantName={project.interiorConsultantName}
+          initialEndClientName={project.endClientName}
+          initialEndClientPhone={project.endClientPhone}
+          initialEndClientEmail={project.endClientEmail}
+          initialEndClientAddressLine1={project.endClientAddressLine1}
+          initialEndClientAddressLine2={project.endClientAddressLine2}
+          initialEndClientCity={project.endClientCity}
+          initialEndClientState={project.endClientState}
+          initialEndClientGstNumber={project.endClientGstNumber}
+        />
       )}
     </div>
   );

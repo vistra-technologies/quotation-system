@@ -40,8 +40,9 @@ export default async function NewInquiryPage({
 
   const me = (await meRes.json()) as { externalCompanyId: string | null };
 
-  let lockedCompany: { id: string; name: string } | null = null;
-  let externalCompanies: { id: string; name: string }[] = [];
+  // country is included so the form can derive the GST conditional (D20)
+  let lockedCompany: { id: string; name: string; country: "INDIA" | "UAE" } | null = null;
+  let externalCompanies: { id: string; name: string; country: "INDIA" | "UAE" }[] = [];
 
   if (me.externalCompanyId) {
     // External user — fetch only their locked company for read-only display.
@@ -52,7 +53,7 @@ export default async function NewInquiryPage({
       redirect(await orgHref(orgSlug, "/login"));
     }
     if (res.ok) {
-      const body = (await res.json()) as { company: { id: string; name: string } };
+      const body = (await res.json()) as { company: { id: string; name: string; country: "INDIA" | "UAE" } };
       lockedCompany = body.company;
     }
   } else {
@@ -65,7 +66,7 @@ export default async function NewInquiryPage({
     }
     if (res.ok) {
       const body = (await res.json()) as {
-        companies: { id: string; name: string }[];
+        companies: { id: string; name: string; country: "INDIA" | "UAE" }[];
       };
       externalCompanies = body.companies;
     }

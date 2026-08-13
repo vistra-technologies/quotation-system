@@ -69,8 +69,10 @@ export async function GET(
  *       matches the GET gate on this same route and the project create flow).
  * Tenancy: enforced by getApiSession() and updateProject() (org-scoped lookup).
  *
- * Editable: name, destinationCountry, currency, projectLocation.
+ * Editable: name, currency, projectLocation.
  * Locked:   externalCompanyId — silently ignored if supplied (never rejected).
+ * Derived:  destinationCountry — set at create time from the linked company's country (D19, Stage 14);
+ *           not accepted from the client and never updated.
  *
  * Returns 409 if the project exists but is not in DRAFT status.
  * Returns 404 if the project does not exist or belongs to a different org.
@@ -106,23 +108,18 @@ export async function PATCH(
 
   // Build the update input — only include fields that were provided.
   // externalCompanyId is silently ignored even if the client sends it.
-  const input: {
-    name?: string;
-    destinationCountry?: string;
-    currency?: string;
-    projectLocation?: string | null;
-  } = {};
+  // destinationCountry is derived at create time and never updated (D19, Stage 14).
+  const parseStr = (v: unknown): string | null =>
+    typeof v === "string" && v.trim() ? v.trim() : null;
+  const parseDate = (v: unknown): Date | null =>
+    typeof v === "string" && v ? new Date(`${v}T00:00:00.000Z`) : null;
+
+  const input: Parameters<typeof updateProject>[2] = {};
 
   if (typeof body.name === "string") {
     const trimmed = body.name.trim();
     if (!trimmed) return apiBadRequest("name cannot be empty");
     input.name = trimmed;
-  }
-
-  if (typeof body.destinationCountry === "string") {
-    const trimmed = body.destinationCountry.trim();
-    if (!trimmed) return apiBadRequest("destinationCountry cannot be empty");
-    input.destinationCountry = trimmed;
   }
 
   if (typeof body.currency === "string") {
@@ -137,6 +134,23 @@ export async function PATCH(
         ? body.projectLocation.trim()
         : null;
   }
+
+  // Stage 14 Batch C — extended intake fields (only update if present in body)
+  if ("submissionDate" in body) input.submissionDate = parseDate(body.submissionDate);
+  if ("projectDeadline" in body) input.projectDeadline = parseDate(body.projectDeadline);
+  if ("projectBudget" in body) input.projectBudget = parseStr(body.projectBudget);
+  if ("mainContractorName" in body) input.mainContractorName = parseStr(body.mainContractorName);
+  if ("interiorContractorName" in body) input.interiorContractorName = parseStr(body.interiorContractorName);
+  if ("mainConsultantName" in body) input.mainConsultantName = parseStr(body.mainConsultantName);
+  if ("interiorConsultantName" in body) input.interiorConsultantName = parseStr(body.interiorConsultantName);
+  if ("endClientName" in body) input.endClientName = parseStr(body.endClientName);
+  if ("endClientPhone" in body) input.endClientPhone = parseStr(body.endClientPhone);
+  if ("endClientEmail" in body) input.endClientEmail = parseStr(body.endClientEmail);
+  if ("endClientAddressLine1" in body) input.endClientAddressLine1 = parseStr(body.endClientAddressLine1);
+  if ("endClientAddressLine2" in body) input.endClientAddressLine2 = parseStr(body.endClientAddressLine2);
+  if ("endClientCity" in body) input.endClientCity = parseStr(body.endClientCity);
+  if ("endClientState" in body) input.endClientState = parseStr(body.endClientState);
+  if ("endClientGstNumber" in body) input.endClientGstNumber = parseStr(body.endClientGstNumber);
 
   try {
     const result = await updateProject(session, projectId, input);

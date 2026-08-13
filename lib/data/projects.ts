@@ -5,11 +5,28 @@ import type { SessionData } from "@/lib/session";
 
 export interface CreateProjectInput {
   name: string;
-  destinationCountry: string;
+  // destinationCountry is derived server-side from the linked ExternalCompany.country
+  // (Stage 14 Batch C, D19) — callers must NOT supply it.
   currency: string;
   projectLocation?: string | null;
   status: string;
   externalCompanyId?: string | null;
+  // Stage 14 Batch A — extended intake fields
+  submissionDate?: Date | null;
+  projectDeadline?: Date | null;
+  projectBudget?: string | null;
+  mainContractorName?: string | null;
+  interiorContractorName?: string | null;
+  mainConsultantName?: string | null;
+  interiorConsultantName?: string | null;
+  endClientName?: string | null;
+  endClientPhone?: string | null;
+  endClientEmail?: string | null;
+  endClientAddressLine1?: string | null;
+  endClientAddressLine2?: string | null;
+  endClientCity?: string | null;
+  endClientState?: string | null;
+  endClientGstNumber?: string | null;
 }
 
 export interface ListProjectsParams {
@@ -147,8 +164,11 @@ export async function getProjectById(session: SessionData, projectId: string) {
   return prisma.project.findFirst({
     where: { id: projectId, organizationId: session.organizationId },
     include: {
-      externalCompany: { select: { id: true, name: true } },
+      externalCompany: { select: { id: true, name: true, country: true } },
       createdBy: { select: { id: true, username: true } },
+      // Pull the linked inquiry's human-readable display numbers so the detail
+      // and edit pages can show "INQ-42" / "#7" instead of a raw CUID2 FK.
+      inquiry: { select: { inquiryNumber: true, companyInquiryNumber: true } },
     },
   });
 }
@@ -157,10 +177,26 @@ export async function getProjectById(session: SessionData, projectId: string) {
 
 export interface UpdateProjectInput {
   name?: string;
-  destinationCountry?: string;
+  // destinationCountry is derived at create time and never updated (company is locked).
   currency?: string;
   projectLocation?: string | null;
   // externalCompanyId is intentionally absent — it is never updatable after creation.
+  // Stage 14 Batch A — extended intake fields
+  submissionDate?: Date | null;
+  projectDeadline?: Date | null;
+  projectBudget?: string | null;
+  mainContractorName?: string | null;
+  interiorContractorName?: string | null;
+  mainConsultantName?: string | null;
+  interiorConsultantName?: string | null;
+  endClientName?: string | null;
+  endClientPhone?: string | null;
+  endClientEmail?: string | null;
+  endClientAddressLine1?: string | null;
+  endClientAddressLine2?: string | null;
+  endClientCity?: string | null;
+  endClientState?: string | null;
+  endClientGstNumber?: string | null;
 }
 
 /**
@@ -198,16 +234,20 @@ export async function createProject(
 
   try {
     return await prisma.$transaction(async (tx) => {
+      // D19 (Stage 14 Batch C): destinationCountry is derived from the linked
+      // company's country enum. INDIA → "India", UAE → "UAE". No company → "".
+      let destinationCountry = "";
       if (resolvedExternalCompanyId) {
         const company = await tx.externalCompany.findFirst({
           where: { id: resolvedExternalCompanyId, organizationId: session.organizationId },
-          select: { id: true },
+          select: { id: true, country: true },
         });
         if (!company) {
           throw Object.assign(new Error("External company not found."), {
             code: "INVALID_EXTERNAL_COMPANY",
           });
         }
+        destinationCountry = company.country === "INDIA" ? "India" : "UAE";
       }
 
       // Org-wide sequence number (existing pattern)
@@ -234,11 +274,27 @@ export async function createProject(
           projectNumber,
           companyProjectNumber,
           name: input.name,
-          destinationCountry: input.destinationCountry,
+          destinationCountry,
           currency: input.currency,
           projectLocation: input.projectLocation ?? null,
           status: input.status,
           externalCompanyId: resolvedExternalCompanyId,
+          // Stage 14 Batch A — extended intake fields
+          submissionDate: input.submissionDate ?? null,
+          projectDeadline: input.projectDeadline ?? null,
+          projectBudget: input.projectBudget ?? null,
+          mainContractorName: input.mainContractorName ?? null,
+          interiorContractorName: input.interiorContractorName ?? null,
+          mainConsultantName: input.mainConsultantName ?? null,
+          interiorConsultantName: input.interiorConsultantName ?? null,
+          endClientName: input.endClientName ?? null,
+          endClientPhone: input.endClientPhone ?? null,
+          endClientEmail: input.endClientEmail ?? null,
+          endClientAddressLine1: input.endClientAddressLine1 ?? null,
+          endClientAddressLine2: input.endClientAddressLine2 ?? null,
+          endClientCity: input.endClientCity ?? null,
+          endClientState: input.endClientState ?? null,
+          endClientGstNumber: input.endClientGstNumber ?? null,
         },
       });
     });
@@ -293,13 +349,27 @@ export async function updateProject(
     where: { id: projectId },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.destinationCountry !== undefined
-        ? { destinationCountry: input.destinationCountry }
-        : {}),
+      // destinationCountry is derived at create time and never updated (D19).
       ...(input.currency !== undefined ? { currency: input.currency } : {}),
       ...(input.projectLocation !== undefined
         ? { projectLocation: input.projectLocation }
         : {}),
+      // Stage 14 Batch A — extended intake fields
+      ...(input.submissionDate !== undefined ? { submissionDate: input.submissionDate } : {}),
+      ...(input.projectDeadline !== undefined ? { projectDeadline: input.projectDeadline } : {}),
+      ...(input.projectBudget !== undefined ? { projectBudget: input.projectBudget } : {}),
+      ...(input.mainContractorName !== undefined ? { mainContractorName: input.mainContractorName } : {}),
+      ...(input.interiorContractorName !== undefined ? { interiorContractorName: input.interiorContractorName } : {}),
+      ...(input.mainConsultantName !== undefined ? { mainConsultantName: input.mainConsultantName } : {}),
+      ...(input.interiorConsultantName !== undefined ? { interiorConsultantName: input.interiorConsultantName } : {}),
+      ...(input.endClientName !== undefined ? { endClientName: input.endClientName } : {}),
+      ...(input.endClientPhone !== undefined ? { endClientPhone: input.endClientPhone } : {}),
+      ...(input.endClientEmail !== undefined ? { endClientEmail: input.endClientEmail } : {}),
+      ...(input.endClientAddressLine1 !== undefined ? { endClientAddressLine1: input.endClientAddressLine1 } : {}),
+      ...(input.endClientAddressLine2 !== undefined ? { endClientAddressLine2: input.endClientAddressLine2 } : {}),
+      ...(input.endClientCity !== undefined ? { endClientCity: input.endClientCity } : {}),
+      ...(input.endClientState !== undefined ? { endClientState: input.endClientState } : {}),
+      ...(input.endClientGstNumber !== undefined ? { endClientGstNumber: input.endClientGstNumber } : {}),
     },
     include: {
       externalCompany: { select: { id: true, name: true } },
