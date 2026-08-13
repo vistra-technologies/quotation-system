@@ -813,13 +813,12 @@ test("Admin user (null externalCompanyId) still sees the free-choice dropdown on
   await page.goto("/acme-glass/projects/new");
   await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
 
-  // Admin has null externalCompanyId → must see the select dropdown.
-  const dropdown = page.locator("select[name='externalCompanyId']");
-  await expect(dropdown).toBeVisible({ timeout: 10_000 });
-
-  // The dropdown must have at least 1 option (the "None" placeholder + seeded companies).
-  const optionCount = await dropdown.locator("option").count();
-  expect(optionCount).toBeGreaterThan(0);
+  // Stage 14: externalCompanyId changed from <select> to CompanyDropdown (a custom
+  // button-triggered listbox). Admin has null externalCompanyId → must see the
+  // interactive dropdown trigger (not a locked static display).
+  // The CompanyDropdown renders a <button aria-haspopup="listbox">.
+  const dropdownTrigger = page.locator("button[aria-haspopup='listbox']");
+  await expect(dropdownTrigger).toBeVisible({ timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
