@@ -166,6 +166,9 @@ export async function getProjectById(session: SessionData, projectId: string) {
     include: {
       externalCompany: { select: { id: true, name: true, country: true } },
       createdBy: { select: { id: true, username: true } },
+      // Pull the linked inquiry's human-readable display numbers so the detail
+      // and edit pages can show "INQ-42" / "#7" instead of a raw CUID2 FK.
+      inquiry: { select: { inquiryNumber: true, companyInquiryNumber: true } },
     },
   });
 }

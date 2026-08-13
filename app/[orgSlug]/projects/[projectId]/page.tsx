@@ -61,6 +61,15 @@ export default async function ProjectDetailPage({
       ? `JOB-${project.companyProjectNumber}`
       : `#${project.projectNumber}`;
 
+  // Format the linked inquiry's display number identically to how the inquiry
+  // detail page formats it (app/[orgSlug]/inquiries/[inquiryId]/page.tsx).
+  // Null when the project was not converted from an inquiry (renders "—" in ReadOnlyField).
+  const formattedInquiryNumber = project.inquiry
+    ? project.inquiry.companyInquiryNumber != null
+      ? `INQ-${project.inquiry.companyInquiryNumber}`
+      : `#${project.inquiry.inquiryNumber}`
+    : null;
+
   return (
     <div>
       {/* Back link */}
@@ -107,7 +116,7 @@ export default async function ProjectDetailPage({
 
           <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
             <ReadOnlyField label={tProjects("colNumber")} value={projectLabel} />
-            <ReadOnlyField label="Inquiry No." value={project.inquiryId} />
+            <ReadOnlyField label="Inquiry No." value={formattedInquiryNumber} />
             <ReadOnlyField label={tProjects("fieldName")} value={project.name} />
             <ReadOnlyField label={tProjects("fieldProjectBudget")} value={project.projectBudget} />
             <ReadOnlyField label={tProjects("fieldCurrency")} value={project.currency} />

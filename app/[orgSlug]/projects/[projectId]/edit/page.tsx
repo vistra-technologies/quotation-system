@@ -44,6 +44,14 @@ export default async function ProjectEditPage({
 
   const isDraft = project.status === "DRAFT";
 
+  // Format the linked inquiry's display number identically to the inquiry detail page.
+  // Null for projects not converted from an inquiry — the edit form renders "—".
+  const formattedInquiryNumber = project.inquiry
+    ? project.inquiry.companyInquiryNumber != null
+      ? `INQ-${project.inquiry.companyInquiryNumber}`
+      : `#${project.inquiry.inquiryNumber}`
+    : null;
+
   return (
     <div>
       {/* Page heading */}
@@ -75,6 +83,7 @@ export default async function ProjectEditPage({
           orgSlug={orgSlug}
           projectId={projectId}
           backHref={`${base}/projects/${projectId}`}
+          inquiryNumber={formattedInquiryNumber}
           initialName={project.name}
           initialCurrency={project.currency}
           initialProjectLocation={project.projectLocation}

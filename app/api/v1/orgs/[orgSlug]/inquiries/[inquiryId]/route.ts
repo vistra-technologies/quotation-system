@@ -73,8 +73,9 @@ export async function GET(
  *    Sets status → DISMISSED. Any authenticated org member may call this.
  *    Returns 404 if not found; 409 if already DISMISSED or CONVERTED.
  *
- * 2. Update (body contains one or more of: name, destinationCountry, currency,
- *    projectLocation):
+ * 2. Update (body contains one or more of: name, currency, projectLocation):
+ *    Note: destinationCountry is derived server-side from the linked company's country (D19, Stage 14)
+ *    and is not accepted from the client.
  *    Updates the supplied editable fields. Only allowed while status === "NEW";
  *    returns 409 otherwise. `externalCompanyId` is silently excluded from the
  *    update payload even if the client sends it (locked for the life of the record).

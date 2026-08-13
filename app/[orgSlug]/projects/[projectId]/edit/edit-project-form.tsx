@@ -32,6 +32,12 @@ interface EditProjectFormProps {
   initialEndClientState: string | null;
   initialEndClientGstNumber: string | null;
   /**
+   * Formatted inquiry display number for the linked inquiry, if any.
+   * "INQ-42" (company-scoped) or "#7" (org-scoped fallback).
+   * Null when the project was created directly (not converted from an inquiry).
+   */
+  inquiryNumber: string | null;
+  /**
    * The locked External Company linked to this project.
    * Always shown read-only — externalCompanyId is never editable after creation.
    * Null when no company is linked.
@@ -78,6 +84,7 @@ export function EditProjectForm({
   initialEndClientCity,
   initialEndClientState,
   initialEndClientGstNumber,
+  inquiryNumber,
   lockedCompany,
   companyCountry,
 }: EditProjectFormProps) {
@@ -145,13 +152,13 @@ export function EditProjectForm({
                 />
               </div>
 
-              {/* Inquiry No. (disabled) */}
+              {/* Inquiry No. (disabled — read-only display, never editable) */}
               <div className={fieldCls}>
                 <label className={labelCls}>Inquiry No.</label>
                 <input
                   type="text"
                   disabled
-                  value="—"
+                  value={inquiryNumber ?? "—"}
                   className={inputCls}
                 />
               </div>

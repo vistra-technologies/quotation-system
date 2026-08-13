@@ -138,7 +138,9 @@ export async function GET(
  * Create a new project in the org.
  *
  * Auth: any authenticated org member (no specific RBAC permission required).
- * Body: { name, destinationCountry, currency, status?, externalCompanyId? }
+ * Body: { name, currency, status?, externalCompanyId? }
+ * Note: destinationCountry is derived server-side from the linked company's country (D19, Stage 14)
+ *       and is not accepted from the client.
  *
  * Returns 201 with the created project on success.
  * Returns 400 on missing required fields.

@@ -69,8 +69,10 @@ export async function GET(
  *       matches the GET gate on this same route and the project create flow).
  * Tenancy: enforced by getApiSession() and updateProject() (org-scoped lookup).
  *
- * Editable: name, destinationCountry, currency, projectLocation.
+ * Editable: name, currency, projectLocation.
  * Locked:   externalCompanyId — silently ignored if supplied (never rejected).
+ * Derived:  destinationCountry — set at create time from the linked company's country (D19, Stage 14);
+ *           not accepted from the client and never updated.
  *
  * Returns 409 if the project exists but is not in DRAFT status.
  * Returns 404 if the project does not exist or belongs to a different org.

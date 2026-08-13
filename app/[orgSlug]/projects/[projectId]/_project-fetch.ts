@@ -17,6 +17,12 @@ export interface ProjectDetail {
   currency: string;
   projectLocation: string | null;
   inquiryId: string | null;
+  /**
+   * Human-readable display numbers from the linked Inquiry, if any.
+   * Null when the project was created directly (not converted from an inquiry).
+   * Format: INQ-{companyInquiryNumber} when available, else #{inquiryNumber}.
+   */
+  inquiry: { inquiryNumber: number; companyInquiryNumber: number | null } | null;
   status: string;
   createdAt: string;
   updatedAt: string;
