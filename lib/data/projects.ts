@@ -5,7 +5,8 @@ import type { SessionData } from "@/lib/session";
 
 export interface CreateProjectInput {
   name: string;
-  destinationCountry: string;
+  // destinationCountry is derived server-side from the linked ExternalCompany.country
+  // (Stage 14 Batch C, D19) — callers must NOT supply it.
   currency: string;
   projectLocation?: string | null;
   status: string;
@@ -163,7 +164,7 @@ export async function getProjectById(session: SessionData, projectId: string) {
   return prisma.project.findFirst({
     where: { id: projectId, organizationId: session.organizationId },
     include: {
-      externalCompany: { select: { id: true, name: true } },
+      externalCompany: { select: { id: true, name: true, country: true } },
       createdBy: { select: { id: true, username: true } },
     },
   });
@@ -173,7 +174,7 @@ export async function getProjectById(session: SessionData, projectId: string) {
 
 export interface UpdateProjectInput {
   name?: string;
-  destinationCountry?: string;
+  // destinationCountry is derived at create time and never updated (company is locked).
   currency?: string;
   projectLocation?: string | null;
   // externalCompanyId is intentionally absent — it is never updatable after creation.
@@ -230,16 +231,20 @@ export async function createProject(
 
   try {
     return await prisma.$transaction(async (tx) => {
+      // D19 (Stage 14 Batch C): destinationCountry is derived from the linked
+      // company's country enum. INDIA → "India", UAE → "UAE". No company → "".
+      let destinationCountry = "";
       if (resolvedExternalCompanyId) {
         const company = await tx.externalCompany.findFirst({
           where: { id: resolvedExternalCompanyId, organizationId: session.organizationId },
-          select: { id: true },
+          select: { id: true, country: true },
         });
         if (!company) {
           throw Object.assign(new Error("External company not found."), {
             code: "INVALID_EXTERNAL_COMPANY",
           });
         }
+        destinationCountry = company.country === "INDIA" ? "India" : "UAE";
       }
 
       // Org-wide sequence number (existing pattern)
@@ -266,7 +271,7 @@ export async function createProject(
           projectNumber,
           companyProjectNumber,
           name: input.name,
-          destinationCountry: input.destinationCountry,
+          destinationCountry,
           currency: input.currency,
           projectLocation: input.projectLocation ?? null,
           status: input.status,
@@ -341,9 +346,7 @@ export async function updateProject(
     where: { id: projectId },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.destinationCountry !== undefined
-        ? { destinationCountry: input.destinationCountry }
-        : {}),
+      // destinationCountry is derived at create time and never updated (D19).
       ...(input.currency !== undefined ? { currency: input.currency } : {}),
       ...(input.projectLocation !== undefined
         ? { projectLocation: input.projectLocation }

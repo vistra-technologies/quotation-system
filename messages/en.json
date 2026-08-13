@@ -193,7 +193,8 @@
     "fieldEndClientCity": "City",
     "fieldEndClientState": "State",
     "fieldEndClientGstNumber": "GST Number",
-    "gstRequiredHint": "Required for India"
+    "gstRequiredHint": "Required for India",
+    "submitConfigure": "Configure"
   },
   "inquiries": {
     "pageTitle": "Inquiries",
