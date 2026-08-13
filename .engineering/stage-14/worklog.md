@@ -254,3 +254,21 @@ All tenancy items clean: `destinationCountry` is not parsed, passed, or stored f
 **Report:** `.engineering/stage-14/review-bc.md` (appended "Fix verification (2026-08-13)" section)
 
 All B+C CHANGES-NEEDED items from prior round confirmed resolved. Inquiry No. join correct (single query, null-safe, format matches inquiry detail page). Three JSDoc fixes are comment-only — no executable code changed. Tenancy/derivation property intact. Stage 14 is clear for handoff to `engineering:test`.
+
+### Tester — Stage 14 verification pass (2026-08-13)
+
+**Role:** tester · **Verdict:** PASS · **Findings:** 0 CRITICAL · 0 MAJOR · 2 MINOR · 3 INFO
+**Report:** `.engineering/stage-14/bugs-1.md`
+**Spec committed:** `tests/e2e/stage14.spec.ts` @ `5319791` (15 tests, 15 pass)
+
+All high-risk behaviors verified against the preview URL:
+- next-intl hydration: clean on all 3 client component pages
+- destinationCountry: correctly derived (INDIA→India, UAE→UAE, no-company→""), injection-proof
+- GST conditional: required toggles correctly with company country selection
+- convertInquiryToProject: all 15 new fields propagated (confirmed with 15 sentinel values)
+- Cross-org tenancy: vistra session returns 403 for acme-glass resources
+- Batch D: ConfirmDialog works (no window.confirm), breadcrumb step 1 active on /edit, pagination hidden when ≤ 1 page
+
+Two MINOR findings (both cosmetic, no data impact):
+- MINOR-1: Project edit form shows "—" for project number (no `projectNumber` prop)
+- MINOR-2: Fragile `.replace("Projects", "Project")` in project edit page "Back to" link
