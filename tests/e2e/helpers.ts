@@ -39,6 +39,10 @@ export async function fillCreateFormRequiredFields(
   await page.locator("input[name='endClientName']").fill("E2E Client");
   await page.locator("input[name='endClientPhone']").fill("+971501234567");
   await page.locator("input[name='endClientEmail']").fill("e2e@test.com");
+  // GST Number is conditionally required when the linked company is India (D20).
+  // Always fill it so the helper works regardless of the company's country in the
+  // live dev DB. The field accepts any text; it is optional when isIndia=false.
+  await page.locator("input[name='endClientGstNumber']").fill("29AAACC1206H1ZY");
   await page.locator("input[name='endClientAddressLine1']").fill("123 Test St");
   await page.locator("input[name='endClientAddressLine2']").fill("Test Area");
   await page.locator("input[name='endClientCity']").fill("Dubai");
