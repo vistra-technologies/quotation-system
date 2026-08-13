@@ -185,11 +185,13 @@ test("Project CRUD: create project -> appears at Step 1 with correct projectNumb
     page.getByRole("button", { name: /configure/i }).click(),
   ]);
 
-  // Project name must be visible on the Project Details page (shown in the page heading).
+  // Project name must be visible on the Project Details page.
   await expect(page.getByText(projectName)).toBeVisible({ timeout: 10_000 });
 
-  // Project number must be visible in the page heading (format: "#N — Project Name").
-  await expect(page.getByRole("heading", { level: 2 })).toContainText(/#\d+/);
+  // Project number must be assigned and visible on the detail card (format: "#N").
+  // Stage 14: project number is shown as a text field in the Project Information card,
+  // not as an h2 heading — the h2 assertion is stale.
+  await expect(page.getByText(/#\d+/).first()).toBeVisible({ timeout: 10_000 });
 });
 
 test("Project list: any authenticated user can access /projects (no special RBAC required)", async ({

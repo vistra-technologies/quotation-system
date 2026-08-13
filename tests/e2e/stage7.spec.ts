@@ -645,9 +645,9 @@ test("Direct Project create (no Inquiry) still works correctly after Stage 7", a
 
   // Project name and project number must appear on the Project Details page (Step 1).
   await expect(page.getByText(projectName).first()).toBeVisible({ timeout: 15_000 });
-  // Stage 9 wizard restructure: h1 is "Project Details" (the page title); the project
-  // number #N appears in the h2 inside the metadata card.
-  await expect(page.getByRole("heading", { level: 2 })).toContainText(/#\d+/);
+  // Stage 14: project number (#N) is displayed as a text field in the Project
+  // Information card, not as an h2 heading. Assert the text is visible.
+  await expect(page.getByText(/#\d+/).first()).toBeVisible({ timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
