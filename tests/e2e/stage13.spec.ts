@@ -46,7 +46,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, fillCreateFormRequiredFields } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -321,14 +321,10 @@ test("projectLocation: value set at create time appears on the detail page", asy
   await page.goto("/acme-glass/inquiries/new");
   await page.waitForURL(/\/acme-glass\/inquiries\/new/, { timeout: 15_000 });
 
+  // Stage 14: destinationCountry removed; currency is now a <select>; locationValue
+  // is passed directly to fillCreateFormRequiredFields as the projectLocation value.
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("India");
-  await page.locator("input[name='currency']").fill("INR");
-
-  const locationInput = page.locator(
-    "input[name='projectLocation'], textarea[name='projectLocation']",
-  );
-  await locationInput.fill(locationValue);
+  await fillCreateFormRequiredFields(page, "INR", locationValue);
 
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
@@ -356,11 +352,11 @@ test("Inquiry edit: Edit link is visible on a NEW inquiry detail page", async ({
   await signIn(page, "admin");
   const inquiryName = `E2E Stage13 InqEdit-Link ${Date.now()}`;
 
-  // Create a new inquiry
+  // Create a new inquiry.
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   await page.goto("/acme-glass/inquiries/new");
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
@@ -386,11 +382,11 @@ test("Inquiry edit: editing a NEW inquiry persists all editable fields", async (
   const updatedName = `E2E Stage13 InqEdit Updated ${Date.now()}`;
   const updatedLocation = "Dubai Marina";
 
-  // Create
+  // Create.
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   await page.goto("/acme-glass/inquiries/new");
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
@@ -448,11 +444,11 @@ test("Inquiry edit: Edit link NOT visible on a DISMISSED inquiry", async ({
   await signIn(page, "admin");
   const inquiryName = `E2E Stage13 InqDismiss ${Date.now()}`;
 
-  // Create
+  // Create.
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   await page.goto("/acme-glass/inquiries/new");
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
@@ -485,11 +481,11 @@ test("Inquiry edit: direct API PATCH on a DISMISSED inquiry returns 409", async 
   await signIn(page, "admin");
   const inquiryName = `E2E Stage13 Inq409 ${Date.now()}`;
 
-  // Create an inquiry
+  // Create an inquiry.
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   await page.goto("/acme-glass/inquiries/new");
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
@@ -529,11 +525,11 @@ test("Inquiry edit: PATCH cannot change externalCompanyId (silently ignored)", a
   await signIn(page, "admin");
   const inquiryName = `E2E Stage13 InqLock ${Date.now()}`;
 
-  // Create an inquiry (no company — externalCompanyId is null)
+  // Create an inquiry (no company — externalCompanyId is null).
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   await page.goto("/acme-glass/inquiries/new");
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
@@ -581,12 +577,12 @@ test("Project edit: Edit link is visible on a DRAFT project detail page", async 
   await signIn(page, "admin");
   const projectName = `E2E Stage13 ProjEdit-Link ${Date.now()}`;
 
-  // Create a project (DRAFT is the initial status)
+  // Create a project (DRAFT is the initial status).
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   await page.goto("/acme-glass/projects/new");
   await page.waitForURL(/\/acme-glass\/projects\/new/, { timeout: 15_000 });
   await page.locator("input[name='name']").fill(projectName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}/, {
       timeout: 20_000,
@@ -612,12 +608,12 @@ test("Project edit: editing a DRAFT project persists changes", async ({
   const updatedName = `E2E Stage13 ProjEdit Updated ${Date.now()}`;
   const updatedLocation = "Abu Dhabi Tower";
 
-  // Create
+  // Create.
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   await page.goto("/acme-glass/projects/new");
   await page.waitForURL(/\/acme-glass\/projects\/new/, { timeout: 15_000 });
   await page.locator("input[name='name']").fill(projectName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}/, {
       timeout: 20_000,
@@ -682,12 +678,12 @@ test("Project edit: direct API PATCH on a non-DRAFT project returns 409", async 
   await signIn(page, "admin");
   const projectName = `E2E Stage13 Proj409 ${Date.now()}`;
 
-  // Create a DRAFT project
+  // Create a DRAFT project.
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   await page.goto("/acme-glass/projects/new");
   await page.waitForURL(/\/acme-glass\/projects\/new/, { timeout: 15_000 });
   await page.locator("input[name='name']").fill(projectName);
-  await page.locator("input[name='destinationCountry']").fill("India");
-  await page.locator("input[name='currency']").fill("INR");
+  await fillCreateFormRequiredFields(page, "INR");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}/, {
       timeout: 20_000,
@@ -733,12 +729,12 @@ test("Project edit: externalCompanyId cannot be changed via PATCH (silently igno
   await signIn(page, "admin");
   const projectName = `E2E Stage13 ProjLock ${Date.now()}`;
 
-  // Create a DRAFT project (no company)
+  // Create a DRAFT project (no company).
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   await page.goto("/acme-glass/projects/new");
   await page.waitForURL(/\/acme-glass\/projects\/new/, { timeout: 15_000 });
   await page.locator("input[name='name']").fill(projectName);
-  await page.locator("input[name='destinationCountry']").fill("India");
-  await page.locator("input[name='currency']").fill("INR");
+  await fillCreateFormRequiredFields(page, "INR");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}/, {
       timeout: 20_000,
@@ -864,16 +860,16 @@ test("API tenancy: cross-org PATCH on inquiries returns 403", async ({
 // H. Regression: existing flows still work after Stage 13 changes
 // ---------------------------------------------------------------------------
 
-test("Regression: create inquiry (no projectLocation) still works", async ({
+test("Regression: create inquiry still works after Stage 13 changes", async ({
   page,
 }) => {
   await signIn(page, "admin");
   const inquiryName = `E2E Stage13 Regression-Inq ${Date.now()}`;
+  // Stage 14: destinationCountry removed; currency is now a <select>;
+  // projectLocation is now required (was optional in Stage 13).
   await page.goto("/acme-glass/inquiries/new");
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
-  // Do NOT fill projectLocation (it's optional)
+  await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),

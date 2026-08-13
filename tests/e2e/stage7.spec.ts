@@ -25,7 +25,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, fillCreateFormRequiredFields } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
@@ -107,9 +107,10 @@ test("Inquiry create round-trip: create → appears in list with inquiryNumber a
   await page.goto("/acme-glass/inquiries/new");
   await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
 
+  // Stage 14: destinationCountry removed from form (derived server-side);
+  // currency changed to <select>; 7 end-client fields are now required.
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
 
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
@@ -148,17 +149,20 @@ test("Inquiry list: each row links to the detail page", async ({ page }) => {
   // Empty list is acceptable if no inquiries exist yet
 });
 
-test("Inquiry detail page shows correct fields (name, country, currency, status)", async ({
+test("Inquiry detail page shows correct fields (name, currency, status)", async ({
   page,
 }) => {
+  // Stage 14: destinationCountry is now derived server-side from the linked company's
+  // country — it is no longer a form input, and KSA/SAR are not valid form values.
+  // The test verifies name, currency (AED), and status still appear on the detail page.
   const inquiryName = `E2E Detail ${Date.now()}`;
+  const currency = "AED";
 
   await signIn(page, "admin");
   await page.goto("/acme-glass/inquiries/new");
 
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("KSA");
-  await page.locator("input[name='currency']").fill("SAR");
+  await fillCreateFormRequiredFields(page, currency);
 
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
@@ -177,9 +181,8 @@ test("Inquiry detail page shows correct fields (name, country, currency, status)
   // Stage 12 Batch 7c: name appears in h1 ("#N — name") AND in the detail card.
   // Use exact: true to match the detail card paragraph (not the h1 substring).
   await expect(page.getByText(inquiryName, { exact: true }).first()).toBeVisible({ timeout: 10_000 });
-  // Values appear both as pills and as detail-card text; .first() bypasses strict mode.
-  await expect(page.getByText("KSA").first()).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByText("SAR").first()).toBeVisible({ timeout: 10_000 });
+  // Currency appears in the detail card; .first() bypasses strict mode.
+  await expect(page.getByText(currency).first()).toBeVisible({ timeout: 10_000 });
   // Status must show "New" (translated)
   await expect(page.getByText(/new/i).first()).toBeVisible({ timeout: 10_000 });
 });
@@ -197,11 +200,11 @@ test("Two consecutive inquiries get sequential inquiryNumbers (#N and #N+1)", as
 
   await signIn(page, "admin");
 
-  // Create first inquiry
+  // Create first inquiry.
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   await page.goto("/acme-glass/inquiries/new");
   await page.locator("input[name='name']").fill(name1);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
@@ -218,11 +221,10 @@ test("Two consecutive inquiries get sequential inquiryNumbers (#N and #N+1)", as
   const firstNum = parseInt((firstHeading ?? "").match(/#(\d+)/)?.[1] ?? "0", 10);
   expect(firstNum).toBeGreaterThan(0);
 
-  // Create second inquiry
+  // Create second inquiry.
   await page.goto("/acme-glass/inquiries/new");
   await page.locator("input[name='name']").fill(name2);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
@@ -248,12 +250,12 @@ test("Two consecutive inquiries get sequential inquiryNumbers (#N and #N+1)", as
 test("Dismiss action: inquiry status becomes Dismissed", async ({ page }) => {
   const inquiryName = `E2E Dismiss ${Date.now()}`;
 
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   await signIn(page, "admin");
   await page.goto("/acme-glass/inquiries/new");
 
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
 
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
@@ -295,16 +297,17 @@ test("Dismiss action: inquiry status becomes Dismissed", async ({ page }) => {
 test("Convert inquiry to Project: creates project with same fields, inquiry shows Converted", async ({
   page,
 }) => {
+  // Stage 14: destinationCountry removed from form (derived from company, not editable);
+  // SAR/KSA are not valid form values — currency is a <select> with INR/AED/USD only.
+  // The test verifies name + currency propagate from inquiry to project via convertInquiryToProject.
   const inquiryName = `E2E Convert ${Date.now()}`;
-  const country = "KSA";
-  const currency = "SAR";
+  const currency = "AED";
 
   await signIn(page, "admin");
   await page.goto("/acme-glass/inquiries/new");
 
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill(country);
-  await page.locator("input[name='currency']").fill(currency);
+  await fillCreateFormRequiredFields(page, currency);
 
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
@@ -335,9 +338,8 @@ test("Convert inquiry to Project: creates project with same fields, inquiry show
     timeout: 20_000,
   });
 
-  // Project detail page must show the inquiry's fields
+  // Project detail page must show the inquiry's fields (name + currency propagated).
   await expect(page.getByText(inquiryName).first()).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText(country).first()).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(currency).first()).toBeVisible({ timeout: 10_000 });
 
   // Navigate back to the inquiry to confirm it shows Converted
@@ -370,11 +372,11 @@ test("Inquiry tenancy: acme-glass inquiry not accessible via nordic-walls URL sp
   // Create an inquiry as acme-glass admin
   await signIn(page, "admin", "Seed1234!", "acme-glass");
 
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   await page.goto("/acme-glass/inquiries/new");
   const inquiryName = `E2E Tenancy ${Date.now()}`;
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
 
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
@@ -630,9 +632,9 @@ test("Direct Project create (no Inquiry) still works correctly after Stage 7", a
   await page.goto("/acme-glass/projects/new");
   await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
 
+  // Stage 14: destinationCountry removed from form; currency is now a <select>.
   await page.locator("input[name='name']").fill(projectName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
 
   // Stage 9: createProject now redirects to the new project's Step 1 (Project Details),
   // not the project list. Wait for the UUID-shaped project detail URL.
@@ -673,9 +675,9 @@ test("Start Project button renders on inquiry detail page (clientMessages wiring
 
   await signIn(page, "admin");
   await page.goto("/acme-glass/inquiries/new");
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
@@ -716,10 +718,10 @@ test("Project create redirect uses replace: browser history grows by 1, not 2", 
   // Navigate to create form — this push-navigates, adding one entry.
   await page.goto("/acme-glass/projects/new");
 
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   const projectName = `E2E History ${Date.now()}`;
   await page.locator("input[name='name']").fill(projectName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
 
   // Stage 9: redirect goes to /{orgSlug}/projects/{uuid} (not the list).
   // RedirectType.replace is used, so /new is replaced by /projects/{uuid} in history.
@@ -743,10 +745,10 @@ test("Inquiry create redirect uses replace: browser history grows by 1, not 2", 
 
   await page.goto("/acme-glass/inquiries/new");
 
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   const inquiryName = `E2E History Inq ${Date.now()}`;
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
 
   await Promise.all([
     page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
@@ -837,10 +839,11 @@ test("Project trust boundary: forged externalCompanyId in form body is ignored f
   await page.goto("/acme-glass/projects/new");
   await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
 
+  // Stage 14: destinationCountry removed; currency is now a <select>.
+  // The distributor's locked company has no seeded country → isIndia=false → GST optional.
   const projectName = `E2E Trust Proj ${Date.now()}`;
   await page.locator("input[name='name']").fill(projectName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
 
   // Tamper: replace the hidden externalCompanyId with a fake UUID before submitting.
   // The DAL must ignore this and use session.externalCompanyId instead.
@@ -872,10 +875,10 @@ test("Inquiry trust boundary: forged externalCompanyId in form body is ignored f
   await page.goto("/acme-glass/inquiries/new");
   await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
 
+  // Stage 14: destinationCountry removed; currency is now a <select>.
   const inquiryName = `E2E Trust Inq ${Date.now()}`;
   await page.locator("input[name='name']").fill(inquiryName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
 
   // Tamper: replace the hidden externalCompanyId with a fake UUID.
   await page.evaluate(() => {
