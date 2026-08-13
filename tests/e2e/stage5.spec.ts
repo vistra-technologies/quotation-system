@@ -182,7 +182,7 @@ test("Project CRUD: create project -> appears at Step 1 with correct projectNumb
   // page, not the projects list. Wait for the UUID-shaped project detail URL.
   await Promise.all([
     page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, { timeout: 15_000 }),
-    page.getByRole("button", { name: /create project/i }).click(),
+    page.getByRole("button", { name: /configure/i }).click(),
   ]);
 
   // Project name must be visible on the Project Details page (shown in the page heading).
