@@ -321,9 +321,9 @@ test("admin users: Actions link + back-link navigate with clean subdomain URLs",
     timeout: 15_000,
   });
 
-  // "Actions" is the link text for user row detail links (t("colActions")).
-  // The seeded "admin" user is always present; use the first Actions link.
-  const actionsLink = page.getByRole("link", { name: "Actions" }).first();
+  // Stage 14 Batch D: "Actions" text link replaced by icon-only Edit link (aria-label="Edit").
+  // The seeded "admin" user is always present; use the first Edit link.
+  const actionsLink = page.getByRole("link", { name: "Edit" }).first();
   await expect(actionsLink).toBeVisible({ timeout: 10_000 });
   const href = await actionsLink.getAttribute("href");
   expect(

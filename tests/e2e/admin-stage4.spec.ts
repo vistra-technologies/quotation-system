@@ -174,7 +174,11 @@ test("create user: valid user appears in the users list", async ({ page }) => {
   await page.getByRole("button", { name: "Create User" }).click();
   // Redirects to users list
   await expect(page).toHaveURL(/\/acme-glass\/admin\/users$/, { timeout: 15_000 });
-  await expect(page.getByRole("cell", { name: username })).toBeVisible();
+  // Stage 14 Batch D: the actions cell now contains "Edit" + "Delete user <username>"
+  // which gives that cell an accessible name that also includes the username — causing
+  // a strict-mode violation without exact: true. The username cell itself has an exact
+  // accessible name equal to the username string.
+  await expect(page.getByRole("cell", { name: username, exact: true }).first()).toBeVisible();
 });
 
 test("users list: all action links belong to the session org (tenancy check)", async ({
@@ -182,7 +186,8 @@ test("users list: all action links belong to the session org (tenancy check)", a
 }) => {
   await signIn(page, "admin", undefined, "acme-glass");
   await page.goto("/acme-glass/admin/users");
-  const actionLinks = page.getByRole("link", { name: "Actions" });
+  // Stage 14 Batch D: "Actions" text link replaced by icon-only Edit link (aria-label="Edit").
+  const actionLinks = page.getByRole("link", { name: "Edit" });
   const count = await actionLinks.count();
   expect(count).toBeGreaterThanOrEqual(1);
   for (let i = 0; i < count; i++) {
@@ -196,11 +201,12 @@ test("self-deactivation: Deactivate button disabled on own account with explanat
 }) => {
   await signIn(page, "admin");
   await page.goto("/acme-glass/admin/users");
-  // Find the row where the username cell is exactly "admin", click its Actions link
+  // Find the row where the username cell is exactly "admin", click its Edit icon link.
+  // Stage 14 Batch D: "Actions" text link replaced by icon-only Edit link (aria-label="Edit").
   const adminRow = page
     .locator("tr")
     .filter({ has: page.getByRole("cell", { name: "admin", exact: true }) });
-  await adminRow.getByRole("link", { name: "Actions" }).click();
+  await adminRow.getByRole("link", { name: "Edit" }).click();
   await page.waitForURL(/\/acme-glass\/admin\/users\/.+/);
   await expect(page.getByRole("button", { name: "Deactivate" })).toBeDisabled();
   await expect(

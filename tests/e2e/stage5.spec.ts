@@ -15,7 +15,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, fillCreateFormRequiredFields } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
@@ -172,10 +172,11 @@ test("Project CRUD: create project -> appears at Step 1 with correct projectNumb
   await page.goto("/acme-glass/projects/new");
   await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 10_000 });
 
-  // Fill required fields
+  // Fill required fields.
+  // Stage 14: destinationCountry removed from form (derived server-side);
+  // currency changed to <select>; 7 end-client fields are now required.
   await page.locator("input[name='name']").fill(projectName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
 
   // Stage 9: createProject now redirects to the new project's Step 1 (Project Details)
   // page, not the projects list. Wait for the UUID-shaped project detail URL.

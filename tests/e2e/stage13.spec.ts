@@ -208,19 +208,26 @@ test("ExternalCompany: delete removes the company from the list", async ({
 
   await expect(page.getByText(companyName)).toBeVisible({ timeout: 10_000 });
 
-  // Click the delete button in this company's row
+  // Click the delete button in this company's row.
+  // Stage 14 Batch D: DeleteCompanyButton now opens a ConfirmDialog (no window.confirm).
   const row = page.locator("tr").filter({ hasText: companyName });
-  // Accept the native window.confirm() dialog that DeleteCompanyButton triggers.
-  // Playwright auto-dismisses unhandled native dialogs (returning false), so
-  // the delete would never fire without this handler.
-  page.once("dialog", async (dialog) => {
-    await dialog.accept();
-  });
   const deleteButton = row.getByRole("button", { name: /delete/i });
   await deleteButton.click();
 
-  // Company must disappear from the list
-  await expect(page.getByText(companyName)).not.toBeVisible({ timeout: 15_000 });
+  // ConfirmDialog must open (role="dialog" on the inner card div).
+  const confirmDialog = page.getByRole("dialog");
+  await expect(confirmDialog).toBeVisible({ timeout: 5_000 });
+
+  // Click the "Delete" confirm button inside the dialog.
+  await confirmDialog.getByRole("button", { name: "Delete" }).click();
+
+  // Wait for the dialog to close (server action revalidates the list).
+  await expect(confirmDialog).not.toBeVisible({ timeout: 5_000 });
+
+  // Company must disappear from the list. Use .first() to avoid strict-mode
+  // violations in case the company name briefly appears in multiple elements
+  // (e.g., dialog still in the process of unmounting) — defensive guard only.
+  await expect(page.getByText(companyName).first()).not.toBeVisible({ timeout: 15_000 });
 });
 
 // ---------------------------------------------------------------------------

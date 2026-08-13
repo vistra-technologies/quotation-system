@@ -17,7 +17,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, fillCreateFormRequiredFields } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
@@ -147,7 +147,10 @@ test("Admin nav shows External Companies link for MANAGE_USERS role", async ({ p
   await page.goto("/acme-glass/admin/users");
   // The nav must have the External Companies link.
   // Stage 11: Admin links are in a CSS hover flyout. Hover Admin button to reveal.
-  const adminTrigger6 = page.getByRole("button", { name: "Admin" });
+  // .first() guards against the SSR/CSR hydration window where both a server-
+  // rendered and a client-rendered sidebar briefly coexist in the DOM (checklist
+  // item 95 — MINOR-1 from regression report).
+  const adminTrigger6 = page.getByRole("button", { name: "Admin" }).first();
   await expect(adminTrigger6).toBeVisible({ timeout: 15_000 });
   await adminTrigger6.hover();
   // Use .first() because the admin layout's top nav AND the org-level side panel
@@ -381,11 +384,12 @@ test("Selection round-trip: create project → add selection → selection appea
 
   await signIn(page, "admin");
 
-  // Create a project
+  // Create a project.
+  // Stage 14: destinationCountry removed from form (derived server-side);
+  // currency changed to <select>; 7 end-client fields are now required.
   await page.goto("/acme-glass/projects/new");
   await page.locator("input[name='name']").fill(projectName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
 
   // Stage 9: createProject now redirects to the new project's Step 1 (Project Details),
   // not the project list. Wait for the UUID-shaped project detail URL.
@@ -465,11 +469,11 @@ test("Selection tenancy: direct access to a different org's project returns 404 
   // Get a real project ID from acme-glass
   await signIn(page, "admin", "Seed1234!", "acme-glass");
 
-  // Create a project to get a real ID
+  // Create a project to get a real ID.
+  // Stage 14: destinationCountry removed from form; currency is now a <select>.
   await page.goto("/acme-glass/projects/new");
   await page.locator("input[name='name']").fill("E2E Tenancy Probe Project");
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
 
   // Stage 9: createProject redirects to the new project's detail page, not the list.
   // Extract the projectId from the resulting URL directly.
