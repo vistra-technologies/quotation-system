@@ -32,6 +32,13 @@ test.describe.configure({ mode: "serial" });
 // on a Neon cloud DB, which can run 5-15 s on the local network path.
 test.setTimeout(90_000);
 
+// Rate-limit pacing: better-auth limits sign-in to 3 per 10 seconds per IP.
+// All 5 tests sign in; 7-second beforeEach spaces calls 11+ seconds apart so
+// the rate-limit window always resets between tests.
+test.beforeEach(async () => {
+  await new Promise((resolve) => setTimeout(resolve, 7_000));
+});
+
 // ---------------------------------------------------------------------------
 // Helper: sign in as a specific user on acme-glass
 // ---------------------------------------------------------------------------

@@ -188,11 +188,19 @@ test("users list: all action links belong to the session org (tenancy check)", a
   await page.goto("/acme-glass/admin/users");
   // Stage 14 Batch D: "Actions" text link replaced by icon-only Edit link (aria-label="Edit").
   const actionLinks = page.getByRole("link", { name: "Edit" });
+  // .count() does not auto-wait — wait for at least one link to appear first so
+  // we don't sample an empty table while the page is still streaming.
+  await expect(actionLinks.first()).toBeVisible({ timeout: 15_000 });
   const count = await actionLinks.count();
   expect(count).toBeGreaterThanOrEqual(1);
   for (let i = 0; i < count; i++) {
     const href = await actionLinks.nth(i).getAttribute("href");
-    expect(href).toMatch(/^\/acme-glass\/admin\/users\//);
+    // Tenancy invariant: every Edit link must point to an admin/users detail URL.
+    // In path mode (Vercel preview): /acme-glass/admin/users/{uuid}
+    // In subdomain mode (easeetool.com): /admin/users/{uuid}
+    // Either way it must NOT contain another org's slug.
+    expect(href).toMatch(/\/admin\/users\/[0-9a-f-]{36}/);
+    expect(href).not.toMatch(/\/(nordic-walls|vistra)\//);
   }
 });
 
