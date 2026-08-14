@@ -59,7 +59,12 @@
     "deactivateAction": "Deactivate",
     "cannotDeactivateSelf": "You cannot deactivate your own account.",
     "cannotDeactivateSelfTooltip": "You cannot deactivate your own account",
-    "backToList": "← Back to Users"
+    "backToList": "← Back to Users",
+    "editProfileLabel": "Edit Profile",
+    "editProfileSubmit": "Save Changes",
+    "editProfileSuccess": "Profile updated successfully.",
+    "fieldExternalCompanyRequired": "External Company (required for this role)",
+    "dangerZoneLabel": "Danger Zone"
   },
   "roles": {
     "pageTitle": "Roles",

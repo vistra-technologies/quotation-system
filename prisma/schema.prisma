@@ -177,11 +177,15 @@ model Permission {
 }
 
 // Per-org roles. The same role name (e.g. "Admin") can exist in every org.
+// Stage 15 Batch G (U3): isInternalRole distinguishes internal staff roles
+// (Admin, Company Member — may leave External Company blank) from external roles
+// (Distributor, Architectural Firm — must be linked to an External Company).
 model Role {
   id             String           @id @default(uuid())
   organizationId String
   name           String
   description    String?
+  isInternalRole Boolean          @default(false)
   organization   Organization     @relation(fields: [organizationId], references: [id])
   permissions    RolePermission[]
   users          User[]
