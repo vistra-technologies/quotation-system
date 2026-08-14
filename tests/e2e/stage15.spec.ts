@@ -4,8 +4,9 @@
  * Covers:
  *  - L1 / PL1: inquiry and project list pagination boundary / count invariants.
  *    No DOM-structure, layout, copy, or styling assertions.
- *    The list page must show at most 10 rows per page (pageSize=10, was 20).
- *    Self-skips when DB has ≤ 10 records so the suite doesn't false-green.
+ *    The list page must show at most 10 rows per page (pageSize=10, was 20) AND
+ *    the pagination control must be visible (which is the exact symptom the human reported).
+ *    Genuinely skips (via test.skip) when DB has ≤ 10 records — not a silent pass.
  *  - C10: inquiry create form submits successfully with Address Line 2 left empty.
  *    This is a navigation invariant (redirect away from /new), not a DOM assertion.
  *
@@ -40,25 +41,25 @@ test("L1 — inquiry list: first page shows ≤ 10 rows when total > 10", async 
   const body = await apiResp.json();
   const total: number = body.total ?? body.inquiries?.length ?? 0;
 
-  if (total <= 10) {
-    test
-      .info()
-      .annotations.push({
-        type: "skip",
-        description: `Only ${total} inquiries — not enough to test pagination boundary (need > 10).`,
-      });
-    return;
-  }
+  // Real skip — test.skip() inside the test body causes Playwright to report SKIPPED,
+  // not PASSED.  Annotations-only + return silently passes with nothing asserted.
+  test.skip(total <= 10, `Only ${total} inquiries — need > 10 to test pagination boundary.`);
 
   // Navigate to page 1 of the inquiry list.
   await page.goto("/acme-glass/inquiries?page=1&scope=all");
   await page.waitForURL(/\/acme-glass\/inquiries/, { timeout: 20_000 });
 
-  // Count data rows.  Must be ≤ 10 (the new pageSize).
+  // Count data rows — must be ≤ 10 (the new pageSize).
   const rows = page.locator("tbody tr");
   const rowCount = await rows.count();
   expect(rowCount).toBeGreaterThan(0);
   expect(rowCount).toBeLessThanOrEqual(10);
+
+  // Pagination control must be present — this is the exact symptom the human reported
+  // (11 inquiries on one page with no page buttons).  Assert the "Next page" button is
+  // visible: it appears whenever totalPages > currentPage, which is guaranteed here
+  // because total > 10 and we are on page 1.  Presence only — no layout/styling assertion.
+  await expect(page.locator('[aria-label="Next page"]')).toBeVisible({ timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -78,23 +79,20 @@ test("PL1 — project list: first page shows ≤ 10 rows when total > 10", async
   const body = await apiResp.json();
   const total: number = body.total ?? body.projects?.length ?? 0;
 
-  if (total <= 10) {
-    test
-      .info()
-      .annotations.push({
-        type: "skip",
-        description: `Only ${total} projects — not enough to test pagination boundary (need > 10).`,
-      });
-    return;
-  }
+  // Real skip — same pattern as L1.
+  test.skip(total <= 10, `Only ${total} projects — need > 10 to test pagination boundary.`);
 
   await page.goto("/acme-glass/projects?page=1&scope=all");
   await page.waitForURL(/\/acme-glass\/projects/, { timeout: 20_000 });
 
+  // Count data rows — must be ≤ 10 (the new pageSize).
   const rows = page.locator("tbody tr");
   const rowCount = await rows.count();
   expect(rowCount).toBeGreaterThan(0);
   expect(rowCount).toBeLessThanOrEqual(10);
+
+  // Pagination control must be present — same rationale as L1.
+  await expect(page.locator('[aria-label="Next page"]')).toBeVisible({ timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------
