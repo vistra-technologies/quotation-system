@@ -69,14 +69,14 @@ export default async function DashboardPage({
     stats = (await statsRes.json()) as StatsResponse;
   }
 
-  // First word of name for greeting (e.g. "Alex Smith" → "Alex")
-  const firstName = (me.name ?? me.username)?.split(" ")[0] ?? me.username;
+  // Full name for greeting (D1 — Stage 15: show full name, not just the first word)
+  const displayName = me.name ?? me.username;
 
   return (
     <div className="px-8 py-7">
       {/* Welcome heading */}
       <h1 className="mb-1 text-[27px] font-extrabold leading-tight text-text-heading">
-        Welcome, {firstName}
+        Welcome, {displayName}
       </h1>
       <p className="mb-6 text-sm text-text-muted">
         Here&apos;s what&apos;s happening across your workspace today.
