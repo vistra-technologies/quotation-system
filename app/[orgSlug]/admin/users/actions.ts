@@ -259,6 +259,74 @@ export async function setUserPassword(formData: FormData): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// updateUserProfile
+// ---------------------------------------------------------------------------
+
+export type UpdateUserProfileState = { error: string | null; success: boolean };
+
+/**
+ * Update editable profile fields for a user.
+ *
+ * Thin marshaler (Stage 15 Batch G — U4): parses FormData, delegates to
+ * PUT /api/v1/orgs/[orgSlug]/users/[userId]/profile via internalFetch.
+ * All tenancy enforcement and business logic live in the route handler.
+ *
+ * Uses the useActionState signature so the client form can surface errors
+ * without crashing to an error boundary.
+ */
+export async function updateUserProfile(
+  prevState: UpdateUserProfileState,
+  formData: FormData,
+): Promise<UpdateUserProfileState> {
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
+  const userId = (formData.get("userId") as string | null) ?? "";
+
+  const firstName = (formData.get("firstName") as string | null)?.trim();
+  const lastName = (formData.get("lastName") as string | null)?.trim();
+  const mobile =
+    (formData.get("mobile") as string | null)?.trim() || null;
+  const profileEmail =
+    (formData.get("profileEmail") as string | null)?.trim() || null;
+  const externalCompanyId =
+    (formData.get("externalCompanyId") as string | null) || null;
+
+  if (!firstName) return { error: "First name is required", success: false };
+  if (!lastName) return { error: "Last name is required", success: false };
+
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/users/${userId}/profile`,
+    {
+      method: "PUT",
+      body: JSON.stringify({
+        firstName,
+        lastName,
+        mobile,
+        profileEmail,
+        externalCompanyId,
+      }),
+    },
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    return { error: errorMessage, success: false };
+  }
+
+  revalidatePath(`/${orgSlug}/admin/users/${userId}`);
+  return { error: null, success: true };
+}
+
+// ---------------------------------------------------------------------------
 // deleteUser
 // ---------------------------------------------------------------------------
 

@@ -163,7 +163,8 @@ export async function POST(
       if (
         err.message.includes("not found or access denied") ||
         err.message.includes("Role not found") ||
-        err.message.includes("External company not found")
+        err.message.includes("External company not found") ||
+        err.message.includes("External company is required")
       ) {
         return apiBadRequest(err.message);
       }
