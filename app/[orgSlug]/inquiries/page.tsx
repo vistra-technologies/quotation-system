@@ -232,6 +232,9 @@ export default async function InquiriesPage({
                     <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
                       Submission Date
                     </th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Created By
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -272,6 +275,13 @@ export default async function InquiriesPage({
                     {/* Submission Date — no submittedAt field in current schema */}
                     <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
                       —
+                    </td>
+                    {/* Created By — L2: username shown, full name on hover via title */}
+                    <td
+                      className="px-3 py-[11px] text-[13px] text-text-muted"
+                      title={inquiry.createdBy.name}
+                    >
+                      {inquiry.createdBy.username}
                     </td>
                   </tr>
                 ))}

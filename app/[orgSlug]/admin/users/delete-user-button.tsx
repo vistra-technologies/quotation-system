@@ -73,7 +73,7 @@ export function DeleteUserButton({
         disabled={isPending}
         aria-label={`Delete user ${username}`}
         title={`Delete user ${username}`}
-        className="flex items-center justify-center text-red-600 hover:text-red-700 disabled:opacity-50"
+        className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-red-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
       >
         {/* Trash icon 16×16 */}
         <svg

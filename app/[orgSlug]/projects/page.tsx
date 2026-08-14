@@ -238,6 +238,9 @@ export default async function ProjectsPage({
                     <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
                       Submission Date
                     </th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Created By
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -282,6 +285,13 @@ export default async function ProjectsPage({
                       {/* Submission Date — no submittedAt field in current schema (Stage 12 Batch 7d gap D2) */}
                       <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
                         —
+                      </td>
+                      {/* Created By — PL1/L2: username shown, full name on hover via title */}
+                      <td
+                        className="px-3 py-[11px] text-[13px] text-text-muted"
+                        title={project.createdBy.name}
+                      >
+                        {project.createdBy.username}
                       </td>
                     </tr>
                   ))}
