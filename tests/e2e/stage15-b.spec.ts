@@ -73,20 +73,24 @@ test("D3: admin (internal) stats are >= distributor (external) stats for every K
   };
 
   // ── Step 3: assert tenancy invariant ──────────────────────────────────────
-  // The external user's counts must never exceed the org-wide counts.
-  // If the external-company filter is absent (pre-fix behaviour), both users
-  // receive identical org-wide totals — these assertions would still pass.
-  // The critical regression-catch is a FUTURE leak where distStats > adminStats,
-  // which would indicate a cross-org data leak (impossible by current design but
-  // defended here as a tripwire).
-  expect(distStats.projectsTotal).toBeLessThanOrEqual(adminStats.projectsTotal);
-  expect(distStats.projectsInProgress).toBeLessThanOrEqual(
+  // STRICT less-than (<), not less-than-or-equal.
+  //
+  // Why strict: if the externalCompanyId filter is removed from getDashboardStats(),
+  // both users receive the same org-wide count (e.g. both = 101).
+  // `101 <= 101` would pass, hiding the regression.  `101 < 101` fails — the spec
+  // is now a true guard for the D3 fix.
+  //
+  // Why not exact counts: three other batches run concurrently against the same
+  // dev Neon DB; a batch that creates a record linked to the distributor's company
+  // would shift the exact count and flake.  The gap is wide enough (9 vs 101/231
+  // at the time of writing) that strict < is safe and won't flake from incidental
+  // additions.
+  expect(distStats.projectsTotal).toBeLessThan(adminStats.projectsTotal);
+  expect(distStats.projectsInProgress).toBeLessThan(
     adminStats.projectsInProgress,
   );
-  expect(distStats.inquiriesTotal).toBeLessThanOrEqual(
-    adminStats.inquiriesTotal,
-  );
-  expect(distStats.inquiriesNew).toBeLessThanOrEqual(adminStats.inquiriesNew);
+  expect(distStats.inquiriesTotal).toBeLessThan(adminStats.inquiriesTotal);
+  expect(distStats.inquiriesNew).toBeLessThan(adminStats.inquiriesNew);
 
   // ordersTotal is always 0 (no Order model exists yet)
   expect(distStats.ordersTotal).toBe(0);
