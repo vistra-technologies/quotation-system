@@ -35,6 +35,9 @@ test("D3: admin (internal) stats are >= distributor (external) stats for every K
   page,
 }) => {
   // ── Step 1: sign in as admin and capture org-wide stats ──────────────────
+  // Clear any residual session cookies from previous test runs so the login
+  // page renders instead of redirecting to the dashboard.
+  await page.context().clearCookies();
   await signIn(page, "admin", process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!", "acme-glass");
 
   // Hit the stats API as the admin session (cookie is already set by signIn).
@@ -51,6 +54,8 @@ test("D3: admin (internal) stats are >= distributor (external) stats for every K
   };
 
   // ── Step 2: sign in as distributor and capture company-scoped stats ───────
+  // Clear admin session before signing in as distributor.
+  await page.context().clearCookies();
   // Wait between sign-ins to respect the better-auth rate limit.
   await new Promise((resolve) => setTimeout(resolve, 7_000));
   await signIn(page, "distributor", process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!", "acme-glass");
