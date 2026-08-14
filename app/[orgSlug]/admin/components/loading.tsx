@@ -5,7 +5,8 @@
 export default function ComponentsLoading() {
   return (
     <div className="animate-pulse">
-      <div className="mb-6 h-12 rounded-lg border border-amber-200 bg-amber-50" />
+      {/* X7 — replaced amber skeleton with design-system skeleton colors */}
+      <div className="mb-6 h-12 rounded-lg border border-border bg-border/20" />
       <div className="flex items-center justify-between">
         <div className="h-8 w-56 rounded-sm bg-border" />
         <div className="h-9 w-36 rounded-sm bg-border" />

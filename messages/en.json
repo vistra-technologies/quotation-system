@@ -175,6 +175,7 @@
     "editPageTitle": "Edit Project",
     "editPageSubtitle": "Update the details for this project.",
     "backToList": "← Back to Projects",
+    "backToProjectDetail": "← Back to Project",
     "sectionProjectInfo": "Project Information",
     "sectionContractorDetails": "Contractor & Consultant Details",
     "sectionEndClientDetails": "End Client Details",

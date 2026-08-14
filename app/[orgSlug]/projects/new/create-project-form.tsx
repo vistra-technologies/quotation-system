@@ -427,17 +427,15 @@ export function CreateProjectForm({
                 />
               </div>
 
-              {/* Address Line 2 * */}
+              {/* Address Line 2 — optional (C10) */}
               <div className={fieldCls}>
                 <label htmlFor="endClientAddressLine2" className={labelCls}>
                   {t("fieldEndClientAddressLine2")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientAddressLine2"
                   name="endClientAddressLine2"
                   type="text"
-                  required
                   autoComplete="off"
                   placeholder="Area, landmark"
                   className={inputCls}
