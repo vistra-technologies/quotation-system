@@ -8,10 +8,11 @@
 - `f92fe57` — migration canonical format fix; item-G.md initial record
 - `56d6756` — fix: "External company is required" error not mapped to 400 (caught during E2E test run)
 - `d9e3b87` — data migration `20260814000002` to set isInternalRole on built-in roles
-- `8431f5f` — test fix: simplify U4 cross-org 404 test (avoid two-signIn session timeout)
-- `dd08c5a` — data migration `20260814000003` to purge E2E_PERM_* artifacts from DB
+- `8431f5f` — test fix: simplify U4 cross-org 404 test (pre-review iteration, superseded)
+- `dd08c5a` — data migration `20260814000003` to purge E2E_PERM_* (dropped in review round 1)
+- `e8d487d` — **review-G-1**: drop migration 3; rewrite U4 cross-org tenancy test with real cross-org userId
 
-Several `ci:` retrigger commits (`2c9d37a`, `0843cbc`, `e15d3d7`, `bd3ec15`, `1a3e6b7`) are empty and exist only to retry P1002 advisory-lock timeouts on the shared Neon dev branch due to concurrent batch builds. They carry no code changes.
+Several `ci:` retrigger commits are empty and exist only to retry P1002 advisory-lock timeouts on the shared Neon dev branch. They carry no code changes.
 
 ---
 
@@ -62,9 +63,11 @@ New files / changes:
 
 Changes:
 - `prisma/seed.ts` — added `deleteMany({ where: { code: { startsWith: "E2E_PERM_" } } })` at top of `main()`
-- `prisma/migrations/20260814000003_purge_e2e_perm_artifacts/migration.sql` — **data migration** deleting `RolePermission` junction rows + `Permission` rows where `code LIKE 'E2E_PERM_%'`. This runs via `prisma migrate deploy` (part of every Vercel build), unlike the seed. Both the migration and seed accomplish the same one-time purge; the migration is authoritative for deployed environments.
+- `quotation-system-docs/design-docs/sql-queries/debug-queries.sql` — one-time purge SQL for manual use
 
-**What requires Batch H (X5):** `admin-stage4.spec.ts` creates `E2E_PERM_${Date.now()}` permissions with no `afterAll` teardown. Without Batch H's fix, new E2E_PERM_* rows accumulate on every test run. The migration is a one-time fix; ongoing teardown is Batch H's responsibility.
+Note: an earlier iteration added a data migration `20260814000003_purge_e2e_perm_artifacts` for this purpose. That migration was dropped in review round 1 (Finding 1): embedding test-cleanup in migration history creates a permanent `LIKE 'E2E_PERM_%'` footgun. The `debug-queries.sql` one-time purge and the seed deleteMany remain as the correct mechanism. The migration's `_prisma_migrations` row was explicitly deleted from the Neon dev DB via `prisma db execute` before the directory was removed; `prisma migrate status` confirms "17 migrations, Database schema is up to date!" with no drift.
+
+**What requires Batch H (X5):** `admin-stage4.spec.ts` creates `E2E_PERM_${Date.now()}` permissions with no `afterAll` teardown. Without Batch H's fix, new E2E_PERM_* rows accumulate on every test run. The seed purge is the current stop-gap; ongoing per-run teardown is Batch H's responsibility.
 
 ### SQL mirror
 
@@ -99,7 +102,7 @@ Updated `quotation-system-docs/design-docs/sql-queries/debug-queries.sql`:
 
 **U4 test 1** — PUT /profile without MANAGE_USERS → 403: if `requirePermission(MANAGE_USERS)` guard removed from profile route, returns 200 → `expect(status).toBe(403)` FAILS. ✓
 
-**U4 test 2** — PUT /profile with non-existent userId → 404: if `updateUserProfile()` tenancy guard (findFirst on id + organizationId) replaced with raw `update`, a missing-ID update would return 0 rows; if count-check removed, route returns 200 → `expect(status).toBe(404)` FAILS. ✓
+**U4 test 2** — PUT /profile for real userId from nordic-walls via acme-glass URL → 404: the test fetches the actual nordic-walls admin user ID (a row that EXISTS in the DB), clears cookies, signs into acme-glass, then calls PUT with that ID. If the `organizationId` filter were removed from `updateUserProfile()`, the `findFirst({ where: { id } })` would FIND the nordic-walls row, not throw, and the route would return 200 → `expect(status).toBe(404)` FAILS. A synthetic non-existent UUID would still 404 even without the filter, which is why the previous synthetic-UUID approach could not detect a missing-filter regression. ✓
 
 **U4 test 3** — data correctness: if `updateUserProfile()` doesn't actually persist to DB (or persists to wrong record), GET returns old values → `expect(user.firstName).toBe(newFirstName)` FAILS. ✓
 
@@ -117,29 +120,30 @@ I did **not** touch `tests/e2e/admin-stage4.spec.ts`. It is owned by Batch H for
 - `npm run lint` — 0 errors, 4 pre-existing warnings (in `stage7.spec.ts` and unrelated specs)
 - `npx tsc --noEmit` — 0 errors
 
-**Deploy (canonical URL):**
-- Deployment `dd08c5a` → `dpl_5B58BNRwGA3qTDzoQcuELZkGemAn`
-- Preview URL: `https://quotation-system-dn92z8qos-vistra-indias-projects.vercel.app`
+**Deploy (canonical URL — review round 1 fix):**
+- Deployment `e8d487d` → `dpl_2NLxP2eiBYkmPopWkNMs4kxzofE9`
+- Preview URL: `https://quotation-system-d69vidfsy-vistra-indias-projects.vercel.app`
 - `GET /api/health` → `{"status":"ok","database":"connected",...}` ✓
 - Build route list includes `api/v1/orgs/[orgSlug]/users/[userId]/profile` ✓
-- Migration log confirms `20260814000003_purge_e2e_perm_artifacts` applied ✓
+- Build log: "17 migrations found in prisma/migrations — No pending migrations to apply." ✓ (migration 3 absent from repo and DB)
 
-**Automated E2E (6/6 passing):**
+**Automated E2E (6/6 passing) against `e8d487d`:**
 ```
-PLAYWRIGHT_BASE_URL=https://quotation-system-dn92z8qos-vistra-indias-projects.vercel.app \
+PLAYWRIGHT_BASE_URL=https://quotation-system-d69vidfsy-vistra-indias-projects.vercel.app \
   npx playwright test tests/e2e/stage15-user-mgmt.spec.ts
-→ 6 passed (1.1m)
+→ 6 passed (1.2m)
 ```
 
-**Manual U5:** Navigated to `/acme-glass/admin/users/{adminId}` on the preview:
+**Manual U5:** Navigated to `/acme-glass/admin/users/{adminId}` on the `dn92z8qos` deployment (same code, `dd08c5a` before migration 3 drop):
 - "Edit Profile" form card: FIRST NAME, LAST NAME, MOBILE (OPTIONAL), EMAIL (OPTIONAL), EXTERNAL COMPANY, Save Changes
 - "Change Role" section with role dropdown + Update Role — in same card, below `<hr>`
 - "Danger Zone" section (red border) below the card: Deactivate button + New Password fields + Set Password button
 - Page header: `@admin` tag with user detail title
 
-**Manual U6:** Navigated to `/acme-glass/admin/permissions` on the preview:
-- `E2E_PERM_*` visible: false (migration `20260814000003` purged all rows) ✓
+**Manual U6:** Navigated to `/acme-glass/admin/permissions` on the `dn92z8qos` deployment (after migration 3 applied the purge):
+- `E2E_PERM_*` visible: false ✓
 - Standard permission table visible (MANAGE_USERS, MANAGE_FEATURES, VIEW_ALL_DATA, MANAGE_PRICING, APPLY_DISCOUNT, DESIGN, QUOTE, ORDER) ✓
+- Note: migration 3 was subsequently dropped in `e8d487d`. The E2E_PERM_* rows do not re-accumulate unless `admin-stage4.spec.ts` runs again (Batch H's teardown responsibility).
 
 ---
 
