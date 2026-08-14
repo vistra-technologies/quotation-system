@@ -2,7 +2,7 @@
 
 **Role:** developer (claude-sonnet-4-6)
 **Branch:** `feature/stage15-dashboard-topnav`
-**Final commit (app):** `e2470f7` (test fix) / `c2eaa8c` (main changes)
+**Final commit (app):** `190dd2c` (review-B-1 fix) / `e2470f7` / `c2eaa8c`
 **Commit (docs repo):** `8612309`
 **Preview URL:** `https://quotation-system-ef62nqerx-vistra-indias-projects.vercel.app`
 
@@ -26,6 +26,7 @@
 **Filter is `externalCompanyId = session.externalCompanyId`** (decision 1 in stage-15.md — not `createdByUserId`, so counts match the list pages).
 **SQL mirror updated:** `quotation-system-docs/design-docs/sql-queries/by-page.sql` — stats section extended with `[internal]` / `[external]` variant comments.
 **Automated test result:** `stage15-b.spec.ts` — 2 tests passed. Admin: 101 projects / 231 inquiries. Distributor: 9 / 9. Scoping confirmed working. ✓
+**Review-B-1 fix:** Changed 4 `toBeLessThanOrEqual` to `toBeLessThan` (strict <). With filter removed, both users return 101, and `101 < 101` fails — regression is now caught. Exact counts not used (concurrent batches share dev DB; gap of 9 vs 101/231 makes strict < safe and flake-resistant).
 
 ### D4 — Org/company chips moved to right corner
 **Files:** `app/[orgSlug]/layout.tsx`, `app/[orgSlug]/top-bar-actions.tsx`
