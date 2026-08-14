@@ -2,7 +2,7 @@
 
 **Role:** developer (head of A→C→D→E→F serial chain)
 **Branch:** `feature/stage15-mechanical`
-**Final commit SHA:** `5425cbc`
+**Final commit SHA:** `82c6025`
 **Preview URL:** `https://quotation-system-c327r9njh-vistra-indias-projects.vercel.app`
 **Status:** DONE
 
@@ -95,6 +95,18 @@ No `prisma.<model>.<method>` call shape changes in this batch. Changing `pageSiz
 - **V1, V2, V4, V5** (Batch E): inquiry detail header layout, budget formatting — did NOT touch.
 - `lib/format-currency.ts` — did NOT create (Batch E creates it).
 - Any other files outside the Batch A file set.
+
+---
+
+## Review round 1 fixes (APPROVE-WITH-NITS → DONE)
+
+Two nits in `tests/e2e/stage15.spec.ts` fixed in commit `82c6025`:
+
+1. **Fake skip replaced with real `test.skip()`**: The original `test.info().annotations.push({type:"skip",...}) + return` pattern reports PASSED while asserting nothing. Replaced with `test.skip(total <= 10, message)` inside the test body — Playwright catches the thrown sentinel and marks the test as genuinely SKIPPED.
+
+2. **Pagination control presence asserted**: Added `await expect(page.locator('[aria-label="Next page"]')).toBeVisible({timeout:5_000})` after the row-count checks. This directly addresses the reported symptom (page buttons absent) via the aria attribute on `ListPagePagination`'s next-page button — a presence assertion, not a layout/styling assertion.
+
+Re-run result: `3 passed (41.9s)` against `https://quotation-system-c327r9njh-vistra-indias-projects.vercel.app`.
 
 ---
 
