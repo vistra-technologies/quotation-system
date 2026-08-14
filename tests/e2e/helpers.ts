@@ -15,6 +15,40 @@ import type { Page } from "@playwright/test";
  * mockup's <label for="userId">User ID</label>).  The heading guard was
  * replaced with an input visibility check (more robust post-rebuild).
  */
+/**
+ * Fill the Stage 14 required fields shared by both the inquiry create form
+ * and the project create form (identical field names on both).
+ *
+ * Stage 14 Batch B/C added 8 required end-client fields, made `currency` a
+ * `<select>`, made `projectLocation` required, and removed `destinationCountry`
+ * entirely.  All specs that submit either form must call this helper (or
+ * equivalent inline fills) after filling the `name` field.
+ *
+ * `submissionDate` has a `defaultValue={todayLocal}` pre-fill — no fill needed.
+ *
+ * @param currency  INR | AED | USD — defaults to "AED"
+ * @param projectLocation  String shown on the detail page — defaults to "Dubai, UAE"
+ */
+export async function fillCreateFormRequiredFields(
+  page: Page,
+  currency: "INR" | "AED" | "USD" = "AED",
+  projectLocation = "Dubai, UAE",
+) {
+  await page.locator("select[name='currency']").selectOption(currency);
+  await page.locator("input[name='projectLocation']").fill(projectLocation);
+  await page.locator("input[name='endClientName']").fill("E2E Client");
+  await page.locator("input[name='endClientPhone']").fill("+971501234567");
+  await page.locator("input[name='endClientEmail']").fill("e2e@test.com");
+  // GST Number is conditionally required when the linked company is India (D20).
+  // Always fill it so the helper works regardless of the company's country in the
+  // live dev DB. The field accepts any text; it is optional when isIndia=false.
+  await page.locator("input[name='endClientGstNumber']").fill("29AAACC1206H1ZY");
+  await page.locator("input[name='endClientAddressLine1']").fill("123 Test St");
+  await page.locator("input[name='endClientAddressLine2']").fill("Test Area");
+  await page.locator("input[name='endClientCity']").fill("Dubai");
+  await page.locator("input[name='endClientState']").fill("Dubai");
+}
+
 export async function signIn(
   page: Page,
   username: string,

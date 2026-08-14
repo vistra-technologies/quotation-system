@@ -174,7 +174,11 @@ test("create user: valid user appears in the users list", async ({ page }) => {
   await page.getByRole("button", { name: "Create User" }).click();
   // Redirects to users list
   await expect(page).toHaveURL(/\/acme-glass\/admin\/users$/, { timeout: 15_000 });
-  await expect(page.getByRole("cell", { name: username })).toBeVisible();
+  // Stage 14 Batch D: the actions cell now contains "Edit" + "Delete user <username>"
+  // which gives that cell an accessible name that also includes the username — causing
+  // a strict-mode violation without exact: true. The username cell itself has an exact
+  // accessible name equal to the username string.
+  await expect(page.getByRole("cell", { name: username, exact: true }).first()).toBeVisible();
 });
 
 test("users list: all action links belong to the session org (tenancy check)", async ({
@@ -182,12 +186,21 @@ test("users list: all action links belong to the session org (tenancy check)", a
 }) => {
   await signIn(page, "admin", undefined, "acme-glass");
   await page.goto("/acme-glass/admin/users");
-  const actionLinks = page.getByRole("link", { name: "Actions" });
+  // Stage 14 Batch D: "Actions" text link replaced by icon-only Edit link (aria-label="Edit").
+  const actionLinks = page.getByRole("link", { name: "Edit" });
+  // .count() does not auto-wait — wait for at least one link to appear first so
+  // we don't sample an empty table while the page is still streaming.
+  await expect(actionLinks.first()).toBeVisible({ timeout: 15_000 });
   const count = await actionLinks.count();
   expect(count).toBeGreaterThanOrEqual(1);
   for (let i = 0; i < count; i++) {
     const href = await actionLinks.nth(i).getAttribute("href");
-    expect(href).toMatch(/^\/acme-glass\/admin\/users\//);
+    // Tenancy invariant: every Edit link must point to an admin/users detail URL.
+    // In path mode (Vercel preview): /acme-glass/admin/users/{uuid}
+    // In subdomain mode (easeetool.com): /admin/users/{uuid}
+    // Either way it must NOT contain another org's slug.
+    expect(href).toMatch(/\/admin\/users\/[0-9a-f-]{36}/);
+    expect(href).not.toMatch(/\/(nordic-walls|vistra)\//);
   }
 });
 
@@ -196,16 +209,20 @@ test("self-deactivation: Deactivate button disabled on own account with explanat
 }) => {
   await signIn(page, "admin");
   await page.goto("/acme-glass/admin/users");
-  // Find the row where the username cell is exactly "admin", click its Actions link
+  // Find the row where the username cell is exactly "admin", click its Edit icon link.
+  // Stage 14 Batch D: "Actions" text link replaced by icon-only Edit link (aria-label="Edit").
   const adminRow = page
     .locator("tr")
     .filter({ has: page.getByRole("cell", { name: "admin", exact: true }) });
-  await adminRow.getByRole("link", { name: "Actions" }).click();
-  await page.waitForURL(/\/acme-glass\/admin\/users\/.+/);
-  await expect(page.getByRole("button", { name: "Deactivate" })).toBeDisabled();
+  // Wait for the row to appear (users table renders after SSR stream completes).
+  await expect(adminRow).toBeVisible({ timeout: 15_000 });
+  await adminRow.getByRole("link", { name: "Edit" }).click();
+  await page.waitForURL(/\/acme-glass\/admin\/users\/.+/, { timeout: 15_000 });
+  // User edit page renders via RSC; allow 15 s for the Deactivate button to appear.
+  await expect(page.getByRole("button", { name: "Deactivate" })).toBeDisabled({ timeout: 15_000 });
   await expect(
     page.getByText(/cannot deactivate your own account/i),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------

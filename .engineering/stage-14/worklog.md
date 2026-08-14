@@ -272,3 +272,77 @@ All high-risk behaviors verified against the preview URL:
 Two MINOR findings (both cosmetic, no data impact):
 - MINOR-1: Project edit form shows "—" for project number (no `projectNumber` prop)
 - MINOR-2: Fragile `.replace("Projects", "Project")` in project edit page "Back to" link
+
+### Tester — Staging regression pass (2026-08-13)
+
+**Role:** tester (engineering:regression) · **Verdict:** FAIL · **Findings:** 0 CRITICAL · 3 MAJOR · 1 MINOR · 1 INFO  
+**Report:** `.engineering/stage-14/regression-1.md`
+
+Product is healthy (all behavior-level checks pass, stage14.spec.ts 15/15, tenancy/RBAC/health clean). FAIL is driven by 3 MAJOR defects in the test suite itself — not the product:
+
+- MAJOR-1: ~26 tests across 5 spec files (stage5/6/7/12/13) use `input[name='destinationCountry']` and `input[name='currency']` as text inputs — both removed/converted by Stage 14 Batch B/C. Tests time out.
+- MAJOR-2: ~4 tests across 3 spec files (admin-stage4, login, subdomain-navigation) look for the "Actions" text link — replaced by icon-only buttons in Batch D. Tests fail locating the element.
+- MAJOR-3: stage13.spec.ts "ExternalCompany: delete" uses native dialog handler for window.confirm — replaced by ConfirmDialog in Batch D. Test gets strict-mode violation.
+
+Two confirmed flakes (not product defects): stage7 serial-run flake, subdomain-routing concurrent-worker flake — both pass in isolation.
+
+Pre-existing known defect unchanged: crossSubDomain cookie still missing `Domain=.easeetool.com` (first noted Stage 12, checklist item 113).
+
+Recommended next action: update 8 affected spec files before next regression pass.
+
+---
+
+### Developer — Spec locator fix (2026-08-14)
+
+**Role:** developer · **Branch:** `feature/fix-stale-spec-locators` · **Status:** DONE
+
+**What changed (9 files, test-only — no product code):**
+
+| File | What was stale | What it became |
+|---|---|---|
+| `tests/e2e/helpers.ts` | — | Added `fillCreateFormRequiredFields(page, currency, location)` shared helper; fills all 9 required Stage 14 form fields including GST |
+| `tests/e2e/admin-stage4.spec.ts` | `"Actions"` text link × 2; strict-mode cell match | `"Edit"` link × 2; `.first()` guard |
+| `tests/e2e/login.spec.ts` | `"Actions"` text link in beforeAll | `"Edit"` link |
+| `tests/e2e/subdomain-navigation.spec.ts` | `"Actions"` text link | `"Edit"` link |
+| `tests/e2e/stage5.spec.ts` | `destinationCountry`/`currency` fill; `create project` button; h2 heading `#N` assertion | helper; `configure` button; `getByText(/#\d+/).first()` |
+| `tests/e2e/stage6.spec.ts` | `destinationCountry`/`currency` fill × 2; `create project` button × 2; Admin button strict-mode | helper × 2; `configure` × 2; `.first()` |
+| `tests/e2e/stage7.spec.ts` | `destinationCountry`/`currency` fill × 13; `create project` × 3; `select[name='externalCompanyId']`; h2 `#N` assertion | helper × 13; `configure` × 3; `button[aria-haspopup='listbox']`; `getByText(/#\d+/).first()` |
+| `tests/e2e/stage12.spec.ts` | `destinationCountry`/`currency` fill × 2 | helper × 2 |
+| `tests/e2e/stage13.spec.ts` | `destinationCountry`/`currency` fill × 11; `create project` × 4; `window.confirm` handler; `waitForURL` after dismiss (wrong signal); `not.toBeVisible` timeout too short | helper × 11; `configure` × 4; ConfirmDialog flow + `role="status"` wait; dismiss-button disabled-state signal; 30 s budget |
+
+**Additional discoveries fixed (not in original brief):**
+- Project create form submit button renamed "Configure" (not "Create Project") — 10 occurrences
+- `endClientGstNumber` conditionally required when company is India; helper always fills it
+- Post-dismiss `waitForURL` resolves immediately (URL unchanged); replaced with `toBeDisabled()` signal
+- Delete overlay waits: `role="status"` 30 s budget for cold Vercel function cold starts
+- Project detail page: `#N` no longer in h2 heading — now a text field in the card
+
+**Commits (9 total):** 6b0c039 → 479b1f2
+
+**Verification (Preview `quotation-system-8k21llk9y-vistra-indias-projects.vercel.app`):**
+- `login.spec.ts` — 13/13 ✅
+- `admin-stage4.spec.ts` — 18/18 ✅
+- `subdomain-navigation.spec.ts` — 17/17 ✅
+- `stage5.spec.ts` — 12/12 ✅
+- `stage6.spec.ts` — 19/19 ✅
+- `stage7.spec.ts` — 28/28 ✅
+- `stage12.spec.ts` — 14/14 ✅
+- `stage13.spec.ts` — 24/24 ✅
+
+**Additional fixes (coordinator full-suite findings, 2026-08-14):**
+
+| File | Fix | Root cause |
+|---|---|---|
+| `tests/e2e/admin-stage4.spec.ts:184` | Added `await expect(actionLinks.first()).toBeVisible({ timeout: 15_000 })` before `.count()`; mode-agnostic href assertion `/\/admin\/users\/[0-9a-f-]{36}/` | `.count()` does not auto-wait; sampled before table rendered → 0; href pattern only matched path mode |
+| `tests/e2e/admin-stage4.spec.ts:207` | Added row visibility wait + `waitForURL` 15s + `toBeDisabled` 15s | RSC user-edit page took >5s (default timeout) when running as test 12 in a long serial chain |
+| `tests/e2e/pricing-stage3.spec.ts` | Added `test.beforeEach(() => sleep(7_000))` rate-limit pacing | 5 sign-ins with no pacing → randomly different tests hit the better-auth 3/10s limit |
+
+**Commits:** `6b0c039` → `096694e` (11 commits total on `feature/fix-stale-spec-locators`)
+
+**Full 14-spec verification (Preview `quotation-system-19281g3bq`):**
+- Full serial run `--workers=1`: **180/186 passed** · 2 failed · 4 did not run
+  - `stage14.spec.ts:346` — `ERR_CONNECTION_RESET` on login `goto` (network transient at test 95/186 in a 27.5-min run)
+  - `stage6.spec.ts:379` — `toBeVisible` 15s timeout on selection label (Vercel cold-start at test 124/186 in a 27.5-min run)
+- **Both confirmed infrastructure transients** — re-run in isolation: **2/2 passed (26.6s)**
+
+**Status:** DONE

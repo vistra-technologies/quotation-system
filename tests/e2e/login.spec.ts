@@ -175,11 +175,12 @@ test.describe("inactive account", () => {
         await adminPage.goto(`/${ORG}/admin/users`);
       }
 
-      // Navigate to admin users list, find the "architect" row, open their detail
+      // Navigate to admin users list, find the "architect" row, open their detail.
+      // Stage 14 Batch D: "Actions" text link replaced by icon-only Edit link (aria-label="Edit").
       const architectRow = adminPage
         .locator("table tbody tr")
         .filter({ has: adminPage.locator("td:first-child", { hasText: "architect" }) });
-      await architectRow.getByRole("link", { name: "Actions" }).click();
+      await architectRow.getByRole("link", { name: "Edit" }).click();
       await adminPage.waitForURL(/\/admin\/users\/[^/]+$/, { timeout: 15_000 });
       architectUserId = adminPage.url().split("/").pop() ?? "";
 
