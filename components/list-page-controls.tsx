@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CompanyDropdown } from "@/components/company-dropdown";
 
@@ -81,6 +81,13 @@ export function ListPageControls({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  // L3 — pending state while the server re-renders after a filter/scope change.
+  // router.push inside startTransition signals React that the navigation is a
+  // transition; isPending is true until the new Server Component finishes rendering.
+  // No useTranslations added here — this component is shared across layouts with
+  // different clientMessages sets (see AGENTS.md / plan.md callout 6).
+  const [isPending, startTransition] = useTransition();
+
   // Local state for the search input — gives immediate responsiveness while
   // debouncing the URL update.  Initializes from the server-side `search` prop.
   // No useEffect sync needed: this component only changes `search` via user
@@ -127,7 +134,9 @@ export function ListPageControls({
         }
       }
       const qs = next.toString();
-      router.push(qs ? `${pathname}?${qs}` : pathname);
+      startTransition(() => {
+        router.push(qs ? `${pathname}?${qs}` : pathname);
+      });
     },
     [router, pathname, searchParams],
   );
@@ -165,7 +174,13 @@ export function ListPageControls({
   const showCompanyFilter = externalCompanies !== null && scope === "all";
 
   return (
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div
+      className={[
+        "mb-4 flex flex-wrap items-center justify-between gap-3 transition-opacity",
+        isPending ? "opacity-50" : "",
+      ].join(" ")}
+      aria-busy={isPending}
+    >
       {/* ── Left: Date range filter ─────────────────────────────────── */}
       <div ref={dateRef} className="relative">
         <button

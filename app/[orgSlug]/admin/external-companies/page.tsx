@@ -122,7 +122,7 @@ export default async function ExternalCompaniesPage({
                         href={`${base}/admin/external-companies/${company.id}`}
                         aria-label={t("editAction")}
                         title={t("editAction")}
-                        className="flex items-center justify-center text-primary-dark hover:text-primary"
+                        className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-primary-dark hover:bg-primary-softer hover:text-primary"
                       >
                         {/* Pencil icon 16×16 */}
                         <svg
