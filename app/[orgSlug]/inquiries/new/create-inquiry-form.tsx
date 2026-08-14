@@ -408,17 +408,15 @@ export function CreateInquiryForm({
               />
             </div>
 
-            {/* Address Line 2 * */}
+            {/* Address Line 2 — optional (C10) */}
             <div className="flex flex-col gap-1 mb-[14px]">
               <label htmlFor="endClientAddressLine2" className={labelCls}>
-                {t("fieldEndClientAddressLine2")}{" "}
-                <span className="text-status-failed-text font-normal">*</span>
+                {t("fieldEndClientAddressLine2")}
               </label>
               <input
                 id="endClientAddressLine2"
                 name="endClientAddressLine2"
                 type="text"
-                required
                 autoComplete="off"
                 placeholder="Area, landmark"
                 className={inputCls}

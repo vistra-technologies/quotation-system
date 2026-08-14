@@ -32,6 +32,16 @@ interface EditProjectFormProps {
   initialEndClientState: string | null;
   initialEndClientGstNumber: string | null;
   /**
+   * X1 — project display number for the read-only header field.
+   * org-scoped sequence number (always present).
+   */
+  projectNumber: number;
+  /**
+   * X1 — company-scoped project number when assigned.
+   * Formatted as "JOB-{n}" when present, "#n" fallback using projectNumber.
+   */
+  companyProjectNumber: number | null;
+  /**
    * Formatted inquiry display number for the linked inquiry, if any.
    * "INQ-42" (company-scoped) or "#7" (org-scoped fallback).
    * Null when the project was created directly (not converted from an inquiry).
@@ -84,6 +94,8 @@ export function EditProjectForm({
   initialEndClientCity,
   initialEndClientState,
   initialEndClientGstNumber,
+  projectNumber,
+  companyProjectNumber,
   inquiryNumber,
   lockedCompany,
   companyCountry,
@@ -93,6 +105,12 @@ export function EditProjectForm({
 
   // GST conditional — static on edit (company can't change).
   const isIndia = companyCountry === "INDIA";
+
+  // X1 — format project number identically to the detail page (projects/[projectId]/page.tsx:60–62).
+  const formattedProjectNumber =
+    companyProjectNumber != null
+      ? `JOB-${companyProjectNumber}`
+      : `#${projectNumber}`;
 
   // Shared class strings.
   const inputCls =
@@ -140,13 +158,13 @@ export function EditProjectForm({
 
             {/* 2-column grid */}
             <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
-              {/* Project No. (disabled) */}
+              {/* Project No. (disabled, read-only display — X1) */}
               <div className={fieldCls}>
                 <label className={labelCls}>{t("colNumber")}</label>
                 <input
                   type="text"
                   disabled
-                  value="—"
+                  value={formattedProjectNumber}
                   aria-label="Project number"
                   className={inputCls}
                 />
@@ -437,16 +455,15 @@ export function EditProjectForm({
                 />
               </div>
 
+              {/* Address Line 2 — optional (C10) */}
               <div className={fieldCls}>
                 <label htmlFor="endClientAddressLine2" className={labelCls}>
                   {t("fieldEndClientAddressLine2")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientAddressLine2"
                   name="endClientAddressLine2"
                   type="text"
-                  required
                   defaultValue={initialEndClientAddressLine2 ?? ""}
                   autoComplete="off"
                   className={inputCls}

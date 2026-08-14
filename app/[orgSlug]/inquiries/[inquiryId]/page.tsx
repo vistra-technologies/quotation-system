@@ -223,7 +223,7 @@ export default async function InquiryDetailPage({
           <Field label={t("fieldProjectLocation")} value={inquiry.projectLocation} />
           <Field label={t("fieldSubmissionDate")} value={formatDate(inquiry.submissionDate)} />
           <Field label={t("fieldProjectDeadline")} value={formatDate(inquiry.projectDeadline)} />
-          <Field label={t("fieldDestinationCountry")} value={inquiry.destinationCountry || undefined} />
+          {/* V3 — destinationCountry removed: it is derived from the company (Stage 14), never user-entered */}
           {/* Client (external company) */}
           <Field
             label={t("colExternalCompany")}

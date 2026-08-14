@@ -102,7 +102,7 @@ export default async function ProjectsPage({
   const search = typeof sp.search === "string" ? sp.search : "";
   const dateRange = typeof sp.dateRange === "string" ? sp.dateRange : "";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
-  const pageSize = 20;
+  const pageSize = 10; // PL1 — was 20; ListPagePagination returns null when totalPages <= 1
   const externalCompanyId =
     typeof sp.externalCompanyId === "string" ? sp.externalCompanyId : "";
 
