@@ -9,6 +9,8 @@
  *
  * If the dev DB has ≤ 10 records the test self-skips rather than producing a
  * false-green by asserting on an empty or tiny set.
+ *
+ * Uses page.request (shares browser cookie store) for authenticated API calls.
  */
 
 import { test, expect } from "@playwright/test";
@@ -28,14 +30,12 @@ test.beforeEach(async () => {
 
 test("L1 — inquiry list: first page shows ≤ 10 rows when total > 10", async ({
   page,
-  request,
 }) => {
   await signIn(page, "admin");
 
-  // Pull total count from the API (pageSize=100 to get all, then use the total field).
-  const apiResp = await request.get(
+  // Pull total count from the API using page.request so it shares the auth cookie.
+  const apiResp = await page.request.get(
     "/api/v1/orgs/acme-glass/inquiries?page=1&pageSize=100&scope=all",
-    { headers: { cookie: await page.evaluate(() => document.cookie) } },
   );
   expect(apiResp.ok()).toBe(true);
   const body = await apiResp.json();
@@ -68,13 +68,12 @@ test("L1 — inquiry list: first page shows ≤ 10 rows when total > 10", async 
 
 test("PL1 — project list: first page shows ≤ 10 rows when total > 10", async ({
   page,
-  request,
 }) => {
   await signIn(page, "admin");
 
-  const apiResp = await request.get(
+  // Pull total count from the API using page.request so it shares the auth cookie.
+  const apiResp = await page.request.get(
     "/api/v1/orgs/acme-glass/projects?page=1&pageSize=100&scope=all",
-    { headers: { cookie: await page.evaluate(() => document.cookie) } },
   );
   expect(apiResp.ok()).toBe(true);
   const body = await apiResp.json();
