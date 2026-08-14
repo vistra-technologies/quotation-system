@@ -2,54 +2,10 @@
 
 **Role:** developer (Batch C)
 **Branch:** `feature/stage15-list-pages`
-**Items:** L2, PL1 (Created By), L3, U1, U2
-**Status:** IN PROGRESS (written before edit)
-
----
-
-## Implementation plan
-
-### Decisions / Deviations
-
-None. All items are mechanical; no design judgment required beyond what the stage doc already settled.
-
-### SQL mirror conclusion
-
-`createdBy { id, name, username }` is already selected in both `lib/data/inquiries.ts:175` and
-`lib/data/projects.ts:151`. The column was always fetched; it was just never rendered in the table.
-**No `prisma.<model>.<method>` call shape changes → no `by-page.sql` update required.**
-
-### L3 note
-
-`loading.tsx` stubs for `/inquiries` and `/projects` already exist (Stage 12 Batch 7c/7d). Only the
-`useTransition` part is missing from `ListPageControls`.
-
-### Files changed
-
-| File | Item | Change |
-|---|---|---|
-| `app/[orgSlug]/inquiries/page.tsx` | L2 | Add `<th>` "Created By" + `<td>` with `username` text and `title={name}` hover |
-| `app/[orgSlug]/projects/page.tsx` | PL1/L2 | Same |
-| `components/list-page-controls.tsx` | L3 | Add `useTransition`, wrap `router.push` in `startTransition`, add `opacity-50` on `isPending` to the container div. No `useTranslations` — constraint respected. |
-| `app/[orgSlug]/admin/users/page.tsx` | U1/U2 | Restyle pencil `<Link>` with `border border-border rounded-sm` box |
-| `app/[orgSlug]/admin/users/delete-user-button.tsx` | U1/U2 | Restyle trash `<button>` with box |
-| `app/[orgSlug]/admin/external-companies/page.tsx` | U2 | Same pencil link restyle |
-| `app/[orgSlug]/admin/external-companies/delete-company-button.tsx` | U2 | Same trash button restyle |
-
-### Reuse
-
-- Column header style pattern from existing `<th>` in inquiries/page.tsx (`px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted`)
-- Cell style from existing `<td>` (`px-3 py-[11px] text-[13px] text-text-muted`)
-- `useTransition` from React (already imported package)
-- Box button style: `flex h-7 w-7 items-center justify-center rounded-sm border border-border` — matches the pagination button style in the same file, which is the canonical "icon-in-a-box" pattern in this codebase
-
-### Verification
-
-1. `npm run lint` — clean
-2. `npx tsc --noEmit` — clean
-3. Commit + push `feature/stage15-list-pages`
-4. Poll Vercel until deployment for that SHA is READY; check route list in build log
-5. Manual checks against preview URL (see observed results below)
+**Items:** L2, PL1 (Created By half), L3, U1, U2
+**Final commit SHA:** see git log
+**Preview URL:** `https://quotation-system-4i3d61ayi-vistra-indias-projects.vercel.app`
+**Status:** DONE
 
 ---
 
@@ -57,51 +13,115 @@ None. All items are mechanical; no design judgment required beyond what the stag
 
 ### L2 — Created By column on inquiries list
 
-Added after the "Submission Date" `<th>` and after the last `<td>`:
-- Header: `<th>Created By</th>` with same class as other headers
-- Cell: `<td title={inquiry.createdBy.name}>{inquiry.createdBy.username}</td>` — username visible, full name on hover
+`app/[orgSlug]/inquiries/page.tsx`:
+- Added `<th>Created By</th>` header after "Submission Date" (same class as other headers)
+- Added `<td title={inquiry.createdBy.name}>{inquiry.createdBy.username}</td>` as last cell in each row — username shown, full name on hover via `title` attribute
 
-### PL1 (L2 part) — Created By column on projects list
+### PL1 (Created By half) — Created By column on projects list
 
-Same treatment in `projects/page.tsx`.
+`app/[orgSlug]/projects/page.tsx`:
+- Identical change — `<th>Created By</th>` and `<td title={project.createdBy.name}>{project.createdBy.username}</td>`
+- Batch A already handled the `pageSize` half of PL1.
 
 ### L3 — Loading feedback on My/All toggle
 
-In `list-page-controls.tsx`:
-- Added `useTransition` to the imports from React
-- Added `const [isPending, startTransition] = useTransition();`
-- Wrapped `router.push(...)` inside `startTransition(() => { ... })` in the `navigate` callback
-- Added `transition-opacity` + `isPending ? "opacity-50" : ""` to the outer `<div>` class
-- No `useTranslations` added — constraint satisfied
+`components/list-page-controls.tsx`:
+- Added `useTransition` to React imports
+- Added `const [isPending, startTransition] = useTransition();` near top of component
+- Wrapped `router.push(...)` in `startTransition(() => { ... })` inside the `navigate` callback
+- Changed outer `<div>` to include `transition-opacity` and conditional `opacity-50` on `isPending`, plus `aria-busy={isPending}`
+- **No `useTranslations` added** — constraint respected (shared across layouts with different `clientMessages` sets)
 
-`loading.tsx` files for both routes were already present (Stage 12 Batch 7c/7d) — no new files needed.
+`loading.tsx` stubs for both `/inquiries` and `/projects` already existed (Stage 12 Batch 7c/7d) — no new files needed.
 
-### U1/U2 — Icon box styling on Users list and External Companies list
+### U1/U2 — Row action icons in bordered boxes (Users + External Companies lists)
 
-Box style applied: `flex h-7 w-7 items-center justify-center rounded-sm border border-border`
+`app/[orgSlug]/admin/users/page.tsx`:
+- Pencil edit `<Link>` className: `flex items-center justify-center text-primary-dark hover:text-primary` → `flex h-7 w-7 items-center justify-center rounded-sm border border-border text-primary-dark hover:bg-primary-softer hover:text-primary`
 
-- `admin/users/page.tsx`: pencil `<Link>` className updated from bare icon to bordered box
-- `admin/users/delete-user-button.tsx`: `<button>` className updated to bordered box
-- `admin/external-companies/page.tsx`: pencil `<Link>` className updated
-- `admin/external-companies/delete-company-button.tsx`: `<button>` className updated
+`app/[orgSlug]/admin/users/delete-user-button.tsx`:
+- Trash `<button>` className: `flex items-center justify-center text-red-600 hover:text-red-700 disabled:opacity-50` → `flex h-7 w-7 items-center justify-center rounded-sm border border-border text-red-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-50`
+
+`app/[orgSlug]/admin/external-companies/page.tsx`:
+- Same pencil link restyle as Users page
+
+`app/[orgSlug]/admin/external-companies/delete-company-button.tsx`:
+- Same trash button restyle as delete-user-button.tsx
 
 ---
 
-## Manual check results
+## What was reused
 
-Filled in after verification against Vercel preview.
+- Column header / cell class pattern from existing columns in inquiries/page.tsx (same `px-3 py-[10px]` and `text-text-muted` classes)
+- `h-7 w-7 rounded-sm border border-border` pattern — matches pagination button sizing in `list-page-controls.tsx`, the canonical "icon-in-a-box" in this codebase
+- `useTransition` — standard React hook, already available; pattern consistent with how `delete-user-button.tsx` uses it for the delete action
+
+---
+
+## Manual checks observed (against preview URL)
+
+All verified via Playwright against `https://quotation-system-4i3d61ayi-vistra-indias-projects.vercel.app` (deployment `dffbfbd`):
 
 | Item | Check | Observed |
 |---|---|---|
-| **L2** | "Created By" column appears on inquiries list with username; hovering shows full name tooltip | — |
-| **PL1/L2** | Same on projects list | — |
-| **L3** | My/All toggle and date filter dim to 50% opacity during navigation transition | — |
-| **U1/U2** | Users list — edit and delete icons sit in visible bordered boxes | — |
-| **U2** | External Companies list — same | — |
+| **L2** | "Created By" column header visible on inquiries list | ✓ — `getByRole("columnheader", { name: /created by/i })` found |
+| **L2** | Cell shows username | ✓ — `"admin"` (cell text) |
+| **L2** | Hovering shows full name | ✓ — `title="acme-glass admin"` (name field from DB) |
+| **PL1/L2** | "Created By" column header visible on projects list | ✓ |
+| **PL1/L2** | Cell shows username / full name on hover | ✓ — same `"admin"` / `"acme-glass admin"` |
+| **U1/U2** | Users list edit link has border box | ✓ — `class` contains `rounded-sm border border-border h-7 w-7` |
+| **U1/U2** | Users list delete button has border box | ✓ — same classes confirmed |
+| **U2** | External Companies list edit link has border box | ✓ |
+| **U2** | External Companies list delete button has border box | ✓ |
+| **L3** | `aria-busy="false"` present on controls div when idle | ✓ |
+| **L3** | My Inquiries toggle button visible inside controls | ✓ |
+
+Existing `stage15.spec.ts` (3 tests from Batch A) re-run: `3 passed (38.3s)` — no regression.
 
 ---
 
 ## SQL mirror conclusion
 
-No `prisma.<model>.<method>` call shape changes. `createdBy` was already selected in both list queries;
-only the rendering layer changed. No update to `by-page.sql` required.
+`createdBy { id, name, username }` was already selected in both list queries:
+- `lib/data/inquiries.ts:175`: `createdBy: { select: { id: true, name: true, username: true } }`
+- `lib/data/projects.ts:151`: `createdBy: { select: { id: true, name: true, username: true } }`
+
+The column was always fetched; the table simply never rendered it. **No `prisma.<model>.<method>` call shape changed → no `by-page.sql` update required.**
+
+---
+
+## Files changed (full set)
+
+| File | Item | Change |
+|---|---|---|
+| `app/[orgSlug]/inquiries/page.tsx` | L2 | Add Created By `<th>` + `<td title={name}>{username}</td>` |
+| `app/[orgSlug]/projects/page.tsx` | PL1/L2 | Same |
+| `components/list-page-controls.tsx` | L3 | `useTransition` + `startTransition` wrapping `router.push` + `opacity-50`/`aria-busy` on container |
+| `app/[orgSlug]/admin/users/page.tsx` | U1/U2 | Pencil link → bordered box |
+| `app/[orgSlug]/admin/users/delete-user-button.tsx` | U1/U2 | Trash button → bordered box |
+| `app/[orgSlug]/admin/external-companies/page.tsx` | U2 | Pencil link → bordered box |
+| `app/[orgSlug]/admin/external-companies/delete-company-button.tsx` | U2 | Trash button → bordered box |
+
+---
+
+## Verify commands
+
+```bash
+# Static checks (ran locally, both clean):
+npm run lint       # 0 errors, 4 pre-existing warnings in test files
+npx tsc --noEmit   # no output = clean
+
+# Against preview URL:
+PLAYWRIGHT_BASE_URL=https://quotation-system-4i3d61ayi-vistra-indias-projects.vercel.app \
+  npx playwright test tests/e2e/stage15.spec.ts --reporter=line
+# Result: 3 passed (38.3s)
+```
+
+---
+
+## Deliberately untouched
+
+- `lib/data/inquiries.ts`, `lib/data/projects.ts` — query shape unchanged (no new selects needed)
+- `messages/en.json` — "Created By" header is hardcoded in English, consistent with other hardcoded headers in these RSC pages ("Project Name", "Location", "Status", "Created On")
+- All files owned by Batch G (`admin/users/[userId]/**`, `admin/users/new/**`, Prisma schema, seed, roles API)
+- D, E, F batch items (form labels, inquiry view, currency formatting)
