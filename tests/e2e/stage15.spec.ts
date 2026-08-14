@@ -1,20 +1,19 @@
 /**
  * Stage 15 — Batch A regression spec.
  *
- * Covers: L1 (inquiry pagination) and PL1 (project pagination) — boundary / count
- * invariants only.  No DOM-structure, layout, copy, or styling assertions.
- *
- * Requires: pageSize is now 10 (was 20).  The list page should show at most 10
- * rows per page regardless of how many records exist in the DB.
- *
- * If the dev DB has ≤ 10 records the test self-skips rather than producing a
- * false-green by asserting on an empty or tiny set.
+ * Covers:
+ *  - L1 / PL1: inquiry and project list pagination boundary / count invariants.
+ *    No DOM-structure, layout, copy, or styling assertions.
+ *    The list page must show at most 10 rows per page (pageSize=10, was 20).
+ *    Self-skips when DB has ≤ 10 records so the suite doesn't false-green.
+ *  - C10: inquiry create form submits successfully with Address Line 2 left empty.
+ *    This is a navigation invariant (redirect away from /new), not a DOM assertion.
  *
  * Uses page.request (shares browser cookie store) for authenticated API calls.
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, fillCreateFormRequiredFields } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
@@ -96,4 +95,34 @@ test("PL1 — project list: first page shows ≤ 10 rows when total > 10", async
   const rowCount = await rows.count();
   expect(rowCount).toBeGreaterThan(0);
   expect(rowCount).toBeLessThanOrEqual(10);
+});
+
+// ---------------------------------------------------------------------------
+// C10 — Address Line 2 is now optional on the inquiry create form
+// ---------------------------------------------------------------------------
+
+test("C10 — inquiry create: form submits successfully with Address Line 2 empty", async ({
+  page,
+}) => {
+  await signIn(page, "admin");
+
+  await page.goto("/acme-glass/inquiries/new");
+  await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
+
+  // Fill required fields via helper (which also fills Address Line 2), then clear
+  // Address Line 2 to confirm it is no longer required (the helper fills it by default
+  // because it was required before C10 — clearing it proves the field is now optional).
+  await page
+    .locator("input[name='name']")
+    .fill(`C10-addr2-optional-${Date.now()}`);
+  await fillCreateFormRequiredFields(page, "AED", "Dubai, UAE");
+  await page.locator("input[name='endClientAddressLine2']").fill("");
+
+  // Submit the form.
+  await page.locator("button[type='submit']").first().click();
+
+  // The form must redirect away from /new — no browser validation block.
+  // This is a navigation assertion (not a DOM/layout assertion).
+  await page.waitForURL(/\/acme-glass\/inquiries(?!\/new)/, { timeout: 30_000 });
+  expect(page.url()).not.toMatch(/\/new$/);
 });
