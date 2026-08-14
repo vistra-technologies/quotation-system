@@ -184,23 +184,47 @@ test.describe("U4 — Profile endpoint behavior", () => {
     expect(resp.status()).toBe(403);
   });
 
-  test("PUT /profile for a non-existent userId returns 404", async ({ page }) => {
-    // Signed in as admin of acme-glass; attempt to update a userId that does
-    // not exist in acme-glass. updateUserProfile() filters on BOTH userId AND
-    // organizationId, so any unknown userId (including one from another org)
-    // returns "not found or access denied" → 404.
+  test("PUT /profile for a userId from another org returns 404", async ({ page }) => {
+    // This test validates the organizationId tenancy filter inside
+    // updateUserProfile(). It uses a *real* user ID from nordic-walls so that
+    // removing the organizationId filter from updateUserProfile() would find the
+    // row (it exists in the DB) and return 200, causing this test to fail.
+    // A synthetic non-existent UUID would stay 404 even without the filter,
+    // so it cannot detect a missing-filter regression.
     //
-    // We use a well-formed but synthetic UUID rather than a real cross-org ID
-    // to avoid the two-signIn session-switching complexity (which can time out
-    // when the existing session causes the login page to redirect away).
-    await signIn(page, "admin");
+    // Two-signIn pattern: clear cookies between sign-ins so the acme-glass
+    // login page is shown without the existing nordic-walls session redirecting
+    // away from the login form.
 
-    const nonExistentUserId = "00000000-0000-0000-0000-000000000001";
+    // Step 1: sign in as nordic-walls admin and capture the admin user's id.
+    await signIn(page, "admin", "Seed1234!", "nordic-walls");
+    const nordListResp = await page.request.get(
+      "/api/v1/orgs/nordic-walls/users",
+    );
+    expect(nordListResp.ok()).toBe(true);
+    const nordBody = (await nordListResp.json()) as {
+      users: Array<{ id: string; username: string }>;
+    };
+    const nordAdmin = nordBody.users.find((u) => u.username === "admin");
+    if (!nordAdmin) {
+      test.skip(); // seed user missing — skip rather than fail
+      return;
+    }
+
+    // Step 2: clear session cookies so the acme-glass login form is shown.
+    await page.context().clearCookies();
+
+    // Step 3: sign in as acme-glass admin.
+    await signIn(page, "admin", "Seed1234!", "acme-glass");
+
+    // Step 4: try to update the nordic-walls admin via the acme-glass URL.
+    // The real userId exists in the DB but belongs to a different org —
+    // updateUserProfile's { id: userId, organizationId: acme-glass-id } guard
+    // returns no rows → throws "not found" → 404.
     const resp = await page.request.put(
-      `/api/v1/orgs/acme-glass/users/${nonExistentUserId}/profile`,
+      `/api/v1/orgs/acme-glass/users/${nordAdmin.id}/profile`,
       { data: { firstName: "Cross", lastName: "OrgAttack" } },
     );
-    // userId not found in acme-glass → 404
     expect(resp.status()).toBe(404);
   });
 
