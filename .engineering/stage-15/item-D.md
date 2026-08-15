@@ -95,7 +95,28 @@ All checks run against `https://quotation-system-8vo5rj4lv-vistra-indias-project
 
 ## Regression check
 
-`stage15.spec.ts` (Batch A): **3 passed** against this deployment.
+`stage15.spec.ts` (Batch A): **3 passed (42.3s)** against deployment `k8v74nv5z` (review round 1 build).
+
+---
+
+## Review round 1 — CHANGES-NEEDED finding and resolution
+
+**Finding:** Removing Inquiry No. from the project **edit** form was wrong. The field was genuinely inert on the **create** form (always "—"), but on the edit form `page.tsx` computes `formattedInquiryNumber` from `project.inquiry` (non-null for projects converted from inquiries via "Start Project") and passes it as `inquiryNumber`. My change left the prop declared in `EditProjectFormProps` and computed/passed from `page.tsx`, but the component ignored it — dead code with a real data loss.
+
+**Human decision (final):**
+1. Restore the field on the **edit** form only, as a full-width `sm:col-span-2` read-only row placed directly below the `[Project Id | Company]` row.
+2. Keep it removed from the **create** form (genuinely inert there — `projects/new/page.tsx` never computed or passed `inquiryNumber`).
+
+**Fix (commit `d9a763f`):**
+- Re-added `inquiryNumber` to the destructuring in `EditProjectForm`
+- Added `<div className={\`\${fieldCls} sm:col-span-2\`}>` with a disabled input showing `inquiryNumber ?? "—"` and label "Inquiry No.", placed immediately after the `[Project Id | Company]` row in the grid
+
+**Verification of the restored field (deployment `k8v74nv5z`):**
+- Found project `6bcaa824` linked to inquiry #227 (DRAFT status, inquiry.inquiryNumber=227, companyInquiryNumber=null → renders `#227`)
+- Edit form disabled inputs: `["#96" (Project Id, normal-width), "#227" (Inquiry No., col-span)]`
+- `Inquiry No.` label confirmed; value `#227` confirmed; full-width placement confirmed via `col-span` class detection
+- Non-inquiry-linked projects: Inquiry No. row shows `"—"` (correct fallback)
+- Create form: Inquiry No. row absent (correct — was genuinely removed, not restored)
 
 ---
 
