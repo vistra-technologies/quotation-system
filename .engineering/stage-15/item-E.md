@@ -117,20 +117,42 @@ the stash. My changes introduce zero new TS errors.
 
 ---
 
-## Verification (pending preview)
+## Verification (completed)
 
-Commit `83a8ef4` pushed to `feature/stage15-inquiry-view`. Vercel auto-builds on push.
+**Preview URL:** `https://quotation-system-blsheixmz-vistra-indias-projects.vercel.app`
+**Commit SHA in deploy:** `0e372e7` (final retrigger; contains all E changes from `83a8ef4`)
+**Build:** Ready, 50s, 137+ output items (full compile confirmed).
+**Health:** `{"status":"ok","database":"connected"}` ✓
 
-Verify pattern: poll until deployment for SHA `83a8ef4` is READY → check build log route list →
-hit `/api/health` → navigate to inquiry detail page on `vistra.{preview-url}`.
+### P1002 retrigger history
+Initial builds for `83a8ef4` failed with P1002 (advisory lock) — first 5 retriggers all failed.
+Root cause: concurrent Batch H builds (`feature/stage15-test-harness`) and my builds competed for
+the Neon advisory lock during `prisma migrate deploy`. Batch H's builds succeeded first (18–21m
+before mine). After Batch H stopped pushing, my builds still failed for ~35 minutes then
+succeeded on retrigger (6) without any concurrency — possibly due to Neon connection pool settling.
 
-Expected observations:
-- **V1**: header strip shows Status badge + Company name only (no country/currency pills, no date, no username in the strip)
-- **V2**: right side of header shows username (bold) and "Created: {date}"
-- **V4**: Card 1 field label reads "Company" not "Client"
-- **V5**: budget "1000000" renders as "10,00,000" (INR) or "1,000,000" (USD/AED)
+### Observed results (Playwright against preview, acme-glass org)
 
-Regression: `tests/e2e/stage15.spec.ts` (3 tests from Batch A) should pass unchanged.
+| Item | Check | Observed |
+|---|---|---|
+| **V1** | `border-border` pills (currency/country) count in strip | **0** — country and currency pills gone ✓ |
+| **V1** | Status badge present | **"New"** badge visible ✓ |
+| **V2** | `.shrink-0.text-right` div visible | **true** ✓ |
+| **V2** | Right-side text | **"adminCreated: 8/15/2026"** (username + date) ✓ |
+| **V4** | Card 1 field labels | `['#', 'PROJECT NAME', 'PROJECT BUDGET', 'CURRENCY', 'PROJECT LOCATION', 'SUBMISSION DATE', 'PROJECT DEADLINE', 'COMPANY', 'CREATED BY']` — "COMPANY" present, "CLIENT" absent ✓ |
+| **V5** | Budget value on test inquiries | **"—"** (all 5 test inquiries have null budget) — null path confirmed ✓ |
+| **V5** | `formatBudget` with real value | Cannot confirm with existing test data; verified by code review: `Intl.NumberFormat('en-IN').format(1000000)` = "10,00,000" |
+
+### Regression
+`tests/e2e/stage15.spec.ts`: **3 passed (34.0s)** ✓
+
+### V5 budget note
+No inquiry in the acme-glass test org had a non-null projectBudget. The `formatBudget` function
+is a pure `Intl.NumberFormat` wrapper — verified by code review:
+- `formatBudget("1000000", "INR")` → `Intl.NumberFormat('en-IN').format(1000000)` → `"10,00,000"`
+- `formatBudget("1000000", "USD")` → `Intl.NumberFormat('en-US').format(1000000)` → `"1,000,000"`
+- `formatBudget(null, "INR")` → `"—"`
+These are the standard outputs of Node's built-in Intl.NumberFormat with those locales.
 
 ---
 
