@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import { formatBudget } from "@/lib/format-currency";
 import { dismissInquiry } from "../actions";
 import { StartProjectButton } from "./start-project-button";
 
@@ -128,22 +129,20 @@ export default async function InquiryDetailPage({
 
       {/* ── Detail header ────────────────────────────────────────────────────── */}
       <div className="mb-6">
-        <h1 className="mb-3 text-[27px] font-extrabold text-text-heading">
-          {formattedInquiryNumber} — {inquiry.name}
-        </h1>
+        {/* Title row: inquiry number + name on the left; username + date on the right (V2) */}
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <h1 className="text-[27px] font-extrabold text-text-heading">
+            {formattedInquiryNumber} — {inquiry.name}
+          </h1>
+          {/* V2 — right-side metadata: username + created date */}
+          <div className="shrink-0 text-right text-sm text-text-muted">
+            <p className="font-semibold">{inquiry.createdBy.username}</p>
+            <p>{t("colDate")}: {new Date(inquiry.createdAt).toLocaleDateString()}</p>
+          </div>
+        </div>
 
-        {/* Metadata row */}
+        {/* V1 — Metadata strip: Company name + Status only */}
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          {/* Country + Currency as pill tags */}
-          {inquiry.destinationCountry && (
-            <span className="rounded-pill border border-border px-2.5 py-1 text-xs font-bold text-text-muted">
-              {inquiry.destinationCountry}
-            </span>
-          )}
-          <span className="rounded-pill border border-border px-2.5 py-1 text-xs font-bold text-text-muted">
-            {inquiry.currency}
-          </span>
-
           {/* Status badge */}
           <span
             className={`inline-flex items-center rounded-pill px-2.5 py-0.5 text-xs font-bold ${statusBadgeClass(inquiry.status)}`}
@@ -151,22 +150,12 @@ export default async function InquiryDetailPage({
             {statusLabel(inquiry.status)}
           </span>
 
-          {/* External company */}
+          {/* External company name */}
           {inquiry.externalCompany && (
             <span className="text-sm font-semibold text-text-body">
               {inquiry.externalCompany.name}
             </span>
           )}
-
-          {/* Created date */}
-          <span className="text-sm text-text-muted">
-            {t("colDate")}: {new Date(inquiry.createdAt).toLocaleDateString()}
-          </span>
-
-          {/* Created by */}
-          <span className="text-sm text-text-muted">
-            {inquiry.createdBy.username}
-          </span>
         </div>
 
         {/* ── Action buttons ─────────────────────────────────────────────────── */}
@@ -218,7 +207,8 @@ export default async function InquiryDetailPage({
         <div className="p-5 grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
           <Field label={t("colNumber")} value={formattedInquiryNumber} />
           <Field label={t("fieldName")} value={inquiry.name} />
-          <Field label={t("fieldProjectBudget")} value={inquiry.projectBudget} />
+          {/* V5 — format raw budget string (e.g. "1000000" → "10,00,000" for INR) */}
+          <Field label={t("fieldProjectBudget")} value={formatBudget(inquiry.projectBudget, inquiry.currency)} />
           <Field label={t("fieldCurrency")} value={inquiry.currency} />
           <Field label={t("fieldProjectLocation")} value={inquiry.projectLocation} />
           <Field label={t("fieldSubmissionDate")} value={formatDate(inquiry.submissionDate)} />
