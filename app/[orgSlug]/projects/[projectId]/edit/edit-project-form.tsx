@@ -96,6 +96,7 @@ export function EditProjectForm({
   initialEndClientGstNumber,
   projectNumber,
   companyProjectNumber,
+  inquiryNumber,
   lockedCompany,
   companyCountry,
 }: EditProjectFormProps) {
@@ -166,6 +167,17 @@ export function EditProjectForm({
                 <p className="rounded-sm border border-border bg-primary-softer/40 px-3 py-2.5 text-sm text-text-body">
                   {lockedCompany ? lockedCompany.name : <span className="text-text-placeholder">—</span>}
                 </p>
+              </div>
+
+              {/* Inquiry No. — full-width read-only reference; null for directly-created projects */}
+              <div className={`${fieldCls} sm:col-span-2`}>
+                <label className={labelCls}>Inquiry No.</label>
+                <input
+                  type="text"
+                  disabled
+                  value={inquiryNumber ?? "—"}
+                  className={inputCls}
+                />
               </div>
 
               {/* Row 2 left — Project Name * (C4) */}
