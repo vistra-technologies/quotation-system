@@ -62,8 +62,39 @@ export async function signIn(
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
     timeout: 30_000,
   });
-  await page.getByLabel("User ID").fill(username);
-  await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.getByRole("button", { name: /Sign in/i }).click();
+
+  // Submit and intercept the sign-in API response to detect rate-limiting (429).
+  //
+  // Root cause of the ~1-in-15 flake on full-suite runs: playwright.config.ts has
+  // fullyParallel:true, so multiple spec files run on concurrent workers and share
+  // the same IP bucket.  better-auth limits /api/auth/sign-in/* to 3 requests/10 s
+  // per IP.  The 7 s beforeEach in each file prevents intra-file clustering, but
+  // cannot prevent cross-worker clustering.  When 3 sign-ins from different workers
+  // land within 10 s, the 4th returns 429 — the form shows an error, the URL never
+  // changes to /dashboard, and waitForURL times out (30 s).
+  //
+  // Fix: waitForResponse catches the 429 immediately and retries once after a 10 s
+  // wait (longer than the rate-limit window), then continues normally.  This is a
+  // targeted retry for the specific 429 condition, not a blanket "retry on any error".
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    await page.getByLabel("User ID").fill(username);
+    await page.getByLabel("Password", { exact: true }).fill(password);
+
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (resp) => resp.url().includes("/api/auth/sign-in"),
+        { timeout: 15_000 },
+      ),
+      page.getByRole("button", { name: /Sign in/i }).click(),
+    ]);
+
+    if (response.status() !== 429) break;
+
+    // Rate-limited: wait for the 10 s window to expire before retrying.
+    if (attempt < 2) {
+      await page.waitForTimeout(10_000);
+    }
+  }
+
   await page.waitForURL(new RegExp(`/${orgSlug}/dashboard`), { timeout: 30_000 });
 }
