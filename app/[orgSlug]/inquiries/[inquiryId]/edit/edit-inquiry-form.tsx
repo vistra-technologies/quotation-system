@@ -123,21 +123,11 @@ export function EditInquiryForm({
           </div>
 
           <div className="p-5">
-            {/* Company — always read-only on edit (locked for life of record) */}
-            <div className="mb-[14px] flex flex-col gap-1">
-              <p className={labelCls}>{t("fieldExternalCompanyReadOnly")}</p>
-              <p className="rounded-sm border border-border bg-primary-softer/60 px-3 py-2.5 text-sm font-semibold text-text-body">
-                {externalCompany?.name ?? (
-                  <span className="font-normal text-text-placeholder">—</span>
-                )}
-              </p>
-            </div>
-
-            {/* 2-col grid */}
+            {/* 2-col grid — C2: Inquiry Id left, Company right in Row 1 */}
             <div className="grid grid-cols-1 gap-x-5 gap-y-0 sm:grid-cols-2">
-              {/* Inquiry No. — read-only display */}
+              {/* Row 1 left — Inquiry Id (disabled, real number on edit — C2) */}
               <div className="flex flex-col gap-1 mb-[14px]">
-                <label className={labelCls}>{t("colNumber")}</label>
+                <label className={labelCls}>{t("fieldId")}</label>
                 <input
                   type="text"
                   disabled
@@ -146,7 +136,17 @@ export function EditInquiryForm({
                 />
               </div>
 
-              {/* Project Name * */}
+              {/* Row 1 right — Company read-only (C1, C2) */}
+              <div className="flex flex-col gap-1 mb-[14px]">
+                <p className={labelCls}>{t("fieldExternalCompanyReadOnly")}</p>
+                <p className="rounded-sm border border-border bg-primary-softer/60 px-3 py-2.5 text-sm font-semibold text-text-body">
+                  {externalCompany?.name ?? (
+                    <span className="font-normal text-text-placeholder">—</span>
+                  )}
+                </p>
+              </div>
+
+              {/* Row 2 left — Project Name * (C4) */}
               <div className="flex flex-col gap-1 mb-[14px]">
                 <label htmlFor="name" className={labelCls}>
                   {t("fieldName")}{" "}
@@ -163,7 +163,25 @@ export function EditInquiryForm({
                 />
               </div>
 
-              {/* Project Budget */}
+              {/* Row 2 right — Project Location * (C4) */}
+              <div className="flex flex-col gap-1 mb-[14px]">
+                <label htmlFor="projectLocation" className={labelCls}>
+                  {t("fieldProjectLocation")}{" "}
+                  <span className="text-status-failed-text font-normal">*</span>
+                </label>
+                <input
+                  id="projectLocation"
+                  name="projectLocation"
+                  type="text"
+                  required
+                  autoComplete="off"
+                  defaultValue={initialProjectLocation ?? ""}
+                  placeholder="e.g. Dubai, UAE"
+                  className={inputCls}
+                />
+              </div>
+
+              {/* Row 3 left — Project Budget */}
               <div className="flex flex-col gap-1 mb-[14px]">
                 <label htmlFor="projectBudget" className={labelCls}>
                   {t("fieldProjectBudget")}
@@ -173,13 +191,12 @@ export function EditInquiryForm({
                   name="projectBudget"
                   type="text"
                   autoComplete="off"
-                  placeholder="e.g. 250,000"
                   defaultValue={initialProjectBudget ?? ""}
                   className={inputCls}
                 />
               </div>
 
-              {/* Currency * */}
+              {/* Row 3 right — Currency * */}
               <div className="flex flex-col gap-1 mb-[14px]">
                 <label htmlFor="currency" className={labelCls}>
                   {t("fieldCurrency")}{" "}
@@ -199,24 +216,7 @@ export function EditInquiryForm({
                 </select>
               </div>
 
-              {/* Project Location * */}
-              <div className="flex flex-col gap-1 mb-[14px]">
-                <label htmlFor="projectLocation" className={labelCls}>
-                  {t("fieldProjectLocation")}{" "}
-                  <span className="text-status-failed-text font-normal">*</span>
-                </label>
-                <input
-                  id="projectLocation"
-                  name="projectLocation"
-                  type="text"
-                  required
-                  autoComplete="off"
-                  defaultValue={initialProjectLocation ?? ""}
-                  className={inputCls}
-                />
-              </div>
-
-              {/* Submission Date * */}
+              {/* Row 4 left — Submission Date * (C7) */}
               <div className="flex flex-col gap-1 mb-[14px]">
                 <label htmlFor="submissionDate" className={labelCls}>
                   {t("fieldSubmissionDate")}{" "}
@@ -232,7 +232,7 @@ export function EditInquiryForm({
                 />
               </div>
 
-              {/* Project Deadline */}
+              {/* Row 4 right — Project Deadline (C7) */}
               <div className="flex flex-col gap-1 mb-[14px]">
                 <label htmlFor="projectDeadline" className={labelCls}>
                   {t("fieldProjectDeadline")}
@@ -245,9 +245,6 @@ export function EditInquiryForm({
                   className={inputCls}
                 />
               </div>
-
-              {/* Empty cell */}
-              <div />
             </div>
           </div>
         </div>
@@ -275,7 +272,6 @@ export function EditInquiryForm({
                 name="mainContractorName"
                 type="text"
                 autoComplete="off"
-                placeholder="e.g. ABC Construction"
                 defaultValue={initialMainContractorName ?? ""}
                 className={inputCls}
               />
@@ -290,7 +286,6 @@ export function EditInquiryForm({
                 name="interiorContractorName"
                 type="text"
                 autoComplete="off"
-                placeholder="e.g. XYZ Interiors"
                 defaultValue={initialInteriorContractorName ?? ""}
                 className={inputCls}
               />
@@ -305,7 +300,6 @@ export function EditInquiryForm({
                 name="mainConsultantName"
                 type="text"
                 autoComplete="off"
-                placeholder="e.g. Consultant name"
                 defaultValue={initialMainConsultantName ?? ""}
                 className={inputCls}
               />
@@ -320,7 +314,6 @@ export function EditInquiryForm({
                 name="interiorConsultantName"
                 type="text"
                 autoComplete="off"
-                placeholder="e.g. Consultant name"
                 defaultValue={initialInteriorConsultantName ?? ""}
                 className={inputCls}
               />
@@ -354,7 +347,6 @@ export function EditInquiryForm({
                 type="text"
                 required
                 autoComplete="off"
-                placeholder="e.g. Jane Doe"
                 defaultValue={initialEndClientName ?? ""}
                 className={inputCls}
               />
@@ -372,7 +364,6 @@ export function EditInquiryForm({
                 type="tel"
                 required
                 autoComplete="off"
-                placeholder="e.g. +971 50 123 4567"
                 defaultValue={initialEndClientPhone ?? ""}
                 className={inputCls}
               />
@@ -390,7 +381,6 @@ export function EditInquiryForm({
                 type="email"
                 required
                 autoComplete="off"
-                placeholder="e.g. jane@company.com"
                 defaultValue={initialEndClientEmail ?? ""}
                 className={inputCls}
               />
@@ -410,7 +400,6 @@ export function EditInquiryForm({
                 type="text"
                 required={isIndia}
                 autoComplete="off"
-                placeholder="e.g. 22AAAAA0000A1Z5"
                 defaultValue={initialEndClientGstNumber ?? ""}
                 className={inputCls}
               />
@@ -465,7 +454,6 @@ export function EditInquiryForm({
                 type="text"
                 required
                 autoComplete="off"
-                placeholder="e.g. Mumbai"
                 defaultValue={initialEndClientCity ?? ""}
                 className={inputCls}
               />
@@ -483,7 +471,6 @@ export function EditInquiryForm({
                 type="text"
                 required
                 autoComplete="off"
-                placeholder="e.g. Maharashtra"
                 defaultValue={initialEndClientState ?? ""}
                 className={inputCls}
               />

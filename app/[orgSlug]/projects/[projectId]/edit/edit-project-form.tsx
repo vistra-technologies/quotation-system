@@ -148,30 +148,29 @@ export function EditProjectForm({
               </div>
             )}
 
-            {/* External company — always read-only on edit form */}
-            <div className={`${fieldCls} sm:col-span-2`}>
-              <span className={labelCls}>{t("fieldExternalCompany")}</span>
-              <p className="rounded-sm border border-border bg-primary-softer/40 px-3 py-2.5 text-sm text-text-body">
-                {lockedCompany ? lockedCompany.name : <span className="text-text-placeholder">—</span>}
-              </p>
-            </div>
-
-            {/* 2-column grid */}
+            {/* 2-column grid — PC2/C2: Project Id left, Company right in Row 1 */}
             <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
-              {/* Project No. (disabled, read-only display — X1) */}
+              {/* Row 1 left — Project Id (disabled, real number on edit — PC2) */}
               <div className={fieldCls}>
-                <label className={labelCls}>{t("colNumber")}</label>
+                <label className={labelCls}>{t("fieldId")}</label>
                 <input
                   type="text"
                   disabled
                   value={formattedProjectNumber}
-                  aria-label="Project number"
                   className={inputCls}
                 />
               </div>
 
-              {/* Inquiry No. (disabled — read-only display, never editable) */}
+              {/* Row 1 right — Company read-only (PC1/C1, C2) */}
               <div className={fieldCls}>
+                <span className={labelCls}>{t("fieldExternalCompany")}</span>
+                <p className="rounded-sm border border-border bg-primary-softer/40 px-3 py-2.5 text-sm text-text-body">
+                  {lockedCompany ? lockedCompany.name : <span className="text-text-placeholder">—</span>}
+                </p>
+              </div>
+
+              {/* Inquiry No. — full-width read-only reference; null for directly-created projects */}
+              <div className={`${fieldCls} sm:col-span-2`}>
                 <label className={labelCls}>Inquiry No.</label>
                 <input
                   type="text"
@@ -181,7 +180,7 @@ export function EditProjectForm({
                 />
               </div>
 
-              {/* Project Name * */}
+              {/* Row 2 left — Project Name * (C4) */}
               <div className={fieldCls}>
                 <label htmlFor="name" className={labelCls}>
                   {t("fieldName")}
@@ -198,7 +197,25 @@ export function EditProjectForm({
                 />
               </div>
 
-              {/* Project Budget */}
+              {/* Row 2 right — Project Location * (C4, D22) */}
+              <div className={fieldCls}>
+                <label htmlFor="projectLocation" className={labelCls}>
+                  {t("fieldProjectLocation")}
+                  {reqMark}
+                </label>
+                <input
+                  id="projectLocation"
+                  name="projectLocation"
+                  type="text"
+                  required
+                  defaultValue={initialProjectLocation ?? ""}
+                  autoComplete="off"
+                  placeholder="e.g. Dubai, UAE"
+                  className={inputCls}
+                />
+              </div>
+
+              {/* Row 3 left — Project Budget */}
               <div className={fieldCls}>
                 <label htmlFor="projectBudget" className={labelCls}>
                   {t("fieldProjectBudget")}
@@ -209,12 +226,11 @@ export function EditProjectForm({
                   type="text"
                   defaultValue={initialProjectBudget ?? ""}
                   autoComplete="off"
-                  placeholder="e.g. 250,000"
                   className={inputCls}
                 />
               </div>
 
-              {/* Currency * (constrained select — D13) */}
+              {/* Row 3 right — Currency * (constrained select — D13) */}
               <div className={fieldCls}>
                 <label htmlFor="currency" className={labelCls}>
                   {t("fieldCurrency")}
@@ -234,24 +250,7 @@ export function EditProjectForm({
                 </select>
               </div>
 
-              {/* Project Location * (D22) */}
-              <div className={fieldCls}>
-                <label htmlFor="projectLocation" className={labelCls}>
-                  {t("fieldProjectLocation")}
-                  {reqMark}
-                </label>
-                <input
-                  id="projectLocation"
-                  name="projectLocation"
-                  type="text"
-                  required
-                  defaultValue={initialProjectLocation ?? ""}
-                  autoComplete="off"
-                  className={inputCls}
-                />
-              </div>
-
-              {/* Submission Date * (D17) */}
+              {/* Row 4 left — Submission Date * (D17, C7) */}
               <div className={fieldCls}>
                 <label htmlFor="submissionDate" className={labelCls}>
                   {t("fieldSubmissionDate")}
@@ -267,7 +266,7 @@ export function EditProjectForm({
                 />
               </div>
 
-              {/* Project Deadline */}
+              {/* Row 4 right — Project Deadline (C7) */}
               <div className={fieldCls}>
                 <label htmlFor="projectDeadline" className={labelCls}>
                   {t("fieldProjectDeadline")}
