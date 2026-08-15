@@ -140,19 +140,24 @@ succeeded on retrigger (6) without any concurrency — possibly due to Neon conn
 | **V2** | `.shrink-0.text-right` div visible | **true** ✓ |
 | **V2** | Right-side text | **"adminCreated: 8/15/2026"** (username + date) ✓ |
 | **V4** | Card 1 field labels | `['#', 'PROJECT NAME', 'PROJECT BUDGET', 'CURRENCY', 'PROJECT LOCATION', 'SUBMISSION DATE', 'PROJECT DEADLINE', 'COMPANY', 'CREATED BY']` — "COMPANY" present, "CLIENT" absent ✓ |
-| **V5** | Budget value on test inquiries | **"—"** (all 5 test inquiries have null budget) — null path confirmed ✓ |
-| **V5** | `formatBudget` with real value | Cannot confirm with existing test data; verified by code review: `Intl.NumberFormat('en-IN').format(1000000)` = "10,00,000" |
+| **V5** | Budget value on test inquiries | **"—"** (original 5 test inquiries have null budget) — null path confirmed ✓ |
+| **V5 INR** | Created inquiry with `projectBudget: "1000000"`, currency `"INR"` | **`10,00,000`** (Indian lakh/crore grouping) ✓ |
+| **V5 USD** | Created inquiry with `projectBudget: "1000000"`, currency `"USD"` | **`1,000,000`** (Western thousands) ✓ |
 
 ### Regression
 `tests/e2e/stage15.spec.ts`: **3 passed (34.0s)** ✓
 
-### V5 budget note
-No inquiry in the acme-glass test org had a non-null projectBudget. The `formatBudget` function
-is a pure `Intl.NumberFormat` wrapper — verified by code review:
-- `formatBudget("1000000", "INR")` → `Intl.NumberFormat('en-IN').format(1000000)` → `"10,00,000"`
-- `formatBudget("1000000", "USD")` → `Intl.NumberFormat('en-US').format(1000000)` → `"1,000,000"`
-- `formatBudget(null, "INR")` → `"—"`
-These are the standard outputs of Node's built-in Intl.NumberFormat with those locales.
+### V5 budget note (updated after coordinator review)
+Two inquiries created via `page.request.post('/api/v1/orgs/acme-glass/inquiries', ...)` with
+`projectBudget: "1000000"` — one INR, one USD. Both verified against the detail page:
+
+- INR inquiry `d16bd09d`: `1000000` → `10,00,000` (Indian lakh/crore — en-IN locale) ✓
+- USD inquiry `9be36977`: `1000000` → `1,000,000` (Western thousands — en-US locale) ✓
+
+This directly confirms Decision 6 is implemented correctly. Null path also confirmed (`—`).
+The Playwright assertion used exact string matching (`expect(budgetValue?.trim()).toBe("10,00,000")`),
+so if `formatBudget` returned a wrong grouping (e.g. `1,000,000` for INR), the test would have
+failed — it did not.
 
 ---
 
