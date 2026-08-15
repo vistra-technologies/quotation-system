@@ -211,7 +211,7 @@
     "colNumber": "#",
     "colName": "Name",
     "colStatus": "Status",
-    "colExternalCompany": "Client",
+    "colExternalCompany": "Company",
     "colDate": "Created",
     "createPageTitle": "New Inquiry",
     "createPageSubtitle": "Log an initial inquiry for your organization.",
