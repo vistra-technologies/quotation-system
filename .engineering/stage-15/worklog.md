@@ -405,3 +405,38 @@ Branch: `feature/stage15-form-behaviours` @ `7e63864`. Detail: `item-F.md`.
 APPROVE-WITH-NITS. 0 CRITICAL, 1 IMPORTANT, 3 MINOR.
 Production code is correct on all four forms and all round-trip paths. IMPORTANT: two C6 edit-form spec tests (`stage15-f-constraints.spec.ts` tests 3 and 4) cannot detect a C6 regression — old code used `defaultValue={initialCurrency}` which produces the identical `inputValue()` result; these tests pass regardless of whether the fix is present. MINOR-1: unused `fillCreateFormRequiredFields` import in the constraints spec (lint warning). MINOR-2: C6 create first sub-assertion ("INR at page load") may pass without the fix depending on browser default for uncontrolled selects. MINOR-3: 386-line constraints spec tests HTML5 attribute presence and browser-native `checkValidity()` — more harness than warranted; plan called for manual C9 verification. C5 save tests (`stage15-f.spec.ts`) are solid and properly falsifiable.
 Detail: `.engineering/stage-15/review-F.md`
+
+### 2026-08-17 — developer (resumed) — Batch H: suite complete, DONE_WITH_CONCERNS
+
+Resumed from `b1cdcbd` (X3/X5/X6 committed, branch pushed, Batch F quiet). Suite window granted.
+
+**U3 regression discovered in run 1** (admin-stage4.spec.ts:164): test used "Distributor" role
+(external per Batch G's new `isInternalRole` flag) without setting `externalCompanyId`. Fix: change
+to "Company Member" (internal role). Committed `f301f79` + 2 retrigger commits (`89b8804`, `4b62f96`)
+to clear P1002 Neon advisory-lock contention. Final deployment `hzi4v7ooq`.
+
+**Suite runs (2 total, against deployment `hzi4v7ooq`, 197 tests, 8 workers):**
+
+Run 1 (deployment `5ehzt9p2c`, pre-fix): **151 passed, 5 failed, 41 skipped** (8.2m)
+- admin-stage4.spec.ts:164 — U3 regression (fixed)
+- login.spec.ts:262, pricing-stage3.spec.ts:96, stage13.spec.ts:290, stage15-user-mgmt.spec.ts:116 — rate-limit
+
+Run 2 (deployment `hzi4v7ooq`, post-fix): **170 passed, 5 failed, 22 skipped** (7.8m)
+- login.spec.ts:201 — `p[role="alert"]` showed "Too many requests" instead of "deactivated"; rate-limit
+  in `beforeAll` corrupted architect-user setup
+- org-nav.spec.ts:259, pricing-stage3.spec.ts:96 — manual sign-in without helper (pre-existing)
+- stage14.spec.ts:138, stage15-user-mgmt.spec.ts:231 — `waitForURL` at `helpers.ts:108` after all 4
+  retries exhausted; worst-case 8-worker cluster saturation (not regressions)
+
+**Confirmed working:** X5 (`admin-stage4.spec.ts:187`) PASSED run 2. X6 (`stage6.spec.ts:379`)
+PASSED run 2. U3 fix (`admin-stage4.spec.ts:164`) PASSED run 2.
+
+**Concerns for reviewer/orchestrator:**
+1. `login.spec.ts`, `org-nav.spec.ts`, `pricing-stage3.spec.ts` — inline signIn without 429 retry.
+   Persistent flakes. Cannot fix without touching files outside Batch H scope.
+2. Under maximal 8-worker parallel load, even 4 retries get exhausted (`helpers.ts:108` failures).
+   Architectural fix (reduce workers or increase timeout) not in Batch H scope.
+3. `E2E_PERM` afterAll teardown remains blocked (no DELETE endpoint); seed purge from Batch G is the
+   operational backstop.
+
+Branch: `feature/stage15-test-harness` @ `69fd928`. Detail: `.engineering/stage-15/item-H.md` in the worktree.
