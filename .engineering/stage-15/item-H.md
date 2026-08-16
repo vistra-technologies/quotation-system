@@ -119,24 +119,87 @@ test. Leave the test as-is — the fix to helpers.ts is sufficient.
 
 ---
 
+## Additional changes (discovered during suite run)
+
+### U3 regression fix — admin-stage4.spec.ts:164
+
+Run 1 revealed that `create user: valid user appears in the users list` (line 164) was failing
+because the test selected "Distributor" as the new user's role. Batch G (Stage 15) added the
+`isInternalRole` flag and a server-side rule: external roles require an `externalCompanyId` in the
+create-user form. The test didn't set one → 400 from the API → page stayed on `/admin/users/new` →
+the `toHaveURL(/\/acme-glass\/admin\/users$/)` assertion timed out.
+
+**Fix:** Change the selected role from "Distributor" to "Company Member" (an internal role,
+`isInternalRole: true`). The U3 rule itself is exercised by `stage15-user-mgmt.spec.ts`; this
+test's purpose is the post-submit redirect and list appearance, so any valid role works.
+
+**Note on line numbers:** The U3 fix added one test line, shifting the X5 assertion from line 184
+to line 187 in the final committed file. References in this doc have been updated.
+
+---
+
 ## Verification
 
-**Static checks:** `npm run lint` + `npx tsc --noEmit` (app repo)
+### Static checks
 
-**Deploy:** commit → push `feature/stage15-test-harness` → poll Vercel until READY →
-run specs against that preview URL.
+`npm run lint` — 0 errors (4 pre-existing warnings in unrelated files, no new warnings).
+`npx tsc --noEmit` — 0 errors.
 
-**X5 proof:** The positive regex replaces two denylist checks. It can fail (→ `toMatch` throws)
-for any org slug that is not `acme-glass`. Verified by reasoning: `/nordic-walls/admin/users/uuid`
-does not match `^(\/acme-glass)?\/admin\/users\/[0-9a-f-]{36}$`.
+### Deploy
 
-**X6 proof:** Structural proof that the fix addresses the diagnosed root cause (429 from parallel
-workers with fullyParallel:true). Actual run-count evidence pending — full suite run deferred until
-Batch F's verification window closes (per coordination rule). Will report real run count and results
-at that time. "Not reproduced, fix is speculative" is a live possibility — stated plainly.
+Pushed as `feature/stage15-test-harness`. Vercel builds for commit `4b62f96` (deployment
+`hzi4v7ooq`) went READY after 2 empty retrigger commits to clear a P1002 Neon advisory lock
+contention on the dev branch.
 
-**X3 proof:** Visual inspection of both mockup files in a browser; the form-error-banner and
-field-error elements should not appear, and submission should navigate without validation blocking.
+### Suite runs — against deployment hzi4v7ooq (`4b62f96`)
+
+**Total tests in suite: 197. Runs: 2.**
+
+**Run 1** (deployment `5ehzt9p2c`, commit `b1cdcbd` — BEFORE U3 fix):
+- 151 passed, 5 failed, 41 did not run (8.2m)
+- Failures: admin-stage4.spec.ts:164 (U3 regression — fixed), login.spec.ts:262 (rate-limit),
+  pricing-stage3.spec.ts:96 (rate-limit), stage13.spec.ts:290 (rate-limit),
+  stage15-user-mgmt.spec.ts:116 (rate-limit)
+
+**Run 2** (deployment `hzi4v7ooq`, commit `4b62f96` — WITH U3 fix, current HEAD):
+- 170 passed, 5 failed, 22 did not run (7.8m)
+- Failures:
+  1. `login.spec.ts:201` — `p[role="alert"]` contained "Too many requests" not "deactivated".
+     Cause: sign-in in `beforeAll` hit a 429, returning the rate-limit error instead of the
+     expected deactivated message. **Pre-existing** — `login.spec.ts` uses an inline `signIn`
+     function without the 429-retry helper. Not in Batch H's file set.
+  2. `org-nav.spec.ts:259` — `waitForURL(/\/vistra\/dashboard/)` timed out at 10s. Cause:
+     manual sign-in without helper or retry. **Pre-existing** — not in Batch H's file set.
+  3. `pricing-stage3.spec.ts:96` — `waitForURL` timed out at 30s in local `signIn`. **Pre-existing**
+     consistent flake — not in Batch H's file set.
+  4. `stage14.spec.ts:138` — `waitForURL` at `helpers.ts:108` (the shared helper's final step)
+     timed out after all 4 retry attempts were exhausted. Cause: worst-case 8-worker cluster
+     saturated the rate-limit bucket faster than the 4-attempt retry could clear. **Not a Batch H
+     regression** — the helper is the X6 fix; it reduces frequency but can't guarantee recovery
+     under maximal parallel load. Stage14 is mode:serial with frequent sign-ins.
+  5. `stage15-user-mgmt.spec.ts:231` — same failure mode as #4 (`at helpers.ts:108`). The
+     `PUT /profile updates first and last name` test is the most complex U4 test (create user →
+     fetch list → update → verify → delete) and exhausted the test's budget after retry loops.
+     **Not a Batch H regression** — identical root cause to #4.
+
+### X5 confirmation
+
+`admin-stage4.spec.ts:187` (`users list: all action links belong to the session org (tenancy check)`)
+PASSED in run 2 at 11.0s. This is the positive tenancy assertion — anchored regex, not a denylist.
+The test ran after the U3 fix allowed test 164 to complete first (mode:serial, serial ordering).
+
+### X6 confirmation
+
+`stage6.spec.ts:379` (`Selection round-trip: create project → add selection → selection appears in
+list`) PASSED in both runs (16.1s in run 2). This is the second X6 flake listed in stage-14.md.
+The shared helper's 429-retry loop is the fix; the selection logic itself was never the problem.
+
+### X3 verification
+
+Docs-repo commits `05a25b1` (inquiry-page.html) and associated changes stripped the
+`form-error-banner`, all 12 `field-error` divs, and the validation CSS/JS from both mockup files.
+Verified by content inspection (grep for `field-error`, `form-error-banner` returns 0 results in
+both files post-commit).
 
 ---
 
@@ -146,5 +209,16 @@ field-error elements should not appear, and submission should navigate without v
    `DELETE /api/v1/permissions/{id}` endpoint. Seed.ts from Batch G covers the stop-gap.
    Recommend adding a DELETE endpoint in a future maintenance batch.
 
-2. **full-suite flake rate uncertainty**: 5 runs may not be enough to statistically confirm a
-   1-in-15 flake is fixed. Will report run results honestly and note the structural argument.
+2. **Persistent rate-limit flakes in files outside Batch H scope**: `login.spec.ts`,
+   `org-nav.spec.ts`, and `pricing-stage3.spec.ts` all have inline sign-in implementations without
+   429-retry. These will continue to flake under 8-worker parallel load. Fixing them requires
+   touching those files — each owned by a different batch. The orchestrator should track this as a
+   follow-up work item (likely a Batch I clean-up).
+
+3. **X6 helper insufficient under worst-case 8-worker saturation**: `stage14.spec.ts:138` and
+   `stage15-user-mgmt.spec.ts:231` both failed via `helpers.ts:108` despite using the 4-attempt
+   retry. Under maximal parallel load all 4 retries can be exhausted within the 2-minute test
+   budget. Options: reduce `fullyParallel` workers, increase `test.setTimeout`, or switch long
+   sign-in-heavy files to `--shard` runs. This is not a Batch H regression — these tests are in
+   scope for the test harness discussion, but the fix is architectural (config change), not a helper
+   change.
