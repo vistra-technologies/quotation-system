@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { CompanyDropdown } from "@/components/company-dropdown";
+import { formatBudget, stripGroupingSeparators } from "@/lib/format-currency";
 import { createProject, type CreateProjectState } from "../actions";
 
 interface CreateProjectFormProps {
@@ -12,9 +13,9 @@ interface CreateProjectFormProps {
   /** Href for the Cancel button (projects list). */
   backHref: string;
   /** Set when the session user is tied to exactly one ExternalCompany — locks the Client field. */
-  lockedCompany: { id: string; name: string; country: "INDIA" | "UAE" } | null;
+  lockedCompany: { id: string; name: string; country: "INDIA" | "UAE"; defaultCurrency: string } | null;
   /** Free-choice list for org members/admins (null lockedCompany). Empty when lockedCompany is set. */
-  externalCompanies: { id: string; name: string; country: "INDIA" | "UAE" }[];
+  externalCompanies: { id: string; name: string; country: "INDIA" | "UAE"; defaultCurrency: string }[];
 }
 
 const initialState: CreateProjectState = { error: null };
@@ -55,12 +56,27 @@ export function CreateProjectForm({
   // Internal (free-choice) user: updated when dropdown changes.
   const [isIndia, setIsIndia] = useState(lockedCompany?.country === "INDIA");
 
+  // C6: currency defaults to company's defaultCurrency, else INR (decision 6).
+  const [selectedCurrency, setSelectedCurrency] = useState<string>(
+    lockedCompany?.defaultCurrency ?? "INR",
+  );
+
+  // C5: budget display value — controlled input, formatted on blur (decision 7).
+  const [budgetValue, setBudgetValue] = useState("");
+
   // Pre-fill submission date to today (local calendar date, not UTC).
   const todayLocal = (() => {
     const d = new Date();
     const pad = (n: number) => String(n).padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   })();
+
+  // C5: format the budget field on blur using current selected currency.
+  function handleBudgetBlur() {
+    const raw = stripGroupingSeparators(budgetValue.trim());
+    const formatted = formatBudget(raw, selectedCurrency);
+    setBudgetValue(formatted === "—" ? "" : formatted);
+  }
 
   // Shared class strings to keep the markup DRY.
   const inputCls =
@@ -138,6 +154,8 @@ export function CreateProjectForm({
                       setSelectedCompanyId(id);
                       const co = externalCompanies.find((c) => c.id === id);
                       setIsIndia(co?.country === "INDIA");
+                      // C6: update currency default when company selection changes.
+                      setSelectedCurrency(co?.defaultCurrency ?? "INR");
                     }}
                     noneLabel={t("fieldExternalCompanyNone")}
                     ariaLabel={t("fieldExternalCompany")}
@@ -145,7 +163,7 @@ export function CreateProjectForm({
                 )}
               </div>
 
-              {/* Row 2 left — Project Name * (C4) */}
+              {/* Row 2 left — Project Name * (C4, C9) */}
               <div className={fieldCls}>
                 <label htmlFor="name" className={labelCls}>
                   {t("fieldName")}
@@ -157,6 +175,7 @@ export function CreateProjectForm({
                   type="text"
                   required
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -178,7 +197,7 @@ export function CreateProjectForm({
                 />
               </div>
 
-              {/* Row 3 left — Project Budget (optional) */}
+              {/* Row 3 left — Project Budget (optional, C5, C9) */}
               <div className={fieldCls}>
                 <label htmlFor="projectBudget" className={labelCls}>
                   {t("fieldProjectBudget")}
@@ -188,17 +207,29 @@ export function CreateProjectForm({
                   name="projectBudget"
                   type="text"
                   autoComplete="off"
+                  inputMode="decimal"
+                  pattern="[\d,\.]*"
+                  value={budgetValue}
+                  onChange={(e) => setBudgetValue(e.target.value)}
+                  onBlur={handleBudgetBlur}
                   className={inputCls}
                 />
               </div>
 
-              {/* Row 3 right — Currency * (constrained select — D13) */}
+              {/* Row 3 right — Currency * (C6: controlled, defaults to company currency — D13) */}
               <div className={fieldCls}>
                 <label htmlFor="currency" className={labelCls}>
                   {t("fieldCurrency")}
                   {reqMark}
                 </label>
-                <select id="currency" name="currency" required className={selectCls}>
+                <select
+                  id="currency"
+                  name="currency"
+                  required
+                  value={selectedCurrency}
+                  onChange={(e) => setSelectedCurrency(e.target.value)}
+                  className={selectCls}
+                >
                   <option value="" disabled>Select currency…</option>
                   <option value="INR">INR</option>
                   <option value="AED">AED</option>
@@ -260,6 +291,7 @@ export function CreateProjectForm({
                   name="mainContractorName"
                   type="text"
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -273,6 +305,7 @@ export function CreateProjectForm({
                   name="interiorContractorName"
                   type="text"
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -286,6 +319,7 @@ export function CreateProjectForm({
                   name="mainConsultantName"
                   type="text"
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -299,6 +333,7 @@ export function CreateProjectForm({
                   name="interiorConsultantName"
                   type="text"
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -319,7 +354,7 @@ export function CreateProjectForm({
 
           <div className="p-5">
             <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
-              {/* End Client Name * */}
+              {/* End Client Name * (C9) */}
               <div className={fieldCls}>
                 <label htmlFor="endClientName" className={labelCls}>
                   {t("fieldEndClientName")}
@@ -331,6 +366,7 @@ export function CreateProjectForm({
                   type="text"
                   required
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -420,7 +456,7 @@ export function CreateProjectForm({
                 />
               </div>
 
-              {/* City * */}
+              {/* City * (C9) */}
               <div className={fieldCls}>
                 <label htmlFor="endClientCity" className={labelCls}>
                   {t("fieldEndClientCity")}
@@ -432,11 +468,12 @@ export function CreateProjectForm({
                   type="text"
                   required
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
 
-              {/* State * */}
+              {/* State * (C9) */}
               <div className={fieldCls}>
                 <label htmlFor="endClientState" className={labelCls}>
                   {t("fieldEndClientState")}
@@ -448,6 +485,7 @@ export function CreateProjectForm({
                   type="text"
                   required
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
