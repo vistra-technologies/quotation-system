@@ -19,7 +19,7 @@ pointer to its detail artifact). No transcripts here.
 | C | List pages | L2, L3, U1, U2 | — | pending |
 | D | Form labels & layout (all four forms) | C1, C2, C3, C4, C7, C8, PC1, PC2 | — | pending |
 | E | Inquiry view header | V1, V2, V4, V5 | — | pending |
-| F | Form behaviours | C5, C6, C9 | — | pending |
+| F | Form behaviours | C5, C6, C9 | `feature/stage15-form-behaviours` | ✅ done |
 | G | User management (+ `Role` migration) | U3, U4, U5, U6 | — | pending |
 | H | Test harness | X3, X5, X6 | — | pending |
 
@@ -306,7 +306,7 @@ batches interrupted; state preserved:
 
 | Batch | State | Where |
 |---|---|---|
-| **F** | **Partial and uncommitted** — preserved as WIP `2b0a3fd`. Only the **inquiry create form** + both server actions were touched; **the other three forms are NOT done**. No lint/tsc, no preview, **no end-to-end budget-save evidence**. Not pushed. | `feature/stage15-form-behaviours` |
+| **F** | ✅ **DONE** — `7e63864`. All four forms complete; 4/4 E2E budget-save tests passed. Ready for review. | `feature/stage15-form-behaviours` |
 | **H** | Clean tree, committed. **X3 DONE** (docs `05a25b1`). X5 assertion + X6 `signIn` 429 retry (hardened in `05881de` to 4 attempts using `X-Retry-After`). Was starting the **full suite** against `hvtmxi3ab`. Still owes: the **second** X6 flake (`stage6.spec.ts:379` — no commit mentions it), **run-count evidence**, X5's can-it-fail statement, full-suite results, the read on G's two-sign-in test, `item-H.md`, and a **push** (nothing on origin). | `feature/stage15-test-harness` |
 
 **Neither is pushed** — pushing triggers Vercel builds with nobody alive to verify them.
@@ -375,3 +375,28 @@ force-added and committed as `b1cdcbd`.
 
 **PAUSED here.** Full suite run deferred pending Batch F's verification window closing (per coordination
 rule). Run-count evidence and full-suite results will be reported on re-dispatch. Detail: `item-H.md`.
+
+### 2026-08-17 — developer (resumed) — Batch F: all four forms complete, E2E verified
+
+Picked up from WIP `2b0a3fd` (inquiry create form + server actions only; unverified).
+
+**What was already done (WIP):** inquiry create form — C5 blur handler, C6 currency state, C9 patterns; both server actions — comma-strip before saving; inquiry/project new pages — `defaultCurrency` threaded into company types.
+
+**My additions (07aef6f):** the three remaining forms — inquiry edit, project create, project edit — each got:
+- C5: budget field converted from uncontrolled to controlled; `useState`+`formatBudget` imports; `handleBudgetBlur`; edit forms pre-format `initialProjectBudget` on mount
+- C6: project create form types updated to include `defaultCurrency`; company `onChange` updates `selectedCurrency`; both edit forms track currency as state (needed for blur handler)
+- C9: `pattern="[A-Za-z0-9 \-]*"` on project name, 4 contractor/consultant name fields, endClientName, endClientCity, endClientState; `inputMode="decimal"` + `pattern="[\d,\.]*"` on budget
+
+**E2E spec (93c79f5):** `tests/e2e/stage15-f.spec.ts` — 4 serial tests, one per form, each types a budget → Tab (blur) → asserts formatted display → submits → reads persisted value back via API → asserts clean numeric string.
+
+**Results:** 4/4 PASSED against `quotation-system-7g8drm4wf-vistra-indias-projects.vercel.app` (commit `93c79f5`):
+- inquiry create: typed "1000000" (INR) → displayed "10,00,000" → stored **"1000000"** ✓
+- inquiry edit: pre-formatted "10,00,000" on open; changed to "2500000" → displayed "25,00,000" → stored **"2500000"** ✓
+- project create: typed "1500000" (USD) → displayed "1,500,000" → stored **"1500000"** ✓
+- project edit: pre-formatted "1,500,000" on open; changed to "3000000" → displayed "3,000,000" → stored **"3000000"** ✓
+
+Static: lint exit 0; tsc --noEmit clean. Build log routes confirmed all four form routes present. `/api/health` → `{"status":"ok","database":"connected"}`.
+
+No Prisma calls changed (no `by-page.sql` update). No new i18n namespace (no clientMessages trap). Reused `lib/format-currency.ts` from Batch E exclusively — no second formatter.
+
+Branch: `feature/stage15-form-behaviours` @ `7e63864`. Detail: `item-F.md`.
