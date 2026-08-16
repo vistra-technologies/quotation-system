@@ -169,7 +169,10 @@ test("create user: valid user appears in the users list", async ({ page }) => {
   await page.getByRole("textbox", { name: "First Name" }).fill("E2E");
   await page.getByRole("textbox", { name: "Last Name" }).fill("Tester");
   await page.getByRole("textbox", { name: "Username" }).fill(username);
-  await page.getByLabel("Role").selectOption("Distributor");
+  // Stage 15 U3 (Batch G): external roles (Distributor) now require an external company.
+  // Use Company Member (an internal role, isInternalRole:true) so no company is needed here.
+  // The U3 rule itself is verified by stage15-user-mgmt.spec.ts.
+  await page.getByLabel("Role").selectOption("Company Member");
   await page.getByRole("textbox", { name: "Initial Password" }).fill("Test1234!");
   await page.getByRole("button", { name: "Create User" }).click();
   // Redirects to users list
