@@ -400,3 +400,8 @@ Static: lint exit 0; tsc --noEmit clean. Build log routes confirmed all four for
 No Prisma calls changed (no `by-page.sql` update). No new i18n namespace (no clientMessages trap). Reused `lib/format-currency.ts` from Batch E exclusively — no second formatter.
 
 Branch: `feature/stage15-form-behaviours` @ `7e63864`. Detail: `item-F.md`.
+
+### 2026-08-17 — reviewer — Batch F review complete
+APPROVE-WITH-NITS. 0 CRITICAL, 1 IMPORTANT, 3 MINOR.
+Production code is correct on all four forms and all round-trip paths. IMPORTANT: two C6 edit-form spec tests (`stage15-f-constraints.spec.ts` tests 3 and 4) cannot detect a C6 regression — old code used `defaultValue={initialCurrency}` which produces the identical `inputValue()` result; these tests pass regardless of whether the fix is present. MINOR-1: unused `fillCreateFormRequiredFields` import in the constraints spec (lint warning). MINOR-2: C6 create first sub-assertion ("INR at page load") may pass without the fix depending on browser default for uncontrolled selects. MINOR-3: 386-line constraints spec tests HTML5 attribute presence and browser-native `checkValidity()` — more harness than warranted; plan called for manual C9 verification. C5 save tests (`stage15-f.spec.ts`) are solid and properly falsifiable.
+Detail: `.engineering/stage-15/review-F.md`
