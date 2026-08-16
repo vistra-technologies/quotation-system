@@ -46,6 +46,11 @@ export async function createProject(
   const getStr = (key: string): string | null =>
     (formData.get(key) as string | null)?.trim() || null;
 
+  // C5 (Stage 15 Batch F): strip grouping separators so the DB always stores a
+  // clean numeric string ("1000000"), not a formatted one ("10,00,000").
+  const rawCreateBudget = getStr("projectBudget");
+  const strippedCreateBudget = rawCreateBudget ? rawCreateBudget.replace(/,/g, "") : null;
+
   const res = await internalFetch(`/api/v1/orgs/${orgSlug}/projects`, {
     method: "POST",
     body: JSON.stringify({
@@ -56,7 +61,7 @@ export async function createProject(
       externalCompanyId,
       submissionDate: getStr("submissionDate"),
       projectDeadline: getStr("projectDeadline"),
-      projectBudget: getStr("projectBudget"),
+      projectBudget: strippedCreateBudget,
       mainContractorName: getStr("mainContractorName"),
       interiorContractorName: getStr("interiorContractorName"),
       mainConsultantName: getStr("mainConsultantName"),
@@ -130,6 +135,11 @@ export async function updateProject(
   const getStr = (key: string): string | null =>
     (formData.get(key) as string | null)?.trim() || null;
 
+  // C5 (Stage 15 Batch F): strip grouping separators so the DB always stores a
+  // clean numeric string ("1000000"), not a formatted one ("10,00,000").
+  const rawUpdateBudget = getStr("projectBudget");
+  const strippedUpdateBudget = rawUpdateBudget ? rawUpdateBudget.replace(/,/g, "") : null;
+
   const res = await internalFetch(
     `/api/v1/orgs/${orgSlug}/projects/${projectId}`,
     {
@@ -140,7 +150,7 @@ export async function updateProject(
         projectLocation,
         submissionDate: getStr("submissionDate"),
         projectDeadline: getStr("projectDeadline"),
-        projectBudget: getStr("projectBudget"),
+        projectBudget: strippedUpdateBudget,
         mainContractorName: getStr("mainContractorName"),
         interiorContractorName: getStr("interiorContractorName"),
         mainConsultantName: getStr("mainConsultantName"),

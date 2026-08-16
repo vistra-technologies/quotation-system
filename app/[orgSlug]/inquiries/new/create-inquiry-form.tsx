@@ -5,14 +5,15 @@ import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { CompanyDropdown } from "@/components/company-dropdown";
+import { formatBudget, stripGroupingSeparators } from "@/lib/format-currency";
 import { createInquiry, type CreateInquiryState } from "../actions";
 
 interface CreateInquiryFormProps {
   orgSlug: string;
   /** Set when the session user is tied to exactly one ExternalCompany — locks the Client field. */
-  lockedCompany: { id: string; name: string; country: "INDIA" | "UAE" } | null;
+  lockedCompany: { id: string; name: string; country: "INDIA" | "UAE"; defaultCurrency: string } | null;
   /** Free-choice list for org members/admins (null lockedCompany). Empty when lockedCompany is set. */
-  externalCompanies: { id: string; name: string; country: "INDIA" | "UAE" }[];
+  externalCompanies: { id: string; name: string; country: "INDIA" | "UAE"; defaultCurrency: string }[];
   /** Back-navigation href for the Cancel button. */
   backHref: string;
 }
@@ -32,6 +33,12 @@ const initialState: CreateInquiryState = { error: null };
  * isIndia state keyed off the selected company's country (D20). When no company
  * is selected, GST is optional (D21).
  *
+ * Stage 15 Batch F:
+ *   C5 — Project Budget formats on blur using formatBudget() helper (decision 7).
+ *   C6 — Currency select defaults to company's defaultCurrency, else INR (decision 6).
+ *   C9 — HTML5 pattern restrictions: budget (digits/commas/dots), name fields
+ *         (alphanumeric + space + hyphen). Client-side only (decision 8).
+ *
  * The `inquiries` namespace is forwarded in the ancestor layout's clientMessages —
  * verified in app/[orgSlug]/inquiries/layout.tsx.
  */
@@ -47,6 +54,14 @@ export function CreateInquiryForm({
   // isIndia drives the GST required-ness — set from locked company or updated when dropdown changes
   const [isIndia, setIsIndia] = useState(lockedCompany?.country === "INDIA");
 
+  // C6: currency defaults to company's defaultCurrency, else INR (decision 6).
+  const [selectedCurrency, setSelectedCurrency] = useState<string>(
+    lockedCompany?.defaultCurrency ?? "INR",
+  );
+
+  // C5: budget display value — controlled input, formatted on blur (decision 7).
+  const [budgetValue, setBudgetValue] = useState("");
+
   // Local today in YYYY-MM-DD format (browser-side, avoids UTC offset from new Date().toISOString())
   const todayLocal = (() => {
     const d = new Date();
@@ -60,6 +75,13 @@ export function CreateInquiryForm({
   const selectCls =
     "rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-heading focus:outline-none focus:ring-2 focus:ring-primary/40";
   const labelCls = "text-[10px] font-bold uppercase tracking-wider text-text-muted";
+
+  // C5: format the budget field on blur using current selected currency.
+  function handleBudgetBlur() {
+    const raw = stripGroupingSeparators(budgetValue.trim());
+    const formatted = formatBudget(raw, selectedCurrency);
+    setBudgetValue(formatted === "—" ? "" : formatted);
+  }
 
   return (
     <>
@@ -129,6 +151,8 @@ export function CreateInquiryForm({
                       setSelectedCompanyId(id);
                       const co = externalCompanies.find((c) => c.id === id);
                       setIsIndia(co?.country === "INDIA");
+                      // C6: update currency default when company selection changes.
+                      setSelectedCurrency(co?.defaultCurrency ?? "INR");
                     }}
                     noneLabel={t("fieldExternalCompanyNone")}
                     ariaLabel={t("fieldExternalCompany")}
@@ -148,6 +172,7 @@ export function CreateInquiryForm({
                   type="text"
                   required
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -169,7 +194,7 @@ export function CreateInquiryForm({
                 />
               </div>
 
-              {/* Row 3 left — Project Budget */}
+              {/* Row 3 left — Project Budget (C5, C9) */}
               <div className="flex flex-col gap-1 mb-[14px]">
                 <label htmlFor="projectBudget" className={labelCls}>
                   {t("fieldProjectBudget")}
@@ -179,17 +204,29 @@ export function CreateInquiryForm({
                   name="projectBudget"
                   type="text"
                   autoComplete="off"
+                  inputMode="decimal"
+                  pattern="[\d,\.]*"
+                  value={budgetValue}
+                  onChange={(e) => setBudgetValue(e.target.value)}
+                  onBlur={handleBudgetBlur}
                   className={inputCls}
                 />
               </div>
 
-              {/* Row 3 right — Currency * */}
+              {/* Row 3 right — Currency * (C6: controlled, defaults to company currency) */}
               <div className="flex flex-col gap-1 mb-[14px]">
                 <label htmlFor="currency" className={labelCls}>
                   {t("fieldCurrency")}{" "}
                   <span className="text-status-failed-text font-normal">*</span>
                 </label>
-                <select id="currency" name="currency" required className={selectCls}>
+                <select
+                  id="currency"
+                  name="currency"
+                  required
+                  value={selectedCurrency}
+                  onChange={(e) => setSelectedCurrency(e.target.value)}
+                  className={selectCls}
+                >
                   <option value="" disabled>Select currency…</option>
                   <option value="INR">INR</option>
                   <option value="AED">AED</option>
@@ -252,6 +289,7 @@ export function CreateInquiryForm({
                 name="mainContractorName"
                 type="text"
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 className={inputCls}
               />
             </div>
@@ -265,6 +303,7 @@ export function CreateInquiryForm({
                 name="interiorContractorName"
                 type="text"
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 className={inputCls}
               />
             </div>
@@ -278,6 +317,7 @@ export function CreateInquiryForm({
                 name="mainConsultantName"
                 type="text"
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 className={inputCls}
               />
             </div>
@@ -291,6 +331,7 @@ export function CreateInquiryForm({
                 name="interiorConsultantName"
                 type="text"
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 className={inputCls}
               />
             </div>
@@ -323,6 +364,7 @@ export function CreateInquiryForm({
                 type="text"
                 required
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 className={inputCls}
               />
             </div>
@@ -424,6 +466,7 @@ export function CreateInquiryForm({
                 type="text"
                 required
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 className={inputCls}
               />
             </div>
@@ -440,6 +483,7 @@ export function CreateInquiryForm({
                 type="text"
                 required
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 className={inputCls}
               />
             </div>
