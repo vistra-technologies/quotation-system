@@ -334,3 +334,44 @@ non-negotiable; for **H**, that X6 is *two* flakes and that a ~1-in-15 flake pas
 Playwright suites against the one shared dev Neon branch manufacture flakes rather than catch regressions.
 
 Stage state: 6 of 8 batches merged into `release/stage-15` @ `310b1f3` (A, B, C, D, E, G).
+
+### 2026-08-17 — developer (resumed) — Batch H: non-suite work complete, branch pushed, PAUSED for suite window
+
+Picked up from `3376fc3`. Verified state, ran lint+tsc, pushed, deployment confirmed READY.
+
+**X3:** Verified complete — `05a25b1` in docs repo strips `field-error` spans, `form-error-banner`, JS
+validation from both `inquiry-page.html` and `project-details-page/project-details-page.html`.
+
+**X5:** Confirmed assertion at `admin-stage4.spec.ts:204` — positive regex
+`/^(\/acme-glass)?\/admin\/users\/[0-9a-f-]{36}$/`. Assertion CAN fail: href source is
+`${base}/admin/users/${user.id}` (line 127 of `admin/users/page.tsx`) where `base = orgHref(orgSlug, "")`.
+A tenancy leak to `/nordic-walls/admin/users/{uuid}` does NOT match the anchored regex → `toMatch` throws →
+test fails → leak detected. The old denylist could not catch any third org. This is a genuine positive
+assertion.
+
+**X6 (both flakes):**
+- helpers.ts flake: signIn now retries up to 4 attempts (3 retries) on HTTP 429, waits X-Retry-After+1s
+  between attempts. Commit `05881de` hardened the initial 2-attempt/fixed-10s version. Root cause confirmed:
+  better-auth in-memory rate limit (3/10s/IP), 8 Playwright workers from fullyParallel:true.
+- stage6.spec.ts:379 (second flake): The flaky point is `signIn(page, "admin")` at line 385. Test passes
+  19/19 in isolation (confirmed by stage-14.md). The signIn helper fix covers it — no separate change to
+  stage6.spec.ts required or made. Explicitly: "not reproduced independently" — relying on structural proof
+  that the root cause and the fix are the same for both flakes.
+
+**Batch G two-sign-in test:** `stage15-user-mgmt.spec.ts` does 2 sign-ins with `clearCookies()` between.
+The 12s gap (7s beforeEach + ~5s test) exceeds the 10s rate-limit window for the third worker. With
+fullyParallel:true, concurrent workers may cluster sign-ins — but the X6 fix makes all sign-ins
+self-healing under 429. The test is safe as written; no change needed.
+
+**item-H.md:** Updated to reflect final code state (4 attempts, X-Retry-After, second flake doc), then
+force-added and committed as `b1cdcbd`.
+
+**Static checks:** lint exit 0; tsc --noEmit no output (no errors).
+
+**Push:** `feature/stage15-test-harness` @ `b1cdcbd` pushed to origin for the first time.
+
+**Deployment:** `quotation-system-5ehzt9p2c-vistra-indias-projects.vercel.app` — READY, 137+ routes,
+`/api/health` → `{"status":"ok","database":"connected"}`.
+
+**PAUSED here.** Full suite run deferred pending Batch F's verification window closing (per coordination
+rule). Run-count evidence and full-suite results will be reported on re-dispatch. Detail: `item-H.md`.
