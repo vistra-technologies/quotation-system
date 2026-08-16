@@ -53,13 +53,27 @@ The sign-in form uses `authClient.signIn.email()` which POSTs to `/api/auth/sign
 response causes `signInError` to be set and `window.location.href` is NOT called → page stays at
 `/login` → `page.waitForURL(dashboard)` times out after 30s → test reports a 30s timeout failure.
 
-**Fix:** Add `waitForResponse` to intercept the sign-in HTTP response before `waitForURL`. If 429,
-wait 10s (clears the 10s rate-limit window entirely) and retry once. This is NOT a blanket retry —
-it is specifically targeted at the 429 condition diagnosed above.
+**Fix (final — commit `05881de`):** Intercept the sign-in HTTP response via `waitForResponse`. If
+429, read the `X-Retry-After` response header (seconds remaining in the rate-limit window set by
+better-auth's `rateLimitResponse()`) and wait that many seconds + 1 s buffer, then retry. Loop up
+to 4 attempts (3 retries). The `+1 s` buffer clears better-auth's strict
+`now - lastRequest > windowInMs` boundary check in `decideConsume()`.
 
-**stage6.spec.ts:379:** The `signIn` call within this test (line 385) IS the flaky point. The test
-itself passes 19/19 in isolation (confirmed by stage-14.md). Fixing the signIn helper addresses
-the test's flake.
+4 attempts is the right ceiling for 8 Playwright workers: workers 1–3 succeed; workers 4–8 get 429
+→ retry; workers 4–6 succeed; workers 7–8 get another 429 → retry again; both succeed. Initial
+version committed with 2 attempts and a fixed 10 s wait; `05881de` revised to 4 attempts + dynamic
+X-Retry-After wait after testing showed the 2-attempt cap was still insufficient under an 8-worker
+cluster. This is NOT a blanket retry — it is specifically targeted at the 429 condition.
+
+**stage6.spec.ts:379 (second X6 flake — explicitly accounted for):**
+
+The "Selection round-trip" test at line 379 calls `signIn(page, "admin")` at line 385. That sign-in
+is the flaky point — confirmed by stage-14.md ("passed 19/19 in isolation"). The rest of the test
+(project create, configuration page navigate, selection add) passes reliably when sign-in succeeds.
+The commit message on `05881de` addresses this directly: "stage6.spec.ts:379 (Selection round-trip)
+has the same root cause — no separate fix needed; the signIn helper change covers both X6 flakes."
+
+No separate code change to stage6.spec.ts is required or was made. The fix is fully in helpers.ts.
 
 ### X3 — Strip inline validation markup (docs repo)
 
@@ -116,11 +130,10 @@ run specs against that preview URL.
 for any org slug that is not `acme-glass`. Verified by reasoning: `/nordic-walls/admin/users/uuid`
 does not match `^(\/acme-glass)?\/admin\/users\/[0-9a-f-]{36}$`.
 
-**X6 proof:** Must run the full suite (not just stage6 in isolation) to reproduce the flake.
-Plan: 5 consecutive full-suite runs. 1-in-15 rate means each run has ~93% chance of passing;
-5 consecutive clean runs = ~70% probability if the root cause is not fixed; near-certain if
-the 429-retry path is correct. Also: structural proof that the fix directly addresses the
-diagnosed root cause (429 from parallel workers).
+**X6 proof:** Structural proof that the fix addresses the diagnosed root cause (429 from parallel
+workers with fullyParallel:true). Actual run-count evidence pending — full suite run deferred until
+Batch F's verification window closes (per coordination rule). Will report real run count and results
+at that time. "Not reproduced, fix is speculative" is a live possibility — stated plainly.
 
 **X3 proof:** Visual inspection of both mockup files in a browser; the form-error-banner and
 field-error elements should not appear, and submission should navigate without validation blocking.
