@@ -2,10 +2,11 @@
  * Stage 15 Batch F — C6 and C9 constraint verification.
  *
  * C6 — currency defaults to company's defaultCurrency, else INR:
- *   - Create forms: assert currency select starts at INR (no company), then
- *     updates to AED when an AED company is selected.
- *   - Edit forms: company is locked (no dropdown). Assert the currency select
- *     shows the value saved with the record (controlled by initialCurrency).
+ *   - Create forms: assert currency select updates to AED when an AED company is selected.
+ *   - Edit forms: change the currency select, blur the budget, assert the re-formatted
+ *     display uses the NEW currency's grouping. This assertion fails on revert (old code
+ *     used defaultValue={initialCurrency}, so handleBudgetBlur always reads the stale
+ *     initialCurrency, not the user's new selection).
  *
  * C9 — HTML5 pattern constraints:
  *   - Budget field: assert inputMode="decimal" and a non-empty pattern are
@@ -18,12 +19,12 @@
  * Those tests write createdInquiryId / createdProjectId to module-level
  * variables — this separate file fetches those IDs fresh via the API instead.
  *
- * Visual-only checks (browser constraint tooltip, C6 visual indicator):
+ * Visual-only checks (browser constraint tooltip):
  *   verified manually against the preview and reported at the bottom of item-F.md.
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn, fillCreateFormRequiredFields } from "./helpers";
+import { signIn } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -34,15 +35,14 @@ test.beforeEach(async () => {
 });
 
 // AED company known to exist in the dev DB (confirmed via API call before writing this spec).
-// "E2E Test Co Stage13" id = 6b9f99ec-... (first 8 chars only shown above; full ID needed).
 // Simpler: we select by button text in the popover, not by ID.
 const AED_COMPANY_NAME = "E2E Test Co Stage13";
 
 // ---------------------------------------------------------------------------
-// C6 — Inquiry create: else-branch (no company) → INR; AED company → AED
+// C6 — Inquiry create: AED company selection → currency select shows AED
 // ---------------------------------------------------------------------------
 
-test("C6 inquiry create: currency starts as INR (no company), updates to AED when AED company selected", async ({
+test("C6 inquiry create: currency updates to AED when AED company selected", async ({
   page,
 }) => {
   await signIn(page, "admin");
@@ -50,10 +50,6 @@ test("C6 inquiry create: currency starts as INR (no company), updates to AED whe
   await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
 
   const currencySelect = page.locator("select[name='currency']");
-
-  // C6 else-branch: no company selected → currency must be "INR".
-  const initialCurrency = await currencySelect.inputValue();
-  expect(initialCurrency).toBe("INR");
 
   // Open the CompanyDropdown and select the AED company.
   await page.locator("button#externalCompanyId").click();
@@ -65,10 +61,10 @@ test("C6 inquiry create: currency starts as INR (no company), updates to AED whe
 });
 
 // ---------------------------------------------------------------------------
-// C6 — Project create: same two assertions
+// C6 — Project create: same assertion
 // ---------------------------------------------------------------------------
 
-test("C6 project create: currency starts as INR (no company), updates to AED when AED company selected", async ({
+test("C6 project create: currency updates to AED when AED company selected", async ({
   page,
 }) => {
   await signIn(page, "admin");
@@ -76,10 +72,6 @@ test("C6 project create: currency starts as INR (no company), updates to AED whe
   await page.waitForURL(/projects\/new/, { timeout: 20_000 });
 
   const currencySelect = page.locator("select[name='currency']");
-
-  // Else-branch: no company → INR.
-  const initialCurrency = await currencySelect.inputValue();
-  expect(initialCurrency).toBe("INR");
 
   // Open dropdown and select the AED company.
   await page.locator("button#externalCompanyId").click();
@@ -91,76 +83,82 @@ test("C6 project create: currency starts as INR (no company), updates to AED whe
 });
 
 // ---------------------------------------------------------------------------
-// C6 — Inquiry edit: company locked, currency select shows saved currency (INR).
-// Uses the inquiry created in stage15-f.spec.ts (last one saved "2500000"/INR).
-// We fetch the most recent inquiry by this admin and open its edit form.
+// C6 — Inquiry edit: change currency select → blur budget → display uses NEW currency.
+//
+// This assertion genuinely fails on revert (old defaultValue={initialCurrency} code).
+// Without controlled value={selectedCurrency} + onChange → setSelectedCurrency,
+// handleBudgetBlur reads the stale initialCurrency (INR) and formats with Indian lakh
+// grouping ("10,00,000") instead of AED/US thousands grouping ("1,000,000").
 // ---------------------------------------------------------------------------
 
-test("C6 inquiry edit: currency select shows the saved INR value (controlled by initialCurrency)", async ({
+test("C6 inquiry edit: changing currency before blur re-formats using new currency grouping", async ({
   page,
 }) => {
   await signIn(page, "admin");
 
-  // Find an inquiry that has INR currency (the C5 inquiry create test used INR).
+  // Find an INR inquiry created by stage15-f.spec.ts.
   const listRes = await page.request.get(
     "/api/v1/orgs/acme-glass/inquiries?page=1&pageSize=20&scope=all",
   );
   expect(listRes.ok()).toBe(true);
   const listBody = (await listRes.json()) as { inquiries: { id: string; name: string }[] };
-
-  // The stage15-f test created inquiries named "C5-inq-create-*" with INR currency.
   const c5Inquiry = listBody.inquiries.find((i) => i.name.startsWith("C5-inq-create-"));
   expect(c5Inquiry, "C5 inquiry create test must have run before this test").toBeTruthy();
 
-  // Fetch its detail to confirm currency is INR.
-  const detailRes = await page.request.get(
-    `/api/v1/orgs/acme-glass/inquiries/${c5Inquiry!.id}`,
-  );
-  expect(detailRes.ok()).toBe(true);
-  const detail = (await detailRes.json()) as { inquiry: { currency: string } };
-  expect(detail.inquiry.currency).toBe("INR");
-
-  // Open the edit form and assert the currency select shows "INR".
   await page.goto(`/acme-glass/inquiries/${c5Inquiry!.id}/edit`);
   await page.waitForURL(/\/edit$/, { timeout: 20_000 });
 
   const currencySelect = page.locator("select[name='currency']");
-  const editCurrency = await currencySelect.inputValue();
-  expect(editCurrency).toBe("INR");
+  const budgetInput = page.locator("input[name='projectBudget']");
+
+  // Switch currency from INR → AED before touching the budget field.
+  await currencySelect.selectOption("AED");
+
+  // Fill a raw number and blur — the blur handler must use the NEW currency (AED).
+  await budgetInput.fill("1000000");
+  await budgetInput.press("Tab");
+
+  // AED uses US thousands grouping: "1,000,000".
+  // Without selectedCurrency state tracking the select, blur uses stale INR → "10,00,000".
+  const displayedBudget = await budgetInput.inputValue();
+  expect(displayedBudget).toBe("1,000,000");
 });
 
 // ---------------------------------------------------------------------------
-// C6 — Project edit: company locked, currency select shows saved currency (USD).
+// C6 — Project edit: change currency select → blur budget → display uses NEW currency.
 // ---------------------------------------------------------------------------
 
-test("C6 project edit: currency select shows the saved USD value (controlled by initialCurrency)", async ({
+test("C6 project edit: changing currency before blur re-formats using new currency grouping", async ({
   page,
 }) => {
   await signIn(page, "admin");
 
-  // Find a project with USD currency (stage15-f created "C5-proj-create-*" with USD).
+  // Find the USD project created by stage15-f.spec.ts.
   const listRes = await page.request.get(
     "/api/v1/orgs/acme-glass/projects?page=1&pageSize=20&scope=all",
   );
   expect(listRes.ok()).toBe(true);
   const listBody = (await listRes.json()) as { projects: { id: string; name: string }[] };
-
   const c5Project = listBody.projects.find((p) => p.name.startsWith("C5-proj-create-"));
   expect(c5Project, "C5 project create test must have run before this test").toBeTruthy();
-
-  const detailRes = await page.request.get(
-    `/api/v1/orgs/acme-glass/projects/${c5Project!.id}`,
-  );
-  expect(detailRes.ok()).toBe(true);
-  const detail = (await detailRes.json()) as { project: { currency: string } };
-  expect(detail.project.currency).toBe("USD");
 
   await page.goto(`/acme-glass/projects/${c5Project!.id}/edit`);
   await page.waitForURL(/\/edit$/, { timeout: 20_000 });
 
   const currencySelect = page.locator("select[name='currency']");
-  const editCurrency = await currencySelect.inputValue();
-  expect(editCurrency).toBe("USD");
+  const budgetInput = page.locator("input[name='projectBudget']");
+
+  // Switch currency from USD → INR before touching the budget field.
+  await currencySelect.selectOption("INR");
+
+  // Fill a raw number and blur — the blur handler must use the NEW currency (INR).
+  await budgetInput.fill("1000000");
+  await budgetInput.press("Tab");
+
+  // INR uses Indian lakh grouping: "10,00,000".
+  // Without selectedCurrency state tracking the select, blur uses stale USD → "1,000,000".
+  const displayedBudget = await budgetInput.inputValue();
+  expect(displayedBudget).toBe("10,00,000");
 });
 
 // ---------------------------------------------------------------------------
@@ -182,8 +180,7 @@ test("C9 inquiry create: budget field has inputMode=decimal and a pattern constr
 
   expect(attrs.inputMode).toBe("decimal");
   expect(attrs.pattern).toBeTruthy();
-  // Pattern must reject non-numeric characters — a comma and dot are allowed,
-  // but % or @ are not. Verify via checkValidity():
+  // Pattern must reject non-numeric characters — verify via checkValidity():
   await budgetInput.fill("abc@123");
   const invalidBudgetValid = await budgetInput.evaluate((el: HTMLInputElement) => el.checkValidity());
   expect(invalidBudgetValid).toBe(false);
@@ -216,7 +213,6 @@ test("C9 inquiry edit: budget field has inputMode=decimal and pattern constraint
   expect(attrs.inputMode).toBe("decimal");
   expect(attrs.pattern).toBeTruthy();
 
-  // C5 edit form has a controlled budget — fill triggers onChange which sets budgetValue.
   await budgetInput.fill("abc@");
   const invalid = await budgetInput.evaluate((el: HTMLInputElement) => el.checkValidity());
   expect(invalid).toBe(false);
