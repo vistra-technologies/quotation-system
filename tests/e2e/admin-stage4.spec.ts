@@ -169,7 +169,10 @@ test("create user: valid user appears in the users list", async ({ page }) => {
   await page.getByRole("textbox", { name: "First Name" }).fill("E2E");
   await page.getByRole("textbox", { name: "Last Name" }).fill("Tester");
   await page.getByRole("textbox", { name: "Username" }).fill(username);
-  await page.getByLabel("Role").selectOption("Distributor");
+  // Stage 15 U3 (Batch G): external roles (Distributor) now require an external company.
+  // Use Company Member (an internal role, isInternalRole:true) so no company is needed here.
+  // The U3 rule itself is verified by stage15-user-mgmt.spec.ts.
+  await page.getByLabel("Role").selectOption("Company Member");
   await page.getByRole("textbox", { name: "Initial Password" }).fill("Test1234!");
   await page.getByRole("button", { name: "Create User" }).click();
   // Redirects to users list
@@ -195,12 +198,13 @@ test("users list: all action links belong to the session org (tenancy check)", a
   expect(count).toBeGreaterThanOrEqual(1);
   for (let i = 0; i < count; i++) {
     const href = await actionLinks.nth(i).getAttribute("href");
-    // Tenancy invariant: every Edit link must point to an admin/users detail URL.
-    // In path mode (Vercel preview): /acme-glass/admin/users/{uuid}
-    // In subdomain mode (easeetool.com): /admin/users/{uuid}
-    // Either way it must NOT contain another org's slug.
-    expect(href).toMatch(/\/admin\/users\/[0-9a-f-]{36}/);
-    expect(href).not.toMatch(/\/(nordic-walls|vistra)\//);
+    // Tenancy invariant: every Edit link must point to THIS org's admin/users detail URL.
+    // Positive allowlist — passes only the two valid shapes, fails on any third org:
+    //   Path mode (Vercel preview):      /acme-glass/admin/users/{uuid}
+    //   Subdomain mode (easeetool.com):  /admin/users/{uuid}
+    // A leak to /nordic-walls/admin/users/{uuid} or any other slug does NOT match
+    // this pattern (starts with wrong prefix) → toMatch throws → test fails → leak caught.
+    expect(href).toMatch(/^(\/acme-glass)?\/admin\/users\/[0-9a-f-]{36}$/);
   }
 });
 

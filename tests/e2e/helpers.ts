@@ -62,8 +62,48 @@ export async function signIn(
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
     timeout: 30_000,
   });
-  await page.getByLabel("User ID").fill(username);
-  await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.getByRole("button", { name: /Sign in/i }).click();
+
+  // Submit and intercept the sign-in API response to detect rate-limiting (429).
+  //
+  // Root cause of the ~1-in-15 flake on full-suite runs (confirmed):
+  //   - better-auth rate limit: 3 sign-ins per 10 s per IP, stored in-memory per
+  //     Vercel serverless instance (enabled=isProduction, storage="memory" default,
+  //     no RateLimit model in schema → no DB storage configured).
+  //   - fullyParallel:true → 8 workers can all sign in at startup, clustering
+  //     3+ requests on the same warm Vercel instance → 429 cascade.
+  //   - stage6.spec.ts:379 is the same flake manifesting in the Selection round-trip
+  //     test; no separate fix is needed — the signIn helper fix covers both.
+  //
+  // Fix: targeted retry only on 429 (not a blanket retry).
+  //   - 4 attempts (3 retries) handles worst-case 8-worker cluster: workers 1-3
+  //     succeed, workers 4-8 get 429 → retry → workers 4-6 succeed, 7-8 get 429
+  //     → retry again → both succeed.
+  //   - Uses X-Retry-After response header (seconds until window expires) + 1 s
+  //     buffer for the wait, rather than a fixed 10 s, so it stays accurate if the
+  //     better-auth window config ever changes.
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    await page.getByLabel("User ID").fill(username);
+    await page.getByLabel("Password", { exact: true }).fill(password);
+
+    const [response] = await Promise.all([
+      page.waitForResponse(
+        (resp) => resp.url().includes("/api/auth/sign-in"),
+        { timeout: 15_000 },
+      ),
+      page.getByRole("button", { name: /Sign in/i }).click(),
+    ]);
+
+    if (response.status() !== 429) break;
+
+    // Rate-limited: wait until better-auth's window expires before retrying.
+    // X-Retry-After header (set by rateLimitResponse()) is seconds remaining;
+    // +1 s buffer ensures we're past the strict `now - lastRequest > windowInMs`
+    // boundary check in decideConsume().
+    if (attempt < 4) {
+      const retryAfterSec = Number(response.headers()["x-retry-after"] ?? "10");
+      await page.waitForTimeout((retryAfterSec + 1) * 1_000);
+    }
+  }
+
   await page.waitForURL(new RegExp(`/${orgSlug}/dashboard`), { timeout: 30_000 });
 }
