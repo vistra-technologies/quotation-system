@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { formatBudget, stripGroupingSeparators } from "@/lib/format-currency";
 import { updateInquiry, type UpdateInquiryState } from "../../actions";
 
 interface EditInquiryFormProps {
@@ -87,6 +88,24 @@ export function EditInquiryForm({
 
   const isIndia = companyCountry === "INDIA";
 
+  // C6: track selected currency to drive the blur formatter (decision 7).
+  // On edit the currency is already set from the saved record; we still need
+  // state so the blur handler picks up the user's current select value.
+  const [selectedCurrency, setSelectedCurrency] = useState<string>(initialCurrency);
+
+  // C5: controlled budget value — pre-formatted from the saved raw string (decision 7).
+  const [budgetValue, setBudgetValue] = useState<string>(() => {
+    const f = formatBudget(initialProjectBudget, initialCurrency);
+    return f === "—" ? "" : f;
+  });
+
+  // C5: format on blur using current currency selection.
+  function handleBudgetBlur() {
+    const raw = stripGroupingSeparators(budgetValue.trim());
+    const formatted = formatBudget(raw, selectedCurrency);
+    setBudgetValue(formatted === "—" ? "" : formatted);
+  }
+
   // Shared input/select classNames
   const inputCls =
     "rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/40";
@@ -146,7 +165,7 @@ export function EditInquiryForm({
                 </p>
               </div>
 
-              {/* Row 2 left — Project Name * (C4) */}
+              {/* Row 2 left — Project Name * (C4, C9) */}
               <div className="flex flex-col gap-1 mb-[14px]">
                 <label htmlFor="name" className={labelCls}>
                   {t("fieldName")}{" "}
@@ -158,6 +177,7 @@ export function EditInquiryForm({
                   type="text"
                   required
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   defaultValue={initialName}
                   className={inputCls}
                 />
@@ -181,7 +201,7 @@ export function EditInquiryForm({
                 />
               </div>
 
-              {/* Row 3 left — Project Budget */}
+              {/* Row 3 left — Project Budget (C5, C9) */}
               <div className="flex flex-col gap-1 mb-[14px]">
                 <label htmlFor="projectBudget" className={labelCls}>
                   {t("fieldProjectBudget")}
@@ -191,12 +211,16 @@ export function EditInquiryForm({
                   name="projectBudget"
                   type="text"
                   autoComplete="off"
-                  defaultValue={initialProjectBudget ?? ""}
+                  inputMode="decimal"
+                  pattern="[\d,\.]*"
+                  value={budgetValue}
+                  onChange={(e) => setBudgetValue(e.target.value)}
+                  onBlur={handleBudgetBlur}
                   className={inputCls}
                 />
               </div>
 
-              {/* Row 3 right — Currency * */}
+              {/* Row 3 right — Currency * (C6: controlled, tracks for blur formatter) */}
               <div className="flex flex-col gap-1 mb-[14px]">
                 <label htmlFor="currency" className={labelCls}>
                   {t("fieldCurrency")}{" "}
@@ -206,7 +230,8 @@ export function EditInquiryForm({
                   id="currency"
                   name="currency"
                   required
-                  defaultValue={initialCurrency}
+                  value={selectedCurrency}
+                  onChange={(e) => setSelectedCurrency(e.target.value)}
                   className={selectCls}
                 >
                   <option value="" disabled>Select currency…</option>
@@ -272,6 +297,7 @@ export function EditInquiryForm({
                 name="mainContractorName"
                 type="text"
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 defaultValue={initialMainContractorName ?? ""}
                 className={inputCls}
               />
@@ -286,6 +312,7 @@ export function EditInquiryForm({
                 name="interiorContractorName"
                 type="text"
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 defaultValue={initialInteriorContractorName ?? ""}
                 className={inputCls}
               />
@@ -300,6 +327,7 @@ export function EditInquiryForm({
                 name="mainConsultantName"
                 type="text"
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 defaultValue={initialMainConsultantName ?? ""}
                 className={inputCls}
               />
@@ -314,6 +342,7 @@ export function EditInquiryForm({
                 name="interiorConsultantName"
                 type="text"
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 defaultValue={initialInteriorConsultantName ?? ""}
                 className={inputCls}
               />
@@ -335,7 +364,7 @@ export function EditInquiryForm({
           </div>
 
           <div className="p-5 grid grid-cols-1 gap-x-5 gap-y-0 sm:grid-cols-2">
-            {/* End Client Name * */}
+            {/* End Client Name * (C9) */}
             <div className="flex flex-col gap-1 mb-[14px]">
               <label htmlFor="endClientName" className={labelCls}>
                 {t("fieldEndClientName")}{" "}
@@ -347,6 +376,7 @@ export function EditInquiryForm({
                 type="text"
                 required
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 defaultValue={initialEndClientName ?? ""}
                 className={inputCls}
               />
@@ -442,7 +472,7 @@ export function EditInquiryForm({
               />
             </div>
 
-            {/* City * */}
+            {/* City * (C9) */}
             <div className="flex flex-col gap-1 mb-[14px]">
               <label htmlFor="endClientCity" className={labelCls}>
                 {t("fieldEndClientCity")}{" "}
@@ -454,12 +484,13 @@ export function EditInquiryForm({
                 type="text"
                 required
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 defaultValue={initialEndClientCity ?? ""}
                 className={inputCls}
               />
             </div>
 
-            {/* State * */}
+            {/* State * (C9) */}
             <div className="flex flex-col gap-1 mb-[14px]">
               <label htmlFor="endClientState" className={labelCls}>
                 {t("fieldEndClientState")}{" "}
@@ -471,6 +502,7 @@ export function EditInquiryForm({
                 type="text"
                 required
                 autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
                 defaultValue={initialEndClientState ?? ""}
                 className={inputCls}
               />

@@ -39,8 +39,10 @@ export async function createInquiry(
     ((formData.get("submissionDate") as string | null)?.trim()) || null;
   const projectDeadline =
     ((formData.get("projectDeadline") as string | null)?.trim()) || null;
-  const projectBudget =
-    ((formData.get("projectBudget") as string | null)?.trim()) || null;
+  // C5 (Stage 15 Batch F): strip grouping separators so the DB always stores a
+  // clean numeric string ("1000000"), not a formatted one ("10,00,000").
+  const rawBudgetCreate = ((formData.get("projectBudget") as string | null)?.trim()) || null;
+  const projectBudget = rawBudgetCreate ? rawBudgetCreate.replace(/,/g, "") : null;
   const mainContractorName =
     ((formData.get("mainContractorName") as string | null)?.trim()) || null;
   const interiorContractorName =
@@ -150,8 +152,10 @@ export async function updateInquiry(
     ((formData.get("submissionDate") as string | null)?.trim()) || null;
   const projectDeadline =
     ((formData.get("projectDeadline") as string | null)?.trim()) || null;
-  const projectBudget =
-    ((formData.get("projectBudget") as string | null)?.trim()) || null;
+  // C5 (Stage 15 Batch F): strip grouping separators so the DB always stores a
+  // clean numeric string ("1000000"), not a formatted one ("10,00,000").
+  const rawBudgetUpdate = ((formData.get("projectBudget") as string | null)?.trim()) || null;
+  const projectBudget = rawBudgetUpdate ? rawBudgetUpdate.replace(/,/g, "") : null;
   const mainContractorName =
     ((formData.get("mainContractorName") as string | null)?.trim()) || null;
   const interiorContractorName =

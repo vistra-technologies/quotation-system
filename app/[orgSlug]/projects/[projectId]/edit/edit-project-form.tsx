@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { formatBudget, stripGroupingSeparators } from "@/lib/format-currency";
 import { updateProject, type UpdateProjectState } from "../../actions";
 
 interface EditProjectFormProps {
@@ -106,6 +107,24 @@ export function EditProjectForm({
   // GST conditional — static on edit (company can't change).
   const isIndia = companyCountry === "INDIA";
 
+  // C6: track selected currency to drive the blur formatter (decision 7).
+  // On edit the currency is pre-populated from initialCurrency; tracked as state
+  // so the blur handler picks up any user change to the select before blurring budget.
+  const [selectedCurrency, setSelectedCurrency] = useState<string>(initialCurrency);
+
+  // C5: controlled budget value — pre-formatted from the saved raw string (decision 7).
+  const [budgetValue, setBudgetValue] = useState<string>(() => {
+    const f = formatBudget(initialProjectBudget, initialCurrency);
+    return f === "—" ? "" : f;
+  });
+
+  // C5: format on blur using current currency selection.
+  function handleBudgetBlur() {
+    const raw = stripGroupingSeparators(budgetValue.trim());
+    const formatted = formatBudget(raw, selectedCurrency);
+    setBudgetValue(formatted === "—" ? "" : formatted);
+  }
+
   // X1 — format project number identically to the detail page (projects/[projectId]/page.tsx:60–62).
   const formattedProjectNumber =
     companyProjectNumber != null
@@ -180,7 +199,7 @@ export function EditProjectForm({
                 />
               </div>
 
-              {/* Row 2 left — Project Name * (C4) */}
+              {/* Row 2 left — Project Name * (C4, C9) */}
               <div className={fieldCls}>
                 <label htmlFor="name" className={labelCls}>
                   {t("fieldName")}
@@ -193,6 +212,7 @@ export function EditProjectForm({
                   required
                   defaultValue={initialName}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -215,7 +235,7 @@ export function EditProjectForm({
                 />
               </div>
 
-              {/* Row 3 left — Project Budget */}
+              {/* Row 3 left — Project Budget (C5, C9) */}
               <div className={fieldCls}>
                 <label htmlFor="projectBudget" className={labelCls}>
                   {t("fieldProjectBudget")}
@@ -224,13 +244,17 @@ export function EditProjectForm({
                   id="projectBudget"
                   name="projectBudget"
                   type="text"
-                  defaultValue={initialProjectBudget ?? ""}
                   autoComplete="off"
+                  inputMode="decimal"
+                  pattern="[\d,\.]*"
+                  value={budgetValue}
+                  onChange={(e) => setBudgetValue(e.target.value)}
+                  onBlur={handleBudgetBlur}
                   className={inputCls}
                 />
               </div>
 
-              {/* Row 3 right — Currency * (constrained select — D13) */}
+              {/* Row 3 right — Currency * (C6: controlled, tracks for blur formatter — D13) */}
               <div className={fieldCls}>
                 <label htmlFor="currency" className={labelCls}>
                   {t("fieldCurrency")}
@@ -240,7 +264,8 @@ export function EditProjectForm({
                   id="currency"
                   name="currency"
                   required
-                  defaultValue={initialCurrency}
+                  value={selectedCurrency}
+                  onChange={(e) => setSelectedCurrency(e.target.value)}
                   className={selectCls}
                 >
                   <option value="" disabled>Select currency…</option>
@@ -306,6 +331,7 @@ export function EditProjectForm({
                   type="text"
                   defaultValue={initialMainContractorName ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -320,6 +346,7 @@ export function EditProjectForm({
                   type="text"
                   defaultValue={initialInteriorContractorName ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -334,6 +361,7 @@ export function EditProjectForm({
                   type="text"
                   defaultValue={initialMainConsultantName ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -348,6 +376,7 @@ export function EditProjectForm({
                   type="text"
                   defaultValue={initialInteriorConsultantName ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -380,6 +409,7 @@ export function EditProjectForm({
                   required
                   defaultValue={initialEndClientName ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -481,6 +511,7 @@ export function EditProjectForm({
                   required
                   defaultValue={initialEndClientCity ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -497,6 +528,7 @@ export function EditProjectForm({
                   required
                   defaultValue={initialEndClientState ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>

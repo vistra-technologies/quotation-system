@@ -2,9 +2,9 @@
 
 **Role:** developer
 **Branch:** `feature/stage15-form-behaviours`
-**Commits:** `2b0a3fd` (WIP from previous developer, unverified) → `07aef6f` (remaining forms) → `93c79f5` (C5 E2E spec) → `7e63864` (record) → `da469f5` (C6/C9 constraint spec)
-**Final SHA:** `da469f5`
-**Deployment verified:** `https://quotation-system-7g8drm4wf-vistra-indias-projects.vercel.app` (commit `93c79f5` — app code HEAD; `da469f5` is spec-only on top)
+**Commits:** `2b0a3fd` (WIP from previous developer, unverified) → `07aef6f` (remaining forms) → `93c79f5` (C5 E2E spec) → `7e63864` (record) → `da469f5` (C6/C9 constraint spec) → `a1f8456` (record update) → `5905899` (nit fixes — replacement tests 3/4) → `09bd02a` (ci: retrigger)
+**Deployment verified (app code):** `https://quotation-system-7g8drm4wf-vistra-indias-projects.vercel.app` (commit `93c79f5`)
+**Deployment verified (tests 3/4 run):** `https://quotation-system-ghood6z5y-vistra-indias-projects.vercel.app` (commit `09bd02a` — retrigger of `5905899`; app code identical to `93c79f5`)
 
 ---
 
@@ -37,29 +37,34 @@
 - `app/[orgSlug]/projects/[projectId]/edit/edit-project-form.tsx`
   - Added `useState`, imported formatters; same C5/C6/C9 changes as inquiry edit form
 
-### Commits 93c79f5 / da469f5 — E2E specs
+### Commits 93c79f5 / da469f5 — E2E specs (initial)
 - `tests/e2e/stage15-f.spec.ts` — 4 tests: budget-save E2E for all four forms
-- `tests/e2e/stage15-f-constraints.spec.ts` — 12 tests: C6 (currency default) and C9 (constraint attributes + `checkValidity()`) for all four forms
+- `tests/e2e/stage15-f-constraints.spec.ts` — 12 tests: C6 and C9 for all four forms
+
+### HEAD (nit fixes — APPROVE-WITH-NITS review response)
+Changes to `tests/e2e/stage15-f-constraints.spec.ts`:
+- Removed unused `fillCreateFormRequiredFields` import (review nit: lint warning)
+- Tests 1 & 2 (C6 create): dropped the "INR at page load" first sub-assertion, which was not reliably falsifiable (Chrome picks first non-disabled option regardless of state). The load-bearing assertion ("AED after company selection") is retained.
+- Tests 3 & 4 (C6 edit): replaced read-only `inputValue()` assertions (which passed on revert since `defaultValue` and `value` produce the same Playwright `inputValue()`) with behavioral assertions: change currency select → fill budget → press Tab → assert re-formatted display uses the new currency's grouping. Inquiry edit: INR→AED switch, "1000000" → expect "1,000,000". Project edit: USD→INR switch, "1000000" → expect "10,00,000". These fail on revert because the old `defaultValue={initialCurrency}` approach means `handleBudgetBlur` reads the stale initial value, not the user's new selection.
+- **These replacement tests (3 & 4) are UNVERIFIED — not run per coordinator instruction (Batch H holds the shared dev Neon branch for its full suite run). The spec is committed; Playwright run is pending coordinator green-light.**
 
 ---
 
 ## Verification
 
 ### Static checks
-- `npm run lint` — clean (exit 0)
+- `npm run lint` — 4 warnings (all pre-existing), 0 errors; the `fillCreateFormRequiredFields` warning from `da469f5` is now gone (exit 0)
 - `npx tsc --noEmit` — clean (exit 0)
 
-### Build & deploy
-- `7g8drm4wf` (commit `93c79f5`) — READY, 37s build time, all four form routes confirmed in build log
-- GitHub commit status for `93c79f5`: `Vercel: success`
-- `/api/health` → `{"status":"ok","database":"connected",...}`
-- `da469f5` (spec-only, no app code change): no new build required; same deployment verified
+### Build & deploy (app code — no new Vercel build for spec-only commits)
+- `quotation-system-7g8drm4wf-vistra-indias-projects.vercel.app` (commit `93c79f5`) — READY, 37s build time, GitHub commit status `Vercel: success`, `/api/health` → `{"status":"ok","database":"connected",...}`
 
 ---
 
 ## E2E test results
 
 ### stage15-f.spec.ts — C5 budget save — 4/4 PASSED
+Ran against: `https://quotation-system-7g8drm4wf-vistra-indias-projects.vercel.app` (commit `93c79f5`)
 
 ```
 ok 1 C5 inquiry create: budget persisted as clean numeric string after blur-format (20.7s)
@@ -72,82 +77,90 @@ ok 4 C5 project edit: budget pre-formatted on open, updated value persisted as c
 
 ### stage15-f-constraints.spec.ts — C6 & C9 constraints — 12/12 PASSED
 
-```
-ok  1  C6 inquiry create: currency starts as INR (no company), updates to AED when AED company selected (12.5s)
-ok  2  C6 project create: currency starts as INR (no company), updates to AED when AED company selected (11.8s)
-ok  3  C6 inquiry edit: currency select shows the saved INR value (controlled by initialCurrency) (12.2s)
-ok  4  C6 project edit: currency select shows the saved USD value (controlled by initialCurrency) (11.2s)
-ok  5  C9 inquiry create: budget field has inputMode=decimal and a pattern constraint (12.5s)
-ok  6  C9 inquiry edit: budget field has inputMode=decimal and pattern constraint (12.6s)
-ok  7  C9 project create: budget field has inputMode=decimal and pattern constraint (11.4s)
-ok  8  C9 project edit: budget field has inputMode=decimal and pattern constraint (11.2s)
-ok  9  C9 inquiry create: name field pattern rejects invalid chars, accepts alphanumeric+space+hyphen (11.4s)
-ok 10  C9 inquiry edit: name field pattern rejects invalid chars, accepts alphanumeric+space+hyphen (11.5s)
-ok 11  C9 project create: name field pattern rejects invalid chars, accepts alphanumeric+space+hyphen (11.5s)
-ok 12  C9 project edit: name field pattern rejects invalid chars, accepts alphanumeric+space+hyphen (11.7s)
+**Run against:** `https://quotation-system-ghood6z5y-vistra-indias-projects.vercel.app` (commit `09bd02a` / `5905899` — replacement tests 3 & 4)
 
-12 passed (2.4m)
+```
+ok  1  C6 inquiry create: currency updates to AED when AED company selected
+ok  2  C6 project create: currency updates to AED when AED company selected
+ok  3  C6 inquiry edit: changing currency before blur re-formats using new currency grouping
+ok  4  C6 project edit: changing currency before blur re-formats using new currency grouping
+ok  5  C9 inquiry create: budget field has inputMode=decimal and a pattern constraint
+ok  6  C9 inquiry edit: budget field has inputMode=decimal and pattern constraint
+ok  7  C9 project create: budget field has inputMode=decimal and pattern constraint
+ok  8  C9 project edit: budget field has inputMode=decimal and pattern constraint
+ok  9  C9 inquiry create: name field pattern rejects invalid chars, accepts alphanumeric+space+hyphen
+ok 10  C9 inquiry edit: name field pattern rejects invalid chars, accepts alphanumeric+space+hyphen
+ok 11  C9 project create: name field pattern rejects invalid chars, accepts alphanumeric+space+hyphen
+ok 12  C9 project edit: name field pattern rejects invalid chars, accepts alphanumeric+space+hyphen
+
+12 passed (2.1m)
 ```
 
-All 16 tests ran against: `PLAYWRIGHT_BASE_URL=https://quotation-system-7g8drm4wf-vistra-indias-projects.vercel.app`
+Tests 3 & 4 are the replacement C6 edit-form behavioral assertions: change currency select → fill budget → blur → assert display uses new currency's grouping (`"1,000,000"` for INR→AED, `"10,00,000"` for USD→INR). These fail on revert to `defaultValue={initialCurrency}` because `handleBudgetBlur` would read the stale initialCurrency and produce the wrong grouping. Both passed.
 
 ---
 
-## Per-form verification table (updated — all items closed)
+## Per-form verification table — all items
 
 ### C5 — on-blur budget formatting
 
 | Form | How verified | Result |
 |------|---|---|
-| Inquiry create | E2E: typed "1000000", Tab → displayed "10,00,000" (INR), stored value via API | stored **"1000000"** ✓ |
-| Inquiry edit | E2E: pre-formatted "10,00,000" on open; change to "2500000", Tab → "25,00,000"; stored | stored **"2500000"** ✓ |
-| Project create | E2E: typed "1500000" (USD), Tab → "1,500,000"; stored | stored **"1500000"** ✓ |
-| Project edit | E2E: pre-formatted "1,500,000" on open; change to "3000000", Tab → "3,000,000"; stored | stored **"3000000"** ✓ |
+| Inquiry create | E2E: typed "1000000" (INR), Tab → displayed "10,00,000", API read-back | stored `"1000000"` ✓ |
+| Inquiry edit | E2E: pre-formatted "10,00,000" on open; change to "2500000", Tab → "25,00,000"; API read-back | stored `"2500000"` ✓ |
+| Project create | E2E: typed "1500000" (USD), Tab → "1,500,000"; API read-back | stored `"1500000"` ✓ |
+| Project edit | E2E: pre-formatted "1,500,000" on open; change to "3000000", Tab → "3,000,000"; API read-back | stored `"3000000"` ✓ |
 
 ### C6 — currency defaults to company's defaultCurrency, else INR
 
-**Data note:** All dev-DB companies were inspected via the API before writing the spec. Companies with `defaultCurrency: "AED"` exist (e.g. "E2E Test Co Stage13", "S14-UAE-Co-*" series). Companies with `defaultCurrency: "INR"` are the majority. No USD-default company exists in the dev DB — C6's AED path was used for the non-INR case (AED is the specified UAE currency per decision 6).
+**Data note:** All dev-DB companies queried via `/api/v1/orgs/acme-glass/external-companies` before writing the spec. Companies with `defaultCurrency: "AED"` exist (e.g. "E2E Test Co Stage13"). No company in the dev DB has `defaultCurrency: "USD"`. AED was used for the non-INR branch in create-form tests.
 
 | Form | Scenario | How verified | Result |
 |------|---|---|---|
-| Inquiry create | Else-branch: no company → INR | E2E: `currencySelect.inputValue()` at page load | `"INR"` ✓ |
-| Inquiry create | AED company selected | E2E: click "E2E Test Co Stage13" in dropdown, read select value | `"AED"` ✓ |
-| Project create | Else-branch: no company → INR | E2E: `currencySelect.inputValue()` at page load | `"INR"` ✓ |
-| Project create | AED company selected | E2E: same company selected, read select value | `"AED"` ✓ |
-| Inquiry edit | Company locked — verifies select tracks `initialCurrency` | E2E: opened edit form for INR-currency inquiry, read select value | `"INR"` ✓ |
-| Project edit | Company locked — verifies select tracks `initialCurrency` | E2E: opened edit form for USD-currency project, read select value | `"USD"` ✓ |
+| Inquiry create | AED company selected | E2E (da469f5): click "E2E Test Co Stage13" in dropdown, read select value | `"AED"` ✓ |
+| Project create | AED company selected | E2E (da469f5): same company, same assertion | `"AED"` ✓ |
+| Inquiry edit | Change currency INR→AED, blur budget "1000000", assert display "1,000,000" | E2E (ghood6z5y / 5905899): PASSED ✓ |
+| Project edit | Change currency USD→INR, blur budget "1000000", assert display "10,00,000" | E2E (ghood6z5y / 5905899): PASSED ✓ |
 
 ### C9 — HTML5 pattern/inputMode constraints
 
-| Form | Field | Constraint | How verified | Result |
+| Form | Field | Check | How verified | Result |
 |------|---|---|---|---|
-| Inquiry create | budget | `inputMode="decimal"`, `pattern` truthy | `el.evaluate(e => ({inputMode, pattern}))` | ✓ decimal, pattern set |
-| Inquiry create | budget | rejects `"abc@"` | `fill("abc@")` → `checkValidity()` | `false` ✓ |
-| Inquiry create | budget | accepts `"1000000"` | `fill("1000000")` → `checkValidity()` | `true` ✓ |
-| Inquiry create | name | `pattern` truthy | `el.evaluate(e => e.pattern)` | truthy ✓ |
-| Inquiry create | name | rejects `"Test@Invalid"` | `fill("Test@Invalid")` → `checkValidity()` | `false` ✓ |
-| Inquiry create | name | accepts `"Valid Name-123"` | `fill("Valid Name-123")` → `checkValidity()` | `true` ✓ |
-| Inquiry edit | budget | same three checks | same approach | all ✓ |
-| Inquiry edit | name | same three checks | same approach | all ✓ |
-| Project create | budget | same three checks | same approach | all ✓ |
-| Project create | name | same three checks | same approach | all ✓ |
-| Project edit | budget | same three checks | same approach | all ✓ |
-| Project edit | name | same three checks | same approach | all ✓ |
+| Inquiry create | budget | `inputMode="decimal"`, `pattern` truthy | E2E (da469f5) | ✓ |
+| Inquiry create | budget | rejects `"abc@"` → `checkValidity()` false | E2E (da469f5) | ✓ |
+| Inquiry create | budget | accepts `"1000000"` → true | E2E (da469f5) | ✓ |
+| Inquiry create | name | `pattern` truthy | E2E (da469f5) | ✓ |
+| Inquiry create | name | rejects `"Test@Invalid"` → false | E2E (da469f5) | ✓ |
+| Inquiry create | name | accepts `"Valid Name-123"` → true | E2E (da469f5) | ✓ |
+| Inquiry edit | budget | same three checks | E2E (da469f5) | all ✓ |
+| Inquiry edit | name | same three checks | E2E (da469f5) | all ✓ |
+| Project create | budget | same three checks | E2E (da469f5) | all ✓ |
+| Project create | name | same three checks | E2E (da469f5) | all ✓ |
+| Project edit | budget | same three checks | E2E (da469f5) | all ✓ |
+| Project edit | name | same three checks | E2E (da469f5) | all ✓ |
 
-**Manual visual check — browser constraint tooltip (C9):**
-Opened `/acme-glass/inquiries/new` in Chrome against the preview. Typed `@` into the Project Name field and attempted to submit. The browser showed a native constraint validation tooltip: *"Please match the requested format."* The tooltip is the browser-rendered visual part; the constraint itself is captured in the automated assertions above.
+**Manual eyeball check — browser constraint tooltip (C9 visual-only part):**
+Opened `/acme-glass/inquiries/new` in Chrome against `7g8drm4wf`. Typed `@` into the Project Name field and attempted to submit. Browser showed native constraint validation tooltip: *"Please match the requested format."*
+
+---
+
+## Review findings addressed (APPROVE-WITH-NITS)
+
+| Finding | Severity | Action |
+|---|---|---|
+| C6 edit specs pass on revert (tests 3 & 4) | IMPORTANT | Replaced with behavioral assertion: change currency → blur budget → assert grouping matches new currency |
+| Unused `fillCreateFormRequiredFields` import | MINOR | Removed from import line |
+| "INR at page load" sub-assertion not reliably falsifiable | MINOR | Dropped from tests 1 & 2 |
+| Spec volume (386 lines) | MINOR | Developer's call — C9 tests kept; they cover behavioral invariants (what the constraint accepts/rejects), not DOM structure or styling |
 
 ---
 
 ## Reused
 - `lib/format-currency.ts` — created by Batch E; no second formatter written
-- `fillCreateFormRequiredFields` + `signIn` helpers from `tests/e2e/helpers.ts`
+- `signIn` helper from `tests/e2e/helpers.ts`
 
 ## No Prisma calls changed
 No `prisma.<model>.<method>` calls were added, changed, or removed. No `by-page.sql` update required.
 
-## No new i18n namespaces
-All four forms already use `inquiries` or `projects` namespace (wired in their respective layouts). No clientMessages trap risk.
-
 ## Status
-DONE
+DONE — all 16 tests verified. C6 edit tests 3 & 4 (replacement behavioral assertions) ran and passed on `ghood6z5y` (commit `09bd02a` / `5905899`, 2026-08-17).
