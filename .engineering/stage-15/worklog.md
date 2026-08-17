@@ -440,3 +440,54 @@ PASSED run 2. U3 fix (`admin-stage4.spec.ts:164`) PASSED run 2.
    operational backstop.
 
 Branch: `feature/stage15-test-harness` @ `69fd928`. Detail: `.engineering/stage-15/item-H.md` in the worktree.
+
+---
+
+### 2026-08-17 — conductor: SESSION LIMIT (resets 5:30am), handoff state for a fresh session
+
+Two agents died mid-run to a session limit. **Nothing was lost** — every worktree and both repos are
+clean, and all three branches are in sync with origin:
+
+| Branch | SHA | State |
+|---|---|---|
+| `release/stage-15` | `b6fab94` | 6 of 8 batches merged (A, B, C, D, E, G) |
+| `feature/stage15-form-behaviours` (Batch F) | `5905899` | Code-complete, **review-clean** (APPROVE-WITH-NITS, all findings addressed) |
+| `feature/stage15-test-harness` (Batch H) | `69fd928` | Code-complete, **not yet reviewed** |
+
+Docs repo clean @ `05a25b1` (X3). Worktrees: `stage15-a` `0a91607`, `stage15-b` `5905899`, `stage15-g` `69fd928`.
+
+**Exactly two things outstanding before Step 7:**
+
+1. **Batch F — run two tests.** Tests 3 and 4 of `tests/e2e/stage15-f-constraints.spec.ts` (the replacement
+   C6 edit-form behavioural assertions) are **UNVERIFIED — never executed**. The run was dispatched and
+   died before producing anything. Everything else in F is verified: C5 end-to-end save evidence 4/4
+   (stored `"1000000"`, `"2500000"`, `"1500000"`, `"3000000"`), C6 6/6, C9 12/12.
+   Run filtered against F's own preview for `5905899` via `PLAYWRIGHT_BASE_URL` — **not** the full suite.
+2. **Batch H — review it.** The reviewer died before writing anything; **`review-H.md` does not exist.**
+   Re-dispatch a fresh `engineering:reviewer` (`opus`) over `diff-H.patch`.
+
+**Note:** `item-H.md` lives in the `stage15-g` worktree, not in the main checkout's `.engineering/`.
+
+**The four questions H's review must answer** (recorded so they survive the session boundary):
+- Does the X5 anchored assertion `/^(\/acme-glass)?\/admin\/users\/[0-9a-f-]{36}$/` genuinely fail on a
+  leak to a *third* org, in both subdomain and path routing modes — or does the optional group reintroduce
+  the hole the item exists to close?
+- Does the X6 429 retry fail loudly on a *real* auth error, or could it swallow one and report success?
+- H changed a test in already-merged **Batch G** ("Distributor" → "Company Member", `f301f79`) after its
+  suite caught a genuine regression. **Was the test wrong, or is Batch G's `isInternalRole` work wrong?**
+  This is the one that could mean a defect is merged.
+- **Is the 429 classification of the 5 remaining suite failures credible, or is a real regression hiding
+  behind the label?** 2 runs, not the 5 the plan suggested. Do not accept the label at face value.
+
+**Three items H declared out of scope, for the human at handoff (not agent decisions):** three spec files
+with their own inline sign-in that bypasses the hardened helper (`login.spec.ts`, `org-nav.spec.ts`,
+`pricing-stage3.spec.ts`); a possible Playwright worker-count reduction from 8; and the missing
+`DELETE /api/v1/permissions/{id}` endpoint needed for real `E2E_PERM` teardown.
+
+**The suite is not green** — 5 rate-limit failures persist. That must be stated plainly when handing to
+`engineering:test`, not discovered there.
+
+**Systemic finding for the Step 8 self-check — now four instances:** specs that cannot fail
+(`toBeLessThanOrEqual` between equal values; a fake `annotations.push({type:"skip"})` Playwright never
+honours; a tenancy test using a UUID belonging to no org; a C6 test passing on both `defaultValue` and
+`value`). **Every one was caught by review, never by the authoring developer.**
