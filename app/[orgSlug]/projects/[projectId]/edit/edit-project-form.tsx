@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { formatBudget, stripGroupingSeparators } from "@/lib/format-currency";
 import { updateProject, type UpdateProjectState } from "../../actions";
 
 interface EditProjectFormProps {
@@ -31,6 +32,16 @@ interface EditProjectFormProps {
   initialEndClientCity: string | null;
   initialEndClientState: string | null;
   initialEndClientGstNumber: string | null;
+  /**
+   * X1 — project display number for the read-only header field.
+   * org-scoped sequence number (always present).
+   */
+  projectNumber: number;
+  /**
+   * X1 — company-scoped project number when assigned.
+   * Formatted as "JOB-{n}" when present, "#n" fallback using projectNumber.
+   */
+  companyProjectNumber: number | null;
   /**
    * Formatted inquiry display number for the linked inquiry, if any.
    * "INQ-42" (company-scoped) or "#7" (org-scoped fallback).
@@ -84,6 +95,8 @@ export function EditProjectForm({
   initialEndClientCity,
   initialEndClientState,
   initialEndClientGstNumber,
+  projectNumber,
+  companyProjectNumber,
   inquiryNumber,
   lockedCompany,
   companyCountry,
@@ -93,6 +106,30 @@ export function EditProjectForm({
 
   // GST conditional — static on edit (company can't change).
   const isIndia = companyCountry === "INDIA";
+
+  // C6: track selected currency to drive the blur formatter (decision 7).
+  // On edit the currency is pre-populated from initialCurrency; tracked as state
+  // so the blur handler picks up any user change to the select before blurring budget.
+  const [selectedCurrency, setSelectedCurrency] = useState<string>(initialCurrency);
+
+  // C5: controlled budget value — pre-formatted from the saved raw string (decision 7).
+  const [budgetValue, setBudgetValue] = useState<string>(() => {
+    const f = formatBudget(initialProjectBudget, initialCurrency);
+    return f === "—" ? "" : f;
+  });
+
+  // C5: format on blur using current currency selection.
+  function handleBudgetBlur() {
+    const raw = stripGroupingSeparators(budgetValue.trim());
+    const formatted = formatBudget(raw, selectedCurrency);
+    setBudgetValue(formatted === "—" ? "" : formatted);
+  }
+
+  // X1 — format project number identically to the detail page (projects/[projectId]/page.tsx:60–62).
+  const formattedProjectNumber =
+    companyProjectNumber != null
+      ? `JOB-${companyProjectNumber}`
+      : `#${projectNumber}`;
 
   // Shared class strings.
   const inputCls =
@@ -130,30 +167,29 @@ export function EditProjectForm({
               </div>
             )}
 
-            {/* External company — always read-only on edit form */}
-            <div className={`${fieldCls} sm:col-span-2`}>
-              <span className={labelCls}>{t("fieldExternalCompany")}</span>
-              <p className="rounded-sm border border-border bg-primary-softer/40 px-3 py-2.5 text-sm text-text-body">
-                {lockedCompany ? lockedCompany.name : <span className="text-text-placeholder">—</span>}
-              </p>
-            </div>
-
-            {/* 2-column grid */}
+            {/* 2-column grid — PC2/C2: Project Id left, Company right in Row 1 */}
             <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
-              {/* Project No. (disabled) */}
+              {/* Row 1 left — Project Id (disabled, real number on edit — PC2) */}
               <div className={fieldCls}>
-                <label className={labelCls}>{t("colNumber")}</label>
+                <label className={labelCls}>{t("fieldId")}</label>
                 <input
                   type="text"
                   disabled
-                  value="—"
-                  aria-label="Project number"
+                  value={formattedProjectNumber}
                   className={inputCls}
                 />
               </div>
 
-              {/* Inquiry No. (disabled — read-only display, never editable) */}
+              {/* Row 1 right — Company read-only (PC1/C1, C2) */}
               <div className={fieldCls}>
+                <span className={labelCls}>{t("fieldExternalCompany")}</span>
+                <p className="rounded-sm border border-border bg-primary-softer/40 px-3 py-2.5 text-sm text-text-body">
+                  {lockedCompany ? lockedCompany.name : <span className="text-text-placeholder">—</span>}
+                </p>
+              </div>
+
+              {/* Inquiry No. — full-width read-only reference; null for directly-created projects */}
+              <div className={`${fieldCls} sm:col-span-2`}>
                 <label className={labelCls}>Inquiry No.</label>
                 <input
                   type="text"
@@ -163,7 +199,7 @@ export function EditProjectForm({
                 />
               </div>
 
-              {/* Project Name * */}
+              {/* Row 2 left — Project Name * (C4, C9) */}
               <div className={fieldCls}>
                 <label htmlFor="name" className={labelCls}>
                   {t("fieldName")}
@@ -176,47 +212,12 @@ export function EditProjectForm({
                   required
                   defaultValue={initialName}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
 
-              {/* Project Budget */}
-              <div className={fieldCls}>
-                <label htmlFor="projectBudget" className={labelCls}>
-                  {t("fieldProjectBudget")}
-                </label>
-                <input
-                  id="projectBudget"
-                  name="projectBudget"
-                  type="text"
-                  defaultValue={initialProjectBudget ?? ""}
-                  autoComplete="off"
-                  placeholder="e.g. 250,000"
-                  className={inputCls}
-                />
-              </div>
-
-              {/* Currency * (constrained select — D13) */}
-              <div className={fieldCls}>
-                <label htmlFor="currency" className={labelCls}>
-                  {t("fieldCurrency")}
-                  {reqMark}
-                </label>
-                <select
-                  id="currency"
-                  name="currency"
-                  required
-                  defaultValue={initialCurrency}
-                  className={selectCls}
-                >
-                  <option value="" disabled>Select currency…</option>
-                  <option value="INR">INR</option>
-                  <option value="AED">AED</option>
-                  <option value="USD">USD</option>
-                </select>
-              </div>
-
-              {/* Project Location * (D22) */}
+              {/* Row 2 right — Project Location * (C4, D22) */}
               <div className={fieldCls}>
                 <label htmlFor="projectLocation" className={labelCls}>
                   {t("fieldProjectLocation")}
@@ -229,11 +230,52 @@ export function EditProjectForm({
                   required
                   defaultValue={initialProjectLocation ?? ""}
                   autoComplete="off"
+                  placeholder="e.g. Dubai, UAE"
                   className={inputCls}
                 />
               </div>
 
-              {/* Submission Date * (D17) */}
+              {/* Row 3 left — Project Budget (C5, C9) */}
+              <div className={fieldCls}>
+                <label htmlFor="projectBudget" className={labelCls}>
+                  {t("fieldProjectBudget")}
+                </label>
+                <input
+                  id="projectBudget"
+                  name="projectBudget"
+                  type="text"
+                  autoComplete="off"
+                  inputMode="decimal"
+                  pattern="[\d,\.]*"
+                  value={budgetValue}
+                  onChange={(e) => setBudgetValue(e.target.value)}
+                  onBlur={handleBudgetBlur}
+                  className={inputCls}
+                />
+              </div>
+
+              {/* Row 3 right — Currency * (C6: controlled, tracks for blur formatter — D13) */}
+              <div className={fieldCls}>
+                <label htmlFor="currency" className={labelCls}>
+                  {t("fieldCurrency")}
+                  {reqMark}
+                </label>
+                <select
+                  id="currency"
+                  name="currency"
+                  required
+                  value={selectedCurrency}
+                  onChange={(e) => setSelectedCurrency(e.target.value)}
+                  className={selectCls}
+                >
+                  <option value="" disabled>Select currency…</option>
+                  <option value="INR">INR</option>
+                  <option value="AED">AED</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+
+              {/* Row 4 left — Submission Date * (D17, C7) */}
               <div className={fieldCls}>
                 <label htmlFor="submissionDate" className={labelCls}>
                   {t("fieldSubmissionDate")}
@@ -249,7 +291,7 @@ export function EditProjectForm({
                 />
               </div>
 
-              {/* Project Deadline */}
+              {/* Row 4 right — Project Deadline (C7) */}
               <div className={fieldCls}>
                 <label htmlFor="projectDeadline" className={labelCls}>
                   {t("fieldProjectDeadline")}
@@ -289,6 +331,7 @@ export function EditProjectForm({
                   type="text"
                   defaultValue={initialMainContractorName ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -303,6 +346,7 @@ export function EditProjectForm({
                   type="text"
                   defaultValue={initialInteriorContractorName ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -317,6 +361,7 @@ export function EditProjectForm({
                   type="text"
                   defaultValue={initialMainConsultantName ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -331,6 +376,7 @@ export function EditProjectForm({
                   type="text"
                   defaultValue={initialInteriorConsultantName ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -363,6 +409,7 @@ export function EditProjectForm({
                   required
                   defaultValue={initialEndClientName ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -437,16 +484,15 @@ export function EditProjectForm({
                 />
               </div>
 
+              {/* Address Line 2 — optional (C10) */}
               <div className={fieldCls}>
                 <label htmlFor="endClientAddressLine2" className={labelCls}>
                   {t("fieldEndClientAddressLine2")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientAddressLine2"
                   name="endClientAddressLine2"
                   type="text"
-                  required
                   defaultValue={initialEndClientAddressLine2 ?? ""}
                   autoComplete="off"
                   className={inputCls}
@@ -465,6 +511,7 @@ export function EditProjectForm({
                   required
                   defaultValue={initialEndClientCity ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
@@ -481,6 +528,7 @@ export function EditProjectForm({
                   required
                   defaultValue={initialEndClientState ?? ""}
                   autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>

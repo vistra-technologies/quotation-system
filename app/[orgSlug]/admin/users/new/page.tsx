@@ -13,6 +13,8 @@ export const dynamic = "force-dynamic";
 interface RoleOption {
   id: string;
   name: string;
+  /** Stage 15 Batch G (U3): true for Admin and Company Member. */
+  isInternalRole: boolean;
 }
 
 interface ExternalCompanyOption {

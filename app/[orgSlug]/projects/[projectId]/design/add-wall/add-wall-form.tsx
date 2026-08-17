@@ -41,8 +41,9 @@ export function AddWallForm({
       <LoadingOverlay visible={isPending} />
 
       {state.error && (
-        <div className="rounded-sm border border-red-300 bg-red-50 px-4 py-3">
-          <p className="text-sm text-red-700">{state.error}</p>
+        // X7 — restored dropped dark: variants on error banner
+        <div className="rounded-sm border border-red-300 bg-red-50 px-4 py-3 dark:border-red-700/50 dark:bg-red-950/30">
+          <p className="text-sm text-red-700 dark:text-red-400">{state.error}</p>
         </div>
       )}
 

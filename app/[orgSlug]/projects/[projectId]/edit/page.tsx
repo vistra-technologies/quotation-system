@@ -75,7 +75,8 @@ export default async function ProjectEditPage({
             href={`${base}/projects/${projectId}`}
             className="mt-4 inline-flex items-center rounded-sm border border-border bg-bg-white px-5 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
           >
-            {tProjects("backToList").replace("Projects", "Project")}
+            {/* X2 — was .replace("Projects","Project"), fragile on i18n change */}
+            {tProjects("backToProjectDetail")}
           </a>
         </div>
       ) : (
@@ -83,6 +84,8 @@ export default async function ProjectEditPage({
           orgSlug={orgSlug}
           projectId={projectId}
           backHref={`${base}/projects/${projectId}`}
+          projectNumber={project.projectNumber}
+          companyProjectNumber={project.companyProjectNumber}
           inquiryNumber={formattedInquiryNumber}
           initialName={project.name}
           initialCurrency={project.currency}

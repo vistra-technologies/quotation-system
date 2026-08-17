@@ -40,9 +40,10 @@ export default async function NewInquiryPage({
 
   const me = (await meRes.json()) as { externalCompanyId: string | null };
 
-  // country is included so the form can derive the GST conditional (D20)
-  let lockedCompany: { id: string; name: string; country: "INDIA" | "UAE" } | null = null;
-  let externalCompanies: { id: string; name: string; country: "INDIA" | "UAE" }[] = [];
+  // country + defaultCurrency included so the form can derive GST conditional (D20)
+  // and default the currency select (C6 — Stage 15 Batch F).
+  let lockedCompany: { id: string; name: string; country: "INDIA" | "UAE"; defaultCurrency: string } | null = null;
+  let externalCompanies: { id: string; name: string; country: "INDIA" | "UAE"; defaultCurrency: string }[] = [];
 
   if (me.externalCompanyId) {
     // External user — fetch only their locked company for read-only display.
@@ -53,7 +54,7 @@ export default async function NewInquiryPage({
       redirect(await orgHref(orgSlug, "/login"));
     }
     if (res.ok) {
-      const body = (await res.json()) as { company: { id: string; name: string; country: "INDIA" | "UAE" } };
+      const body = (await res.json()) as { company: { id: string; name: string; country: "INDIA" | "UAE"; defaultCurrency: string } };
       lockedCompany = body.company;
     }
   } else {
@@ -66,7 +67,7 @@ export default async function NewInquiryPage({
     }
     if (res.ok) {
       const body = (await res.json()) as {
-        companies: { id: string; name: string; country: "INDIA" | "UAE" }[];
+        companies: { id: string; name: string; country: "INDIA" | "UAE"; defaultCurrency: string }[];
       };
       externalCompanies = body.companies;
     }

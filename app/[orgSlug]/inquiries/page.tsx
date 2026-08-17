@@ -99,7 +99,7 @@ export default async function InquiriesPage({
   const search = typeof sp.search === "string" ? sp.search : "";
   const dateRange = typeof sp.dateRange === "string" ? sp.dateRange : "";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
-  const pageSize = 20;
+  const pageSize = 10; // L1 — was 20; ListPagePagination returns null when totalPages <= 1
   const externalCompanyId =
     typeof sp.externalCompanyId === "string" ? sp.externalCompanyId : "";
 
@@ -232,6 +232,9 @@ export default async function InquiriesPage({
                     <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
                       Submission Date
                     </th>
+                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                      Created By
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -272,6 +275,13 @@ export default async function InquiriesPage({
                     {/* Submission Date — no submittedAt field in current schema */}
                     <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
                       —
+                    </td>
+                    {/* Created By — L2: username shown, full name on hover via title */}
+                    <td
+                      className="px-3 py-[11px] text-[13px] text-text-muted"
+                      title={inquiry.createdBy.name}
+                    >
+                      {inquiry.createdBy.username}
                     </td>
                   </tr>
                 ))}
