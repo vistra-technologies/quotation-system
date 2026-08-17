@@ -563,3 +563,8 @@ Centralized subdomain-aware URL helpers in `tests/e2e/helpers.ts` (4 new exports
 Files changed: `tests/e2e/helpers.ts`, `tests/e2e/admin-stage4.spec.ts`, `tests/e2e/login.spec.ts`, `tests/e2e/org-nav.spec.ts`, `tests/e2e/pricing-stage3.spec.ts`, `tests/e2e/stage5.spec.ts`, `tests/e2e/stage6.spec.ts`, `tests/e2e/stage7.spec.ts`, `tests/e2e/stage12.spec.ts`, `tests/e2e/stage13.spec.ts`, `tests/e2e/stage14.spec.ts`, `tests/e2e/stage15.spec.ts`, `tests/e2e/stage15-b.spec.ts`, `tests/e2e/stage15-f.spec.ts`, `tests/e2e/stage15-f-constraints.spec.ts`, `tests/e2e/subdomain-url-hygiene.spec.ts`. Plan: `.engineering/stage-15/plan-subdomain-fix.md`.
 
 Verify: tester to run full suite with `PLAYWRIGHT_BASE_URL=https://test.easeetool.com` against the pushed Vercel preview for this branch.
+
+
+### 2026-08-18 — reviewer — subdomain URL fix review complete
+APPROVE-WITH-NITS. 0 CRITICAL, 0 IMPORTANT, 1 MINOR.
+Helpers correct (isSubdomain detection, orgUrl, apiUrl, orgUrlPattern regex verified in both modes). All 15 spec files fully fixed — no half-fixed cases (goto + waitForURL/toHaveURL updated together throughout). stage15-user-mgmt.spec.ts (not in diff) confirmed safe: its relative API calls resolve via the page's current origin after signIn(), which in subdomain mode is the org subdomain. Scope clean — no product code touched. MINOR: orgUrlPattern does not regex-escape orgSlug; safe in practice (all test slugs are [a-z-]+), but would silently misbehave if a slug ever contained regex metacharacters. Detail: returned in reviewer's message (no report file per system instructions).
