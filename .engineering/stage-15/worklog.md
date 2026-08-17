@@ -534,3 +534,37 @@ Detail: `.engineering/stage-15/bugs-1.md`
 APPROVE. 0 CRITICAL, 0 IMPORTANT, 0 MINOR.
 Both root-cause diagnoses confirmed against product code: V3 (`page.tsx:216` — field absent) and C9 (pattern restrictions present on all four forms). Coverage claims verified accurate: API-level destinationCountry invariant test and project-detail "India" assertion both remain intact and are genuinely falsifiable. Budget assertion (`getByText("9988776655")`) is correct — project detail renders raw db string, not formatted. No weakening of regression-detection intent.
 Detail: `.engineering/stage-15/review-testfix.md`
+
+### 2026-08-17 — devops — staging deploy verified (commit aced238)
+
+Branch `staging` @ `aced238f` (merge of `release/stage-15` @ `ab3e706`) auto-deployed by Vercel git integration.
+
+- **Deployment ID:** `dpl_9p34idoHJczEJdD1Xzha3uWhAYb9`
+- **URL:** `quotation-system-nodsllxbm-vistra-indias-projects.vercel.app`
+- **State:** READY (build time: ~38s; BUILDING at 14:22:32, READY at 14:23:11)
+- **Aliases confirmed attached:** `test.easeetool.com`, `*.test.easeetool.com`, `quotation-system-git-staging-vistra-indias-projects.vercel.app`
+- **Migrations:** "17 migrations found in prisma/migrations. No pending migrations to apply." (correct — Batches G's 2 migrations plus prior 15)
+- **Route count (Route (app) table):** 67 routes. NOTE: the user-supplied benchmark was "137+ routes" — this number does not match the Route (app) table output (67 entries). All Stage 15 key routes are present: dashboard, inquiries, projects, all four form routes, admin/users, admin/permissions, `/api/v1/orgs/[orgSlug]/users/[userId]/profile` (Batch G U4), `/api/v1/orgs/[orgSlug]/stats` (Batch B D3). The 137+ figure may have been a count of Vercel internal functions rather than the route table — flagged to the human.
+- **Health check:** `GET https://test.easeetool.com/api/health` → HTTP 200, body: `{"status":"ok","database":"connected","healthCheckRows":0,"timestamp":"2026-08-17T14:23:37.173Z"}`
+- **Migrations run:** none pending (all 17 already applied, including Batch G's two Role migrations)
+- **No manual alias re-point needed** — `test.easeetool.com` is branch-assigned to `staging` in the Vercel dashboard; it followed the push automatically.
+
+### 2026-08-17 — tester — post-deploy regression pass: FAIL
+
+Verdict: **FAIL** — 16 unexpected failures, 164 cascading skips, 31 passed out of 211.
+Root cause: test infrastructure gap (path-based routing incompatible with test.easeetool.com apex).
+Severity breakdown: 0 CRITICAL | 1 MAJOR (infra) | 0 MINOR product defects.
+Detail: reported inline in the tester's message (no bugs-2.md; no new product bugs found).
+
+### 2026-08-18 — developer — subdomain URL fix (branch `feature/fix-subdomain-test-urls`)
+
+Centralized subdomain-aware URL helpers in `tests/e2e/helpers.ts` (4 new exports: `isSubdomain`, `orgUrl`, `apiUrl`, `orgUrlPattern`) and updated all 15 affected spec files so every `page.goto`, `page.request.get`, `waitForURL`, and `toHaveURL` call constructs the correct URL for both path-based (Vercel preview) and subdomain-based (`*.easeetool.com`) routing modes. No product code touched (`proxy.ts`, `app/**`, `lib/**` unchanged).
+
+Files changed: `tests/e2e/helpers.ts`, `tests/e2e/admin-stage4.spec.ts`, `tests/e2e/login.spec.ts`, `tests/e2e/org-nav.spec.ts`, `tests/e2e/pricing-stage3.spec.ts`, `tests/e2e/stage5.spec.ts`, `tests/e2e/stage6.spec.ts`, `tests/e2e/stage7.spec.ts`, `tests/e2e/stage12.spec.ts`, `tests/e2e/stage13.spec.ts`, `tests/e2e/stage14.spec.ts`, `tests/e2e/stage15.spec.ts`, `tests/e2e/stage15-b.spec.ts`, `tests/e2e/stage15-f.spec.ts`, `tests/e2e/stage15-f-constraints.spec.ts`, `tests/e2e/subdomain-url-hygiene.spec.ts`. Plan: `.engineering/stage-15/plan-subdomain-fix.md`.
+
+Verify: tester to run full suite with `PLAYWRIGHT_BASE_URL=https://test.easeetool.com` against the pushed Vercel preview for this branch.
+
+
+### 2026-08-18 — reviewer — subdomain URL fix review complete
+APPROVE-WITH-NITS. 0 CRITICAL, 0 IMPORTANT, 1 MINOR.
+Helpers correct (isSubdomain detection, orgUrl, apiUrl, orgUrlPattern regex verified in both modes). All 15 spec files fully fixed — no half-fixed cases (goto + waitForURL/toHaveURL updated together throughout). stage15-user-mgmt.spec.ts (not in diff) confirmed safe: its relative API calls resolve via the page's current origin after signIn(), which in subdomain mode is the org subdomain. Scope clean — no product code touched. MINOR: orgUrlPattern does not regex-escape orgSlug; safe in practice (all test slugs are [a-z-]+), but would silently misbehave if a slug ever contained regex metacharacters. Detail: returned in reviewer's message (no report file per system instructions).

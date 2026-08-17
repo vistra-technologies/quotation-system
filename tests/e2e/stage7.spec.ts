@@ -25,7 +25,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn, fillCreateFormRequiredFields } from "./helpers";
+import { signIn, fillCreateFormRequiredFields, orgUrl, orgUrlPattern } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
@@ -45,34 +45,34 @@ test.beforeEach(async () => {
 
 test("Dashboard has a Projects link for any authenticated user", async ({ page }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/dashboard");
+  await page.goto(orgUrl("acme-glass", "/dashboard"));
 
   // The Projects link must be present and point to the projects route
   const projectsLink = page.getByRole("link", { name: /^Projects$/i });
   await expect(projectsLink).toBeVisible({ timeout: 15_000 });
   const href = await projectsLink.getAttribute("href");
-  expect(href).toMatch(/\/acme-glass\/projects/);
+  expect(href).toMatch(/\/projects/);
 });
 
 test("Dashboard has an Inquiries link for any authenticated user", async ({ page }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/dashboard");
+  await page.goto(orgUrl("acme-glass", "/dashboard"));
 
   // The Inquiries link must be present and point to the inquiries route
   const inquiriesLink = page.getByRole("link", { name: /^Inquiries$/i });
   await expect(inquiriesLink).toBeVisible({ timeout: 15_000 });
   const href = await inquiriesLink.getAttribute("href");
-  expect(href).toMatch(/\/acme-glass\/inquiries/);
+  expect(href).toMatch(/\/inquiries/);
 });
 
 test("Dashboard Inquiries link navigates to the inquiries list", async ({ page }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/dashboard");
+  await page.goto(orgUrl("acme-glass", "/dashboard"));
 
   const inquiriesLink = page.getByRole("link", { name: /^Inquiries$/i });
   await expect(inquiriesLink).toBeVisible({ timeout: 15_000 });
   await inquiriesLink.click();
-  await expect(page).toHaveURL(/\/acme-glass\/inquiries$/, { timeout: 15_000 });
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/inquiries$"), { timeout: 15_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -80,18 +80,18 @@ test("Dashboard Inquiries link navigates to the inquiries list", async ({ page }
 // ---------------------------------------------------------------------------
 
 test("Unauthenticated request to /inquiries redirects to login", async ({ page }) => {
-  await page.goto("/acme-glass/inquiries");
-  await expect(page).toHaveURL(/\/acme-glass\/login/, { timeout: 10_000 });
+  await page.goto(orgUrl("acme-glass", "/inquiries"));
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 10_000 });
 });
 
 test("Unauthenticated request to /inquiries/new redirects to login", async ({ page }) => {
-  await page.goto("/acme-glass/inquiries/new");
-  await expect(page).toHaveURL(/\/acme-glass\/login/, { timeout: 10_000 });
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 10_000 });
 });
 
 test("Unauthenticated request to /inquiries/[id] redirects to login", async ({ page }) => {
-  await page.goto("/acme-glass/inquiries/00000000-0000-0000-0000-000000000000");
-  await expect(page).toHaveURL(/\/acme-glass\/login/, { timeout: 10_000 });
+  await page.goto(orgUrl("acme-glass", "/inquiries/00000000-0000-0000-0000-000000000000"));
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -104,8 +104,8 @@ test("Inquiry create round-trip: create → appears in list with inquiryNumber a
   const inquiryName = `E2E Inquiry ${Date.now()}`;
 
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries/new");
-  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
+  await expect(page).not.toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 15_000 });
 
   // Stage 14: destinationCountry removed from form (derived server-side);
   // currency changed to <select>; 7 end-client fields are now required.
@@ -113,7 +113,7 @@ test("Inquiry create round-trip: create → appears in list with inquiryNumber a
   await fillCreateFormRequiredFields(page, "AED");
 
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/inquiries$"), { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
   ]);
 
@@ -125,12 +125,12 @@ test("Inquiry create round-trip: create → appears in list with inquiryNumber a
   const nameLink = page.getByRole("link", { name: inquiryName }).first();
   await expect(nameLink).toBeVisible({ timeout: 10_000 });
   const nameLinkHref = await nameLink.getAttribute("href");
-  expect(nameLinkHref).toMatch(/\/acme-glass\/inquiries\/[0-9a-f-]{36}/);
+  expect(nameLinkHref).toMatch(/\/inquiries\/[0-9a-f-]{36}/);
 });
 
 test("Inquiry list: each row links to the detail page", async ({ page }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries");
+  await page.goto(orgUrl("acme-glass", "/inquiries"));
 
   // Stage 12 Batch 7c: inquiry list links via the inquiry name (not a #N number cell).
   // Any <a> whose href matches /acme-glass/inquiries/{uuid} is a detail link.
@@ -141,10 +141,10 @@ test("Inquiry list: each row links to the detail page", async ({ page }) => {
     (els) => els.map((el) => el.getAttribute("href") ?? ""),
   );
   const inquiryHrefs = allHrefs.filter((h) =>
-    /\/acme-glass\/inquiries\/[0-9a-f-]{36}$/.test(h),
+    /\/inquiries\/[0-9a-f-]{36}$/.test(h),
   );
   if (inquiryHrefs.length > 0) {
-    expect(inquiryHrefs[0]).toMatch(/\/acme-glass\/inquiries\/[0-9a-f-]{36}/);
+    expect(inquiryHrefs[0]).toMatch(/\/inquiries\/[0-9a-f-]{36}/);
   }
   // Empty list is acceptable if no inquiries exist yet
 });
@@ -159,13 +159,13 @@ test("Inquiry detail page shows correct fields (name, currency, status)", async 
   const currency = "AED";
 
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
 
   await page.locator("input[name='name']").fill(inquiryName);
   await fillCreateFormRequiredFields(page, currency);
 
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/inquiries$"), { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
   ]);
 
@@ -173,7 +173,7 @@ test("Inquiry detail page shows correct fields (name, currency, status)", async 
   const inquiryLink = page.getByRole("link").filter({ hasText: inquiryName }).first();
   await expect(inquiryLink).toBeVisible({ timeout: 10_000 });
   await inquiryLink.click();
-  await expect(page).toHaveURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, {
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/inquiries/[0-9a-f-]{36}$"), {
     timeout: 15_000,
   });
 
@@ -202,11 +202,11 @@ test("Two consecutive inquiries get sequential inquiryNumbers (#N and #N+1)", as
 
   // Create first inquiry.
   // Stage 14: destinationCountry removed; currency is now a <select>.
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   await page.locator("input[name='name']").fill(name1);
   await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/inquiries$"), { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
   ]);
 
@@ -216,17 +216,17 @@ test("Two consecutive inquiries get sequential inquiryNumbers (#N and #N+1)", as
   // Stage 12 Batch 7c: no #N column; navigate to detail page to read inquiry number.
   const firstNameLink = row1.getByRole("link").first();
   await firstNameLink.click();
-  await page.waitForURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/inquiries/[0-9a-f-]{36}$"), { timeout: 15_000 });
   const firstHeading = await page.locator("h1").textContent();
   const firstNum = parseInt((firstHeading ?? "").match(/#(\d+)/)?.[1] ?? "0", 10);
   expect(firstNum).toBeGreaterThan(0);
 
   // Create second inquiry.
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   await page.locator("input[name='name']").fill(name2);
   await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/inquiries$"), { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
   ]);
 
@@ -235,7 +235,7 @@ test("Two consecutive inquiries get sequential inquiryNumbers (#N and #N+1)", as
   await expect(row2).toBeVisible({ timeout: 10_000 });
   const secondNameLink = row2.getByRole("link").first();
   await secondNameLink.click();
-  await page.waitForURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/inquiries/[0-9a-f-]{36}$"), { timeout: 15_000 });
   const secondHeading = await page.locator("h1").textContent();
   const secondNum = parseInt((secondHeading ?? "").match(/#(\d+)/)?.[1] ?? "0", 10);
 
@@ -252,13 +252,13 @@ test("Dismiss action: inquiry status becomes Dismissed", async ({ page }) => {
 
   // Stage 14: destinationCountry removed; currency is now a <select>.
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
 
   await page.locator("input[name='name']").fill(inquiryName);
   await fillCreateFormRequiredFields(page, "AED");
 
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/inquiries$"), { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
   ]);
 
@@ -266,7 +266,7 @@ test("Dismiss action: inquiry status becomes Dismissed", async ({ page }) => {
   const inquiryLink = page.getByRole("link").filter({ hasText: inquiryName }).first();
   await expect(inquiryLink).toBeVisible({ timeout: 10_000 });
   await inquiryLink.click();
-  await expect(page).toHaveURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, {
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/inquiries/[0-9a-f-]{36}$"), {
     timeout: 15_000,
   });
 
@@ -276,7 +276,7 @@ test("Dismiss action: inquiry status becomes Dismissed", async ({ page }) => {
   await expect(dismissButton).not.toBeDisabled();
 
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/inquiries/[0-9a-f-]{36}$"), { timeout: 20_000 }),
     dismissButton.click(),
   ]);
 
@@ -304,13 +304,13 @@ test("Convert inquiry to Project: creates project with same fields, inquiry show
   const currency = "AED";
 
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
 
   await page.locator("input[name='name']").fill(inquiryName);
   await fillCreateFormRequiredFields(page, currency);
 
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/inquiries$"), { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
   ]);
 
@@ -318,7 +318,7 @@ test("Convert inquiry to Project: creates project with same fields, inquiry show
   const inquiryLink = page.getByRole("link").filter({ hasText: inquiryName }).first();
   await expect(inquiryLink).toBeVisible({ timeout: 10_000 });
   await inquiryLink.click();
-  await expect(page).toHaveURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, {
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/inquiries/[0-9a-f-]{36}$"), {
     timeout: 15_000,
   });
 
@@ -334,7 +334,7 @@ test("Convert inquiry to Project: creates project with same fields, inquiry show
 
   // After clicking, should redirect to the new project's detail page
   await startButton.click();
-  await expect(page).toHaveURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, {
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}$"), {
     timeout: 20_000,
   });
 
@@ -362,8 +362,8 @@ test("Inquiry tenancy: acme-glass session redirected when accessing nordic-walls
   await signIn(page, "admin", "Seed1234!", "acme-glass");
 
   // Cross-org guard: acme-glass session on nordic-walls URL → redirect to nordic-walls login
-  await page.goto("/nordic-walls/inquiries");
-  await page.waitForURL(/\/nordic-walls\/login/, { timeout: 15_000 });
+  await page.goto(orgUrl("nordic-walls", "/inquiries"));
+  await page.waitForURL(orgUrlPattern("nordic-walls", "/login"), { timeout: 15_000 });
 });
 
 test("Inquiry tenancy: acme-glass inquiry not accessible via nordic-walls URL space", async ({
@@ -373,13 +373,13 @@ test("Inquiry tenancy: acme-glass inquiry not accessible via nordic-walls URL sp
   await signIn(page, "admin", "Seed1234!", "acme-glass");
 
   // Stage 14: destinationCountry removed; currency is now a <select>.
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   const inquiryName = `E2E Tenancy ${Date.now()}`;
   await page.locator("input[name='name']").fill(inquiryName);
   await fillCreateFormRequiredFields(page, "AED");
 
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/inquiries$"), { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
   ]);
 
@@ -391,16 +391,16 @@ test("Inquiry tenancy: acme-glass inquiry not accessible via nordic-walls URL sp
   expect(inquiryId).toMatch(/^[0-9a-f-]{36}$/);
 
   // Sign out of acme-glass (Stage 11 Batch 8: Profile icon → "Log Out" dropdown)
-  await page.goto("/acme-glass/dashboard");
+  await page.goto(orgUrl("acme-glass", "/dashboard"));
   await page.getByRole("button", { name: "Profile" }).click();
   await page.getByRole("button", { name: /Log Out/i }).click();
-  await expect(page).toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 15_000 });
 
   // Sign in as nordic-walls admin
   await signIn(page, "admin", "Seed1234!", "nordic-walls");
 
   // Try to access acme-glass's inquiry from nordic-walls URL space
-  await page.goto(`/nordic-walls/inquiries/${inquiryId}`);
+  await page.goto(orgUrl("nordic-walls", `/inquiries/${inquiryId}`));
 
   // Tenancy guard should result in a 404 (notFound()) — inquiry not in nordic-walls org
   await page.waitForLoadState("domcontentloaded");
@@ -421,14 +421,14 @@ test("ComponentType JSON round-trip: paste valid JSON, switch to Form, fields ap
   await signIn(page, "admin");
 
   // Create a new ComponentType first
-  await page.goto("/acme-glass/admin/components/new");
+  await page.goto(orgUrl("acme-glass", "/admin/components/new"));
   await page.locator("input[name='code']").fill(code);
   await page.locator("input[name='name']").fill(name);
   await page.locator("select[name='categoryId']").selectOption({ label: "Glass Partitions" });
 
   await Promise.all([
     page.waitForURL(
-      (url) => /\/acme-glass\/admin\/components\/[0-9a-f-]{36}/.test(url.toString()),
+      (url) => orgUrlPattern("acme-glass", "/admin/components/[0-9a-f-]{36}").test(url.toString()),
       { timeout: 30_000 },
     ),
     page.getByRole("button", { name: /create component type/i }).click(),
@@ -499,14 +499,14 @@ test("ComponentType JSON mode: malformed JSON shows inline error, stays in JSON 
   const name = `E2E Bad JSON ${code}`;
 
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/components/new");
+  await page.goto(orgUrl("acme-glass", "/admin/components/new"));
   await page.locator("input[name='code']").fill(code);
   await page.locator("input[name='name']").fill(name);
   await page.locator("select[name='categoryId']").selectOption({ label: "Glass Partitions" });
 
   await Promise.all([
     page.waitForURL(
-      (url) => /\/acme-glass\/admin\/components\/[0-9a-f-]{36}/.test(url.toString()),
+      (url) => orgUrlPattern("acme-glass", "/admin/components/[0-9a-f-]{36}").test(url.toString()),
       { timeout: 30_000 },
     ),
     page.getByRole("button", { name: /create component type/i }).click(),
@@ -543,14 +543,14 @@ test("ComponentType JSON mode: radio field with no options shows inline shape er
   const name = `E2E Bad Shape ${code}`;
 
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/components/new");
+  await page.goto(orgUrl("acme-glass", "/admin/components/new"));
   await page.locator("input[name='code']").fill(code);
   await page.locator("input[name='name']").fill(name);
   await page.locator("select[name='categoryId']").selectOption({ label: "Glass Partitions" });
 
   await Promise.all([
     page.waitForURL(
-      (url) => /\/acme-glass\/admin\/components\/[0-9a-f-]{36}/.test(url.toString()),
+      (url) => orgUrlPattern("acme-glass", "/admin/components/[0-9a-f-]{36}").test(url.toString()),
       { timeout: 30_000 },
     ),
     page.getByRole("button", { name: /create component type/i }).click(),
@@ -595,14 +595,14 @@ test("ComponentType JSON mode: submit button is disabled while in JSON mode", as
   const name = `E2E Submit Disabled ${code}`;
 
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/components/new");
+  await page.goto(orgUrl("acme-glass", "/admin/components/new"));
   await page.locator("input[name='code']").fill(code);
   await page.locator("input[name='name']").fill(name);
   await page.locator("select[name='categoryId']").selectOption({ label: "Glass Partitions" });
 
   await Promise.all([
     page.waitForURL(
-      (url) => /\/acme-glass\/admin\/components\/[0-9a-f-]{36}/.test(url.toString()),
+      (url) => orgUrlPattern("acme-glass", "/admin/components/[0-9a-f-]{36}").test(url.toString()),
       { timeout: 30_000 },
     ),
     page.getByRole("button", { name: /create component type/i }).click(),
@@ -629,8 +629,8 @@ test("Direct Project create (no Inquiry) still works correctly after Stage 7", a
   const projectName = `E2E Direct Project ${Date.now()}`;
 
   await signIn(page, "admin");
-  await page.goto("/acme-glass/projects/new");
-  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+  await page.goto(orgUrl("acme-glass", "/projects/new"));
+  await expect(page).not.toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 15_000 });
 
   // Stage 14: destinationCountry removed from form; currency is now a <select>.
   await page.locator("input[name='name']").fill(projectName);
@@ -639,7 +639,7 @@ test("Direct Project create (no Inquiry) still works correctly after Stage 7", a
   // Stage 9: createProject now redirects to the new project's Step 1 (Project Details),
   // not the project list. Wait for the UUID-shaped project detail URL.
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}$"), { timeout: 20_000 }),
     page.getByRole("button", { name: /configure/i }).click(),
   ]);
 
@@ -658,7 +658,7 @@ test("Inquiries create form renders in browser (clientMessages wiring works)", a
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
 
   // If clientMessages wiring is broken, the form would be inert (no fields visible).
   // The form must render with at least a name field and a submit button.
@@ -674,12 +674,12 @@ test("Start Project button renders on inquiry detail page (clientMessages wiring
   const inquiryName = `E2E i18n Wiring ${Date.now()}`;
 
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   // Stage 14: destinationCountry removed; currency is now a <select>.
   await page.locator("input[name='name']").fill(inquiryName);
   await fillCreateFormRequiredFields(page, "AED");
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/inquiries$"), { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
   ]);
 
@@ -687,7 +687,7 @@ test("Start Project button renders on inquiry detail page (clientMessages wiring
   const link = page.getByRole("link").filter({ hasText: inquiryName }).first();
   await expect(link).toBeVisible({ timeout: 10_000 });
   await link.click();
-  await expect(page).toHaveURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, {
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/inquiries/[0-9a-f-]{36}$"), {
     timeout: 15_000,
   });
 
@@ -712,11 +712,11 @@ test("Project create redirect uses replace: browser history grows by 1, not 2", 
 }) => {
   await signIn(page, "admin");
   // Establish a stable baseline for history.length at the projects list.
-  await page.goto("/acme-glass/projects");
+  await page.goto(orgUrl("acme-glass", "/projects"));
   const historyBefore = await page.evaluate(() => window.history.length);
 
   // Navigate to create form — this push-navigates, adding one entry.
-  await page.goto("/acme-glass/projects/new");
+  await page.goto(orgUrl("acme-glass", "/projects/new"));
 
   // Stage 14: destinationCountry removed; currency is now a <select>.
   const projectName = `E2E History ${Date.now()}`;
@@ -726,7 +726,7 @@ test("Project create redirect uses replace: browser history grows by 1, not 2", 
   // Stage 9: redirect goes to /{orgSlug}/projects/{uuid} (not the list).
   // RedirectType.replace is used, so /new is replaced by /projects/{uuid} in history.
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}$"), { timeout: 20_000 }),
     page.getByRole("button", { name: /configure/i }).click(),
   ]);
 
@@ -740,10 +740,10 @@ test("Inquiry create redirect uses replace: browser history grows by 1, not 2", 
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries");
+  await page.goto(orgUrl("acme-glass", "/inquiries"));
   const historyBefore = await page.evaluate(() => window.history.length);
 
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
 
   // Stage 14: destinationCountry removed; currency is now a <select>.
   const inquiryName = `E2E History Inq ${Date.now()}`;
@@ -751,7 +751,7 @@ test("Inquiry create redirect uses replace: browser history grows by 1, not 2", 
   await fillCreateFormRequiredFields(page, "AED");
 
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/inquiries$"), { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
   ]);
 
@@ -772,8 +772,8 @@ test("Distributor user sees a locked (non-dropdown) Client field on /projects/ne
   page,
 }) => {
   await signIn(page, "distributor", "Seed1234!", "acme-glass");
-  await page.goto("/acme-glass/projects/new");
-  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+  await page.goto(orgUrl("acme-glass", "/projects/new"));
+  await expect(page).not.toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 15_000 });
 
   // The Client field must NOT be a select dropdown for an external user.
   const dropdown = page.locator("select[name='externalCompanyId']");
@@ -791,8 +791,8 @@ test("Distributor user sees a locked (non-dropdown) Client field on /inquiries/n
   page,
 }) => {
   await signIn(page, "distributor", "Seed1234!", "acme-glass");
-  await page.goto("/acme-glass/inquiries/new");
-  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
+  await expect(page).not.toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 15_000 });
 
   // No dropdown for an external user.
   const dropdown = page.locator("select[name='externalCompanyId']");
@@ -810,8 +810,8 @@ test("Admin user (null externalCompanyId) still sees the free-choice dropdown on
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/projects/new");
-  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+  await page.goto(orgUrl("acme-glass", "/projects/new"));
+  await expect(page).not.toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 15_000 });
 
   // Stage 14: externalCompanyId changed from <select> to CompanyDropdown (a custom
   // button-triggered listbox). Admin has null externalCompanyId → must see the
@@ -835,8 +835,8 @@ test("Project trust boundary: forged externalCompanyId in form body is ignored f
   page,
 }) => {
   await signIn(page, "distributor", "Seed1234!", "acme-glass");
-  await page.goto("/acme-glass/projects/new");
-  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+  await page.goto(orgUrl("acme-glass", "/projects/new"));
+  await expect(page).not.toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 15_000 });
 
   // Stage 14: destinationCountry removed; currency is now a <select>.
   // The distributor's locked company has no seeded country → isIndia=false → GST optional.
@@ -855,7 +855,7 @@ test("Project trust boundary: forged externalCompanyId in form body is ignored f
 
   // Stage 9: createProject now redirects to the new project's detail page (Step 1).
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}$"), { timeout: 20_000 }),
     page.getByRole("button", { name: /configure/i }).click(),
   ]);
 
@@ -871,8 +871,8 @@ test("Inquiry trust boundary: forged externalCompanyId in form body is ignored f
   page,
 }) => {
   await signIn(page, "distributor", "Seed1234!", "acme-glass");
-  await page.goto("/acme-glass/inquiries/new");
-  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
+  await expect(page).not.toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 15_000 });
 
   // Stage 14: destinationCountry removed; currency is now a <select>.
   const inquiryName = `E2E Trust Inq ${Date.now()}`;
@@ -888,7 +888,7 @@ test("Inquiry trust boundary: forged externalCompanyId in form body is ignored f
   });
 
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 }),
+    page.waitForURL(orgUrlPattern("acme-glass", "/inquiries$"), { timeout: 20_000 }),
     page.getByRole("button", { name: /create inquiry/i }).click(),
   ]);
 
@@ -899,7 +899,7 @@ test("Inquiry trust boundary: forged externalCompanyId in form body is ignored f
   const inquiryLink = page.getByRole("link").filter({ hasText: inquiryName }).first();
   await expect(inquiryLink).toBeVisible({ timeout: 10_000 });
   await inquiryLink.click();
-  await expect(page).toHaveURL(/\/acme-glass\/inquiries\/[0-9a-f-]{36}$/, { timeout: 15_000 });
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/inquiries/[0-9a-f-]{36}$"), { timeout: 15_000 });
 
   // The detail page shows the company name — must be the distributor's real company.
   await expect(page.getByText("Acme Glass Co. Dist Co").first()).toBeVisible({ timeout: 10_000 });

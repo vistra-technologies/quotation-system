@@ -35,7 +35,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, orgUrl, orgUrlPattern } from "./helpers";
 
 // Run serially — auth round-trip tests share better-auth's per-IP rate limiter.
 test.describe.configure({ mode: "serial" });
@@ -53,8 +53,8 @@ test("after login, post-redirect URL has no doubled org segment", async ({
   await signIn(page, "admin", undefined, ORG);
 
   const url = page.url();
-  // Must land on dashboard
-  expect(url).toMatch(new RegExp(`/${ORG}/dashboard`));
+  // Must land on dashboard (orgUrlPattern matches both path-based and subdomain URLs)
+  expect(url).toMatch(orgUrlPattern(ORG, "/dashboard"));
   // Must NOT have a doubled segment (e.g. /vistra/vistra/dashboard)
   expect(url).not.toMatch(new RegExp(`/${ORG}/${ORG}`));
 });
@@ -67,23 +67,23 @@ test("sidebar nav links produce clean URLs", async ({ page }) => {
 
   // Click "Inquiries" in the sidebar nav
   await page.getByRole("link", { name: "Inquiries" }).click();
-  await page.waitForURL(new RegExp(`/${ORG}/inquiries`), { timeout: 15_000 });
+  await page.waitForURL(orgUrlPattern(ORG, "/inquiries"), { timeout: 15_000 });
   let url = page.url();
-  expect(url).toMatch(new RegExp(`/${ORG}/inquiries`));
+  expect(url).toMatch(orgUrlPattern(ORG, "/inquiries"));
   expect(url).not.toMatch(new RegExp(`/${ORG}/${ORG}`));
 
   // Click "Projects"
   await page.getByRole("link", { name: "Projects" }).click();
-  await page.waitForURL(new RegExp(`/${ORG}/projects`), { timeout: 15_000 });
+  await page.waitForURL(orgUrlPattern(ORG, "/projects"), { timeout: 15_000 });
   url = page.url();
-  expect(url).toMatch(new RegExp(`/${ORG}/projects`));
+  expect(url).toMatch(orgUrlPattern(ORG, "/projects"));
   expect(url).not.toMatch(new RegExp(`/${ORG}/${ORG}`));
 
   // Click "Home" icon (top-bar Home link → dashboard)
   await page.getByRole("link", { name: "Home" }).click();
-  await page.waitForURL(new RegExp(`/${ORG}/dashboard`), { timeout: 15_000 });
+  await page.waitForURL(orgUrlPattern(ORG, "/dashboard"), { timeout: 15_000 });
   url = page.url();
-  expect(url).toMatch(new RegExp(`/${ORG}/dashboard`));
+  expect(url).toMatch(orgUrlPattern(ORG, "/dashboard"));
   expect(url).not.toMatch(new RegExp(`/${ORG}/${ORG}`));
 });
 
@@ -97,9 +97,9 @@ test("logout produces clean login URL", async ({ page }) => {
   await page.getByRole("button", { name: "Profile" }).click();
   await page.getByRole("button", { name: /Log Out/i }).click();
 
-  await page.waitForURL(new RegExp(`/${ORG}/login`), { timeout: 15_000 });
+  await page.waitForURL(orgUrlPattern(ORG, "/login"), { timeout: 15_000 });
   const url = page.url();
-  expect(url).toMatch(new RegExp(`/${ORG}/login`));
+  expect(url).toMatch(orgUrlPattern(ORG, "/login"));
   expect(url).not.toMatch(new RegExp(`/${ORG}/${ORG}`));
 });
 
@@ -114,11 +114,11 @@ test("server redirect from unauthenticated access produces clean URL", async ({
   // Before Part A, this would produce /{orgSlug}/login in path-based mode and
   // /login on a subdomain host (after the fix). On *.vercel.app the fix keeps
   // it at /{orgSlug}/login — no doubling either way.
-  await page.goto(`/${ORG}/dashboard`);
-  await page.waitForURL(new RegExp(`/${ORG}/login`), { timeout: 15_000 });
+  await page.goto(orgUrl(ORG, "/dashboard"));
+  await page.waitForURL(orgUrlPattern(ORG, "/login"), { timeout: 15_000 });
 
   const url = page.url();
-  expect(url).toMatch(new RegExp(`/${ORG}/login`));
+  expect(url).toMatch(orgUrlPattern(ORG, "/login"));
   expect(url).not.toMatch(new RegExp(`/${ORG}/${ORG}`));
   // Login form must be visible — confirms the redirect landed on the right page
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible({

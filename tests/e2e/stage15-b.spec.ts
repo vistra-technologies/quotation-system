@@ -17,7 +17,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, apiUrl } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -42,7 +42,7 @@ test("D3: admin (internal) stats are >= distributor (external) stats for every K
 
   // Hit the stats API as the admin session (cookie is already set by signIn).
   const adminStatsRes = await page.request.get(
-    "/api/v1/orgs/acme-glass/stats",
+    apiUrl("acme-glass", "/api/v1/orgs/acme-glass/stats"),
   );
   expect(adminStatsRes.status()).toBe(200);
   const adminStats = (await adminStatsRes.json()) as {
@@ -61,7 +61,7 @@ test("D3: admin (internal) stats are >= distributor (external) stats for every K
   await signIn(page, "distributor", process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!", "acme-glass");
 
   const distStatsRes = await page.request.get(
-    "/api/v1/orgs/acme-glass/stats",
+    apiUrl("acme-glass", "/api/v1/orgs/acme-glass/stats"),
   );
   expect(distStatsRes.status()).toBe(200);
   const distStats = (await distStatsRes.json()) as {
@@ -103,6 +103,6 @@ test("D3: stats API returns 401 for unauthenticated requests", async ({
   // Ensure no session cookie is present.
   await page.context().clearCookies();
 
-  const res = await page.request.get("/api/v1/orgs/acme-glass/stats");
+  const res = await page.request.get(apiUrl("acme-glass", "/api/v1/orgs/acme-glass/stats"));
   expect(res.status()).toBe(401);
 });

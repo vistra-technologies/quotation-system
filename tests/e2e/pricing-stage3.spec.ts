@@ -23,6 +23,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { orgUrl, orgUrlPattern } from "./helpers";
 
 // Run this file serially — the dev server cannot handle 5 concurrent cold-compile
 // requests without saturating. Individual tests complete well within timeout.
@@ -49,7 +50,7 @@ async function signIn(
   orgSlug = "acme-glass",
 ) {
   // Use default waitUntil:"load" so the login form's JS hydrates before we interact
-  await page.goto(`/${orgSlug}/login`);
+  await page.goto(orgUrl(orgSlug, "/login"));
   // Wait for the login form to be ready — the autocomplete="username" input is the
   // stable anchor post-Stage-10 rebuild (the old "Sign in to" heading is gone).
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
@@ -59,7 +60,7 @@ async function signIn(
   await page.getByLabel("Password", { exact: true }).fill(password);
   await page.getByRole("button", { name: /Sign in/i }).click();
   // Wait for redirect to dashboard after successful login
-  await page.waitForURL(new RegExp(`/${orgSlug}/dashboard`), { timeout: 30_000 });
+  await page.waitForURL(orgUrlPattern(orgSlug, "/dashboard"), { timeout: 30_000 });
 }
 
 // ---------------------------------------------------------------------------
@@ -74,14 +75,14 @@ test("distributor role is redirected away from /pricing to /dashboard", async ({
   // Use waitUntil:"commit" to handle the streaming redirect gracefully;
   // some Next.js streaming redirects cause net::ERR_ABORTED before load completes.
   try {
-    await page.goto("/acme-glass/pricing", { waitUntil: "commit" });
+    await page.goto(orgUrl("acme-glass", "/pricing"), { waitUntil: "commit" });
   } catch {
     // ERR_ABORTED is expected when Next.js streaming redirect fires — the
     // browser follows the 307 Location header automatically.
   }
 
   // Must land on dashboard — not the pricing page
-  await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 20_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 20_000 });
 
   // Pricing table heading must NOT be visible
   await expect(page.getByRole("heading", { name: "Pricing Management" })).not.toBeVisible();
@@ -99,12 +100,12 @@ test("architect role is redirected away from /pricing to /dashboard", async ({
   await signIn(page, "architect");
 
   try {
-    await page.goto("/acme-glass/pricing", { waitUntil: "commit" });
+    await page.goto(orgUrl("acme-glass", "/pricing"), { waitUntil: "commit" });
   } catch {
     // Streaming redirect abort — handled via waitForURL below
   }
 
-  await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 20_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 20_000 });
 
   await expect(page.getByRole("heading", { name: "Pricing Management" })).not.toBeVisible();
   // Stage 12 Batch 7b: heading is "Welcome, {firstName}", not "Dashboard".
@@ -122,13 +123,13 @@ test("unauthorized direct navigation to pricing item edit page redirects to dash
 
   // Navigate directly to a pricing item edit URL
   try {
-    await page.goto("/acme-glass/pricing/some-fake-item-id", { waitUntil: "commit" });
+    await page.goto(orgUrl("acme-glass", "/pricing/some-fake-item-id"), { waitUntil: "commit" });
   } catch {
     // Streaming redirect abort
   }
 
   // Must redirect to dashboard (RBAC gate fires before item lookup)
-  await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 20_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 20_000 });
   // Stage 12 Batch 7b: heading is "Welcome, {firstName}", not "Dashboard".
   await expect(page.locator("h1")).toContainText(/Welcome/i, { timeout: 10_000 });
 });
@@ -148,7 +149,7 @@ test("company member can add, update, and delete an ItemPrice via the UI", async
   await signIn(page, "member", "Seed1234!", orgSlug);
 
   // Navigate to the pricing list (member has MANAGE_PRICING, no redirect expected)
-  await page.goto(`/${orgSlug}/pricing`);
+  await page.goto(orgUrl(orgSlug, "/pricing"));
   await expect(page.getByRole("heading", { name: "Pricing Management" })).toBeVisible({
     timeout: 30_000,
   });
