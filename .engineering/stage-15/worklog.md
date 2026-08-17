@@ -491,3 +491,25 @@ with their own inline sign-in that bypasses the hardened helper (`login.spec.ts`
 (`toBeLessThanOrEqual` between equal values; a fake `annotations.push({type:"skip"})` Playwright never
 honours; a tenancy test using a UUID belonging to no org; a C6 test passing on both `defaultValue` and
 `value`). **Every one was caught by review, never by the authoring developer.**
+
+### 2026-08-17 — developer — Batch F: tests 3 & 4 verified PASSED
+
+Deployment for `5905899` had failed (P1002 / immediate error, 0ms build). Pushed empty retrigger `09bd02a` → deployment `ghood6z5y` (READY, `/api/health` → `{"status":"ok","database":"connected"}`).
+
+Ran `stage15-f.spec.ts` and `stage15-f-constraints.spec.ts` against `ghood6z5y`:
+- `stage15-f.spec.ts` — 4/4 PASSED (57.5s) — same results as prior run
+- `stage15-f-constraints.spec.ts` — **12/12 PASSED (2.1m)**, including:
+  - Test 3: inquiry edit, INR→AED, blur "1000000" → displayed `"1,000,000"` ✓
+  - Test 4: project edit, USD→INR, blur "1000000" → displayed `"10,00,000"` ✓
+
+Both tests 3/4 are genuinely falsifiable: old `defaultValue`-based code would produce the wrong grouping (stale currency in `handleBudgetBlur`).
+
+Updated `item-F.md` in worktree (force-added, committed `681d64d`, pushed). Branch `feature/stage15-form-behaviours` @ `681d64d` matches origin. No app code changed; retrigger commit is the only new push.
+
+### 2026-08-17 — reviewer — Batch H review complete
+APPROVE-WITH-NITS. 0 CRITICAL, 0 IMPORTANT, 2 MINOR.
+Detail: `.engineering/stage-15/review-H.md`
+
+Key findings: (1) The Batch G regression was in the **test**, not in the code — "Distributor" without externalCompanyId is correctly rejected by U3 enforcement in `lib/data/users.ts:76-78`; the fix ("Company Member") is correct. (2) X5 positive regex is sound and genuinely fails on third-org leaks in both routing modes. (3) 5 remaining failures classified correctly as rate-limit (3 in files bypassing the helper; 2 at `helpers.ts:108` after retries exhausted — sign-in infrastructure, not product logic). (4) X6 retry fires only on 429; real auth errors fall through to `waitForURL` timeout (loud failure). (5) Wireframe-stage rule: clean. (6) All three changed assertions are falsifiable on revert.
+
+**Suite is NOT green entering `engineering:test`** — 5 known rate-limit failures in the baseline. Must be stated plainly in the handoff. Three out-of-scope items (inline-signIn spec files, worker-count reduction, missing DELETE permissions endpoint) are not Stage 15 blockers but the human should decide on worker-count before the formal test pass.
