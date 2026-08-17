@@ -11,7 +11,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, orgUrl, orgUrlPattern, apiUrl } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -30,7 +30,7 @@ async function createExternalCompany(
   name: string,
   country: "INDIA" | "UAE",
 ): Promise<void> {
-  await page.goto("/acme-glass/admin/external-companies/new");
+  await page.goto(orgUrl("acme-glass", "/admin/external-companies/new"));
   await page.waitForURL(/external-companies\/new/, { timeout: 20_000 });
   await page.locator("input[name='name']").fill(name);
   await page.locator("select[name='type']").selectOption("DISTRIBUTOR");
@@ -39,7 +39,7 @@ async function createExternalCompany(
     country === "INDIA" ? "INR" : "AED",
   );
   await page.getByRole("button", { name: /create/i }).click();
-  await page.waitForURL(/\/acme-glass\/admin\/external-companies$/, { timeout: 20_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/admin/external-companies$"), { timeout: 20_000 });
 }
 
 async function selectCompany(
@@ -84,7 +84,7 @@ test("hydration: inquiry create form mounts without i18n errors", async ({ page 
   page.on("console", (msg) => { if (msg.type() === "error") errors.push(msg.text()); });
 
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
 
   await expect(page.locator("input[name='name']")).toBeVisible({ timeout: 10_000 });
@@ -102,7 +102,7 @@ test("hydration: project create form mounts without i18n errors", async ({ page 
   page.on("console", (msg) => { if (msg.type() === "error") errors.push(msg.text()); });
 
   await signIn(page, "admin");
-  await page.goto("/acme-glass/projects/new");
+  await page.goto(orgUrl("acme-glass", "/projects/new"));
   await page.waitForURL(/projects\/new/, { timeout: 20_000 });
 
   await expect(page.locator("input[name='name']")).toBeVisible({ timeout: 10_000 });
@@ -120,7 +120,7 @@ test("hydration: admin/users page mounts delete-user-button without i18n errors"
   page.on("console", (msg) => { if (msg.type() === "error") errors.push(msg.text()); });
 
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/users");
+  await page.goto(orgUrl("acme-glass", "/admin/users"));
   await page.waitForURL(/admin\/users$/, { timeout: 20_000 });
 
   const deleteBtn = page.locator('button[aria-label^="Delete user"]').first();
@@ -145,7 +145,7 @@ test("hydration: admin/users page mounts delete-user-button without i18n errors"
 test("destinationCountry: client-supplied value in POST body is ignored", async ({ page }) => {
   await signIn(page, "admin");
 
-  const resp = await page.request.post("/api/v1/orgs/acme-glass/inquiries", {
+  const resp = await page.request.post(apiUrl("acme-glass", "/api/v1/orgs/acme-glass/inquiries"), {
     headers: { "Content-Type": "application/json" },
     data: {
       name: "S14-DestInject-" + Date.now(),
@@ -169,7 +169,7 @@ test("GST: India company makes endClientGstNumber required", async ({ page }) =>
   const coName = "S14-India-GST-" + Date.now();
   await createExternalCompany(page, coName, "INDIA");
 
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
 
   const gstInput = page.locator("input[name='endClientGstNumber']");
@@ -186,7 +186,7 @@ test("GST: UAE company keeps endClientGstNumber optional", async ({ page }) => {
   const coName = "S14-UAE-GST-" + Date.now();
   await createExternalCompany(page, coName, "UAE");
 
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
   await selectCompany(page, coName);
 
@@ -197,7 +197,7 @@ test("GST: UAE company keeps endClientGstNumber optional", async ({ page }) => {
 
 test("GST: no company keeps endClientGstNumber optional", async ({ page }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
 
   const gstInput = page.locator("input[name='endClientGstNumber']");
@@ -219,7 +219,7 @@ test("convertInquiryToProject: all 15 sentinel fields appear on resulting projec
   const coName = "S14-Conv-Co-" + Date.now();
   await createExternalCompany(page, coName, "INDIA");
 
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
   await selectCompany(page, coName);
 
@@ -249,15 +249,15 @@ test("convertInquiryToProject: all 15 sentinel fields appear on resulting projec
   await page.locator("input[name='endClientState']").fill("Conv State");
 
   await page.getByRole("button", { name: "Create Inquiry" }).click();
-  await page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 30_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/inquiries$"), { timeout: 30_000 });
 
   const link = page.locator("tr").filter({ hasText: inqName }).locator("a").first();
   await expect(link).toBeVisible({ timeout: 10_000 });
   await link.click();
-  await page.waitForURL(/\/acme-glass\/inquiries\/.+/, { timeout: 20_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/inquiries/.+"), { timeout: 20_000 });
 
   await page.getByRole("button", { name: "Start Project" }).click();
-  await page.waitForURL(/\/acme-glass\/projects\/.+/, { timeout: 30_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/projects/.+"), { timeout: 30_000 });
 
   await expect(page.getByText("CONV_LOCATION_SENTINEL")).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText("9988776655")).toBeVisible({ timeout: 5_000 });
@@ -282,13 +282,13 @@ test("convertInquiryToProject: all 15 sentinel fields appear on resulting projec
 
 test("tenancy: vistra session cannot list acme-glass inquiries", async ({ page }) => {
   await signIn(page, "admin", "Seed1234!", "vistra");
-  const resp = await page.request.get("/api/v1/orgs/acme-glass/inquiries");
+  const resp = await page.request.get(apiUrl("acme-glass", "/api/v1/orgs/acme-glass/inquiries"));
   expect([401, 403]).toContain(resp.status());
 });
 
 test("tenancy: vistra session cannot list acme-glass projects", async ({ page }) => {
   await signIn(page, "admin", "Seed1234!", "vistra");
-  const resp = await page.request.get("/api/v1/orgs/acme-glass/projects");
+  const resp = await page.request.get(apiUrl("acme-glass", "/api/v1/orgs/acme-glass/projects"));
   expect([401, 403]).toContain(resp.status());
 });
 
@@ -298,7 +298,7 @@ test("tenancy: vistra session cannot list acme-glass projects", async ({ page })
 
 test("Batch D: delete-user click shows ConfirmDialog not window.confirm", async ({ page }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/users");
+  await page.goto(orgUrl("acme-glass", "/admin/users"));
   await page.waitForURL(/admin\/users$/, { timeout: 20_000 });
 
   let nativeDialogFired = false;
@@ -318,8 +318,8 @@ test("Batch D: delete-user click shows ConfirmDialog not window.confirm", async 
 
 test("Batch D: wizard breadcrumb step 1 active on /edit route", async ({ page }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/projects");
-  await page.waitForURL(/\/acme-glass\/projects$/, { timeout: 20_000 });
+  await page.goto(orgUrl("acme-glass", "/projects"));
+  await page.waitForURL(orgUrlPattern("acme-glass", "/projects$"), { timeout: 20_000 });
 
   const rows = page.locator("tbody tr");
   const count = await rows.count();
@@ -329,7 +329,7 @@ test("Batch D: wizard breadcrumb step 1 active on /edit route", async ({ page })
   }
 
   await rows.first().locator("a").first().click();
-  await page.waitForURL(/\/acme-glass\/projects\/.+/, { timeout: 20_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/projects/.+"), { timeout: 20_000 });
 
   const projectUrl = page.url();
   await page.goto(projectUrl.replace(/\/$/, "") + "/edit");
@@ -344,10 +344,10 @@ test("Batch D: wizard breadcrumb step 1 active on /edit route", async ({ page })
 
 test("Batch D: pagination absent when list fits on one page", async ({ page }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries");
-  await page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 20_000 });
+  await page.goto(orgUrl("acme-glass", "/inquiries"));
+  await page.waitForURL(orgUrlPattern("acme-glass", "/inquiries$"), { timeout: 20_000 });
 
-  const resp = await page.request.get("/api/v1/orgs/acme-glass/inquiries?pageSize=1");
+  const resp = await page.request.get(apiUrl("acme-glass", "/api/v1/orgs/acme-glass/inquiries?pageSize=1"));
   if (!resp.ok()) return;
 
   const data = await resp.json() as { total: number };

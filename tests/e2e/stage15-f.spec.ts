@@ -23,7 +23,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn, fillCreateFormRequiredFields } from "./helpers";
+import { signIn, fillCreateFormRequiredFields, orgUrl, orgUrlPattern, apiUrl } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -46,7 +46,7 @@ test("C5 inquiry create: budget persisted as clean numeric string after blur-for
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
 
   const uniqueName = `C5-inq-create-${Date.now()}`;
@@ -69,12 +69,12 @@ test("C5 inquiry create: budget persisted as clean numeric string after blur-for
   await page.locator("button[type='submit']").first().click();
 
   // createInquiry redirects to /acme-glass/inquiries on success.
-  await page.waitForURL(/\/acme-glass\/inquiries(?!\/new)/, { timeout: 30_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/inquiries(?!\\/new)"), { timeout: 30_000 });
   expect(page.url()).not.toMatch(/\/new$/);
 
   // Fetch the inquiry list to find the one we just created.
   const listRes = await page.request.get(
-    "/api/v1/orgs/acme-glass/inquiries?page=1&pageSize=50&scope=all",
+    apiUrl("acme-glass", "/api/v1/orgs/acme-glass/inquiries?page=1&pageSize=50&scope=all"),
   );
   expect(listRes.ok()).toBe(true);
   const listBody = (await listRes.json()) as {
@@ -86,7 +86,7 @@ test("C5 inquiry create: budget persisted as clean numeric string after blur-for
 
   // Fetch the full inquiry detail to verify the stored budget.
   const detailRes = await page.request.get(
-    `/api/v1/orgs/acme-glass/inquiries/${createdInquiryId}`,
+    apiUrl("acme-glass", `/api/v1/orgs/acme-glass/inquiries/${createdInquiryId}`),
   );
   expect(detailRes.ok()).toBe(true);
   const detail = (await detailRes.json()) as {
@@ -110,7 +110,7 @@ test("C5 inquiry edit: budget pre-formatted on open, updated value persisted as 
   expect(createdInquiryId, "C5 inquiry create must run first").toBeTruthy();
 
   await signIn(page, "admin");
-  await page.goto(`/acme-glass/inquiries/${createdInquiryId}/edit`);
+  await page.goto(orgUrl("acme-glass", `/inquiries/${createdInquiryId}/edit`));
   await page.waitForURL(/\/edit$/, { timeout: 20_000 });
 
   // C5 edit form: initialProjectBudget ("1000000") should be pre-formatted to
@@ -131,13 +131,13 @@ test("C5 inquiry edit: budget pre-formatted on open, updated value persisted as 
   await page.locator("button[type='submit']").first().click();
 
   // updateInquiry redirects to /acme-glass/inquiries/{id}.
-  await page.waitForURL(new RegExp(`/acme-glass/inquiries/${createdInquiryId}$`), {
+  await page.waitForURL(orgUrlPattern("acme-glass", `/inquiries/${createdInquiryId}$`), {
     timeout: 30_000,
   });
 
   // Read back the persisted value via API.
   const detailRes = await page.request.get(
-    `/api/v1/orgs/acme-glass/inquiries/${createdInquiryId}`,
+    apiUrl("acme-glass", `/api/v1/orgs/acme-glass/inquiries/${createdInquiryId}`),
   );
   expect(detailRes.ok()).toBe(true);
   const detail = (await detailRes.json()) as {
@@ -156,7 +156,7 @@ test("C5 project create: budget persisted as clean numeric string after blur-for
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/projects/new");
+  await page.goto(orgUrl("acme-glass", "/projects/new"));
   await page.waitForURL(/projects\/new/, { timeout: 20_000 });
 
   const uniqueName = `C5-proj-create-${Date.now()}`;
@@ -175,7 +175,7 @@ test("C5 project create: budget persisted as clean numeric string after blur-for
   await page.locator("button[type='submit']").first().click();
 
   // createProject redirects to /acme-glass/projects/{id}.
-  await page.waitForURL(/\/acme-glass\/projects\/[a-f0-9-]{36}$/, { timeout: 30_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/projects/[a-f0-9-]{36}$"), { timeout: 30_000 });
 
   // Extract the project ID from the URL.
   const projectUrl = page.url();
@@ -185,7 +185,7 @@ test("C5 project create: budget persisted as clean numeric string after blur-for
 
   // Read back via API.
   const detailRes = await page.request.get(
-    `/api/v1/orgs/acme-glass/projects/${createdProjectId}`,
+    apiUrl("acme-glass", `/api/v1/orgs/acme-glass/projects/${createdProjectId}`),
   );
   expect(detailRes.ok()).toBe(true);
   const detail = (await detailRes.json()) as {
@@ -206,7 +206,7 @@ test("C5 project edit: budget pre-formatted on open, updated value persisted as 
   expect(createdProjectId, "C5 project create must run first").toBeTruthy();
 
   await signIn(page, "admin");
-  await page.goto(`/acme-glass/projects/${createdProjectId}/edit`);
+  await page.goto(orgUrl("acme-glass", `/projects/${createdProjectId}/edit`));
   await page.waitForURL(/\/edit$/, { timeout: 20_000 });
 
   // Project was created with USD and budget "1500000".
@@ -227,13 +227,13 @@ test("C5 project edit: budget pre-formatted on open, updated value persisted as 
   await page.locator("button[type='submit']").first().click();
 
   // updateProject redirects back to the project detail page.
-  await page.waitForURL(new RegExp(`/acme-glass/projects/${createdProjectId}$`), {
+  await page.waitForURL(orgUrlPattern("acme-glass", `/projects/${createdProjectId}$`), {
     timeout: 30_000,
   });
 
   // Read back via API.
   const detailRes = await page.request.get(
-    `/api/v1/orgs/acme-glass/projects/${createdProjectId}`,
+    apiUrl("acme-glass", `/api/v1/orgs/acme-glass/projects/${createdProjectId}`),
   );
   expect(detailRes.ok()).toBe(true);
   const detail = (await detailRes.json()) as {

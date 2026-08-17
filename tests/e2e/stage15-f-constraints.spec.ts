@@ -24,7 +24,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, orgUrl, apiUrl } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -46,7 +46,7 @@ test("C6 inquiry create: currency updates to AED when AED company selected", asy
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
 
   const currencySelect = page.locator("select[name='currency']");
@@ -68,7 +68,7 @@ test("C6 project create: currency updates to AED when AED company selected", asy
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/projects/new");
+  await page.goto(orgUrl("acme-glass", "/projects/new"));
   await page.waitForURL(/projects\/new/, { timeout: 20_000 });
 
   const currencySelect = page.locator("select[name='currency']");
@@ -98,14 +98,14 @@ test("C6 inquiry edit: changing currency before blur re-formats using new curren
 
   // Find an INR inquiry created by stage15-f.spec.ts.
   const listRes = await page.request.get(
-    "/api/v1/orgs/acme-glass/inquiries?page=1&pageSize=20&scope=all",
+    apiUrl("acme-glass", "/api/v1/orgs/acme-glass/inquiries?page=1&pageSize=20&scope=all"),
   );
   expect(listRes.ok()).toBe(true);
   const listBody = (await listRes.json()) as { inquiries: { id: string; name: string }[] };
   const c5Inquiry = listBody.inquiries.find((i) => i.name.startsWith("C5-inq-create-"));
   expect(c5Inquiry, "C5 inquiry create test must have run before this test").toBeTruthy();
 
-  await page.goto(`/acme-glass/inquiries/${c5Inquiry!.id}/edit`);
+  await page.goto(orgUrl("acme-glass", `/inquiries/${c5Inquiry!.id}/edit`));
   await page.waitForURL(/\/edit$/, { timeout: 20_000 });
 
   const currencySelect = page.locator("select[name='currency']");
@@ -135,14 +135,14 @@ test("C6 project edit: changing currency before blur re-formats using new curren
 
   // Find the USD project created by stage15-f.spec.ts.
   const listRes = await page.request.get(
-    "/api/v1/orgs/acme-glass/projects?page=1&pageSize=20&scope=all",
+    apiUrl("acme-glass", "/api/v1/orgs/acme-glass/projects?page=1&pageSize=20&scope=all"),
   );
   expect(listRes.ok()).toBe(true);
   const listBody = (await listRes.json()) as { projects: { id: string; name: string }[] };
   const c5Project = listBody.projects.find((p) => p.name.startsWith("C5-proj-create-"));
   expect(c5Project, "C5 project create test must have run before this test").toBeTruthy();
 
-  await page.goto(`/acme-glass/projects/${c5Project!.id}/edit`);
+  await page.goto(orgUrl("acme-glass", `/projects/${c5Project!.id}/edit`));
   await page.waitForURL(/\/edit$/, { timeout: 20_000 });
 
   const currencySelect = page.locator("select[name='currency']");
@@ -169,7 +169,7 @@ test("C9 inquiry create: budget field has inputMode=decimal and a pattern constr
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
 
   const budgetInput = page.locator("input[name='projectBudget']");
@@ -196,13 +196,13 @@ test("C9 inquiry edit: budget field has inputMode=decimal and pattern constraint
   await signIn(page, "admin");
 
   const listRes = await page.request.get(
-    "/api/v1/orgs/acme-glass/inquiries?page=1&pageSize=20&scope=all",
+    apiUrl("acme-glass", "/api/v1/orgs/acme-glass/inquiries?page=1&pageSize=20&scope=all"),
   );
   const listBody = (await listRes.json()) as { inquiries: { id: string; name: string }[] };
   const c5Inquiry = listBody.inquiries.find((i) => i.name.startsWith("C5-inq-create-"));
   expect(c5Inquiry).toBeTruthy();
 
-  await page.goto(`/acme-glass/inquiries/${c5Inquiry!.id}/edit`);
+  await page.goto(orgUrl("acme-glass", `/inquiries/${c5Inquiry!.id}/edit`));
   await page.waitForURL(/\/edit$/, { timeout: 20_000 });
 
   const budgetInput = page.locator("input[name='projectBudget']");
@@ -226,7 +226,7 @@ test("C9 project create: budget field has inputMode=decimal and pattern constrai
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/projects/new");
+  await page.goto(orgUrl("acme-glass", "/projects/new"));
   await page.waitForURL(/projects\/new/, { timeout: 20_000 });
 
   const budgetInput = page.locator("input[name='projectBudget']");
@@ -252,13 +252,13 @@ test("C9 project edit: budget field has inputMode=decimal and pattern constraint
   await signIn(page, "admin");
 
   const listRes = await page.request.get(
-    "/api/v1/orgs/acme-glass/projects?page=1&pageSize=20&scope=all",
+    apiUrl("acme-glass", "/api/v1/orgs/acme-glass/projects?page=1&pageSize=20&scope=all"),
   );
   const listBody = (await listRes.json()) as { projects: { id: string; name: string }[] };
   const c5Project = listBody.projects.find((p) => p.name.startsWith("C5-proj-create-"));
   expect(c5Project).toBeTruthy();
 
-  await page.goto(`/acme-glass/projects/${c5Project!.id}/edit`);
+  await page.goto(orgUrl("acme-glass", `/projects/${c5Project!.id}/edit`));
   await page.waitForURL(/\/edit$/, { timeout: 20_000 });
 
   const budgetInput = page.locator("input[name='projectBudget']");
@@ -287,7 +287,7 @@ test("C9 inquiry create: name field pattern rejects invalid chars, accepts alpha
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
 
   const nameInput = page.locator("input[name='name']");
@@ -311,13 +311,13 @@ test("C9 inquiry edit: name field pattern rejects invalid chars, accepts alphanu
   await signIn(page, "admin");
 
   const listRes = await page.request.get(
-    "/api/v1/orgs/acme-glass/inquiries?page=1&pageSize=20&scope=all",
+    apiUrl("acme-glass", "/api/v1/orgs/acme-glass/inquiries?page=1&pageSize=20&scope=all"),
   );
   const listBody = (await listRes.json()) as { inquiries: { id: string; name: string }[] };
   const c5Inquiry = listBody.inquiries.find((i) => i.name.startsWith("C5-inq-create-"));
   expect(c5Inquiry).toBeTruthy();
 
-  await page.goto(`/acme-glass/inquiries/${c5Inquiry!.id}/edit`);
+  await page.goto(orgUrl("acme-glass", `/inquiries/${c5Inquiry!.id}/edit`));
   await page.waitForURL(/\/edit$/, { timeout: 20_000 });
 
   const nameInput = page.locator("input[name='name']");
@@ -337,7 +337,7 @@ test("C9 project create: name field pattern rejects invalid chars, accepts alpha
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/projects/new");
+  await page.goto(orgUrl("acme-glass", "/projects/new"));
   await page.waitForURL(/projects\/new/, { timeout: 20_000 });
 
   const nameInput = page.locator("input[name='name']");
@@ -359,13 +359,13 @@ test("C9 project edit: name field pattern rejects invalid chars, accepts alphanu
   await signIn(page, "admin");
 
   const listRes = await page.request.get(
-    "/api/v1/orgs/acme-glass/projects?page=1&pageSize=20&scope=all",
+    apiUrl("acme-glass", "/api/v1/orgs/acme-glass/projects?page=1&pageSize=20&scope=all"),
   );
   const listBody = (await listRes.json()) as { projects: { id: string; name: string }[] };
   const c5Project = listBody.projects.find((p) => p.name.startsWith("C5-proj-create-"));
   expect(c5Project).toBeTruthy();
 
-  await page.goto(`/acme-glass/projects/${c5Project!.id}/edit`);
+  await page.goto(orgUrl("acme-glass", `/projects/${c5Project!.id}/edit`));
   await page.waitForURL(/\/edit$/, { timeout: 20_000 });
 
   const nameInput = page.locator("input[name='name']");

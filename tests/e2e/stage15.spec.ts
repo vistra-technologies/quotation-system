@@ -14,7 +14,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn, fillCreateFormRequiredFields } from "./helpers";
+import { signIn, fillCreateFormRequiredFields, orgUrl, orgUrlPattern, apiUrl } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
@@ -35,7 +35,7 @@ test("L1 — inquiry list: first page shows ≤ 10 rows when total > 10", async 
 
   // Pull total count from the API using page.request so it shares the auth cookie.
   const apiResp = await page.request.get(
-    "/api/v1/orgs/acme-glass/inquiries?page=1&pageSize=100&scope=all",
+    apiUrl("acme-glass", "/api/v1/orgs/acme-glass/inquiries?page=1&pageSize=100&scope=all"),
   );
   expect(apiResp.ok()).toBe(true);
   const body = await apiResp.json();
@@ -46,8 +46,8 @@ test("L1 — inquiry list: first page shows ≤ 10 rows when total > 10", async 
   test.skip(total <= 10, `Only ${total} inquiries — need > 10 to test pagination boundary.`);
 
   // Navigate to page 1 of the inquiry list.
-  await page.goto("/acme-glass/inquiries?page=1&scope=all");
-  await page.waitForURL(/\/acme-glass\/inquiries/, { timeout: 20_000 });
+  await page.goto(orgUrl("acme-glass", "/inquiries?page=1&scope=all"));
+  await page.waitForURL(orgUrlPattern("acme-glass", "/inquiries"), { timeout: 20_000 });
 
   // Count data rows — must be ≤ 10 (the new pageSize).
   const rows = page.locator("tbody tr");
@@ -73,7 +73,7 @@ test("PL1 — project list: first page shows ≤ 10 rows when total > 10", async
 
   // Pull total count from the API using page.request so it shares the auth cookie.
   const apiResp = await page.request.get(
-    "/api/v1/orgs/acme-glass/projects?page=1&pageSize=100&scope=all",
+    apiUrl("acme-glass", "/api/v1/orgs/acme-glass/projects?page=1&pageSize=100&scope=all"),
   );
   expect(apiResp.ok()).toBe(true);
   const body = await apiResp.json();
@@ -82,8 +82,8 @@ test("PL1 — project list: first page shows ≤ 10 rows when total > 10", async
   // Real skip — same pattern as L1.
   test.skip(total <= 10, `Only ${total} projects — need > 10 to test pagination boundary.`);
 
-  await page.goto("/acme-glass/projects?page=1&scope=all");
-  await page.waitForURL(/\/acme-glass\/projects/, { timeout: 20_000 });
+  await page.goto(orgUrl("acme-glass", "/projects?page=1&scope=all"));
+  await page.waitForURL(orgUrlPattern("acme-glass", "/projects"), { timeout: 20_000 });
 
   // Count data rows — must be ≤ 10 (the new pageSize).
   const rows = page.locator("tbody tr");
@@ -104,7 +104,7 @@ test("C10 — inquiry create: form submits successfully with Address Line 2 empt
 }) => {
   await signIn(page, "admin");
 
-  await page.goto("/acme-glass/inquiries/new");
+  await page.goto(orgUrl("acme-glass", "/inquiries/new"));
   await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
 
   // Fill required fields via helper (which also fills Address Line 2), then clear
@@ -121,6 +121,6 @@ test("C10 — inquiry create: form submits successfully with Address Line 2 empt
 
   // The form must redirect away from /new — no browser validation block.
   // This is a navigation assertion (not a DOM/layout assertion).
-  await page.waitForURL(/\/acme-glass\/inquiries(?!\/new)/, { timeout: 30_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/inquiries(?!\\/new)"), { timeout: 30_000 });
   expect(page.url()).not.toMatch(/\/new$/);
 });

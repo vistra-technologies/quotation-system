@@ -1,6 +1,92 @@
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 
+// ---------------------------------------------------------------------------
+// Subdomain-aware URL helpers
+// ---------------------------------------------------------------------------
+// When PLAYWRIGHT_BASE_URL points at test.easeetool.com (or any *.easeetool.com
+// host), proxy.ts intentionally 404s every non-root path on the apex domain —
+// path-based org URLs like /{orgSlug}/login don't reach the app.  Only subdomain
+// URLs ({orgSlug}.test.easeetool.com/...) work on that host.
+//
+// When PLAYWRIGHT_BASE_URL is a Vercel preview URL (*.vercel.app) or localhost,
+// proxy.ts falls back to path-segment extraction — relative URLs work fine.
+//
+// These helpers pick the right form at module load time so spec files don't need
+// per-test branching.
+
+const _BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+
+function _isSubdomainHost(): boolean {
+  try {
+    const h = new URL(_BASE_URL).hostname;
+    return h === "easeetool.com" || h.endsWith(".easeetool.com");
+  } catch {
+    return false;
+  }
+}
+
+/** True when the suite is running against an *.easeetool.com host. */
+export const isSubdomain: boolean = _isSubdomainHost();
+
+/**
+ * Build an org-scoped page URL for page.goto(), compatible with both routing
+ * modes:
+ *   Path mode (Vercel preview / localhost): "/{orgSlug}{path}"
+ *   Subdomain mode (*.easeetool.com):       "https://{orgSlug}.{apex}{path}"
+ */
+export function orgUrl(orgSlug: string, path: string): string {
+  const p = path.startsWith("/") ? path : `/${path}`;
+  if (isSubdomain) {
+    const base = new URL(_BASE_URL);
+    return `${base.protocol}//${orgSlug}.${base.hostname}${p}`;
+  }
+  return `/${orgSlug}${p}`;
+}
+
+/**
+ * Build an API URL for page.request calls, compatible with both routing modes.
+ *
+ * Unlike orgUrl(), this does NOT prepend /{orgSlug} in path mode — API routes
+ * live at /api/v1/... (not /{orgSlug}/api/v1/...).  In subdomain mode it
+ * returns an absolute URL pointing at {orgSlug}.{apex} so the request avoids
+ * the apex domain (which 404s all non-root paths).
+ *
+ *   Path mode: returns apiPath as-is (relative; Playwright resolves via baseURL)
+ *   Subdomain mode: returns "https://{orgSlug}.{apex}{apiPath}" (absolute)
+ */
+export function apiUrl(orgSlug: string, apiPath: string): string {
+  const p = apiPath.startsWith("/") ? apiPath : `/${apiPath}`;
+  if (isSubdomain) {
+    const base = new URL(_BASE_URL);
+    return `${base.protocol}//${orgSlug}.${base.hostname}${p}`;
+  }
+  return p;
+}
+
+/**
+ * Build a RegExp that matches an org-scoped URL in both routing modes, for use
+ * with page.waitForURL(), expect(page).toHaveURL(), and string .toMatch().
+ *
+ * pathPattern must start with "/" and may include regex metacharacters
+ * (e.g., "/inquiries/[0-9a-f-]{36}$").
+ *
+ * Pattern: `{orgSlug}(?:[./][^/]+)?{pathPattern}`
+ *   Path mode:     …/{orgSlug}{pathPattern}
+ *   Subdomain mode: …{orgSlug}.{host}{pathPattern}
+ *
+ * Verified:
+ *   - In path mode the optional group first tries to match the separator + next
+ *     segment (greedily consuming pathPattern chars), then backtracks and skips
+ *     the group so pathPattern can match at the separator position.
+ *   - In subdomain mode the optional group matches ".{host}", after which
+ *     pathPattern matches the literal path.
+ *   - "$"-anchored and UUID-pattern pathPatterns work correctly in both modes.
+ */
+export function orgUrlPattern(orgSlug: string, pathPattern: string): RegExp {
+  return new RegExp(`${orgSlug}(?:[./][^/]+)?${pathPattern}`);
+}
+
 /**
  * Sign in as a specific user for a given org.
  *
@@ -55,7 +141,7 @@ export async function signIn(
   password = process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!",
   orgSlug = "acme-glass",
 ) {
-  await page.goto(`/${orgSlug}/login`);
+  await page.goto(orgUrl(orgSlug, "/login"));
   // Wait for the login form to be ready (user-id input rendered) before
   // filling credentials.  The input's autocomplete="username" attribute is
   // the stable anchor regardless of label text.
@@ -105,5 +191,5 @@ export async function signIn(
     }
   }
 
-  await page.waitForURL(new RegExp(`/${orgSlug}/dashboard`), { timeout: 30_000 });
+  await page.waitForURL(orgUrlPattern(orgSlug, "/dashboard"), { timeout: 30_000 });
 }
