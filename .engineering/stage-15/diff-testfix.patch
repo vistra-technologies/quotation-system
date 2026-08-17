@@ -1,0 +1,138 @@
+diff --git a/tests/e2e/stage14.spec.ts b/tests/e2e/stage14.spec.ts
+index 555264b..d49c34d 100644
+--- a/tests/e2e/stage14.spec.ts
++++ b/tests/e2e/stage14.spec.ts
+@@ -134,50 +134,13 @@ test("hydration: admin/users page mounts delete-user-button without i18n errors"
+ // ===========================================================================
+ // 2 — destinationCountry derivation
+ // ===========================================================================
+-
+-test("destinationCountry: INDIA company shown as India on inquiry detail", async ({ page }) => {
+-  await signIn(page, "admin");
+-  const coName = "S14-India-Co-" + Date.now();
+-  await createExternalCompany(page, coName, "INDIA");
+-
+-  await page.goto("/acme-glass/inquiries/new");
+-  await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
+-  await selectCompany(page, coName);
+-  const inqName = "S14-Inq-India-" + Date.now();
+-  await fillInquiryRequiredFields(page, inqName, "22AAAAA0000A1Z5");
+-
+-  await page.getByRole("button", { name: "Create Inquiry" }).click();
+-  await page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 30_000 });
+-
+-  const link = page.locator("tr").filter({ hasText: inqName }).locator("a").first();
+-  await expect(link).toBeVisible({ timeout: 10_000 });
+-  await link.click();
+-  await page.waitForURL(/\/acme-glass\/inquiries\/.+/, { timeout: 20_000 });
+-
+-  await expect(page.getByText("India", { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+-});
+-
+-test("destinationCountry: UAE company shown as UAE on inquiry detail", async ({ page }) => {
+-  await signIn(page, "admin");
+-  const coName = "S14-UAE-Co-" + Date.now();
+-  await createExternalCompany(page, coName, "UAE");
+-
+-  await page.goto("/acme-glass/inquiries/new");
+-  await page.waitForURL(/inquiries\/new/, { timeout: 20_000 });
+-  await selectCompany(page, coName);
+-  const inqName = "S14-Inq-UAE-" + Date.now();
+-  await fillInquiryRequiredFields(page, inqName);
+-
+-  await page.getByRole("button", { name: "Create Inquiry" }).click();
+-  await page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 30_000 });
+-
+-  const link = page.locator("tr").filter({ hasText: inqName }).locator("a").first();
+-  await expect(link).toBeVisible({ timeout: 10_000 });
+-  await link.click();
+-  await page.waitForURL(/\/acme-glass\/inquiries\/.+/, { timeout: 20_000 });
+-
+-  await expect(page.getByText("UAE", { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+-});
++//
++// NOTE (Stage 15 V3): The inquiry detail page no longer displays destinationCountry
++// in the UI — it was removed because it is derived from the company (not user-entered)
++// and showing it was misleading. Two tests that asserted "India"/"UAE" was visible on
++// the inquiry detail page were removed here; the invariant is now captured by the API
++// test below (client-supplied value is ignored) and by the project-detail assertion
++// in the convertInquiryToProject test (project detail still shows destinationCountry).
+ 
+ test("destinationCountry: client-supplied value in POST body is ignored", async ({ page }) => {
+   await signIn(page, "admin");
+@@ -245,6 +208,11 @@ test("GST: no company keeps endClientGstNumber optional", async ({ page }) => {
+ // ===========================================================================
+ // 4 — convertInquiryToProject: all 15 new fields propagated
+ // ===========================================================================
++//
++// NOTE (Stage 15 C9): Sentinel values updated to pass the new HTML5 pattern
++// restrictions on name/city/state fields (pattern="[A-Za-z0-9 \-]*" — no
++// underscores) and the budget field (pattern="[\d,\.]*" — numeric only).
++// All sentinel values remain unique and verifiable on the project detail page.
+ 
+ test("convertInquiryToProject: all 15 sentinel fields appear on resulting project", async ({ page }) => {
+   await signIn(page, "admin");
+@@ -258,22 +226,27 @@ test("convertInquiryToProject: all 15 sentinel fields appear on resulting projec
+   const inqName = "S14-ConvInq-" + Date.now();
+   await page.locator("input[name='name']").fill(inqName);
+   await page.locator("select[name='currency']").selectOption("INR");
++  // projectLocation has no pattern restriction — underscores OK
+   await page.locator("input[name='projectLocation']").fill("CONV_LOCATION_SENTINEL");
+-  await page.locator("input[name='projectBudget']").fill("BUDGET_SENTINEL_XYZ");
++  // Budget must be numeric (C9 pattern="[\d,\.]*")
++  await page.locator("input[name='projectBudget']").fill("9988776655");
+   await page.locator("input[name='submissionDate']").fill("2026-03-15");
+   await page.locator("input[name='projectDeadline']").fill("2026-12-31");
+-  await page.locator("input[name='mainContractorName']").fill("MAIN_CONTRACTOR_SENTINEL");
+-  await page.locator("input[name='interiorContractorName']").fill("INT_CONTRACTOR_SENTINEL");
+-  await page.locator("input[name='mainConsultantName']").fill("MAIN_CONSULTANT_SENTINEL");
+-  await page.locator("input[name='interiorConsultantName']").fill("INT_CONSULTANT_SENTINEL");
+-  await page.locator("input[name='endClientName']").fill("ENDCLIENT_NAME_SENTINEL");
++  // Name fields use pattern="[A-Za-z0-9 \-]*" — no underscores; use hyphens
++  await page.locator("input[name='mainContractorName']").fill("MAIN-CONTRACTOR-SENT");
++  await page.locator("input[name='interiorContractorName']").fill("INT-CONTRACTOR-SENT");
++  await page.locator("input[name='mainConsultantName']").fill("MAIN-CONSULTANT-SENT");
++  await page.locator("input[name='interiorConsultantName']").fill("INT-CONSULTANT-SENT");
++  await page.locator("input[name='endClientName']").fill("ENDCLIENT-NAME-SENT");
+   await page.locator("input[name='endClientPhone']").fill("+91 11111 22222");
+   await page.locator("input[name='endClientEmail']").fill("sentinel@conv.example.com");
++  // GST, address fields have no pattern restriction — any text OK
+   await page.locator("input[name='endClientGstNumber']").fill("GST_SENTINEL_CONV");
+   await page.locator("input[name='endClientAddressLine1']").fill("ADDR1_SENTINEL");
+   await page.locator("input[name='endClientAddressLine2']").fill("ADDR2_SENTINEL");
+-  await page.locator("input[name='endClientCity']").fill("CITY_SENTINEL");
+-  await page.locator("input[name='endClientState']").fill("STATE_SENTINEL");
++  // City and state use pattern="[A-Za-z0-9 \-]*" — no underscores
++  await page.locator("input[name='endClientCity']").fill("Conv City");
++  await page.locator("input[name='endClientState']").fill("Conv State");
+ 
+   await page.getByRole("button", { name: "Create Inquiry" }).click();
+   await page.waitForURL(/\/acme-glass\/inquiries$/, { timeout: 30_000 });
+@@ -287,19 +260,19 @@ test("convertInquiryToProject: all 15 sentinel fields appear on resulting projec
+   await page.waitForURL(/\/acme-glass\/projects\/.+/, { timeout: 30_000 });
+ 
+   await expect(page.getByText("CONV_LOCATION_SENTINEL")).toBeVisible({ timeout: 10_000 });
+-  await expect(page.getByText("BUDGET_SENTINEL_XYZ")).toBeVisible({ timeout: 5_000 });
+-  await expect(page.getByText("MAIN_CONTRACTOR_SENTINEL")).toBeVisible({ timeout: 5_000 });
+-  await expect(page.getByText("INT_CONTRACTOR_SENTINEL")).toBeVisible({ timeout: 5_000 });
+-  await expect(page.getByText("MAIN_CONSULTANT_SENTINEL")).toBeVisible({ timeout: 5_000 });
+-  await expect(page.getByText("INT_CONSULTANT_SENTINEL")).toBeVisible({ timeout: 5_000 });
+-  await expect(page.getByText("ENDCLIENT_NAME_SENTINEL")).toBeVisible({ timeout: 5_000 });
++  await expect(page.getByText("9988776655")).toBeVisible({ timeout: 5_000 });
++  await expect(page.getByText("MAIN-CONTRACTOR-SENT")).toBeVisible({ timeout: 5_000 });
++  await expect(page.getByText("INT-CONTRACTOR-SENT")).toBeVisible({ timeout: 5_000 });
++  await expect(page.getByText("MAIN-CONSULTANT-SENT")).toBeVisible({ timeout: 5_000 });
++  await expect(page.getByText("INT-CONSULTANT-SENT")).toBeVisible({ timeout: 5_000 });
++  await expect(page.getByText("ENDCLIENT-NAME-SENT")).toBeVisible({ timeout: 5_000 });
+   await expect(page.getByText("+91 11111 22222")).toBeVisible({ timeout: 5_000 });
+   await expect(page.getByText("sentinel@conv.example.com")).toBeVisible({ timeout: 5_000 });
+   await expect(page.getByText("GST_SENTINEL_CONV")).toBeVisible({ timeout: 5_000 });
+   await expect(page.getByText("ADDR1_SENTINEL")).toBeVisible({ timeout: 5_000 });
+   await expect(page.getByText("ADDR2_SENTINEL")).toBeVisible({ timeout: 5_000 });
+-  await expect(page.getByText("CITY_SENTINEL")).toBeVisible({ timeout: 5_000 });
+-  await expect(page.getByText("STATE_SENTINEL")).toBeVisible({ timeout: 5_000 });
++  await expect(page.getByText("Conv City")).toBeVisible({ timeout: 5_000 });
++  await expect(page.getByText("Conv State")).toBeVisible({ timeout: 5_000 });
+   await expect(page.getByText("India", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
+ });
+ 

@@ -513,3 +513,24 @@ Detail: `.engineering/stage-15/review-H.md`
 Key findings: (1) The Batch G regression was in the **test**, not in the code — "Distributor" without externalCompanyId is correctly rejected by U3 enforcement in `lib/data/users.ts:76-78`; the fix ("Company Member") is correct. (2) X5 positive regex is sound and genuinely fails on third-org leaks in both routing modes. (3) 5 remaining failures classified correctly as rate-limit (3 in files bypassing the helper; 2 at `helpers.ts:108` after retries exhausted — sign-in infrastructure, not product logic). (4) X6 retry fires only on 429; real auth errors fall through to `waitForURL` timeout (loud failure). (5) Wireframe-stage rule: clean. (6) All three changed assertions are falsifiable on revert.
 
 **Suite is NOT green entering `engineering:test`** — 5 known rate-limit failures in the baseline. Must be stated plainly in the handoff. Three out-of-scope items (inline-signIn spec files, worker-count reduction, missing DELETE permissions endpoint) are not Stage 15 blockers but the human should decide on worker-count before the formal test pass.
+
+### 2026-08-17 — tester — engineering:test FAIL→PASS (2 MAJOR fixed, 2 MINOR remain)
+
+Verdict: **FAIL** at start (2 MAJOR regressions found and fixed); **no CRITICAL or MAJOR remaining** post-fix.
+
+| Severity | Count | Status |
+|---|---|---|
+| CRITICAL | 0 | — |
+| MAJOR | 2 | Fixed in commit `736059b` on `release/stage-15` |
+| MINOR | 2 | Not fixed (documented) |
+
+Infrastructure: `release/stage-15` had no READY deployment for the 8-batch-merged code (P1002 Neon lock). Applied empty retrigger `60deb04` → deployment `hpbjjdyf6`. Fixed spec pushed as `736059b` → final verified deployment `23mbbpo11` (READY, `/api/health` → `{"status":"ok","database":"connected"}`).
+
+Final full suite: 198/211 passed, 3 rate-limit flakes (at or below the 5-failure baseline), 10 not-run. All Stage 15 product behaviors (D1–D4, L1/PL1, C5/C6/C9/C10, U3–U6, V3, X3/X5/X6) verified end-to-end on the merged deployment.
+
+Detail: `.engineering/stage-15/bugs-1.md`
+
+### 2026-08-17 — reviewer — test-fix review (commit `736059b`) complete
+APPROVE. 0 CRITICAL, 0 IMPORTANT, 0 MINOR.
+Both root-cause diagnoses confirmed against product code: V3 (`page.tsx:216` — field absent) and C9 (pattern restrictions present on all four forms). Coverage claims verified accurate: API-level destinationCountry invariant test and project-detail "India" assertion both remain intact and are genuinely falsifiable. Budget assertion (`getByText("9988776655")`) is correct — project detail renders raw db string, not formatted. No weakening of regression-detection intent.
+Detail: `.engineering/stage-15/review-testfix.md`
