@@ -2,8 +2,9 @@
 
 **Role:** developer
 **Branch:** `feature/stage15-form-behaviours`
-**Commits:** `2b0a3fd` (WIP from previous developer, unverified) → `07aef6f` (remaining forms) → `93c79f5` (C5 E2E spec) → `7e63864` (record) → `da469f5` (C6/C9 constraint spec) → `a1f8456` (record update) → HEAD (nit fixes — see below)
+**Commits:** `2b0a3fd` (WIP from previous developer, unverified) → `07aef6f` (remaining forms) → `93c79f5` (C5 E2E spec) → `7e63864` (record) → `da469f5` (C6/C9 constraint spec) → `a1f8456` (record update) → `5905899` (nit fixes — replacement tests 3/4) → `09bd02a` (ci: retrigger)
 **Deployment verified (app code):** `https://quotation-system-7g8drm4wf-vistra-indias-projects.vercel.app` (commit `93c79f5`)
+**Deployment verified (tests 3/4 run):** `https://quotation-system-ghood6z5y-vistra-indias-projects.vercel.app` (commit `09bd02a` — retrigger of `5905899`; app code identical to `93c79f5`)
 
 ---
 
@@ -74,13 +75,28 @@ ok 4 C5 project edit: budget pre-formatted on open, updated value persisted as c
 4 passed (58.6s)
 ```
 
-### stage15-f-constraints.spec.ts — C6 & C9 constraints
+### stage15-f-constraints.spec.ts — C6 & C9 constraints — 12/12 PASSED
 
-**Initial run (da469f5, before nit fixes) — 12/12 PASSED** against `https://quotation-system-7g8drm4wf-vistra-indias-projects.vercel.app`
+**Run against:** `https://quotation-system-ghood6z5y-vistra-indias-projects.vercel.app` (commit `09bd02a` / `5905899` — replacement tests 3 & 4)
 
-Tests 3 & 4 (C6 edit) were then replaced (HEAD commit). The replacement tests are **UNVERIFIED — pending coordinator green-light for Playwright run**.
+```
+ok  1  C6 inquiry create: currency updates to AED when AED company selected
+ok  2  C6 project create: currency updates to AED when AED company selected
+ok  3  C6 inquiry edit: changing currency before blur re-formats using new currency grouping
+ok  4  C6 project edit: changing currency before blur re-formats using new currency grouping
+ok  5  C9 inquiry create: budget field has inputMode=decimal and a pattern constraint
+ok  6  C9 inquiry edit: budget field has inputMode=decimal and pattern constraint
+ok  7  C9 project create: budget field has inputMode=decimal and pattern constraint
+ok  8  C9 project edit: budget field has inputMode=decimal and pattern constraint
+ok  9  C9 inquiry create: name field pattern rejects invalid chars, accepts alphanumeric+space+hyphen
+ok 10  C9 inquiry edit: name field pattern rejects invalid chars, accepts alphanumeric+space+hyphen
+ok 11  C9 project create: name field pattern rejects invalid chars, accepts alphanumeric+space+hyphen
+ok 12  C9 project edit: name field pattern rejects invalid chars, accepts alphanumeric+space+hyphen
 
-Tests 1, 2, 5–12 are unchanged from the passing run; the only spec change in those tests is dropping one weak sub-assertion from tests 1 & 2.
+12 passed (2.1m)
+```
+
+Tests 3 & 4 are the replacement C6 edit-form behavioral assertions: change currency select → fill budget → blur → assert display uses new currency's grouping (`"1,000,000"` for INR→AED, `"10,00,000"` for USD→INR). These fail on revert to `defaultValue={initialCurrency}` because `handleBudgetBlur` would read the stale initialCurrency and produce the wrong grouping. Both passed.
 
 ---
 
@@ -103,8 +119,8 @@ Tests 1, 2, 5–12 are unchanged from the passing run; the only spec change in t
 |------|---|---|---|
 | Inquiry create | AED company selected | E2E (da469f5): click "E2E Test Co Stage13" in dropdown, read select value | `"AED"` ✓ |
 | Project create | AED company selected | E2E (da469f5): same company, same assertion | `"AED"` ✓ |
-| Inquiry edit | Change currency INR→AED, blur budget "1000000", check display | UNVERIFIED (spec replaced at HEAD; pending Playwright run) | — |
-| Project edit | Change currency USD→INR, blur budget "1000000", check display | UNVERIFIED (spec replaced at HEAD; pending Playwright run) | — |
+| Inquiry edit | Change currency INR→AED, blur budget "1000000", assert display "1,000,000" | E2E (ghood6z5y / 5905899): PASSED ✓ |
+| Project edit | Change currency USD→INR, blur budget "1000000", assert display "10,00,000" | E2E (ghood6z5y / 5905899): PASSED ✓ |
 
 ### C9 — HTML5 pattern/inputMode constraints
 
@@ -147,4 +163,4 @@ Opened `/acme-glass/inquiries/new` in Chrome against `7g8drm4wf`. Typed `@` into
 No `prisma.<model>.<method>` calls were added, changed, or removed. No `by-page.sql` update required.
 
 ## Status
-DONE (pending Playwright re-run for replaced C6 edit tests 3 & 4 — coordinator to green-light)
+DONE — all 16 tests verified. C6 edit tests 3 & 4 (replacement behavioral assertions) ran and passed on `ghood6z5y` (commit `09bd02a` / `5905899`, 2026-08-17).
