@@ -370,7 +370,7 @@ export function ListPagePagination({
   if (totalPages <= 1) return null;
 
   return (
-    <div className="flex items-center justify-center px-3 pt-3">
+    <div className="flex items-center justify-center border-t border-border px-3 py-3">
       <div className="flex items-center gap-1">
         <button
           type="button"

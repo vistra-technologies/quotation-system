@@ -162,7 +162,7 @@
     "pageSubtitle": "Manage your organization's projects.",
     "createProject": "New Project",
     "noProjects": "No projects yet. Create your first project.",
-    "colNumber": "#",
+    "colNumber": "Project Number",
     "colName": "Name",
     "colStatus": "Status",
     "colExternalCompany": "Client",

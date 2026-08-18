@@ -72,14 +72,6 @@ export default async function ProjectDetailPage({
 
   return (
     <div>
-      {/* Back link */}
-      <Link
-        href={`${base}/projects`}
-        className="mb-6 inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text-heading"
-      >
-        {tProjects("backToList")}
-      </Link>
-
       {/* Page heading */}
       <div className="mb-6 text-center">
         <h1 className="text-3xl font-extrabold text-text-heading">Project Details</h1>

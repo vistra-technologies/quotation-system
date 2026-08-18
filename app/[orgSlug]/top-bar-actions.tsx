@@ -100,7 +100,7 @@ export function TopBarActions({
         href={href("/dashboard")}
         title="Home"
         aria-label="Home"
-        className="flex h-9 w-9 items-center justify-center rounded-sm border border-border bg-bg-white text-text-body transition-colors hover:bg-primary-softer"
+        className="ml-2 flex h-9 w-9 items-center justify-center rounded-sm border border-border bg-bg-white text-text-body transition-colors hover:bg-primary-softer"
       >
         <svg
           width="16"
