@@ -655,3 +655,29 @@ breadcrumb step is highlighted (`aria-current="step"`). Bug 2: `stage13.spec.ts`
 API PATCH on a DISMISSED inquiry returns 409" should no longer crash on the href match.
 
 Plan: `.engineering/stage-15/plan-breadcrumb-fix.md`
+
+### 2026-08-18 — developer — UI-pass bug fixes (7 human-reported items, commit `19ece12`)
+
+**Role:** developer | **Branch:** `feature/fix-subdomain-auth-and-breadcrumb`
+
+**What changed (11 files, 1 plan file):**
+- `app/[orgSlug]/layout.tsx` — `min-h-screen` → `h-screen` so `main flex-1` has a definite height
+- `app/[orgSlug]/inquiries/layout.tsx` — add `h-full flex-col` to inner div; reduce `pb-12` → `pb-4`
+- `app/[orgSlug]/projects/layout.tsx` — same as inquiries layout
+- `app/[orgSlug]/inquiries/page.tsx` — outer div `flex flex-col h-full`; table card `flex-1 min-h-0 flex-col`; inner wrapper `flex-1 overflow-y-auto min-h-0`
+- `app/[orgSlug]/projects/page.tsx` — same restructure as inquiries
+- `app/[orgSlug]/top-bar-actions.tsx` — `ml-2` on Home Link (wider chip-to-button gap)
+- `components/list-page-controls.tsx` — `ListPagePagination` wrapper: add `border-t border-border`, `py-3` symmetric spacing
+- `app/[orgSlug]/projects/[projectId]/layout.tsx` — add "← Back to Projects" Link ABOVE breadcrumb; import Link, compute `base`
+- `app/[orgSlug]/projects/[projectId]/page.tsx` — remove the top-level "← Back to Projects" text link (now in layout); keep the card-footer button
+- `app/[orgSlug]/projects/[projectId]/project-wizard-breadcrumb.tsx` — `isDone` step: add `bg-status-paid-bg text-status-paid-text` (green pill); checkmark uses `text-status-paid-text`
+- `messages/en.json` — `projects.colNumber`: `"#"` → `"Project Number"`
+
+**Item 1 (greeting "vistra distributor"):** Flagged as seed data, NOT a code bug. Code correctly renders `me.name`. Value comes from seed's `displayName: \`${org.slug} distributor\``. No change.
+
+**Item 7 (breadcrumb completed):** The `isDone` logic was already implemented after `166f027` fixed `activeIndex`. This commit adds the green visual — `bg-status-paid-bg` + `text-status-paid-text` — same tokens used in "New" status badges.
+
+**Static:** lint 0 errors; tsc pre-existing `isInternalRole` errors only (Batch G, resolves on Vercel build).
+
+**Verify:** tester to run against Vercel preview for `feature/fix-subdomain-auth-and-breadcrumb` @ `19ece12`.
+Detail: `.engineering/stage-15/plan-docx-bugs-fix.md`
