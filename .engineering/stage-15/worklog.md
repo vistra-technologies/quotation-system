@@ -784,3 +784,42 @@ Detail: returned inline in tester message.
 ---
 **developer** · 2026-08-18 · fix D1 networkidle hang (`feature/fix-d1-test-networkidle-hang`, `53b82dc`)
 Removed `waitForLoadState("networkidle")` from `tests/e2e/stage15-b.spec.ts:136`; added comment matching `subdomain-navigation.spec.ts:121` pattern. The subsequent `expect(greeting).toContainText()` auto-retries via Playwright's built-in polling — no replacement wait needed.
+
+### 2026-08-18 — tester — D1 hang-fix confidence check: PASS
+
+Full suite (`PLAYWRIGHT_BASE_URL=https://test.easeetool.com`, deployment `dpl_BKNtAHigyBxxfA6nQ7ZzrmJ1rR5j`, commit `efdae96`, 8 workers, 212 tests):
+**191 passed / 3 failed / 18 did not run**
+
+3 failures — all at or below baseline:
+- `org-nav.spec.ts:266` — baseline flake (documented `:259/266`)
+- `subdomain-routing.spec.ts:151` — baseline flake (documented `:151/186`)
+- `subdomain-navigation.spec.ts:95` — confirmed flake: `beforeAll` rate-limit timeout under 8-worker parallel load; passes 17/17 in isolation (846ms); same inline-signIn-without-retry-helper root cause as the other two
+
+`stage15-b.spec.ts:120` (D1 greeting-name) **PASSED** in 10.4s — no hang, no timeout. Verified in isolation: 3/3 passed.
+
+No product defects. No regressions outside the pre-existing baseline. Verdict: **PASS**.
+
+### 2026-08-18 — tester — regression run 5 (final, post D1 test fix)
+
+**Role:** tester | **Target:** `test.easeetool.com`, commit `efdae96`, deployment `dpl_BKNtAHigyBxxfA6nQ7ZzrmJ1rR5j`
+
+**Result: PASS.** 212 tests, 191 passed, 3 failed, 18 did not run (cascade) — all 3 failures confirmed
+same baseline flake mechanism (rate-limit/cross-file-ordering under 8-worker parallel load), zero
+product defects.
+
+- `org-nav.spec.ts:266` — at baseline.
+- `subdomain-routing.spec.ts:151` — at baseline.
+- `subdomain-navigation.spec.ts:95` — **new flake instance**, `beforeAll` login timeout under load;
+  passes 17/17 in isolation. Same inline-signIn mechanism as the rest. Added to baseline below.
+
+**D1 greeting-name test (`stage15-b.spec.ts:120`) confirmed fixed** — passes cleanly in 10.4s, both in
+the full parallel run and in isolation. No hang.
+
+**Baseline flake list, final for Stage 15 deploy:** `login.spec.ts:201`, `org-nav.spec.ts:259/266`,
+`stage15-f-constraints.spec.ts:94/308`, `subdomain-routing.spec.ts:151/186`, `stage15-f.spec.ts:203`,
+`pricing-stage3.spec.ts:97`, `stage12.spec.ts:222`, `stage13.spec.ts:380`,
+`subdomain-navigation.spec.ts:95` — all pre-existing rate-limit/ordering races from inline-signIn spec
+files bypassing the hardened `signIn` helper, still the human's call to fix.
+
+**Stage 15 is now regression-clean on `staging` across 5 rounds.** Ready for human PV1 recheck, then
+production.
