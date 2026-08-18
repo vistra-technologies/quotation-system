@@ -23,7 +23,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, orgUrl, orgUrlPattern } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
@@ -41,15 +41,15 @@ test.beforeEach(async () => {
 
 test("same-org login page redirects authenticated user to dashboard", async ({ page }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/login");
-  await expect(page).toHaveURL(/\/acme-glass\/dashboard/);
+  await page.goto(orgUrl("acme-glass", "/login"));
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/dashboard"));
 });
 
 test("cross-org login page shows 'already signed in' notice naming only the session org", async ({
   page,
 }) => {
   await signIn(page, "admin", undefined, "acme-glass");
-  await page.goto("/nordic-walls/login");
+  await page.goto(orgUrl("nordic-walls", "/login"));
 
   // Should show the cross-org notice, not the login form
   await expect(
@@ -71,19 +71,19 @@ test("cross-org notice: 'Go to my dashboard' navigates to session-org dashboard"
   page,
 }) => {
   await signIn(page, "admin", undefined, "acme-glass");
-  await page.goto("/nordic-walls/login");
+  await page.goto(orgUrl("nordic-walls", "/login"));
   await expect(
     page.getByRole("heading", { name: /already signed in/i }),
   ).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: /dashboard/i }).click();
-  await expect(page).toHaveURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
 });
 
 test("cross-org notice: logout clears session and shows destination org login form", async ({
   page,
 }) => {
   await signIn(page, "admin", undefined, "acme-glass");
-  await page.goto("/nordic-walls/login");
+  await page.goto(orgUrl("nordic-walls", "/login"));
   await expect(
     page.getByRole("heading", { name: /already signed in/i }),
   ).toBeVisible({ timeout: 15_000 });
@@ -98,8 +98,8 @@ test("cross-org notice: logout clears session and shows destination org login fo
 // ---------------------------------------------------------------------------
 
 test("unauthenticated request to admin/users redirects to login", async ({ page }) => {
-  await page.goto("/acme-glass/admin/users");
-  await expect(page).toHaveURL(/\/acme-glass\/login/);
+  await page.goto(orgUrl("acme-glass", "/admin/users"));
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/login"));
 });
 
 test("distributor role is denied MANAGE_USERS + MANAGE_FEATURES admin pages (combined to limit sign-ins)", async ({
@@ -110,14 +110,14 @@ test("distributor role is denied MANAGE_USERS + MANAGE_FEATURES admin pages (com
   await page.waitForTimeout(8_000);
   await signIn(page, "distributor");
   // MANAGE_USERS gate: admin/users must redirect to dashboard for distributor
-  await page.goto("/acme-glass/admin/users", { waitUntil: "commit" });
-  await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
+  await page.goto(orgUrl("acme-glass", "/admin/users"), { waitUntil: "commit" });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
   // MANAGE_FEATURES gate: admin/roles must redirect to dashboard (same session)
-  await page.goto("/acme-glass/admin/roles", { waitUntil: "commit" });
-  await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
+  await page.goto(orgUrl("acme-glass", "/admin/roles"), { waitUntil: "commit" });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
   // MANAGE_FEATURES gate: admin/permissions must redirect to dashboard (same session)
-  await page.goto("/acme-glass/admin/permissions", { waitUntil: "commit" });
-  await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
+  await page.goto(orgUrl("acme-glass", "/admin/permissions"), { waitUntil: "commit" });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
 });
 
 test("admin side panel shows admin section links (Users link visible)", async ({ page }) => {
@@ -149,7 +149,7 @@ test("create user: duplicate username shows inline error, stays on create page",
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/users/new");
+  await page.goto(orgUrl("acme-glass", "/admin/users/new"));
   // Batch 7g: First Name and Last Name are now required — must fill to reach server-side validation.
   await page.getByRole("textbox", { name: "First Name" }).fill("Test");
   await page.getByRole("textbox", { name: "Last Name" }).fill("User");
@@ -157,37 +157,54 @@ test("create user: duplicate username shows inline error, stays on create page",
   await page.getByRole("textbox", { name: "Initial Password" }).fill("Test12345!");
   await page.getByRole("button", { name: "Create User" }).click();
   // Must stay on the create page (not crash to error boundary)
-  await expect(page).toHaveURL(/\/acme-glass\/admin\/users\/new/);
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/admin/users/new"));
   await expect(page.getByText(/already taken/i)).toBeVisible({ timeout: 15_000 });
 });
 
 test("create user: valid user appears in the users list", async ({ page }) => {
   const username = `e2e_${Date.now()}`;
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/users/new");
+  await page.goto(orgUrl("acme-glass", "/admin/users/new"));
   // Batch 7g: First Name and Last Name are now required.
   await page.getByRole("textbox", { name: "First Name" }).fill("E2E");
   await page.getByRole("textbox", { name: "Last Name" }).fill("Tester");
   await page.getByRole("textbox", { name: "Username" }).fill(username);
-  await page.getByLabel("Role").selectOption("Distributor");
+  // Stage 15 U3 (Batch G): external roles (Distributor) now require an external company.
+  // Use Company Member (an internal role, isInternalRole:true) so no company is needed here.
+  // The U3 rule itself is verified by stage15-user-mgmt.spec.ts.
+  await page.getByLabel("Role").selectOption("Company Member");
   await page.getByRole("textbox", { name: "Initial Password" }).fill("Test1234!");
   await page.getByRole("button", { name: "Create User" }).click();
   // Redirects to users list
-  await expect(page).toHaveURL(/\/acme-glass\/admin\/users$/, { timeout: 15_000 });
-  await expect(page.getByRole("cell", { name: username })).toBeVisible();
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/admin/users$"), { timeout: 15_000 });
+  // Stage 14 Batch D: the actions cell now contains "Edit" + "Delete user <username>"
+  // which gives that cell an accessible name that also includes the username — causing
+  // a strict-mode violation without exact: true. The username cell itself has an exact
+  // accessible name equal to the username string.
+  await expect(page.getByRole("cell", { name: username, exact: true }).first()).toBeVisible();
 });
 
 test("users list: all action links belong to the session org (tenancy check)", async ({
   page,
 }) => {
   await signIn(page, "admin", undefined, "acme-glass");
-  await page.goto("/acme-glass/admin/users");
-  const actionLinks = page.getByRole("link", { name: "Actions" });
+  await page.goto(orgUrl("acme-glass", "/admin/users"));
+  // Stage 14 Batch D: "Actions" text link replaced by icon-only Edit link (aria-label="Edit").
+  const actionLinks = page.getByRole("link", { name: "Edit" });
+  // .count() does not auto-wait — wait for at least one link to appear first so
+  // we don't sample an empty table while the page is still streaming.
+  await expect(actionLinks.first()).toBeVisible({ timeout: 15_000 });
   const count = await actionLinks.count();
   expect(count).toBeGreaterThanOrEqual(1);
   for (let i = 0; i < count; i++) {
     const href = await actionLinks.nth(i).getAttribute("href");
-    expect(href).toMatch(/^\/acme-glass\/admin\/users\//);
+    // Tenancy invariant: every Edit link must point to THIS org's admin/users detail URL.
+    // Positive allowlist — passes only the two valid shapes, fails on any third org:
+    //   Path mode (Vercel preview):      /acme-glass/admin/users/{uuid}
+    //   Subdomain mode (easeetool.com):  /admin/users/{uuid}
+    // A leak to /nordic-walls/admin/users/{uuid} or any other slug does NOT match
+    // this pattern (starts with wrong prefix) → toMatch throws → test fails → leak caught.
+    expect(href).toMatch(/^(\/acme-glass)?\/admin\/users\/[0-9a-f-]{36}$/);
   }
 });
 
@@ -195,17 +212,21 @@ test("self-deactivation: Deactivate button disabled on own account with explanat
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/users");
-  // Find the row where the username cell is exactly "admin", click its Actions link
+  await page.goto(orgUrl("acme-glass", "/admin/users"));
+  // Find the row where the username cell is exactly "admin", click its Edit icon link.
+  // Stage 14 Batch D: "Actions" text link replaced by icon-only Edit link (aria-label="Edit").
   const adminRow = page
     .locator("tr")
     .filter({ has: page.getByRole("cell", { name: "admin", exact: true }) });
-  await adminRow.getByRole("link", { name: "Actions" }).click();
-  await page.waitForURL(/\/acme-glass\/admin\/users\/.+/);
-  await expect(page.getByRole("button", { name: "Deactivate" })).toBeDisabled();
+  // Wait for the row to appear (users table renders after SSR stream completes).
+  await expect(adminRow).toBeVisible({ timeout: 15_000 });
+  await adminRow.getByRole("link", { name: "Edit" }).click();
+  await page.waitForURL(orgUrlPattern("acme-glass", "/admin/users/.+"), { timeout: 15_000 });
+  // User edit page renders via RSC; allow 15 s for the Deactivate button to appear.
+  await expect(page.getByRole("button", { name: "Deactivate" })).toBeDisabled({ timeout: 15_000 });
   await expect(
     page.getByText(/cannot deactivate your own account/i),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 5_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -217,12 +238,12 @@ test("create role → detail page shows empty granted permissions and full avail
 }) => {
   const roleName = `E2E Role ${Date.now()}`;
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/roles/new");
+  await page.goto(orgUrl("acme-glass", "/admin/roles/new"));
   await page.locator("input[name='name']").fill(roleName);
   await page.locator("input[name='description']").fill("Stage 4 e2e test role");
   await page.getByRole("button", { name: "Create Role" }).click();
   // Redirects to role detail — UUID pattern ensures we wait past /roles/new
-  await expect(page).toHaveURL(/\/acme-glass\/admin\/roles\/[0-9a-f-]{36}/, {
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/admin/roles/[0-9a-f-]{36}"), {
     timeout: 15_000,
   });
   await expect(page.getByRole("heading", { name: roleName })).toBeVisible();
@@ -236,11 +257,11 @@ test("role permissions: add a permission then remove it", async ({ page }) => {
   // Create a fresh role so we don't mutate seeded data
   const roleName = `E2E Perm Test ${Date.now()}`;
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/roles/new");
+  await page.goto(orgUrl("acme-glass", "/admin/roles/new"));
   await page.locator("input[name='name']").fill(roleName);
   await page.getByRole("button", { name: "Create Role" }).click();
   // UUID pattern ensures we wait past /roles/new before asserting granted permissions
-  await expect(page).toHaveURL(/\/acme-glass\/admin\/roles\/[0-9a-f-]{36}/, {
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/admin/roles/[0-9a-f-]{36}"), {
     timeout: 15_000,
   });
 
@@ -275,13 +296,13 @@ test("role permissions: add a permission then remove it", async ({ page }) => {
 
 test("permissions catalog shows inert-by-design caveat", async ({ page }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/permissions");
+  await page.goto(orgUrl("acme-glass", "/admin/permissions"));
   await expect(page.getByText(/inert by design/i)).toBeVisible();
 });
 
 test("create permission: inert caveat visible on create page", async ({ page }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/permissions/new");
+  await page.goto(orgUrl("acme-glass", "/admin/permissions/new"));
   await expect(page.getByText(/inert by design/i)).toBeVisible();
 });
 
@@ -289,11 +310,11 @@ test("create permission: duplicate code shows inline error, stays on create page
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/permissions/new");
+  await page.goto(orgUrl("acme-glass", "/admin/permissions/new"));
   await page.locator("input[name='code']").fill("MANAGE_USERS");
   await page.locator("input[name='description']").fill("Duplicate test");
   await page.getByRole("button", { name: "Create Permission" }).click();
-  await expect(page).toHaveURL(/\/acme-glass\/admin\/permissions\/new/);
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/admin/permissions/new"));
   await expect(page.getByText(/already exists/i)).toBeVisible({ timeout: 15_000 });
 });
 
@@ -302,12 +323,12 @@ test("create permission: valid code appears in catalog with inert caveat", async
 }) => {
   const code = `E2E_PERM_${Date.now()}`;
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/permissions/new");
+  await page.goto(orgUrl("acme-glass", "/admin/permissions/new"));
   await page.locator("input[name='code']").fill(code);
   await page.locator("input[name='description']").fill("Stage 4 automated e2e test permission");
   await page.getByRole("button", { name: "Create Permission" }).click();
   // Redirects to permissions catalog
-  await expect(page).toHaveURL(/\/acme-glass\/admin\/permissions$/, {
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/admin/permissions$"), {
     timeout: 15_000,
   });
   await expect(page.getByRole("cell", { name: code })).toBeVisible();

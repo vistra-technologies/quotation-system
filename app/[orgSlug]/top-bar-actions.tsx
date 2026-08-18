@@ -10,8 +10,16 @@ interface TopBarActionsProps {
    * org subdomain (e.g. acme.easeetool.com).  Eliminates the client-side
    * window.location.hostname read and the resulting SSR/hydration mismatch. */
   isSubdomain: boolean;
+  /** Display name (me.name) — used for the avatar initial only. */
   name: string;
+  /** Login username — shown bold in the profile dropdown (D2 Stage 15). */
   username: string;
+  /** The user's role display name (e.g. "Admin", "Company Member"). */
+  roleName: string;
+  /** Organization display name — rendered as the org chip (D4 Stage 15). */
+  orgName: string;
+  /** External company display name — rendered as the company chip when present (D4 Stage 15). */
+  externalCompanyName: string | null;
 }
 
 /**
@@ -19,7 +27,7 @@ interface TopBarActionsProps {
  *
  * Matches quotation-system-docs/ui-mockups/finalized/project-details-page's
  * .eq-topbar — a Home icon-button plus a Profile icon-button that opens a
- * dropdown (avatar initial, name, username, My Profile / Change Password
+ * dropdown (avatar initial, full name, role name, My Profile / Change Password
  * placeholders, Log Out). "My Profile" and "Change Password" have no page
  * yet, so they show an inline "Coming soon" note instead of navigating.
  *
@@ -27,7 +35,15 @@ interface TopBarActionsProps {
  * dashboard/logout-button.tsx (window.location.href, not router.push) so the
  * router cache doesn't restore a stale authenticated view on browser Back.
  */
-export function TopBarActions({ orgSlug, isSubdomain, name, username }: TopBarActionsProps) {
+export function TopBarActions({
+  orgSlug,
+  isSubdomain,
+  name,
+  username,
+  roleName,
+  orgName,
+  externalCompanyName,
+}: TopBarActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [comingSoon, setComingSoon] = useState<string | null>(null);
   // Build org-scoped hrefs using the server-computed isSubdomain flag.
@@ -43,11 +59,48 @@ export function TopBarActions({ orgSlug, isSubdomain, name, username }: TopBarAc
 
   return (
     <div className="flex items-center gap-2">
+      {/* Org chip — moved from header left to right corner (D4 Stage 15) */}
+      <div className="flex items-center gap-[7px] rounded-full bg-primary-softer px-3 py-[5px] text-[11.5px] font-bold text-primary-dark">
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-[13px] w-[13px] shrink-0"
+          aria-hidden="true"
+        >
+          <path d="M3 21h18M6 21V7l6-4 6 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1" />
+        </svg>
+        {orgName}
+      </div>
+      {/* External company chip — only when the user is linked to a company (D4 Stage 15) */}
+      {externalCompanyName && (
+        <div className="flex items-center gap-[7px] rounded-full bg-status-shipped-bg px-3 py-[5px] text-[11.5px] font-bold text-status-shipped-text">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-[13px] w-[13px] shrink-0"
+            aria-hidden="true"
+          >
+            <rect x="2" y="7" width="20" height="14" rx="2" />
+            <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+            <line x1="12" y1="12" x2="12" y2="16" />
+            <line x1="10" y1="14" x2="14" y2="14" />
+          </svg>
+          {externalCompanyName}
+        </div>
+      )}
       <Link
         href={href("/dashboard")}
         title="Home"
         aria-label="Home"
-        className="flex h-9 w-9 items-center justify-center rounded-sm border border-border bg-bg-white text-text-body transition-colors hover:bg-primary-softer"
+        className="ml-2 flex h-9 w-9 items-center justify-center rounded-sm border border-border bg-bg-white text-text-body transition-colors hover:bg-primary-softer"
       >
         <svg
           width="16"
@@ -106,10 +159,11 @@ export function TopBarActions({ orgSlug, isSubdomain, name, username }: TopBarAc
                   {initial}
                 </div>
                 <div className="min-w-0">
+                  {/* D2 Stage 15: show username (login handle) bold, role beneath */}
                   <div className="truncate text-[13.5px] font-extrabold text-text-heading">
-                    {name}
+                    {username}
                   </div>
-                  <div className="truncate text-[11.5px] text-text-muted">{username}</div>
+                  <div className="truncate text-[11.5px] text-text-muted">{roleName}</div>
                 </div>
               </div>
 

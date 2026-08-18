@@ -18,6 +18,7 @@ const initialState: CreateExternalCompanyState = { error: null };
  * error rather than crashing to an error boundary.
  *
  * Stage 11 Batch 8: restyled to Sage Ease tokens. No logic changes.
+ * Stage 13 Batch 2: added country + defaultCurrency fields (both required).
  */
 export function CreateExternalCompanyForm({ orgSlug }: CreateExternalCompanyFormProps) {
   const t = useTranslations("externalCompanies");
@@ -70,6 +71,45 @@ export function CreateExternalCompanyForm({ orgSlug }: CreateExternalCompanyForm
           >
             <option value="DISTRIBUTOR">{t("typeDistributor")}</option>
             <option value="ARCHITECTURAL_FIRM">{t("typeArchitecturalFirm")}</option>
+          </select>
+        </div>
+
+        {/* Country */}
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="country"
+            className="text-xs font-bold uppercase tracking-wide text-text-muted"
+          >
+            {t("fieldCountry")}
+          </label>
+          <select
+            id="country"
+            name="country"
+            required
+            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
+          >
+            <option value="INDIA">{t("countryIndia")}</option>
+            <option value="UAE">{t("countryUAE")}</option>
+          </select>
+        </div>
+
+        {/* Default Currency */}
+        <div className="flex flex-col gap-1">
+          <label
+            htmlFor="defaultCurrency"
+            className="text-xs font-bold uppercase tracking-wide text-text-muted"
+          >
+            {t("fieldDefaultCurrency")}
+          </label>
+          <select
+            id="defaultCurrency"
+            name="defaultCurrency"
+            required
+            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
+          >
+            <option value="INR">{t("currencyINR")}</option>
+            <option value="AED">{t("currencyAED")}</option>
+            <option value="USD">{t("currencyUSD")}</option>
           </select>
         </div>
 

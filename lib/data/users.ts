@@ -68,9 +68,14 @@ export async function createUser(session: SessionData, input: CreateUserInput): 
   // Tenancy guard: role must belong to this org.
   const role = await prisma.role.findFirst({
     where: { id: roleId, organizationId: session.organizationId },
-    select: { id: true },
+    select: { id: true, isInternalRole: true },
   });
   if (!role) throw new Error("Role not found or access denied");
+
+  // U3 enforcement on create: external roles require an external company.
+  if (!role.isInternalRole && !externalCompanyId) {
+    throw new Error("External company is required for this role");
+  }
 
   // Tenancy guard: external company (if supplied) must belong to this org.
   if (externalCompanyId) {
@@ -128,6 +133,92 @@ export async function createUser(session: SessionData, input: CreateUserInput): 
         password: passwordHash,
       },
     });
+  });
+}
+
+export type UpdateUserProfileInput = {
+  firstName?: string;
+  lastName?: string;
+  mobile?: string | null;
+  profileEmail?: string | null;
+  externalCompanyId?: string | null;
+};
+
+/**
+ * Update editable profile fields for a user.
+ *
+ * Stage 15 Batch G (U4): adds the missing profile-edit capability.
+ * Only the five fields (firstName, lastName, mobile, profileEmail,
+ * externalCompanyId) are writable via this function; username and
+ * synthetic auth email remain immutable.
+ *
+ * Tenancy guards (all throw on failure):
+ *   - User must be in the session org (filters on both id AND organizationId).
+ *   - If externalCompanyId is being set, it must belong to the session org.
+ *   - If the user's current role is NOT internal (isInternalRole = false),
+ *     clearing externalCompanyId is rejected (U3 enforcement on edit).
+ */
+export async function updateUserProfile(
+  session: SessionData,
+  userId: string,
+  input: UpdateUserProfileInput,
+): Promise<void> {
+  // Tenancy guard: user must exist in this org AND include role info for U3 check.
+  const user = await prisma.user.findFirst({
+    where: { id: userId, organizationId: session.organizationId },
+    select: { id: true, roleId: true },
+  });
+  if (!user) throw new Error("User not found or access denied");
+
+  // U3 enforcement on edit: if the user's role requires an external company,
+  // clearing it here is rejected.
+  if (Object.prototype.hasOwnProperty.call(input, "externalCompanyId")) {
+    const role = await prisma.role.findFirst({
+      where: { id: user.roleId, organizationId: session.organizationId },
+      select: { isInternalRole: true },
+    });
+    if (role && !role.isInternalRole && input.externalCompanyId === null) {
+      throw new Error("External company is required for this role");
+    }
+  }
+
+  // Tenancy guard: external company (if supplied) must belong to this org.
+  if (input.externalCompanyId) {
+    const ec = await prisma.externalCompany.findFirst({
+      where: { id: input.externalCompanyId, organizationId: session.organizationId },
+      select: { id: true },
+    });
+    if (!ec) throw new Error("External company not found or access denied");
+  }
+
+  // Build the data object — only include fields that were supplied.
+  // Also update the better-auth `name` field if firstName or lastName changed.
+  const data: Record<string, unknown> = {};
+  if (input.firstName !== undefined) data.firstName = input.firstName;
+  if (input.lastName !== undefined) data.lastName = input.lastName;
+  if (Object.prototype.hasOwnProperty.call(input, "mobile")) data.mobile = input.mobile;
+  if (Object.prototype.hasOwnProperty.call(input, "profileEmail")) data.profileEmail = input.profileEmail;
+  if (Object.prototype.hasOwnProperty.call(input, "externalCompanyId")) {
+    data.externalCompanyId = input.externalCompanyId;
+  }
+
+  // Keep the better-auth `name` display field in sync when name parts change.
+  if (input.firstName !== undefined || input.lastName !== undefined) {
+    const current = await prisma.user.findFirst({
+      where: { id: userId, organizationId: session.organizationId },
+      select: { firstName: true, lastName: true },
+    });
+    if (current) {
+      const newFirst = input.firstName ?? current.firstName;
+      const newLast = input.lastName ?? current.lastName;
+      data.name = `${newFirst} ${newLast}`;
+    }
+  }
+
+  // Scoped update: both id and organizationId must match (lint-enforced tenancy pattern).
+  await prisma.user.updateMany({
+    where: { id: userId, organizationId: session.organizationId },
+    data,
   });
 }
 

@@ -18,9 +18,8 @@ export type CreateInquiryState = { error: string | null };
  * POST /api/v1/orgs/[orgSlug]/inquiries via internalFetch.
  * All tenancy enforcement and business logic live in the route handler.
  *
- * Uses the useActionState signature so the client form can surface errors
- * (e.g. inquiry number conflict on concurrent creates) rather than crashing
- * to an error boundary.
+ * Stage 14 Batch B: destinationCountry removed (derived server-side, D19);
+ * 15 new extended intake fields added; projectLocation now required (D22).
  */
 export async function createInquiry(
   prevState: CreateInquiryState,
@@ -29,26 +28,73 @@ export async function createInquiry(
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
 
   const name = (formData.get("name") as string | null)?.trim();
-  const destinationCountry = (
-    formData.get("destinationCountry") as string | null
-  )?.trim();
-  const currency = (formData.get("currency") as string | null)
-    ?.trim()
-    .toUpperCase();
+  const currency = (formData.get("currency") as string | null)?.trim().toUpperCase();
+  const projectLocation =
+    ((formData.get("projectLocation") as string | null)?.trim()) || null;
   const externalCompanyId =
     (formData.get("externalCompanyId") as string | null) || null;
 
-  if (!name || !destinationCountry || !currency) {
-    return { error: "Name, destination country, and currency are required." };
+  // Stage 14 — extended intake fields
+  const submissionDate =
+    ((formData.get("submissionDate") as string | null)?.trim()) || null;
+  const projectDeadline =
+    ((formData.get("projectDeadline") as string | null)?.trim()) || null;
+  // C5 (Stage 15 Batch F): strip grouping separators so the DB always stores a
+  // clean numeric string ("1000000"), not a formatted one ("10,00,000").
+  const rawBudgetCreate = ((formData.get("projectBudget") as string | null)?.trim()) || null;
+  const projectBudget = rawBudgetCreate ? rawBudgetCreate.replace(/,/g, "") : null;
+  const mainContractorName =
+    ((formData.get("mainContractorName") as string | null)?.trim()) || null;
+  const interiorContractorName =
+    ((formData.get("interiorContractorName") as string | null)?.trim()) || null;
+  const mainConsultantName =
+    ((formData.get("mainConsultantName") as string | null)?.trim()) || null;
+  const interiorConsultantName =
+    ((formData.get("interiorConsultantName") as string | null)?.trim()) || null;
+  const endClientName =
+    ((formData.get("endClientName") as string | null)?.trim()) || null;
+  const endClientPhone =
+    ((formData.get("endClientPhone") as string | null)?.trim()) || null;
+  const endClientEmail =
+    ((formData.get("endClientEmail") as string | null)?.trim()) || null;
+  const endClientAddressLine1 =
+    ((formData.get("endClientAddressLine1") as string | null)?.trim()) || null;
+  const endClientAddressLine2 =
+    ((formData.get("endClientAddressLine2") as string | null)?.trim()) || null;
+  const endClientCity =
+    ((formData.get("endClientCity") as string | null)?.trim()) || null;
+  const endClientState =
+    ((formData.get("endClientState") as string | null)?.trim()) || null;
+  const endClientGstNumber =
+    ((formData.get("endClientGstNumber") as string | null)?.trim()) || null;
+
+  if (!name || !currency) {
+    return { error: "Name and currency are required." };
   }
 
   const res = await internalFetch(`/api/v1/orgs/${orgSlug}/inquiries`, {
     method: "POST",
     body: JSON.stringify({
       name,
-      destinationCountry,
       currency,
+      projectLocation,
       externalCompanyId,
+      // Stage 14 — extended intake fields (dates sent as ISO date strings)
+      submissionDate,
+      projectDeadline,
+      projectBudget,
+      mainContractorName,
+      interiorContractorName,
+      mainConsultantName,
+      interiorConsultantName,
+      endClientName,
+      endClientPhone,
+      endClientEmail,
+      endClientAddressLine1,
+      endClientAddressLine2,
+      endClientCity,
+      endClientState,
+      endClientGstNumber,
     }),
   });
 
@@ -69,6 +115,129 @@ export async function createInquiry(
 
   revalidatePath(`/${orgSlug}/inquiries`);
   redirect(await orgHref(orgSlug, "/inquiries"), RedirectType.replace);
+}
+
+// ---------------------------------------------------------------------------
+// updateInquiry
+// ---------------------------------------------------------------------------
+
+export type UpdateInquiryState = { error: string | null };
+
+/**
+ * Update editable fields on an existing inquiry.
+ *
+ * Thin marshaler: parses FormData, delegates to
+ * PATCH /api/v1/orgs/[orgSlug]/inquiries/[inquiryId] via internalFetch.
+ * All tenancy enforcement and business logic live in the route handler.
+ *
+ * Stage 14 Batch B: destinationCountry removed (locked at create time, D19);
+ * 15 new extended intake fields added.
+ */
+export async function updateInquiry(
+  prevState: UpdateInquiryState,
+  formData: FormData,
+): Promise<UpdateInquiryState> {
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
+  const inquiryId = formData.get("inquiryId") as string | null;
+
+  if (!inquiryId) return { error: "Missing inquiry ID." };
+
+  const name = (formData.get("name") as string | null)?.trim();
+  const currency = (formData.get("currency") as string | null)?.trim().toUpperCase();
+  const projectLocation =
+    ((formData.get("projectLocation") as string | null)?.trim()) || null;
+
+  // Stage 14 — extended intake fields
+  const submissionDate =
+    ((formData.get("submissionDate") as string | null)?.trim()) || null;
+  const projectDeadline =
+    ((formData.get("projectDeadline") as string | null)?.trim()) || null;
+  // C5 (Stage 15 Batch F): strip grouping separators so the DB always stores a
+  // clean numeric string ("1000000"), not a formatted one ("10,00,000").
+  const rawBudgetUpdate = ((formData.get("projectBudget") as string | null)?.trim()) || null;
+  const projectBudget = rawBudgetUpdate ? rawBudgetUpdate.replace(/,/g, "") : null;
+  const mainContractorName =
+    ((formData.get("mainContractorName") as string | null)?.trim()) || null;
+  const interiorContractorName =
+    ((formData.get("interiorContractorName") as string | null)?.trim()) || null;
+  const mainConsultantName =
+    ((formData.get("mainConsultantName") as string | null)?.trim()) || null;
+  const interiorConsultantName =
+    ((formData.get("interiorConsultantName") as string | null)?.trim()) || null;
+  const endClientName =
+    ((formData.get("endClientName") as string | null)?.trim()) || null;
+  const endClientPhone =
+    ((formData.get("endClientPhone") as string | null)?.trim()) || null;
+  const endClientEmail =
+    ((formData.get("endClientEmail") as string | null)?.trim()) || null;
+  const endClientAddressLine1 =
+    ((formData.get("endClientAddressLine1") as string | null)?.trim()) || null;
+  const endClientAddressLine2 =
+    ((formData.get("endClientAddressLine2") as string | null)?.trim()) || null;
+  const endClientCity =
+    ((formData.get("endClientCity") as string | null)?.trim()) || null;
+  const endClientState =
+    ((formData.get("endClientState") as string | null)?.trim()) || null;
+  const endClientGstNumber =
+    ((formData.get("endClientGstNumber") as string | null)?.trim()) || null;
+
+  if (!name || !currency) {
+    return { error: "Name and currency are required." };
+  }
+
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/inquiries/${inquiryId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({
+        name,
+        currency,
+        projectLocation,
+        // Stage 14 — extended intake fields
+        submissionDate,
+        projectDeadline,
+        projectBudget,
+        mainContractorName,
+        interiorContractorName,
+        mainConsultantName,
+        interiorConsultantName,
+        endClientName,
+        endClientPhone,
+        endClientEmail,
+        endClientAddressLine1,
+        endClientAddressLine2,
+        endClientCity,
+        endClientState,
+        endClientGstNumber,
+      }),
+    },
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (res.status === 409) {
+    return { error: "This inquiry can no longer be edited (already dismissed or converted)." };
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    return { error: errorMessage };
+  }
+
+  revalidatePath(`/${orgSlug}/inquiries`);
+  revalidatePath(`/${orgSlug}/inquiries/${inquiryId}`);
+  redirect(
+    await orgHref(orgSlug, `/inquiries/${inquiryId}`),
+    RedirectType.replace,
+  );
 }
 
 // ---------------------------------------------------------------------------

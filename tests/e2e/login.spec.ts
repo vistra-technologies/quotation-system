@@ -25,6 +25,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { orgUrl, orgUrlPattern } from "./helpers";
 
 // Serial: some tests mutate shared auth state (cross-org session, inactive
 // account) that would interfere with concurrent runs.
@@ -32,7 +33,10 @@ test.describe.configure({ mode: "serial" });
 
 const ORG = "acme-glass"; // primary test org
 const ORG2 = "vistra"; // secondary org for cross-org test
-const LOGIN_URL = `/${ORG}/login`;
+// orgUrl() returns the routing-mode-correct login URL:
+//   path mode:     "/acme-glass/login"
+//   subdomain mode: "https://acme-glass.test.easeetool.com/login"
+const LOGIN_URL = orgUrl(ORG, "/login");
 const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!";
 
 // Playwright StorageState shape (cookies + origins) — matches both the return
@@ -53,7 +57,7 @@ let adminStorageState: StorageState | undefined;
 // Shared helper — navigate to login page and wait for the form to be ready
 // ---------------------------------------------------------------------------
 async function goToLogin(page: import("@playwright/test").Page, orgSlug = ORG) {
-  await page.goto(`/${orgSlug}/login`);
+  await page.goto(orgUrl(orgSlug, "/login"));
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
     timeout: 30_000,
   });
@@ -67,8 +71,8 @@ test("correct credentials redirect to dashboard", async ({ page }) => {
   await page.getByLabel("User ID").fill("admin");
   await page.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
   await page.getByRole("button", { name: /Sign in/i }).click();
-  await page.waitForURL(new RegExp(`/${ORG}/dashboard`), { timeout: 30_000 });
-  expect(page.url()).toContain(`/${ORG}/dashboard`);
+  await page.waitForURL(orgUrlPattern(ORG, "/dashboard"), { timeout: 30_000 });
+  expect(page.url()).toMatch(orgUrlPattern(ORG, "/dashboard"));
 
   // Capture the authenticated admin session so "inactive account" beforeAll/
   // afterAll can reuse it via storageState instead of firing fresh sign-in
@@ -92,7 +96,7 @@ test("wrong password shows error message", async ({ page }) => {
   // <div id="__next-route-announcer__" role="alert"> which is always in the DOM.
   const alert = page.locator('p[role="alert"]');
   await expect(alert).toBeVisible({ timeout: 15_000 });
-  await expect(page).toHaveURL(new RegExp(`/${ORG}/login`));
+  await expect(page).toHaveURL(orgUrlPattern(ORG, "/login"));
 });
 
 // ---------------------------------------------------------------------------
@@ -105,7 +109,7 @@ test("empty username blocks form submission", async ({ page }) => {
   await page.getByRole("button", { name: /Sign in/i }).click();
 
   // HTML5 required validation fires; page must stay on login
-  await expect(page).toHaveURL(new RegExp(`/${ORG}/login`));
+  await expect(page).toHaveURL(orgUrlPattern(ORG, "/login"));
   // No app error alert should appear (browser-native validation, not JS error).
   // Scope to <p role="alert"> to exclude Next.js's always-present
   // <div id="__next-route-announcer__" role="alert">.
@@ -122,7 +126,7 @@ test("empty password blocks form submission", async ({ page }) => {
   await page.getByRole("button", { name: /Sign in/i }).click();
 
   // HTML5 required validation fires; page must stay on login
-  await expect(page).toHaveURL(new RegExp(`/${ORG}/login`));
+  await expect(page).toHaveURL(orgUrlPattern(ORG, "/login"));
   await expect(page.locator('p[role="alert"]')).not.toBeVisible();
 });
 
@@ -154,10 +158,10 @@ test.describe("inactive account", () => {
     try {
       if (adminStorageState) {
         // Session already authenticated — navigate directly, no sign-in POST.
-        await adminPage.goto(`/${ORG}/admin/users`);
+        await adminPage.goto(orgUrl(ORG, "/admin/users"));
         // If the session were somehow invalid we'd be redirected to login;
         // waitForURL confirms we landed on the users page.
-        await adminPage.waitForURL(new RegExp(`/${ORG}/admin/users`), {
+        await adminPage.waitForURL(orgUrlPattern(ORG, "/admin/users"), {
           timeout: 30_000,
         });
       } else {
@@ -169,17 +173,18 @@ test.describe("inactive account", () => {
         await adminPage.getByLabel("User ID").fill("admin");
         await adminPage.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
         await adminPage.getByRole("button", { name: /Sign in/i }).click();
-        await adminPage.waitForURL(new RegExp(`/${ORG}/dashboard`), {
+        await adminPage.waitForURL(orgUrlPattern(ORG, "/dashboard"), {
           timeout: 30_000,
         });
-        await adminPage.goto(`/${ORG}/admin/users`);
+        await adminPage.goto(orgUrl(ORG, "/admin/users"));
       }
 
-      // Navigate to admin users list, find the "architect" row, open their detail
+      // Navigate to admin users list, find the "architect" row, open their detail.
+      // Stage 14 Batch D: "Actions" text link replaced by icon-only Edit link (aria-label="Edit").
       const architectRow = adminPage
         .locator("table tbody tr")
         .filter({ has: adminPage.locator("td:first-child", { hasText: "architect" }) });
-      await architectRow.getByRole("link", { name: "Actions" }).click();
+      await architectRow.getByRole("link", { name: "Edit" }).click();
       await adminPage.waitForURL(/\/admin\/users\/[^/]+$/, { timeout: 15_000 });
       architectUserId = adminPage.url().split("/").pop() ?? "";
 
@@ -210,7 +215,7 @@ test.describe("inactive account", () => {
     await expect(alert).toContainText("deactivated");
 
     // Must stay on login page
-    await expect(page).toHaveURL(new RegExp(`/${ORG}/login`));
+    await expect(page).toHaveURL(orgUrlPattern(ORG, "/login"));
   });
 
   test.afterAll(async ({ browser }) => {
@@ -232,15 +237,15 @@ test.describe("inactive account", () => {
         await adminPage.getByLabel("User ID").fill("admin");
         await adminPage.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
         await adminPage.getByRole("button", { name: /Sign in/i }).click();
-        await adminPage.waitForURL(new RegExp(`/${ORG}/dashboard`), {
+        await adminPage.waitForURL(orgUrlPattern(ORG, "/dashboard"), {
           timeout: 30_000,
         });
       }
 
       // Reactivate the architect user — navigate directly to their detail page.
-      await adminPage.goto(`/${ORG}/admin/users/${architectUserId}`);
+      await adminPage.goto(orgUrl(ORG, `/admin/users/${architectUserId}`));
       await adminPage.waitForURL(
-        new RegExp(`/${ORG}/admin/users/${architectUserId}`),
+        orgUrlPattern(ORG, `/admin/users/${architectUserId}`),
         { timeout: 15_000 },
       );
       await adminPage.getByRole("button", { name: "Activate" }).click();
@@ -281,7 +286,7 @@ test("cross-org notice names only the session org", async ({ page }) => {
   await page.waitForTimeout(11_000);
 
   await page.getByRole("button", { name: /Sign in/i }).click();
-  await page.waitForURL(new RegExp(`/${ORG2}/dashboard`), { timeout: 30_000 });
+  await page.waitForURL(orgUrlPattern(ORG2, "/dashboard"), { timeout: 30_000 });
 
   // Navigate to a different org's (ORG = acme-glass) login page
   await page.goto(LOGIN_URL);

@@ -25,7 +25,7 @@ export default function InquiriesLayout({ children }: { children: React.ReactNod
 
   return (
     <NextIntlClientProvider messages={clientMessages}>
-      <div className="mx-auto w-full max-w-[1180px] px-8 pb-12 pt-7">
+      <div className="mx-auto flex h-full w-full max-w-[1180px] flex-col px-8 pb-4 pt-7">
         {children}
       </div>
     </NextIntlClientProvider>

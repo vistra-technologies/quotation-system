@@ -138,7 +138,9 @@ export async function GET(
  * Create a new inquiry in the org.
  *
  * Auth: any authenticated org member (no specific RBAC permission required).
- * Body: { name, destinationCountry, currency, externalCompanyId? }
+ * Body: { name, currency, externalCompanyId?, projectLocation?, ...extendedFields }
+ *
+ * destinationCountry is derived server-side from ExternalCompany.country (D19) — not accepted from the body.
  *
  * Returns 201 with the created inquiry on success.
  * Returns 400 on missing required fields or invalid external company.
@@ -171,29 +173,68 @@ export async function POST(
   }
 
   const name = typeof body.name === "string" ? body.name.trim() : null;
-  const destinationCountry =
-    typeof body.destinationCountry === "string"
-      ? body.destinationCountry.trim()
-      : null;
+  // destinationCountry intentionally NOT parsed — derived from company at DAL level (D19)
   const currency =
     typeof body.currency === "string"
       ? body.currency.trim().toUpperCase()
+      : null;
+  const projectLocation =
+    typeof body.projectLocation === "string" && body.projectLocation.trim()
+      ? body.projectLocation.trim()
       : null;
   const externalCompanyId =
     typeof body.externalCompanyId === "string" && body.externalCompanyId
       ? body.externalCompanyId
       : null;
 
-  if (!name || !destinationCountry || !currency) {
-    return apiBadRequest("name, destinationCountry, and currency are required");
+  // Stage 14 — extended intake fields
+  // Dates: the action sends ISO date strings ("YYYY-MM-DD"); parse to Date with UTC midnight.
+  const parseDate = (v: unknown): Date | null =>
+    typeof v === "string" && v.trim() ? new Date(`${v.trim()}T00:00:00.000Z`) : null;
+  const parseStr = (v: unknown): string | null =>
+    typeof v === "string" && v.trim() ? v.trim() : null;
+
+  const submissionDate = parseDate(body.submissionDate);
+  const projectDeadline = parseDate(body.projectDeadline);
+  const projectBudget = parseStr(body.projectBudget);
+  const mainContractorName = parseStr(body.mainContractorName);
+  const interiorContractorName = parseStr(body.interiorContractorName);
+  const mainConsultantName = parseStr(body.mainConsultantName);
+  const interiorConsultantName = parseStr(body.interiorConsultantName);
+  const endClientName = parseStr(body.endClientName);
+  const endClientPhone = parseStr(body.endClientPhone);
+  const endClientEmail = parseStr(body.endClientEmail);
+  const endClientAddressLine1 = parseStr(body.endClientAddressLine1);
+  const endClientAddressLine2 = parseStr(body.endClientAddressLine2);
+  const endClientCity = parseStr(body.endClientCity);
+  const endClientState = parseStr(body.endClientState);
+  const endClientGstNumber = parseStr(body.endClientGstNumber);
+
+  if (!name || !currency) {
+    return apiBadRequest("name and currency are required");
   }
 
   try {
     const inquiry = await createInquiry(session, {
       name,
-      destinationCountry,
       currency,
+      projectLocation,
       externalCompanyId,
+      submissionDate,
+      projectDeadline,
+      projectBudget,
+      mainContractorName,
+      interiorContractorName,
+      mainConsultantName,
+      interiorConsultantName,
+      endClientName,
+      endClientPhone,
+      endClientEmail,
+      endClientAddressLine1,
+      endClientAddressLine2,
+      endClientCity,
+      endClientState,
+      endClientGstNumber,
     });
     return NextResponse.json({ inquiry }, { status: 201 });
   } catch (err) {

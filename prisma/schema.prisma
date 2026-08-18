@@ -55,6 +55,19 @@ enum ExternalCompanyType {
   ARCHITECTURAL_FIRM
 }
 
+// Stage 13 Batch 2 — constrained to the two markets the app serves today.
+enum CompanyCountry {
+  INDIA
+  UAE
+}
+
+// Stage 13 Batch 2 — currencies the app supports (one per market + USD).
+enum CompanyDefaultCurrency {
+  INR
+  AED
+  USD
+}
+
 // ────────────────────────────────────────────────────────────
 // better-auth tables (hand-authored — do NOT run better-auth
 // CLI generate; it uses Kysely and doesn't understand Prisma 7's
@@ -164,11 +177,15 @@ model Permission {
 }
 
 // Per-org roles. The same role name (e.g. "Admin") can exist in every org.
+// Stage 15 Batch G (U3): isInternalRole distinguishes internal staff roles
+// (Admin, Company Member — may leave External Company blank) from external roles
+// (Distributor, Architectural Firm — must be linked to an External Company).
 model Role {
   id             String           @id @default(uuid())
   organizationId String
   name           String
   description    String?
+  isInternalRole Boolean          @default(false)
   organization   Organization     @relation(fields: [organizationId], references: [id])
   permissions    RolePermission[]
   users          User[]
@@ -187,17 +204,20 @@ model RolePermission {
 }
 
 // External companies (distributors, architectural firms) that belong to an org.
+// Stage 13 Batch 2 adds country + defaultCurrency (both mandatory).
 model ExternalCompany {
-  id             String              @id @default(uuid())
-  organizationId String
-  type           ExternalCompanyType
-  name           String
-  createdAt      DateTime            @default(now())
-  updatedAt      DateTime            @updatedAt
-  organization   Organization        @relation(fields: [organizationId], references: [id])
-  users          User[]
-  projects       Project[]
-  inquiries      Inquiry[]
+  id              String                 @id @default(uuid())
+  organizationId  String
+  type            ExternalCompanyType
+  name            String
+  country         CompanyCountry         @default(INDIA)
+  defaultCurrency CompanyDefaultCurrency @default(INR)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  organization    Organization           @relation(fields: [organizationId], references: [id])
+  users           User[]
+  projects        Project[]
+  inquiries       Inquiry[]
 }
 
 // ────────────────────────────────────────────────────────────
@@ -303,19 +323,38 @@ model Project {
   name               String
   destinationCountry String
   currency           String
-  status             String           // enum-like string; Stage 6 will tighten to a Prisma enum
-  info               Json?
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  projectLocation      String?          // optional free-text installation site (Stage 13 Batch 4)
+  companyProjectNumber Int?             // per-ExternalCompany display sequence (Stage 13 Batch 4); null when no company linked
+  status               String           // enum-like string; Stage 6 will tighten to a Prisma enum
+  info                 Json?
+  // Stage 14 Batch A — extended intake fields (identical set on Inquiry and Project)
+  submissionDate           DateTime? // date formally submitted to client
+  projectDeadline          DateTime? // client-facing deadline
+  projectBudget            String?   // free text; avoids Decimal precision complexity
+  mainContractorName       String?
+  interiorContractorName   String?
+  mainConsultantName       String?
+  interiorConsultantName   String?
+  endClientName            String?
+  endClientPhone           String?
+  endClientEmail           String?
+  endClientAddressLine1    String?
+  endClientAddressLine2    String?
+  endClientCity            String?
+  endClientState           String?
+  endClientGstNumber       String?   // required for India, optional for UAE — form-layer only
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
   // Stage 6 relations
-  selections         Selection[]
+  selections           Selection[]
   // Stage 7 relations
-  inquiryId          String?
-  inquiry            Inquiry?         @relation(fields: [inquiryId], references: [id], onDelete: SetNull)
+  inquiryId            String?
+  inquiry              Inquiry?         @relation(fields: [inquiryId], references: [id], onDelete: SetNull)
   // Stage 8 relations
-  floors             Floor[]
+  floors               Floor[]
 
   @@unique([organizationId, projectNumber])
+  @@unique([externalCompanyId, companyProjectNumber])
 }
 
 // ────────────────────────────────────────────────────────────
@@ -341,12 +380,31 @@ model Inquiry {
   name               String
   destinationCountry String
   currency           String
-  status             String           // "NEW" | "DISMISSED" | "CONVERTED"
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
-  projects           Project[]        // back-relation: Projects created by converting this Inquiry
+  projectLocation      String?          // optional free-text installation site (Stage 13 Batch 4)
+  companyInquiryNumber Int?             // per-ExternalCompany display sequence (Stage 13 Batch 4); null when no company linked
+  status               String           // "NEW" | "DISMISSED" | "CONVERTED"
+  // Stage 14 Batch A — extended intake fields (identical set on Inquiry and Project)
+  submissionDate           DateTime? // date formally submitted to client
+  projectDeadline          DateTime? // client-facing deadline
+  projectBudget            String?   // free text; avoids Decimal precision complexity
+  mainContractorName       String?
+  interiorContractorName   String?
+  mainConsultantName       String?
+  interiorConsultantName   String?
+  endClientName            String?
+  endClientPhone           String?
+  endClientEmail           String?
+  endClientAddressLine1    String?
+  endClientAddressLine2    String?
+  endClientCity            String?
+  endClientState           String?
+  endClientGstNumber       String?   // required for India, optional for UAE — form-layer only
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  projects             Project[]        // back-relation: Projects created by converting this Inquiry
 
   @@unique([organizationId, inquiryNumber])
+  @@unique([externalCompanyId, companyInquiryNumber])
 }
 
 // ────────────────────────────────────────────────────────────

@@ -1,17 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { CompanyDropdown } from "@/components/company-dropdown";
+import { formatBudget, stripGroupingSeparators } from "@/lib/format-currency";
 import { createInquiry, type CreateInquiryState } from "../actions";
 
 interface CreateInquiryFormProps {
   orgSlug: string;
   /** Set when the session user is tied to exactly one ExternalCompany — locks the Client field. */
-  lockedCompany: { id: string; name: string } | null;
+  lockedCompany: { id: string; name: string; country: "INDIA" | "UAE"; defaultCurrency: string } | null;
   /** Free-choice list for org members/admins (null lockedCompany). Empty when lockedCompany is set. */
-  externalCompanies: { id: string; name: string }[];
+  externalCompanies: { id: string; name: string; country: "INDIA" | "UAE"; defaultCurrency: string }[];
   /** Back-navigation href for the Cancel button. */
   backHref: string;
 }
@@ -21,21 +23,24 @@ const initialState: CreateInquiryState = { error: null };
 /**
  * Client Component form for creating a new inquiry.
  *
- * Uses useActionState (React 19) so the server action can return a
- * user-readable error (e.g. concurrent inquiry number collision) rather
- * than crashing to an error boundary. Mirrors CreateProjectForm exactly.
+ * Stage 14 Batch B: restructured to 3-card layout per finalized mockup:
+ *   Card 1 — Project Information (company field full-width, 2-col grid for core fields)
+ *   Card 2 — Contractor & Consultant Details
+ *   Card 3 — End Client Details (footer inside this card)
  *
- * When lockedCompany is set (session user belongs to a fixed ExternalCompany),
- * the Client field is rendered as read-only text — no dropdown is offered.
- * The company id is submitted via a hidden input; the DAL also enforces this
- * server-side regardless of what the form sends.
+ * destinationCountry is now derived server-side from the company's country — no
+ * country control appears on this form (D19). GST required-ness is driven by
+ * isIndia state keyed off the selected company's country (D20). When no company
+ * is selected, GST is optional (D21).
+ *
+ * Stage 15 Batch F:
+ *   C5 — Project Budget formats on blur using formatBudget() helper (decision 7).
+ *   C6 — Currency select defaults to company's defaultCurrency, else INR (decision 6).
+ *   C9 — HTML5 pattern restrictions: budget (digits/commas/dots), name fields
+ *         (alphanumeric + space + hyphen). Client-side only (decision 8).
  *
  * The `inquiries` namespace is forwarded in the ancestor layout's clientMessages —
  * verified in app/[orgSlug]/inquiries/layout.tsx.
- *
- * Stage 11 (Batch 5): restyled to Sage Ease tokens — two-column card layout
- * (Inquiry Details / Client Info panels), Sage Ease form fields, Cancel link,
- * Sage Ease primary submit button. No logic changes.
  */
 export function CreateInquiryForm({
   orgSlug,
@@ -45,6 +50,38 @@ export function CreateInquiryForm({
 }: CreateInquiryFormProps) {
   const t = useTranslations("inquiries");
   const [state, formAction, isPending] = useActionState(createInquiry, initialState);
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  // isIndia drives the GST required-ness — set from locked company or updated when dropdown changes
+  const [isIndia, setIsIndia] = useState(lockedCompany?.country === "INDIA");
+
+  // C6: currency defaults to company's defaultCurrency, else INR (decision 6).
+  const [selectedCurrency, setSelectedCurrency] = useState<string>(
+    lockedCompany?.defaultCurrency ?? "INR",
+  );
+
+  // C5: budget display value — controlled input, formatted on blur (decision 7).
+  const [budgetValue, setBudgetValue] = useState("");
+
+  // Local today in YYYY-MM-DD format (browser-side, avoids UTC offset from new Date().toISOString())
+  const todayLocal = (() => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  })();
+
+  // Shared input className
+  const inputCls =
+    "rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/40";
+  const selectCls =
+    "rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-heading focus:outline-none focus:ring-2 focus:ring-primary/40";
+  const labelCls = "text-[10px] font-bold uppercase tracking-wider text-text-muted";
+
+  // C5: format the budget field on blur using current selected currency.
+  function handleBudgetBlur() {
+    const raw = stripGroupingSeparators(budgetValue.trim());
+    const formatted = formatBudget(raw, selectedCurrency);
+    setBudgetValue(formatted === "—" ? "" : formatted);
+  }
 
   return (
     <>
@@ -60,135 +97,399 @@ export function CreateInquiryForm({
       <form action={formAction}>
         <input type="hidden" name="orgSlug" value={orgSlug} />
 
-        {/* Two-column card */}
-        <div className="overflow-hidden rounded-md border border-border bg-bg-card shadow-card">
-          <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+        {/* ═══════════════════════════════════════════════════════════════════
+            Card 1 — Project Information
+        ═══════════════════════════════════════════════════════════════════ */}
+        <div className="mb-6 overflow-hidden rounded-md border border-border bg-bg-card shadow-card">
+          {/* Panel title */}
+          <div className="bg-primary-softer px-5 py-3.5">
+            <h2 className="text-base font-extrabold text-primary-dark">
+              {t("sectionProjectInfo")}
+            </h2>
+            <p className="mt-0.5 text-xs font-medium text-text-muted">
+              Core details about this inquiry and its project
+            </p>
+          </div>
 
-            {/* ── Left panel: Inquiry Details ──────────────────────────────── */}
-            <div>
-              {/* Panel title */}
-              <div className="bg-primary-softer px-5 py-3.5">
-                <h2 className="text-base font-extrabold text-primary-dark">
-                  Inquiry Details
-                </h2>
-                <p className="mt-0.5 text-xs font-medium text-text-muted">
-                  Core details about this inquiry
-                </p>
+          <div className="p-5">
+            {/* 2-col grid — C2: Inquiry Id left, Company right in Row 1 */}
+            <div className="grid grid-cols-1 gap-x-5 gap-y-0 sm:grid-cols-2">
+              {/* Row 1 left — Inquiry Id (disabled, autogenerated — C2, C3) */}
+              <div className="flex flex-col gap-1 mb-[14px]">
+                <label className={labelCls}>{t("fieldId")}</label>
+                <input
+                  type="text"
+                  disabled
+                  value="—"
+                  title="Inquiry Id will be autogenerated"
+                  className={`${inputCls} cursor-not-allowed opacity-60`}
+                />
               </div>
 
-              {/* Panel body */}
-              <div className="space-y-4 p-5">
-                {/* Inquiry Name */}
-                <div className="flex flex-col gap-1">
-                  <label
-                    htmlFor="name"
-                    className="text-[10px] font-bold uppercase tracking-wider text-text-muted"
-                  >
-                    {t("fieldName")}
-                  </label>
-                  <input
-                    id="name"
-                    name="name"
-                    type="text"
-                    required
-                    autoComplete="off"
-                    className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/40"
+              {/* Row 1 right — Company (C1, C2) */}
+              <div className="flex flex-col gap-1 mb-[14px]">
+                <label
+                  htmlFor={lockedCompany ? undefined : "externalCompanyId"}
+                  className={labelCls}
+                >
+                  {t("fieldExternalCompany")}
+                </label>
+                {lockedCompany ? (
+                  <>
+                    <input type="hidden" name="externalCompanyId" value={lockedCompany.id} />
+                    <p className="rounded-sm border border-border bg-primary-softer/60 px-3 py-2.5 text-sm font-semibold text-text-body">
+                      {lockedCompany.name}
+                    </p>
+                  </>
+                ) : (
+                  <CompanyDropdown
+                    id="externalCompanyId"
+                    name="externalCompanyId"
+                    options={externalCompanies}
+                    value={selectedCompanyId}
+                    onChange={(id) => {
+                      setSelectedCompanyId(id);
+                      const co = externalCompanies.find((c) => c.id === id);
+                      setIsIndia(co?.country === "INDIA");
+                      // C6: update currency default when company selection changes.
+                      setSelectedCurrency(co?.defaultCurrency ?? "INR");
+                    }}
+                    noneLabel={t("fieldExternalCompanyNone")}
+                    ariaLabel={t("fieldExternalCompany")}
                   />
-                </div>
-
-                {/* Destination Country */}
-                <div className="flex flex-col gap-1">
-                  <label
-                    htmlFor="destinationCountry"
-                    className="text-[10px] font-bold uppercase tracking-wider text-text-muted"
-                  >
-                    {t("fieldDestinationCountry")}
-                  </label>
-                  <input
-                    id="destinationCountry"
-                    name="destinationCountry"
-                    type="text"
-                    required
-                    autoComplete="off"
-                    className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </div>
-
-                {/* Currency */}
-                <div className="flex flex-col gap-1">
-                  <label
-                    htmlFor="currency"
-                    className="text-[10px] font-bold uppercase tracking-wider text-text-muted"
-                  >
-                    {t("fieldCurrency")}
-                  </label>
-                  <input
-                    id="currency"
-                    name="currency"
-                    type="text"
-                    required
-                    maxLength={10}
-                    placeholder="e.g. USD, AED"
-                    autoComplete="off"
-                    className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-heading placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/40"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* ── Right panel: Client Information ──────────────────────────── */}
-            <div>
-              {/* Panel title */}
-              <div className="bg-primary-softer px-5 py-3.5">
-                <h2 className="text-base font-extrabold text-primary-dark">
-                  Client Information
-                </h2>
-                <p className="mt-0.5 text-xs font-medium text-text-muted">
-                  The client company tied to this inquiry
-                </p>
+                )}
               </div>
 
-              {/* Panel body */}
-              <div className="space-y-4 p-5">
-                {/* External company — locked or free-choice */}
-                <div className="flex flex-col gap-1">
-                  <label
-                    htmlFor={lockedCompany ? undefined : "externalCompanyId"}
-                    className="text-[10px] font-bold uppercase tracking-wider text-text-muted"
-                  >
-                    {t("fieldExternalCompany")}
-                  </label>
-                  {lockedCompany ? (
-                    <>
-                      <input
-                        type="hidden"
-                        name="externalCompanyId"
-                        value={lockedCompany.id}
-                      />
-                      <p className="rounded-sm border border-border bg-primary-softer/60 px-3 py-2.5 text-sm font-semibold text-text-body">
-                        {lockedCompany.name}
-                      </p>
-                    </>
-                  ) : (
-                    <select
-                      id="externalCompanyId"
-                      name="externalCompanyId"
-                      className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body focus:outline-none focus:ring-2 focus:ring-primary/40"
-                    >
-                      <option value="">{t("fieldExternalCompanyNone")}</option>
-                      {externalCompanies.map((ec) => (
-                        <option key={ec.id} value={ec.id}>
-                          {ec.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
+              {/* Row 2 left — Project Name * (C4) */}
+              <div className="flex flex-col gap-1 mb-[14px]">
+                <label htmlFor="name" className={labelCls}>
+                  {t("fieldName")}{" "}
+                  <span className="text-status-failed-text font-normal">*</span>
+                </label>
+                <input
+                  id="name"
+                  name="name"
+                  type="text"
+                  required
+                  autoComplete="off"
+                  pattern="[A-Za-z0-9 \-]*"
+                  className={inputCls}
+                />
+              </div>
+
+              {/* Row 2 right — Project Location * (C4) */}
+              <div className="flex flex-col gap-1 mb-[14px]">
+                <label htmlFor="projectLocation" className={labelCls}>
+                  {t("fieldProjectLocation")}{" "}
+                  <span className="text-status-failed-text font-normal">*</span>
+                </label>
+                <input
+                  id="projectLocation"
+                  name="projectLocation"
+                  type="text"
+                  required
+                  autoComplete="off"
+                  placeholder="e.g. Dubai, UAE"
+                  className={inputCls}
+                />
+              </div>
+
+              {/* Row 3 left — Project Budget (C5, C9) */}
+              <div className="flex flex-col gap-1 mb-[14px]">
+                <label htmlFor="projectBudget" className={labelCls}>
+                  {t("fieldProjectBudget")}
+                </label>
+                <input
+                  id="projectBudget"
+                  name="projectBudget"
+                  type="text"
+                  autoComplete="off"
+                  inputMode="decimal"
+                  pattern="[\d,\.]*"
+                  value={budgetValue}
+                  onChange={(e) => setBudgetValue(e.target.value)}
+                  onBlur={handleBudgetBlur}
+                  className={inputCls}
+                />
+              </div>
+
+              {/* Row 3 right — Currency * (C6: controlled, defaults to company currency) */}
+              <div className="flex flex-col gap-1 mb-[14px]">
+                <label htmlFor="currency" className={labelCls}>
+                  {t("fieldCurrency")}{" "}
+                  <span className="text-status-failed-text font-normal">*</span>
+                </label>
+                <select
+                  id="currency"
+                  name="currency"
+                  required
+                  value={selectedCurrency}
+                  onChange={(e) => setSelectedCurrency(e.target.value)}
+                  className={selectCls}
+                >
+                  <option value="" disabled>Select currency…</option>
+                  <option value="INR">INR</option>
+                  <option value="AED">AED</option>
+                  <option value="USD">USD</option>
+                </select>
+              </div>
+
+              {/* Row 4 left — Submission Date * (C7) */}
+              <div className="flex flex-col gap-1 mb-[14px]">
+                <label htmlFor="submissionDate" className={labelCls}>
+                  {t("fieldSubmissionDate")}{" "}
+                  <span className="text-status-failed-text font-normal">*</span>
+                </label>
+                <input
+                  id="submissionDate"
+                  name="submissionDate"
+                  type="date"
+                  required
+                  defaultValue={todayLocal}
+                  className={inputCls}
+                />
+              </div>
+
+              {/* Row 4 right — Project Deadline (C7) */}
+              <div className="flex flex-col gap-1 mb-[14px]">
+                <label htmlFor="projectDeadline" className={labelCls}>
+                  {t("fieldProjectDeadline")}
+                </label>
+                <input
+                  id="projectDeadline"
+                  name="projectDeadline"
+                  type="date"
+                  className={inputCls}
+                />
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Card footer */}
+        {/* ═══════════════════════════════════════════════════════════════════
+            Card 2 — Contractor & Consultant Details
+        ═══════════════════════════════════════════════════════════════════ */}
+        <div className="mb-6 overflow-hidden rounded-md border border-border bg-bg-card shadow-card">
+          <div className="bg-primary-softer px-5 py-3.5">
+            <h2 className="text-base font-extrabold text-primary-dark">
+              {t("sectionContractorDetails")}
+            </h2>
+            <p className="mt-0.5 text-xs font-medium text-text-muted">
+              Contractors and consultants tied to this project
+            </p>
+          </div>
+
+          <div className="p-5 grid grid-cols-1 gap-x-5 gap-y-0 sm:grid-cols-2">
+            <div className="flex flex-col gap-1 mb-[14px]">
+              <label htmlFor="mainContractorName" className={labelCls}>
+                {t("fieldMainContractorName")}
+              </label>
+              <input
+                id="mainContractorName"
+                name="mainContractorName"
+                type="text"
+                autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
+                className={inputCls}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1 mb-[14px]">
+              <label htmlFor="interiorContractorName" className={labelCls}>
+                {t("fieldInteriorContractorName")}
+              </label>
+              <input
+                id="interiorContractorName"
+                name="interiorContractorName"
+                type="text"
+                autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
+                className={inputCls}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1 mb-[14px]">
+              <label htmlFor="mainConsultantName" className={labelCls}>
+                {t("fieldMainConsultantName")}
+              </label>
+              <input
+                id="mainConsultantName"
+                name="mainConsultantName"
+                type="text"
+                autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
+                className={inputCls}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1 mb-[14px]">
+              <label htmlFor="interiorConsultantName" className={labelCls}>
+                {t("fieldInteriorConsultantName")}
+              </label>
+              <input
+                id="interiorConsultantName"
+                name="interiorConsultantName"
+                type="text"
+                autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
+                className={inputCls}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            Card 3 — End Client Details (footer inside this card — D16)
+        ═══════════════════════════════════════════════════════════════════ */}
+        <div className="overflow-hidden rounded-md border border-border bg-bg-card shadow-card">
+          <div className="bg-primary-softer px-5 py-3.5">
+            <h2 className="text-base font-extrabold text-primary-dark">
+              {t("sectionEndClientDetails")}
+            </h2>
+            <p className="mt-0.5 text-xs font-medium text-text-muted">
+              Contact and billing details for the end client
+            </p>
+          </div>
+
+          <div className="p-5 grid grid-cols-1 gap-x-5 gap-y-0 sm:grid-cols-2">
+            {/* End Client Name * */}
+            <div className="flex flex-col gap-1 mb-[14px]">
+              <label htmlFor="endClientName" className={labelCls}>
+                {t("fieldEndClientName")}{" "}
+                <span className="text-status-failed-text font-normal">*</span>
+              </label>
+              <input
+                id="endClientName"
+                name="endClientName"
+                type="text"
+                required
+                autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
+                className={inputCls}
+              />
+            </div>
+
+            {/* End Client Phone * */}
+            <div className="flex flex-col gap-1 mb-[14px]">
+              <label htmlFor="endClientPhone" className={labelCls}>
+                {t("fieldEndClientPhone")}{" "}
+                <span className="text-status-failed-text font-normal">*</span>
+              </label>
+              <input
+                id="endClientPhone"
+                name="endClientPhone"
+                type="tel"
+                required
+                autoComplete="off"
+                className={inputCls}
+              />
+            </div>
+
+            {/* End Client Email * */}
+            <div className="flex flex-col gap-1 mb-[14px]">
+              <label htmlFor="endClientEmail" className={labelCls}>
+                {t("fieldEndClientEmail")}{" "}
+                <span className="text-status-failed-text font-normal">*</span>
+              </label>
+              <input
+                id="endClientEmail"
+                name="endClientEmail"
+                type="email"
+                required
+                autoComplete="off"
+                className={inputCls}
+              />
+            </div>
+
+            {/* GST Number — required only for India (D20) */}
+            <div className="flex flex-col gap-1 mb-[14px]">
+              <label htmlFor="endClientGstNumber" className={labelCls}>
+                {t("fieldEndClientGstNumber")}
+                {isIndia && (
+                  <span className="text-status-failed-text font-normal"> *</span>
+                )}
+              </label>
+              <input
+                id="endClientGstNumber"
+                name="endClientGstNumber"
+                type="text"
+                required={isIndia}
+                autoComplete="off"
+                className={inputCls}
+              />
+              {isIndia && (
+                <span className="text-[10px] text-text-muted">{t("gstRequiredHint")}</span>
+              )}
+            </div>
+
+            {/* Address Line 1 * */}
+            <div className="flex flex-col gap-1 mb-[14px]">
+              <label htmlFor="endClientAddressLine1" className={labelCls}>
+                {t("fieldEndClientAddressLine1")}{" "}
+                <span className="text-status-failed-text font-normal">*</span>
+              </label>
+              <input
+                id="endClientAddressLine1"
+                name="endClientAddressLine1"
+                type="text"
+                required
+                autoComplete="off"
+                placeholder="Street address, building"
+                className={inputCls}
+              />
+            </div>
+
+            {/* Address Line 2 — optional (C10) */}
+            <div className="flex flex-col gap-1 mb-[14px]">
+              <label htmlFor="endClientAddressLine2" className={labelCls}>
+                {t("fieldEndClientAddressLine2")}
+              </label>
+              <input
+                id="endClientAddressLine2"
+                name="endClientAddressLine2"
+                type="text"
+                autoComplete="off"
+                placeholder="Area, landmark"
+                className={inputCls}
+              />
+            </div>
+
+            {/* City * */}
+            <div className="flex flex-col gap-1 mb-[14px]">
+              <label htmlFor="endClientCity" className={labelCls}>
+                {t("fieldEndClientCity")}{" "}
+                <span className="text-status-failed-text font-normal">*</span>
+              </label>
+              <input
+                id="endClientCity"
+                name="endClientCity"
+                type="text"
+                required
+                autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
+                className={inputCls}
+              />
+            </div>
+
+            {/* State * */}
+            <div className="flex flex-col gap-1 mb-[14px]">
+              <label htmlFor="endClientState" className={labelCls}>
+                {t("fieldEndClientState")}{" "}
+                <span className="text-status-failed-text font-normal">*</span>
+              </label>
+              <input
+                id="endClientState"
+                name="endClientState"
+                type="text"
+                required
+                autoComplete="off"
+                pattern="[A-Za-z0-9 \-]*"
+                className={inputCls}
+              />
+            </div>
+          </div>
+
+          {/* Card footer — inside Card 3 (D16) */}
           <div className="flex items-center justify-end gap-3 border-t border-border px-6 py-4">
             <Link
               href={backHref}

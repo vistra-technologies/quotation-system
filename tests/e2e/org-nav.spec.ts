@@ -27,6 +27,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { orgUrl, orgUrlPattern, isSubdomain } from "./helpers";
 
 // Run this file serially — auth-flow tests are flaky under concurrent Turbopack
 // compilation load on local dev. (On a pre-built Vercel preview this is not needed,
@@ -146,15 +147,20 @@ test("clicking an org link stays on the deployed domain, not localhost", async (
 test("unknown org slug in URL returns 404", async ({ page }) => {
   // The proxy checks the first path segment against the DB on every org-scoped
   // request.  An unrecognised slug must return 404 — not a login redirect or 200.
-  const response = await page.goto("/nonexistent-org-slug/login", {
+  // In subdomain mode, an unknown org subdomain is used; in path mode a path-based URL.
+  // Both proxy branches return 404 for unrecognised org slugs.
+  const response = await page.goto(orgUrl("nonexistent-org-slug", "/login"), {
     waitUntil: "commit",
   });
 
   expect(response?.status()).toBe(404);
 
-  // The proxy returns a JSON error body
+  // The proxy returns a JSON error body.
+  // Loosen to a case-insensitive regex: path-based mode returns "Organization not found"
+  // while the apex-domain non-root-path guard returns the shorter "Not found" — both are
+  // correct 404 responses and both must pass this test.
   const body = await response?.text();
-  expect(body).toContain("Organization not found");
+  expect(body).toMatch(/not found/i);
 });
 
 // ---------------------------------------------------------------------------
@@ -165,10 +171,10 @@ test("unauthenticated request to /{orgSlug}/dashboard redirects to /{orgSlug}/lo
 }) => {
   // Open in a fresh context with no session cookies.
   // The Server Component calls getSession() → null (no cookie) → redirect.
-  const response = await page.goto("/vistra/dashboard");
+  const response = await page.goto(orgUrl("vistra", "/dashboard"));
 
   // After following redirects, we must be on the login page
-  expect(page.url()).toMatch(/\/vistra\/login/);
+  expect(page.url()).toMatch(orgUrlPattern("vistra", "/login"));
 
   // The login form must be visible — Stage 10 removed the "Sign in to" heading;
   // the autocomplete="username" input is the stable anchor post-rebuild.
@@ -206,11 +212,11 @@ test("full flow: apex org link → login page → sign in → dashboard → sign
     );
   }
 
-  // Step 3: Click and wait for the login page
-  // Under path-based routing the proxy resolves the org from the first URL path
-  // segment (/{orgSlug}/login) and injects x-org-id — no subdomain needed.
+  // Step 3: Click and wait for the login page.
+  // In subdomain mode the org link points at {orgSlug}.test.easeetool.com/login;
+  // in path mode it points at /{orgSlug}/login.  Both end at a URL containing "/login".
   await Promise.all([
-    page.waitForURL(/\/[^/]+\/login/, { timeout: 10_000 }),
+    page.waitForURL(/\/login/, { timeout: 10_000 }),
     firstLink.click(),
   ]);
 
@@ -219,9 +225,13 @@ test("full flow: apex org link → login page → sign in → dashboard → sign
     timeout: 5_000,
   });
 
-  // Extract org slug from the URL we've landed on (e.g. /vistra/login → "vistra")
+  // Extract org slug from the URL we've landed on.
+  // Path mode:     /vistra/login → pathname.split("/")[1] = "vistra"
+  // Subdomain mode: vistra.test.easeetool.com/login → hostname.split(".")[0] = "vistra"
   const loginUrl = new URL(page.url());
-  const orgSlug = loginUrl.pathname.split("/")[1];
+  const orgSlug = isSubdomain
+    ? loginUrl.hostname.split(".")[0]
+    : loginUrl.pathname.split("/")[1];
 
   // Step 4: Sign in with the org's admin credentials
   // Stage 10: label renamed "Username" → "User ID"; "Password" needs exact match
@@ -234,16 +244,16 @@ test("full flow: apex org link → login page → sign in → dashboard → sign
   // Stage 12 Batch 7b: heading is "Welcome, {firstName}" (first word of display name).
   // No username/org/role dt/dd block — replaced by KPI tiles.
   // Checking h1 is visible is sufficient to confirm the dashboard rendered.
-  await page.waitForURL(new RegExp(`/${orgSlug}/dashboard`), {
+  await page.waitForURL(orgUrlPattern(orgSlug, "/dashboard"), {
     timeout: 10_000,
   });
   await expect(page.locator("h1")).toBeVisible({ timeout: 10_000 });
 
-  // Step 6: Sign out and confirm redirect back to /{orgSlug}/login.
+  // Step 6: Sign out and confirm redirect back to login page.
   // Stage 11 Batch 8 / Stage 12: sign-out is a Profile icon → "Log Out" dropdown item.
   await page.getByRole("button", { name: "Profile" }).click();
   await page.getByRole("button", { name: /Log Out/i }).click();
-  await page.waitForURL(new RegExp(`/${orgSlug}/login`), { timeout: 10_000 });
+  await page.waitForURL(orgUrlPattern(orgSlug, "/login"), { timeout: 10_000 });
   // Stage 10: "Sign in to" heading gone — form input is the stable readiness signal.
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
     timeout: 5_000,
@@ -257,7 +267,7 @@ test("cross-org session replay: vistra session rejected on acme-glass dashboard"
   page,
 }) => {
   // Sign in as vistra admin
-  await page.goto("/vistra/login");
+  await page.goto(orgUrl("vistra", "/login"));
   // Stage 10: "Sign in to" heading gone — wait for the form input instead.
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible();
   // Stage 10: label renamed "Username" → "User ID"; exact match on "Password" to
@@ -268,19 +278,19 @@ test("cross-org session replay: vistra session rejected on acme-glass dashboard"
 
   // Confirm we're on vistra dashboard
   // Stage 12 Batch 7b: heading is "Welcome, {firstName}", not "Dashboard".
-  await page.waitForURL(/\/vistra\/dashboard/, { timeout: 10_000 });
+  await page.waitForURL(orgUrlPattern("vistra", "/dashboard"), { timeout: 10_000 });
   await expect(page.locator("h1")).toBeVisible({ timeout: 10_000 });
 
   // Now navigate to a DIFFERENT org's dashboard using the same session cookie.
   // The cross-org guard in lib/session.ts checks x-org-id (injected by proxy
   // from the URL path segment) against session.organizationId.  Mismatch → null
   // session → redirect to /{orgSlug}/login.
-  await page.goto("/acme-glass/dashboard");
+  await page.goto(orgUrl("acme-glass", "/dashboard"));
 
   // Must redirect to acme-glass login — NOT render the dashboard with vistra's data.
   // Stage 4 changed this path: a cross-org session now renders CrossOrgNotice
   // (heading: "You're already signed in"), not the plain login form.
-  await page.waitForURL(/\/acme-glass\/login/, { timeout: 10_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/login"), { timeout: 10_000 });
   await expect(
     page.getByRole("heading", { name: /already signed in/i }),
   ).toBeVisible({ timeout: 5_000 });

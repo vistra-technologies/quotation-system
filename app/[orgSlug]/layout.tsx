@@ -52,6 +52,8 @@ export default async function OrgSlugLayout({
     name: string;
     username: string;
     orgName: string;
+    roleName: string;
+    externalCompanyName: string | null;
     adminPermissions: string[];
   };
 
@@ -59,7 +61,7 @@ export default async function OrgSlugLayout({
   const canManageFeatures = me.adminPermissions.includes("MANAGE_FEATURES");
 
   return (
-    <div className="flex min-h-screen bg-bg-page">
+    <div className="flex h-screen bg-bg-page">
       {/* Sidebar — Client Component owning collapse state */}
       <Sidebar
         orgSlug={orgSlug}
@@ -71,25 +73,18 @@ export default async function OrgSlugLayout({
       {/* Right column: top bar + page content */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-border bg-bg-card px-10 shadow-header">
-          {/* Organisation chip — left side */}
-          <div className="flex items-center gap-[7px] rounded-full bg-primary-softer px-3 py-[5px] text-[11.5px] font-bold text-primary-dark">
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-[13px] w-[13px] shrink-0"
-              aria-hidden="true"
-            >
-              <path d="M3 21h18M6 21V7l6-4 6 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1" />
-            </svg>
-            {me.orgName}
-          </div>
-          {/* Home + Profile actions — right side */}
-          <TopBarActions orgSlug={orgSlug} isSubdomain={isSubdomain} name={me.name} username={me.username} />
+        {/* D4 Stage 15: org/company chips moved from left to right corner, inside TopBarActions */}
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-end border-b border-border bg-bg-card px-10 shadow-header">
+          {/* Home + Profile actions — right side (chips now included inside) */}
+          <TopBarActions
+            orgSlug={orgSlug}
+            isSubdomain={isSubdomain}
+            name={me.name}
+            username={me.username}
+            roleName={me.roleName}
+            orgName={me.orgName}
+            externalCompanyName={me.externalCompanyName}
+          />
         </header>
 
         {/* Main content area */}

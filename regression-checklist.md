@@ -433,3 +433,32 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      "New Project", "Create User", "Create Role", "Create Permission", "Create Company", "Create Type"
      buttons all navigate to `/…/new` with no `/{orgSlug}/` prefix in the URL bar.
      Automated: `subdomain-navigation.spec.ts` — "new-entry-point buttons across all list pages".
+
+## Stage 12 — Production regression pass (2026-08-04)
+
+113. **CrossSubDomainCookies: session cookie carries `Domain=.easeetool.com` in production.**
+     `POST https://acme-glass.easeetool.com/api/auth/sign-in/email` → `Set-Cookie` header must
+     include `Domain=.easeetool.com`. Without this attribute the session cookie is host-only and
+     the CrossOrgNotice component (login/page.tsx branch 3) will not trigger when a logged-in user
+     navigates to a different org's subdomain.
+     Manual check: `curl -v -X POST https://{orgSlug}.easeetool.com/api/auth/sign-in/email ...`
+     and confirm `Domain=.easeetool.com` appears in the response `Set-Cookie` header.
+     *Discovered 2026-08-04 post-deploy regression pass; Domain attribute absent in production.*
+
+## Stage 14 — Extended Inquiry/Project fields + UI fixes (2026-08-13)
+
+114. **Extended-field intake renders as three cards, not one long form.** Both create forms, both edit
+     forms, and both read-only detail pages (Inquiry and Project) must show the 15 extended fields
+     grouped under three section headings — **Project Information**, **Contractor & Consultant Details**,
+     **End Client Details**. Not automated by design: the repo's wireframe-stage rule forbids committed
+     assertions on DOM structure, layout, or copy until the UI design is declared final. Verify by eye on
+     all six views; compare against `quotation-system-docs/ui-mockups/finalized/`.
+     *Behavior-level coverage for the same stage is automated in `tests/e2e/stage14.spec.ts` (15 tests):
+     hydration, country derivation, conditional GST, 15-field conversion propagation, tenancy, Batch D.*
+
+115. **`destinationCountry` has no input control anywhere.** It is derived at create time from the
+     associated External Company's `country`, never typed. Confirm no country field appears on either
+     create form or either edit form, and that a record created under an INDIA company shows "India" on
+     its detail page (UAE → "UAE"; no company → blank). A country control reappearing on a form is a
+     tenancy regression, not a cosmetic one — an external user must not be able to set it.
+     Automated: `stage14.spec.ts` — "destinationCountry: client-supplied value in POST body is ignored".

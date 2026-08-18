@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { CompanyDropdown } from "@/components/company-dropdown";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -80,6 +81,13 @@ export function ListPageControls({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
+  // L3 — pending state while the server re-renders after a filter/scope change.
+  // router.push inside startTransition signals React that the navigation is a
+  // transition; isPending is true until the new Server Component finishes rendering.
+  // No useTranslations added here — this component is shared across layouts with
+  // different clientMessages sets (see AGENTS.md / plan.md callout 6).
+  const [isPending, startTransition] = useTransition();
+
   // Local state for the search input — gives immediate responsiveness while
   // debouncing the URL update.  Initializes from the server-side `search` prop.
   // No useEffect sync needed: this component only changes `search` via user
@@ -91,6 +99,14 @@ export function ListPageControls({
   // Date dropdown open state
   const [dateOpen, setDateOpen] = useState(false);
   const dateRef = useRef<HTMLDivElement>(null);
+
+  // H3: cleanup the search debounce timer on unmount to prevent navigate() firing
+  // against an unmounted component if the user leaves the page mid-type.
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   // Close date dropdown on outside click
   useEffect(() => {
@@ -118,12 +134,22 @@ export function ListPageControls({
         }
       }
       const qs = next.toString();
-      router.push(qs ? `${pathname}?${qs}` : pathname);
+      startTransition(() => {
+        router.push(qs ? `${pathname}?${qs}` : pathname);
+      });
     },
     [router, pathname, searchParams],
   );
 
-  const handleScopeChange = (s: "mine" | "all") => navigate({ scope: s });
+  const handleScopeChange = (s: "mine" | "all") => {
+    // H2: when switching to "mine" scope, clear the externalCompanyId param —
+    // it's only meaningful on "all" scope and leaving it in the URL is misleading.
+    if (s === "mine") {
+      navigate({ scope: s, externalCompanyId: "" });
+    } else {
+      navigate({ scope: s });
+    }
+  };
 
   const handleDateRange = (v: string) => {
     setDateOpen(false);
@@ -148,7 +174,13 @@ export function ListPageControls({
   const showCompanyFilter = externalCompanies !== null && scope === "all";
 
   return (
-    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+    <div
+      className={[
+        "mb-4 flex flex-wrap items-center justify-between gap-3 transition-opacity",
+        isPending ? "opacity-50" : "",
+      ].join(" ")}
+      aria-busy={isPending}
+    >
       {/* ── Left: Date range filter ─────────────────────────────────── */}
       <div ref={dateRef} className="relative">
         <button
@@ -233,19 +265,13 @@ export function ListPageControls({
             Narrows the list to inquiries associated with a specific client
             company, within this org. Never navigates cross-org. */}
         {showCompanyFilter && externalCompanies && (
-          <select
+          <CompanyDropdown
+            options={externalCompanies}
             value={externalCompanyId}
-            onChange={(e) => handleCompanyChange(e.target.value)}
-            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-[13px] font-semibold text-text-body focus:outline-none focus:ring-1 focus:ring-primary"
-            aria-label="Filter by company"
-          >
-            <option value="">All companies</option>
-            {externalCompanies.map((co) => (
-              <option key={co.id} value={co.id}>
-                {co.name}
-              </option>
-            ))}
-          </select>
+            onChange={handleCompanyChange}
+            noneLabel="All companies"
+            ariaLabel="Filter by company"
+          />
         )}
 
         {/* My / All segmented toggle */}
@@ -292,7 +318,6 @@ interface ListPagePaginationProps {
   totalCount: number;
   page: number;
   pageSize: number;
-  entityLabel: string;
 }
 
 /**
@@ -308,15 +333,12 @@ export function ListPagePagination({
   totalCount,
   page,
   pageSize,
-  entityLabel,
 }: ListPagePaginationProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
-  const startRecord = totalCount === 0 ? 0 : (page - 1) * pageSize + 1;
-  const endRecord = Math.min(page * pageSize, totalCount);
 
   const goToPage = useCallback(
     (p: number) => {
@@ -345,61 +367,56 @@ export function ListPagePagination({
     }
   }
 
+  if (totalPages <= 1) return null;
+
   return (
-    <div className="flex items-center justify-between px-3 pt-3">
-      <span className="text-[12.5px] text-text-muted">
-        {totalCount > 0
-          ? `${startRecord}–${endRecord} of ${totalCount} ${entityLabel.toLowerCase()} · Page ${page} of ${totalPages}`
-          : ""}
-      </span>
-      {totalPages > 1 && (
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => goToPage(page - 1)}
-            disabled={page <= 1}
-            className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-[13px] text-text-muted hover:bg-primary-softer disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Previous page"
-          >
-            ‹
-          </button>
-          {pageNumbers.map((n, i) =>
-            n === "…" ? (
-              <span
-                key={`ellipsis-${i}`}
-                className="flex h-7 w-7 items-center justify-center text-[12px] text-text-muted"
-              >
-                …
-              </span>
-            ) : (
-              <button
-                key={n}
-                type="button"
-                onClick={() => goToPage(n as number)}
-                className={[
-                  "flex h-7 w-7 items-center justify-center rounded-sm border text-[13px] font-semibold",
-                  n === page
-                    ? "border-primary bg-primary text-text-on-primary"
-                    : "border-border text-text-body hover:bg-primary-softer",
-                ].join(" ")}
-                aria-label={`Page ${n}`}
-                aria-current={n === page ? "page" : undefined}
-              >
-                {n}
-              </button>
-            ),
-          )}
-          <button
-            type="button"
-            onClick={() => goToPage(page + 1)}
-            disabled={page >= totalPages}
-            className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-[13px] text-text-muted hover:bg-primary-softer disabled:cursor-not-allowed disabled:opacity-40"
-            aria-label="Next page"
-          >
-            ›
-          </button>
-        </div>
-      )}
+    <div className="flex items-center justify-center border-t border-border px-3 py-3">
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => goToPage(page - 1)}
+          disabled={page <= 1}
+          className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-[13px] text-text-muted hover:bg-primary-softer disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Previous page"
+        >
+          ‹
+        </button>
+        {pageNumbers.map((n, i) =>
+          n === "…" ? (
+            <span
+              key={`ellipsis-${i}`}
+              className="flex h-7 w-7 items-center justify-center text-[12px] text-text-muted"
+            >
+              …
+            </span>
+          ) : (
+            <button
+              key={n}
+              type="button"
+              onClick={() => goToPage(n as number)}
+              className={[
+                "flex h-7 w-7 items-center justify-center rounded-sm border text-[13px] font-semibold",
+                n === page
+                  ? "border-primary bg-primary text-text-on-primary"
+                  : "border-border text-text-body hover:bg-primary-softer",
+              ].join(" ")}
+              aria-label={`Page ${n}`}
+              aria-current={n === page ? "page" : undefined}
+            >
+              {n}
+            </button>
+          ),
+        )}
+        <button
+          type="button"
+          onClick={() => goToPage(page + 1)}
+          disabled={page >= totalPages}
+          className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-[13px] text-text-muted hover:bg-primary-softer disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label="Next page"
+        >
+          ›
+        </button>
+      </div>
     </div>
   );
 }

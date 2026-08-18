@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { orgHref, detectIsSubdomain } from "@/lib/orgHref";
 import { fetchProjectDetail } from "./_project-fetch";
@@ -40,6 +41,7 @@ export default async function ProjectWizardLayout({
   // to eliminate the useOrgHref client-side window.location.hostname read and
   // the resulting SSR/hydration mismatch (same fix applied to sidebar.tsx).
   const isSubdomain = await detectIsSubdomain(orgSlug);
+  const base = await orgHref(orgSlug, "");
 
   const { status, project } = await fetchProjectDetail(orgSlug, projectId);
 
@@ -53,6 +55,18 @@ export default async function ProjectWizardLayout({
 
   return (
     <div className="flex flex-col">
+      {/* Back to projects list — rendered above the breadcrumb so it is always
+          accessible regardless of which wizard step is active (item 5, Stage 15
+          UI-pass fixes). */}
+      <div className="px-8 pt-5">
+        <Link
+          href={`${base}/projects`}
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text-heading"
+        >
+          ← Back to Projects
+        </Link>
+      </div>
+
       {/* Wizard breadcrumb — persists across all project sub-routes */}
       <ProjectWizardBreadcrumb orgSlug={orgSlug} projectId={projectId} isSubdomain={isSubdomain} />
 

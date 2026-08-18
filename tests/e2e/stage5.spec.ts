@@ -15,7 +15,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn } from "./helpers";
+import { signIn, fillCreateFormRequiredFields, orgUrl, orgUrlPattern, apiUrl } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(90_000);
@@ -32,31 +32,31 @@ test.beforeEach(async () => {
 // ---------------------------------------------------------------------------
 
 test("unauthenticated request to /admin/components redirects to login", async ({ page }) => {
-  await page.goto("/acme-glass/admin/components");
-  await expect(page).toHaveURL(/\/acme-glass\/login/, { timeout: 10_000 });
+  await page.goto(orgUrl("acme-glass", "/admin/components"));
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 10_000 });
 });
 
 test("distributor role (no MANAGE_FEATURES) redirected from /admin/components to dashboard", async ({
   page,
 }) => {
   await signIn(page, "distributor");
-  await page.goto("/acme-glass/admin/components", { waitUntil: "commit" });
-  await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
+  await page.goto(orgUrl("acme-glass", "/admin/components"), { waitUntil: "commit" });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
 });
 
 test("distributor role redirected from /admin/components/new to dashboard", async ({ page }) => {
   await signIn(page, "distributor");
-  await page.goto("/acme-glass/admin/components/new", { waitUntil: "commit" });
-  await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
+  await page.goto(orgUrl("acme-glass", "/admin/components/new"), { waitUntil: "commit" });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
 });
 
 test("company member (MANAGE_PRICING only, no MANAGE_FEATURES) redirected from /admin/components", async ({
   page,
 }) => {
   await signIn(page, "member");
-  await page.goto("/acme-glass/admin/components", { waitUntil: "commit" });
+  await page.goto(orgUrl("acme-glass", "/admin/components"), { waitUntil: "commit" });
   // member role has MANAGE_PRICING + VIEW_ALL_DATA + APPLY_DISCOUNT but NOT MANAGE_FEATURES
-  await page.waitForURL(/\/acme-glass\/dashboard/, { timeout: 15_000 });
+  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -67,14 +67,14 @@ test("ComponentType list page shows inert-caveat warning for MANAGE_FEATURES adm
   page,
 }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/components");
+  await page.goto(orgUrl("acme-glass", "/admin/components"));
   // Inert caveat must be visible as an aside element
   await expect(page.locator("aside").first()).toBeVisible({ timeout: 15_000 });
 });
 
 test("ComponentType list page shows seeded GLASS, DOOR, PROFILE_STOP types", async ({ page }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/components");
+  await page.goto(orgUrl("acme-glass", "/admin/components"));
   await expect(page.getByRole("cell", { name: "DOOR", exact: true })).toBeVisible({
     timeout: 15_000,
   });
@@ -99,14 +99,14 @@ test("ComponentType field schema round-trip: create -> add field -> save -> navi
   // Create a new ComponentType.
   // IMPORTANT: waitForURL must NOT match "/new" (the current URL).
   // Use a UUID pattern since typeIds are UUIDs.
-  await page.goto("/acme-glass/admin/components/new");
+  await page.goto(orgUrl("acme-glass", "/admin/components/new"));
   await page.locator("input[name='code']").fill(code);
   await page.locator("input[name='name']").fill(name);
   await page.locator("select[name='categoryId']").selectOption({ label: "Glass Partitions" });
   await Promise.all([
     page.waitForURL(
       (url) =>
-        /\/acme-glass\/admin\/components\/[0-9a-f-]{36}/.test(url.toString()),
+        orgUrlPattern("acme-glass", "/admin/components/[0-9a-f-]{36}").test(url.toString()),
       { timeout: 15_000 },
     ),
     page.getByRole("button", { name: /create component type/i }).click(),
@@ -135,8 +135,8 @@ test("ComponentType field schema round-trip: create -> add field -> save -> navi
   ]);
 
   // Navigate away then HARD RELOAD back to force a fresh server render from DB
-  await page.goto("/acme-glass/admin/components");
-  await expect(page).toHaveURL(/\/acme-glass\/admin\/components$/, { timeout: 10_000 });
+  await page.goto(orgUrl("acme-glass", "/admin/components"));
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/admin/components$"), { timeout: 10_000 });
   await page.goto(editUrl);
   await page.reload(); // Hard reload bypasses Next.js router cache
 
@@ -150,7 +150,7 @@ test("ComponentType field schema round-trip: create -> add field -> save -> navi
 
 test("ComponentType list shows the assigned category for seeded types", async ({ page }) => {
   await signIn(page, "admin");
-  await page.goto("/acme-glass/admin/components");
+  await page.goto(orgUrl("acme-glass", "/admin/components"));
   // All ComponentTypes (there is no core/non-core distinction) show their category name
   await expect(page.getByRole("cell", { name: "Glass Partitions", exact: true }).first()).toBeVisible({
     timeout: 15_000,
@@ -169,26 +169,29 @@ test("Project CRUD: create project -> appears at Step 1 with correct projectNumb
   await signIn(page, "admin");
 
   // Navigate to create project form
-  await page.goto("/acme-glass/projects/new");
-  await expect(page).not.toHaveURL(/\/acme-glass\/login/, { timeout: 10_000 });
+  await page.goto(orgUrl("acme-glass", "/projects/new"));
+  await expect(page).not.toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 10_000 });
 
-  // Fill required fields
+  // Fill required fields.
+  // Stage 14: destinationCountry removed from form (derived server-side);
+  // currency changed to <select>; 7 end-client fields are now required.
   await page.locator("input[name='name']").fill(projectName);
-  await page.locator("input[name='destinationCountry']").fill("UAE");
-  await page.locator("input[name='currency']").fill("AED");
+  await fillCreateFormRequiredFields(page, "AED");
 
   // Stage 9: createProject now redirects to the new project's Step 1 (Project Details)
   // page, not the projects list. Wait for the UUID-shaped project detail URL.
   await Promise.all([
-    page.waitForURL(/\/acme-glass\/projects\/[0-9a-f-]{36}$/, { timeout: 15_000 }),
-    page.getByRole("button", { name: /create project/i }).click(),
+    page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}$"), { timeout: 15_000 }),
+    page.getByRole("button", { name: /configure/i }).click(),
   ]);
 
-  // Project name must be visible on the Project Details page (shown in the page heading).
+  // Project name must be visible on the Project Details page.
   await expect(page.getByText(projectName)).toBeVisible({ timeout: 10_000 });
 
-  // Project number must be visible in the page heading (format: "#N — Project Name").
-  await expect(page.getByRole("heading", { level: 2 })).toContainText(/#\d+/);
+  // Project number must be assigned and visible on the detail card (format: "#N").
+  // Stage 14: project number is shown as a text field in the Project Information card,
+  // not as an h2 heading — the h2 assertion is stale.
+  await expect(page.getByText(/#\d+/).first()).toBeVisible({ timeout: 10_000 });
 });
 
 test("Project list: any authenticated user can access /projects (no special RBAC required)", async ({
@@ -196,9 +199,9 @@ test("Project list: any authenticated user can access /projects (no special RBAC
 }) => {
   // Distributor (no special permissions) should be able to see the projects page
   await signIn(page, "distributor");
-  await page.goto("/acme-glass/projects");
-  await expect(page).not.toHaveURL(/\/acme-glass\/login/);
-  await expect(page).not.toHaveURL(/\/acme-glass\/dashboard/);
+  await page.goto(orgUrl("acme-glass", "/projects"));
+  await expect(page).not.toHaveURL(orgUrlPattern("acme-glass", "/login"));
+  await expect(page).not.toHaveURL(orgUrlPattern("acme-glass", "/dashboard"));
   // Projects page renders (no RBAC redirect)
   await expect(page.getByRole("link", { name: /new project/i })).toBeVisible({
     timeout: 15_000,
@@ -212,9 +215,9 @@ test("Project list: any authenticated user can access /projects (no special RBAC
 test("Project list: acme-glass session rejected on nordic-walls/projects", async ({ page }) => {
   await signIn(page, "admin", "Seed1234!", "acme-glass");
   // Navigate to a DIFFERENT org's projects using the same session cookie
-  await page.goto("/nordic-walls/projects");
+  await page.goto(orgUrl("nordic-walls", "/projects"));
   // Cross-org guard rejects the session -- redirected to nordic-walls login
-  await page.waitForURL(/\/nordic-walls\/login/, { timeout: 10_000 });
+  await page.waitForURL(orgUrlPattern("nordic-walls", "/login"), { timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
@@ -231,7 +234,7 @@ test("createProject: cross-org externalCompanyId is rejected with INVALID_EXTERN
   await signIn(page, "admin", "Seed1234!", "acme-glass");
 
   const companiesRes = await page.request.get(
-    "/api/v1/orgs/acme-glass/external-companies",
+    apiUrl("acme-glass", "/api/v1/orgs/acme-glass/external-companies"),
   );
   expect(companiesRes.status()).toBe(200);
   const { companies } = (await companiesRes.json()) as {
@@ -248,11 +251,11 @@ test("createProject: cross-org externalCompanyId is rejected with INVALID_EXTERN
   }
 
   // Sign out from acme-glass before switching to nordic-walls.
-  await page.goto("/acme-glass/dashboard");
+  await page.goto(orgUrl("acme-glass", "/dashboard"));
   // Stage 10: Log Out moved into profile dropdown (click to open, then click Log Out)
   await page.getByRole("button", { name: "Profile" }).click();
   await page.getByRole("button", { name: "Log Out" }).click();
-  await expect(page).toHaveURL(/\/acme-glass\/login/, { timeout: 15_000 });
+  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 15_000 });
 
   // Step 2: Sign in to nordic-walls as admin.
   await signIn(page, "admin", "Seed1234!", "nordic-walls");
@@ -267,7 +270,7 @@ test("createProject: cross-org externalCompanyId is rejected with INVALID_EXTERN
   //   2. Throw { code: "INVALID_EXTERNAL_COMPANY" }
   //   3. Route handler surfaces it as 400 + { error: "Selected company is invalid." }
   const response = await page.request.post(
-    "/api/v1/orgs/nordic-walls/projects",
+    apiUrl("nordic-walls", "/api/v1/orgs/nordic-walls/projects"),
     {
       data: {
         name: "Cross-Tenant Attack Test",

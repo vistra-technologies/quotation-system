@@ -30,27 +30,41 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain }: Pro
   const t = useTranslations("wizard");
   const pathname = usePathname();
 
-  // base: path-based (internal route), used for active-step detection.
-  // usePathname() always returns the internal path-based route even in subdomain
-  // mode, so active detection must compare against path-based strings.
+  // base: org-prefixed path, used only for step.href (kept for link construction).
+  // In subdomain mode, usePathname() returns the path WITHOUT the org-slug prefix
+  // (e.g. /projects/{id}/configuration, not /acme-glass/projects/{id}/configuration),
+  // so active-step detection must compare against hrefBase (path-only in subdomain
+  // mode, org-prefixed in path mode) — see activeIndex below.
   const base = `/${orgSlug}/projects/${projectId}`;
   // hrefBase: user-facing href — uses the server-computed isSubdomain flag so
   // the correct href is rendered in the SSR HTML without a hydration mismatch.
   const hrefBase = isSubdomain ? `/projects/${projectId}` : `/${orgSlug}/projects/${projectId}`;
 
   const steps = [
-    { label: t("step1"), href: base, linkHref: hrefBase, exact: true },
-    { label: t("step2"), href: `${base}/configuration`, linkHref: `${hrefBase}/configuration`, exact: false },
-    { label: t("step3"), href: `${base}/design`, linkHref: `${hrefBase}/design`, exact: false },
-    { label: t("step4"), href: `${base}/summary`, linkHref: `${hrefBase}/summary`, exact: false },
-    { label: t("step5"), href: `${base}/quotation`, linkHref: `${hrefBase}/quotation`, exact: false },
+    { label: t("step1"), href: base, linkHref: hrefBase },
+    { label: t("step2"), href: `${base}/configuration`, linkHref: `${hrefBase}/configuration` },
+    { label: t("step3"), href: `${base}/design`, linkHref: `${hrefBase}/design` },
+    { label: t("step4"), href: `${base}/summary`, linkHref: `${hrefBase}/summary` },
+    { label: t("step5"), href: `${base}/quotation`, linkHref: `${hrefBase}/quotation` },
   ];
 
   // Derive the active index so earlier steps can be shown as "done".
-  // Uses step.href (path-based) to match against usePathname()'s internal route.
-  const activeIndex = steps.findIndex((step) =>
-    step.exact ? pathname === step.href : pathname.startsWith(step.href),
-  );
+  // Uses step.linkHref (which equals hrefBase-derived paths) to match against
+  // usePathname()'s output. In subdomain mode, usePathname() returns paths without
+  // the org-slug prefix (e.g. /projects/{id}/configuration); step.linkHref also
+  // omits it in that mode. In path mode both are org-prefixed — identical behaviour.
+  // Step 1 (index 0) uses a startsWith match combined with a negative check that
+  // none of steps 2–5's hrefs also match — so /edit and other step-1 sub-routes
+  // highlight Step 1 rather than leaving the breadcrumb unhighlighted (activeIndex -1).
+  const activeIndex = steps.findIndex((step, i) => {
+    if (i === 0) {
+      return (
+        pathname.startsWith(step.linkHref) &&
+        !steps.slice(1).some((s) => pathname.startsWith(s.linkHref))
+      );
+    }
+    return pathname.startsWith(step.linkHref);
+  });
 
   return (
     <nav aria-label="Project wizard steps" className="py-4">
@@ -63,7 +77,7 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain }: Pro
           const linkClass = isActive
             ? "flex items-center gap-2 rounded-pill bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary"
             : isDone
-              ? "flex items-center gap-2 rounded-pill px-5 py-2.5 text-sm font-bold text-primary-dark"
+              ? "flex items-center gap-2 rounded-pill bg-status-paid-bg px-5 py-2.5 text-sm font-bold text-status-paid-text"
               : "flex items-center gap-2 rounded-pill px-5 py-2.5 text-sm font-bold text-text-muted";
 
           return (
@@ -76,7 +90,7 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain }: Pro
                 {/* Step indicator: checkmark when done, number otherwise */}
                 {isDone ? (
                   <span
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs text-primary"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs text-status-paid-text"
                     aria-hidden="true"
                   >
                     ✓

@@ -47,10 +47,14 @@ const permissionCatalog = [
 
 // ─── Role definitions with permission matrix ────────────────────────────────
 // Source: design-docs/02-roles-and-journeys.md
+// Stage 15 Batch G (U3): isInternalRole=true for Admin + Company Member (internal staff
+// who may leave External Company blank). External roles (Distributor, Architectural Firm)
+// default to false and require an External Company on user create/edit.
 const roleDefs = [
   {
     name: "Admin",
     description: "Full organizational administration",
+    isInternalRole: true,
     permissions: [
       "MANAGE_USERS",
       "MANAGE_FEATURES",
@@ -62,21 +66,36 @@ const roleDefs = [
   {
     name: "Company Member",
     description: "Internal staff with pricing access",
+    isInternalRole: true,
     permissions: ["VIEW_ALL_DATA", "MANAGE_PRICING", "APPLY_DISCOUNT"],
   },
   {
     name: "Distributor",
     description: "External distributor company user",
+    isInternalRole: false,
     permissions: ["DESIGN", "QUOTE", "ORDER"],
   },
   {
     name: "Architectural Firm",
     description: "External architectural firm user",
+    isInternalRole: false,
     permissions: ["DESIGN"],
   },
 ];
 
 async function main() {
+  // ── 0a. One-time cleanup: purge E2E test artifacts ─────────────────────────
+  // E2E specs previously created timestamped permission codes (E2E_PERM_*)
+  // that were never cleaned up, causing them to appear in the admin UI.
+  // This deleteMany runs on every seed invocation (idempotent — no-op when
+  // already clean). Stage 15 Batch G (U6).
+  const purged = await prisma.permission.deleteMany({
+    where: { code: { startsWith: "E2E_PERM_" } },
+  });
+  if (purged.count > 0) {
+    console.log(`Purged ${purged.count} E2E_PERM_* test permission(s) from the catalog`);
+  }
+
   // ── 0. Resolve the better-auth password hasher once ────────────────────────
   // auth.$context is a Promise<AuthContext>; password.hash uses the same Scrypt
   // implementation that the sign-in route uses for verification — guaranteeing
@@ -124,11 +143,12 @@ async function main() {
             name: roleDef.name,
           },
         },
-        update: { description: roleDef.description },
+        update: { description: roleDef.description, isInternalRole: roleDef.isInternalRole },
         create: {
           organizationId: org.id,
           name: roleDef.name,
           description: roleDef.description,
+          isInternalRole: roleDef.isInternalRole,
         },
       });
       roleMap[roleDef.name] = role.id;
@@ -186,7 +206,6 @@ async function main() {
         roleName: "Admin",
         firstName: "Admin",
         lastName: "User",
-        displayName: `${org.slug} admin`,
         externalCompanyId: undefined as string | undefined,
       },
       {
@@ -194,7 +213,6 @@ async function main() {
         roleName: "Company Member",
         firstName: "Member",
         lastName: "User",
-        displayName: `${org.slug} member`,
         externalCompanyId: undefined as string | undefined,
       },
       {
@@ -202,7 +220,6 @@ async function main() {
         roleName: "Distributor",
         firstName: "Distributor",
         lastName: "User",
-        displayName: `${org.slug} distributor`,
         externalCompanyId: distCompany.id,
       },
       {
@@ -210,7 +227,6 @@ async function main() {
         roleName: "Architectural Firm",
         firstName: "Architect",
         lastName: "User",
-        displayName: `${org.slug} architect`,
         externalCompanyId: archCompany.id,
       },
     ];
@@ -218,11 +234,22 @@ async function main() {
     for (const slot of userSlots) {
       const synthEmail = toAuthEmail(slot.username, org.slug);
 
-      // Idempotent: skip if this synthetic email already exists.
+      // Idempotent: update name if user already exists (fixes stale displayName-style
+      // values that pre-date the firstName/lastName split), then skip creation.
       const existing = await prisma.user.findUnique({
         where: { email: synthEmail },
+        select: { id: true, name: true },
       });
-      if (existing) continue;
+      if (existing) {
+        const expectedName = `${slot.firstName} ${slot.lastName}`;
+        if (existing.name !== expectedName) {
+          await prisma.user.update({
+            where: { id: existing.id },
+            data: { name: expectedName },
+          });
+        }
+        continue;
+      }
 
       const roleId = roleMap[slot.roleName];
       if (!roleId) {
@@ -243,7 +270,8 @@ async function main() {
           data: {
             email: synthEmail,
             emailVerified: false,
-            name: slot.displayName,
+            // better-auth core display name — always firstName + lastName (same as createUser in lib/data/users.ts)
+            name: `${slot.firstName} ${slot.lastName}`,
             organizationId: org.id,
             username: slot.username,
             firstName: slot.firstName,

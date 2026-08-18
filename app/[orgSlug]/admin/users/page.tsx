@@ -122,17 +122,33 @@ export default async function UsersPage({
                     </span>
                   </td>
                   <td className="px-5 py-4 text-right">
-                    <div className="flex items-center justify-end gap-4">
+                    <div className="flex items-center justify-end gap-3">
                       <Link
                         href={`${base}/admin/users/${user.id}`}
-                        className="text-sm font-bold text-primary-dark underline-offset-2 hover:underline"
+                        aria-label={t("editAction")}
+                        title={t("editAction")}
+                        className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-primary-dark hover:bg-primary-softer hover:text-primary"
                       >
-                        {t("colActions")}
+                        {/* Pencil icon 16×16 */}
+                        <svg
+                          width="16"
+                          height="16"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          aria-hidden="true"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <path
+                            d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm1.414 1.06a.25.25 0 0 0-.354 0L2.543 12.023l-.625 2.185 2.185-.625L13.64 4.047a.25.25 0 0 0 0-.354l-1.213-1.206Z"
+                            fill="currentColor"
+                          />
+                        </svg>
                       </Link>
                       <DeleteUserButton
                         orgSlug={orgSlug}
                         userId={user.id}
                         username={user.username}
+                        confirmMessage={t("deleteConfirm", { username: user.username })}
                       />
                     </div>
                   </td>

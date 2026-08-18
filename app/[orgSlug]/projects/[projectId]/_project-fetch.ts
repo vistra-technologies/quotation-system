@@ -11,16 +11,41 @@ export interface ProjectDetail {
   id: string;
   organizationId: string;
   projectNumber: number;
+  companyProjectNumber: number | null;
   name: string;
   destinationCountry: string;
   currency: string;
+  projectLocation: string | null;
+  inquiryId: string | null;
+  /**
+   * Human-readable display numbers from the linked Inquiry, if any.
+   * Null when the project was created directly (not converted from an inquiry).
+   * Format: INQ-{companyInquiryNumber} when available, else #{inquiryNumber}.
+   */
+  inquiry: { inquiryNumber: number; companyInquiryNumber: number | null } | null;
   status: string;
   createdAt: string;
   updatedAt: string;
   externalCompanyId: string | null;
   createdByUserId: string;
-  externalCompany: { id: string; name: string } | null;
+  externalCompany: { id: string; name: string; country: "INDIA" | "UAE" } | null;
   createdBy: { id: string; username: string };
+  // Stage 14 Batch C — extended intake fields (all nullable)
+  submissionDate: string | null;
+  projectDeadline: string | null;
+  projectBudget: string | null;
+  mainContractorName: string | null;
+  interiorContractorName: string | null;
+  mainConsultantName: string | null;
+  interiorConsultantName: string | null;
+  endClientName: string | null;
+  endClientPhone: string | null;
+  endClientEmail: string | null;
+  endClientAddressLine1: string | null;
+  endClientAddressLine2: string | null;
+  endClientCity: string | null;
+  endClientState: string | null;
+  endClientGstNumber: string | null;
 }
 
 export interface ProjectFetchResult {

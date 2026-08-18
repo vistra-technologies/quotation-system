@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import { formatBudget } from "@/lib/format-currency";
 import { dismissInquiry } from "../actions";
 import { StartProjectButton } from "./start-project-button";
 
@@ -12,13 +13,43 @@ export const dynamic = "force-dynamic";
 interface InquiryDetail {
   id: string;
   inquiryNumber: number;
+  companyInquiryNumber: number | null;
   name: string;
   destinationCountry: string;
   currency: string;
+  projectLocation: string | null;
   status: string;
   createdAt: string;
   externalCompany: { id: string; name: string } | null;
   createdBy: { id: string; username: string };
+  // Stage 14 Batch B — extended intake fields
+  submissionDate: string | null;
+  projectDeadline: string | null;
+  projectBudget: string | null;
+  mainContractorName: string | null;
+  interiorContractorName: string | null;
+  mainConsultantName: string | null;
+  interiorConsultantName: string | null;
+  endClientName: string | null;
+  endClientPhone: string | null;
+  endClientEmail: string | null;
+  endClientAddressLine1: string | null;
+  endClientAddressLine2: string | null;
+  endClientCity: string | null;
+  endClientState: string | null;
+  endClientGstNumber: string | null;
+}
+
+/** Shared read-only field renderer for the 3-card detail layout. */
+function Field({ label, value }: { label: string; value?: string | null }) {
+  return (
+    <div>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">{label}</p>
+      <p className="mt-1 text-sm text-text-body">
+        {value ?? <span className="text-text-placeholder">—</span>}
+      </p>
+    </div>
+  );
 }
 
 /**
@@ -32,12 +63,9 @@ interface InquiryDetail {
  * Tenancy guard: the API route's getApiSession() enforces cross-org isolation,
  * and getInquiryById() returns null for wrong-org inquiries → 404.
  *
- * Stage 11 (Batch 5): restyled to Sage Ease tokens — back link, heading, meta row,
- * status badge, action buttons, two-column read-only card. Dismiss form and
- * StartProjectButton behavior unchanged.
- *
- * Stage 12: switched from direct requireSession + getInquiryById DAL call to
- * internalFetch against GET /api/v1/orgs/[orgSlug]/inquiries/[inquiryId].
+ * Stage 14 Batch B: card section restructured from 2-col to 3 stacked cards
+ * per finalized mockup (Project Information / Contractor Details / End Client Details).
+ * All 15 new fields displayed. Existing header unchanged.
  */
 export default async function InquiryDetailPage({
   params,
@@ -78,6 +106,17 @@ export default async function InquiryDetailPage({
     return t("statusConverted");
   }
 
+  /** Format an ISO date string to locale date, or return "—" for null/empty */
+  function formatDate(iso: string | null | undefined): string {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleDateString();
+  }
+
+  const formattedInquiryNumber =
+    inquiry.companyInquiryNumber != null
+      ? `INQ-${inquiry.companyInquiryNumber}`
+      : `#${inquiry.inquiryNumber}`;
+
   return (
     <div>
       {/* ── Back link ───────────────────────────────────────────────────────── */}
@@ -90,20 +129,20 @@ export default async function InquiryDetailPage({
 
       {/* ── Detail header ────────────────────────────────────────────────────── */}
       <div className="mb-6">
-        <h1 className="mb-3 text-[27px] font-extrabold text-text-heading">
-          #{inquiry.inquiryNumber} — {inquiry.name}
-        </h1>
+        {/* Title row: inquiry number + name on the left; username + date on the right (V2) */}
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <h1 className="text-[27px] font-extrabold text-text-heading">
+            {formattedInquiryNumber} — {inquiry.name}
+          </h1>
+          {/* V2 — right-side metadata: username + created date */}
+          <div className="shrink-0 text-right text-sm text-text-muted">
+            <p className="font-semibold">{inquiry.createdBy.username}</p>
+            <p>{t("colDate")}: {new Date(inquiry.createdAt).toLocaleDateString()}</p>
+          </div>
+        </div>
 
-        {/* Metadata row */}
+        {/* V1 — Metadata strip: Company name + Status only */}
         <div className="mb-4 flex flex-wrap items-center gap-3">
-          {/* Country + Currency as pill tags */}
-          <span className="rounded-pill border border-border px-2.5 py-1 text-xs font-bold text-text-muted">
-            {inquiry.destinationCountry}
-          </span>
-          <span className="rounded-pill border border-border px-2.5 py-1 text-xs font-bold text-text-muted">
-            {inquiry.currency}
-          </span>
-
           {/* Status badge */}
           <span
             className={`inline-flex items-center rounded-pill px-2.5 py-0.5 text-xs font-bold ${statusBadgeClass(inquiry.status)}`}
@@ -111,26 +150,26 @@ export default async function InquiryDetailPage({
             {statusLabel(inquiry.status)}
           </span>
 
-          {/* External company */}
+          {/* External company name */}
           {inquiry.externalCompany && (
             <span className="text-sm font-semibold text-text-body">
               {inquiry.externalCompany.name}
             </span>
           )}
-
-          {/* Created date */}
-          <span className="text-sm text-text-muted">
-            {t("colDate")}: {new Date(inquiry.createdAt).toLocaleDateString()}
-          </span>
-
-          {/* Created by */}
-          <span className="text-sm text-text-muted">
-            {inquiry.createdBy.username}
-          </span>
         </div>
 
         {/* ── Action buttons ─────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-3">
+          {/* Edit — only shown while status is NEW */}
+          {!isClosed && (
+            <Link
+              href={`${base}/inquiries/${inquiryId}/edit`}
+              className="inline-flex items-center rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
+            >
+              {t("editAction")}
+            </Link>
+          )}
+
           {/* Dismiss — RSC form, no client component needed; behavior unchanged */}
           <form action={dismissInquiry}>
             <input type="hidden" name="orgSlug" value={orgSlug} />
@@ -153,119 +192,79 @@ export default async function InquiryDetailPage({
         </div>
       </div>
 
-      {/* ── Two-column read-only card ────────────────────────────────────────── */}
+      {/* ═══════════════════════════════════════════════════════════════════
+          Card 1 — Project Information
+      ═══════════════════════════════════════════════════════════════════ */}
+      <div className="mb-6 overflow-hidden rounded-md border border-border bg-bg-card shadow-card">
+        <div className="bg-primary-softer px-5 py-3.5">
+          <h2 className="text-base font-extrabold text-primary-dark">
+            {t("sectionProjectInfo")}
+          </h2>
+          <p className="mt-0.5 text-xs font-medium text-text-muted">
+            Core details about this inquiry and its project
+          </p>
+        </div>
+        <div className="p-5 grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+          <Field label={t("colNumber")} value={formattedInquiryNumber} />
+          <Field label={t("fieldName")} value={inquiry.name} />
+          {/* V5 — format raw budget string (e.g. "1000000" → "10,00,000" for INR) */}
+          <Field label={t("fieldProjectBudget")} value={formatBudget(inquiry.projectBudget, inquiry.currency)} />
+          <Field label={t("fieldCurrency")} value={inquiry.currency} />
+          <Field label={t("fieldProjectLocation")} value={inquiry.projectLocation} />
+          <Field label={t("fieldSubmissionDate")} value={formatDate(inquiry.submissionDate)} />
+          <Field label={t("fieldProjectDeadline")} value={formatDate(inquiry.projectDeadline)} />
+          {/* V3 — destinationCountry removed: it is derived from the company (Stage 14), never user-entered */}
+          {/* Client (external company) */}
+          <Field
+            label={t("colExternalCompany")}
+            value={inquiry.externalCompany?.name}
+          />
+          {/* Created by + date */}
+          <Field label="Created By" value={inquiry.createdBy.username} />
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          Card 2 — Contractor & Consultant Details
+      ═══════════════════════════════════════════════════════════════════ */}
+      <div className="mb-6 overflow-hidden rounded-md border border-border bg-bg-card shadow-card">
+        <div className="bg-primary-softer px-5 py-3.5">
+          <h2 className="text-base font-extrabold text-primary-dark">
+            {t("sectionContractorDetails")}
+          </h2>
+          <p className="mt-0.5 text-xs font-medium text-text-muted">
+            Contractors and consultants tied to this project
+          </p>
+        </div>
+        <div className="p-5 grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+          <Field label={t("fieldMainContractorName")} value={inquiry.mainContractorName} />
+          <Field label={t("fieldInteriorContractorName")} value={inquiry.interiorContractorName} />
+          <Field label={t("fieldMainConsultantName")} value={inquiry.mainConsultantName} />
+          <Field label={t("fieldInteriorConsultantName")} value={inquiry.interiorConsultantName} />
+        </div>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          Card 3 — End Client Details
+      ═══════════════════════════════════════════════════════════════════ */}
       <div className="overflow-hidden rounded-md border border-border bg-bg-card shadow-card">
-        <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-
-          {/* Left panel: Inquiry Details */}
-          <div>
-            <div className="bg-primary-softer px-5 py-3.5">
-              <h2 className="text-base font-extrabold text-primary-dark">
-                Inquiry Details
-              </h2>
-              <p className="mt-0.5 text-xs font-medium text-text-muted">
-                Core details about this inquiry
-              </p>
-            </div>
-            <div className="space-y-4 p-5">
-              {/* Inquiry Name */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                  {t("fieldName")}
-                </p>
-                <p className="mt-1 text-sm font-semibold text-text-heading">
-                  {inquiry.name}
-                </p>
-              </div>
-
-              {/* Destination Country */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                  {t("fieldDestinationCountry")}
-                </p>
-                <p className="mt-1 text-sm text-text-body">
-                  {inquiry.destinationCountry}
-                </p>
-              </div>
-
-              {/* Currency */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                  {t("fieldCurrency")}
-                </p>
-                <p className="mt-1 text-sm text-text-body">{inquiry.currency}</p>
-              </div>
-
-              {/* Inquiry number */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                  {t("colNumber")}
-                </p>
-                <p className="mt-1 text-sm text-text-body">
-                  #{inquiry.inquiryNumber}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Right panel: Client & Creator */}
-          <div>
-            <div className="bg-primary-softer px-5 py-3.5">
-              <h2 className="text-base font-extrabold text-primary-dark">
-                Client &amp; Creator
-              </h2>
-              <p className="mt-0.5 text-xs font-medium text-text-muted">
-                Parties involved in this inquiry
-              </p>
-            </div>
-            <div className="space-y-4 p-5">
-              {/* Client (external company) */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                  {t("colExternalCompany")}
-                </p>
-                <p className="mt-1 text-sm text-text-body">
-                  {inquiry.externalCompany?.name ?? (
-                    <span className="text-text-placeholder">—</span>
-                  )}
-                </p>
-              </div>
-
-              {/* Created by */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                  Created By
-                </p>
-                <p className="mt-1 text-sm text-text-body">
-                  {inquiry.createdBy.username}
-                </p>
-              </div>
-
-              {/* Created date */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                  {t("colDate")}
-                </p>
-                <p className="mt-1 text-sm text-text-body">
-                  {new Date(inquiry.createdAt).toLocaleDateString()}
-                </p>
-              </div>
-
-              {/* Status */}
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-text-muted">
-                  {t("colStatus")}
-                </p>
-                <div className="mt-1">
-                  <span
-                    className={`inline-flex items-center rounded-pill px-2.5 py-0.5 text-xs font-bold ${statusBadgeClass(inquiry.status)}`}
-                  >
-                    {statusLabel(inquiry.status)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
+        <div className="bg-primary-softer px-5 py-3.5">
+          <h2 className="text-base font-extrabold text-primary-dark">
+            {t("sectionEndClientDetails")}
+          </h2>
+          <p className="mt-0.5 text-xs font-medium text-text-muted">
+            Contact and billing details for the end client
+          </p>
+        </div>
+        <div className="p-5 grid grid-cols-1 gap-x-5 gap-y-4 sm:grid-cols-2">
+          <Field label={t("fieldEndClientName")} value={inquiry.endClientName} />
+          <Field label={t("fieldEndClientPhone")} value={inquiry.endClientPhone} />
+          <Field label={t("fieldEndClientEmail")} value={inquiry.endClientEmail} />
+          <Field label={t("fieldEndClientGstNumber")} value={inquiry.endClientGstNumber} />
+          <Field label={t("fieldEndClientAddressLine1")} value={inquiry.endClientAddressLine1} />
+          <Field label={t("fieldEndClientAddressLine2")} value={inquiry.endClientAddressLine2} />
+          <Field label={t("fieldEndClientCity")} value={inquiry.endClientCity} />
+          <Field label={t("fieldEndClientState")} value={inquiry.endClientState} />
         </div>
       </div>
     </div>

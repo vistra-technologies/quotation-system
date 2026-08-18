@@ -1,13 +1,20 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { createUser, type CreateUserState } from "../actions";
 
+interface RoleOption {
+  id: string;
+  name: string;
+  /** Stage 15 Batch G (U3): true for Admin and Company Member — they may omit External Company. */
+  isInternalRole: boolean;
+}
+
 interface CreateUserFormProps {
   orgSlug: string;
-  roles: { id: string; name: string }[];
+  roles: RoleOption[];
   externalCompanies: { id: string; name: string }[];
 }
 
@@ -23,10 +30,19 @@ const initialState: CreateUserState = { error: null };
  *
  * Batch 7g: added First Name, Last Name (required), Mobile, Email (optional);
  * password minLength=8 enforced client-side (HTML5) and server-side (route handler).
+ *
+ * Stage 15 Batch G (U3): External Company is conditionally required based on
+ * the selected role's isInternalRole flag. Admin and Company Member (internal roles)
+ * may leave it blank; all other roles must provide an External Company.
  */
 export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUserFormProps) {
   const t = useTranslations("users");
   const [state, formAction, isPending] = useActionState(createUser, initialState);
+
+  // Track the currently selected role to drive the External Company requirement.
+  const [selectedRoleId, setSelectedRoleId] = useState(roles[0]?.id ?? "");
+  const selectedRole = roles.find((r) => r.id === selectedRoleId);
+  const companyRequired = selectedRole ? !selectedRole.isInternalRole : false;
 
   const inputCls =
     "rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]";
@@ -90,7 +106,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
           />
         </div>
 
-        {/* Role */}
+        {/* Role — changing this updates the External Company requirement */}
         <div className="flex flex-col gap-1">
           <label htmlFor="roleId" className={labelCls}>
             {t("fieldRole")}
@@ -99,6 +115,8 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
             id="roleId"
             name="roleId"
             required
+            value={selectedRoleId}
+            onChange={(e) => setSelectedRoleId(e.target.value)}
             className={inputCls}
           >
             {roles.map((r) => (
@@ -154,16 +172,21 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
           />
         </div>
 
-        {/* External Company (optional) */}
+        {/* External Company — required for external roles (U3) */}
         <div className="flex flex-col gap-1">
           <label htmlFor="externalCompanyId" className={labelCls}>
-            {t("fieldExternalCompany")}
+            {companyRequired
+              ? t("fieldExternalCompanyRequired")
+              : t("fieldExternalCompany")}
           </label>
           <select
             id="externalCompanyId"
             name="externalCompanyId"
+            required={companyRequired}
             className={inputCls}
           >
+            {/* Blank option — shown for internal roles; hidden (but kept) for external roles
+                so the native "required" constraint fires correctly. */}
             <option value="">{t("fieldExternalCompanyNone")}</option>
             {externalCompanies.map((ec) => (
               <option key={ec.id} value={ec.id}>
@@ -171,6 +194,11 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
               </option>
             ))}
           </select>
+          {companyRequired && (
+            <p className="text-xs text-status-failed-text">
+              This role requires an external company.
+            </p>
+          )}
         </div>
 
         <button

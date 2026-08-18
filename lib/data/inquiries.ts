@@ -5,9 +5,52 @@ import type { SessionData } from "@/lib/session";
 
 export interface CreateInquiryInput {
   name: string;
-  destinationCountry: string;
+  // destinationCountry is derived at create time from ExternalCompany.country (D19) — not accepted from callers
   currency: string;
+  projectLocation?: string | null;
   externalCompanyId?: string | null;
+  // Stage 14 Batch A — extended intake fields
+  submissionDate?: Date | null;
+  projectDeadline?: Date | null;
+  projectBudget?: string | null;
+  mainContractorName?: string | null;
+  interiorContractorName?: string | null;
+  mainConsultantName?: string | null;
+  interiorConsultantName?: string | null;
+  endClientName?: string | null;
+  endClientPhone?: string | null;
+  endClientEmail?: string | null;
+  endClientAddressLine1?: string | null;
+  endClientAddressLine2?: string | null;
+  endClientCity?: string | null;
+  endClientState?: string | null;
+  endClientGstNumber?: string | null;
+}
+
+export interface UpdateInquiryInput {
+  name?: string;
+  // destinationCountry is excluded — derived at create time, locked for the life of the record (D19)
+  currency?: string;
+  projectLocation?: string | null;
+  // externalCompanyId is intentionally excluded — it is locked for the life
+  // of an Inquiry record so the per-company sequence number never needs
+  // recomputing (see stage-13.md "Decisions made during scoping").
+  // Stage 14 Batch A — extended intake fields
+  submissionDate?: Date | null;
+  projectDeadline?: Date | null;
+  projectBudget?: string | null;
+  mainContractorName?: string | null;
+  interiorContractorName?: string | null;
+  mainConsultantName?: string | null;
+  interiorConsultantName?: string | null;
+  endClientName?: string | null;
+  endClientPhone?: string | null;
+  endClientEmail?: string | null;
+  endClientAddressLine1?: string | null;
+  endClientAddressLine2?: string | null;
+  endClientCity?: string | null;
+  endClientState?: string | null;
+  endClientGstNumber?: string | null;
 }
 
 export interface ListInquiriesParams {
@@ -145,7 +188,8 @@ export async function getInquiryById(session: SessionData, inquiryId: string) {
   return prisma.inquiry.findFirst({
     where: { id: inquiryId, organizationId: session.organizationId },
     include: {
-      externalCompany: { select: { id: true, name: true } },
+      // country included so the edit page can derive GST conditional (D20) without an extra fetch
+      externalCompany: { select: { id: true, name: true, country: true } },
       createdBy: { select: { id: true, username: true } },
     },
   });
@@ -161,12 +205,18 @@ export async function getInquiryById(session: SessionData, inquiryId: string) {
  * real guard against concurrent creates duplicating a number — a P2002 on that
  * pair is surfaced as a { code: "SEQUENCE_CONFLICT" } error.
  *
+ * When `externalCompanyId` is resolved to a non-null value, `companyInquiryNumber`
+ * is additionally assigned as MAX(companyInquiryNumber) + 1 scoped to that company,
+ * inside the same transaction. The @@unique([externalCompanyId, companyInquiryNumber])
+ * DB constraint guards against concurrent per-company race collisions (also P2002 →
+ * SEQUENCE_CONFLICT). When no company is linked, `companyInquiryNumber` is left null.
+ *
  * Also verifies `externalCompanyId` (if given) belongs to the session's org before
  * inserting, to prevent cross-tenant references.
  *
- * Throws { code: "SEQUENCE_CONFLICT" } on an inquiryNumber race collision, or
- * { code: "INVALID_EXTERNAL_COMPANY" } if externalCompanyId doesn't resolve within
- * the org. All other errors propagate to the caller.
+ * Throws { code: "SEQUENCE_CONFLICT" } on an inquiryNumber or companyInquiryNumber
+ * race collision, or { code: "INVALID_EXTERNAL_COMPANY" } if externalCompanyId
+ * doesn't resolve within the org. All other errors propagate to the caller.
  */
 export async function createInquiry(
   session: SessionData,
@@ -182,39 +232,74 @@ export async function createInquiry(
 
   try {
     return await prisma.$transaction(async (tx) => {
+      // Derive destinationCountry from the linked company's country enum (D19).
+      // When no company is linked, store "" — the GST conditional does not fire (D21).
+      let destinationCountry = "";
       if (resolvedExternalCompanyId) {
         const company = await tx.externalCompany.findFirst({
           where: { id: resolvedExternalCompanyId, organizationId: session.organizationId },
-          select: { id: true },
+          select: { id: true, country: true },
         });
         if (!company) {
           throw Object.assign(new Error("External company not found."), {
             code: "INVALID_EXTERNAL_COMPANY",
           });
         }
+        destinationCountry = company.country === "INDIA" ? "India" : "UAE";
       }
 
-      const max = await tx.inquiry.aggregate({
+      // Org-wide sequence number (existing pattern)
+      const orgMax = await tx.inquiry.aggregate({
         where: { organizationId: session.organizationId },
         _max: { inquiryNumber: true },
       });
-      const inquiryNumber = (max._max.inquiryNumber ?? 0) + 1;
+      const inquiryNumber = (orgMax._max.inquiryNumber ?? 0) + 1;
+
+      // Per-company sequence number — only when a company is linked
+      let companyInquiryNumber: number | null = null;
+      if (resolvedExternalCompanyId) {
+        const companyMax = await tx.inquiry.aggregate({
+          where: { externalCompanyId: resolvedExternalCompanyId },
+          _max: { companyInquiryNumber: true },
+        });
+        companyInquiryNumber = (companyMax._max.companyInquiryNumber ?? 0) + 1;
+      }
 
       return tx.inquiry.create({
         data: {
           organizationId: session.organizationId,
           createdByUserId: session.userId,
           inquiryNumber,
+          companyInquiryNumber,
           name: input.name,
-          destinationCountry: input.destinationCountry,
+          // destinationCountry derived from company.country above (D19); "" when no company (D21)
+          destinationCountry,
           currency: input.currency,
+          projectLocation: input.projectLocation ?? null,
           status: "NEW",
           externalCompanyId: resolvedExternalCompanyId,
+          // Stage 14 Batch A — extended intake fields
+          submissionDate: input.submissionDate ?? null,
+          projectDeadline: input.projectDeadline ?? null,
+          projectBudget: input.projectBudget ?? null,
+          mainContractorName: input.mainContractorName ?? null,
+          interiorContractorName: input.interiorContractorName ?? null,
+          mainConsultantName: input.mainConsultantName ?? null,
+          interiorConsultantName: input.interiorConsultantName ?? null,
+          endClientName: input.endClientName ?? null,
+          endClientPhone: input.endClientPhone ?? null,
+          endClientEmail: input.endClientEmail ?? null,
+          endClientAddressLine1: input.endClientAddressLine1 ?? null,
+          endClientAddressLine2: input.endClientAddressLine2 ?? null,
+          endClientCity: input.endClientCity ?? null,
+          endClientState: input.endClientState ?? null,
+          endClientGstNumber: input.endClientGstNumber ?? null,
         },
       });
     });
   } catch (err) {
-    // P2002 on (organizationId, inquiryNumber) = concurrent race collision
+    // P2002 on (organizationId, inquiryNumber) or (externalCompanyId, companyInquiryNumber)
+    // = concurrent race collision on either sequence
     if (
       typeof err === "object" &&
       err !== null &&
@@ -227,6 +312,91 @@ export async function createInquiry(
     }
     throw err;
   }
+}
+
+/**
+ * Update editable fields on an inquiry.
+ *
+ * Only inquiries with status === "NEW" are editable.
+ * Throws { code: "NOT_FOUND" } if the inquiry doesn't exist or belongs to a
+ * different org. Throws { code: "NOT_EDITABLE" } if status !== "NEW".
+ *
+ * `externalCompanyId` is never touched — it is locked for the life of the
+ * record (see stage-13.md "Decisions made during scoping").
+ */
+export async function updateInquiry(
+  session: SessionData,
+  inquiryId: string,
+  input: UpdateInquiryInput,
+) {
+  const inquiry = await prisma.inquiry.findFirst({
+    where: { id: inquiryId, organizationId: session.organizationId },
+    select: { id: true, status: true },
+  });
+
+  if (!inquiry) {
+    throw Object.assign(new Error("Inquiry not found."), { code: "NOT_FOUND" });
+  }
+  if (inquiry.status !== "NEW") {
+    throw Object.assign(
+      new Error("Only NEW inquiries can be edited."),
+      { code: "NOT_EDITABLE" },
+    );
+  }
+
+  // Build the update data from only the provided (non-undefined) fields.
+  // externalCompanyId and destinationCountry are explicitly excluded — both locked for the life of the record.
+  const data: {
+    name?: string;
+    // destinationCountry excluded — derived at create time, never updated (D19)
+    currency?: string;
+    projectLocation?: string | null;
+    // Stage 14 Batch A — extended intake fields
+    submissionDate?: Date | null;
+    projectDeadline?: Date | null;
+    projectBudget?: string | null;
+    mainContractorName?: string | null;
+    interiorContractorName?: string | null;
+    mainConsultantName?: string | null;
+    interiorConsultantName?: string | null;
+    endClientName?: string | null;
+    endClientPhone?: string | null;
+    endClientEmail?: string | null;
+    endClientAddressLine1?: string | null;
+    endClientAddressLine2?: string | null;
+    endClientCity?: string | null;
+    endClientState?: string | null;
+    endClientGstNumber?: string | null;
+  } = {};
+  if (input.name !== undefined) data.name = input.name;
+  // destinationCountry: excluded from updates — locked at create time (D19)
+  if (input.currency !== undefined) data.currency = input.currency;
+  if (input.projectLocation !== undefined)
+    data.projectLocation = input.projectLocation;
+  // Stage 14 Batch A — extended intake fields
+  if (input.submissionDate !== undefined) data.submissionDate = input.submissionDate;
+  if (input.projectDeadline !== undefined) data.projectDeadline = input.projectDeadline;
+  if (input.projectBudget !== undefined) data.projectBudget = input.projectBudget;
+  if (input.mainContractorName !== undefined) data.mainContractorName = input.mainContractorName;
+  if (input.interiorContractorName !== undefined) data.interiorContractorName = input.interiorContractorName;
+  if (input.mainConsultantName !== undefined) data.mainConsultantName = input.mainConsultantName;
+  if (input.interiorConsultantName !== undefined) data.interiorConsultantName = input.interiorConsultantName;
+  if (input.endClientName !== undefined) data.endClientName = input.endClientName;
+  if (input.endClientPhone !== undefined) data.endClientPhone = input.endClientPhone;
+  if (input.endClientEmail !== undefined) data.endClientEmail = input.endClientEmail;
+  if (input.endClientAddressLine1 !== undefined) data.endClientAddressLine1 = input.endClientAddressLine1;
+  if (input.endClientAddressLine2 !== undefined) data.endClientAddressLine2 = input.endClientAddressLine2;
+  if (input.endClientCity !== undefined) data.endClientCity = input.endClientCity;
+  if (input.endClientState !== undefined) data.endClientState = input.endClientState;
+  if (input.endClientGstNumber !== undefined) data.endClientGstNumber = input.endClientGstNumber;
+
+  return prisma.inquiry.update({
+    where: { id: inquiryId },
+    data,
+    include: {
+      externalCompany: { select: { id: true, name: true } },
+    },
+  });
 }
 
 /**
@@ -264,14 +434,18 @@ export async function dismissInquiry(session: SessionData, inquiryId: string) {
  *   1. Fetch + tenancy-guard the inquiry (must be NEW).
  *   2. MAX+1 `projectNumber` for the org (inlined from createProject pattern to
  *      keep the entire operation in one atomic transaction).
- *   3. Create the Project with the inquiry's 4 fields + `inquiryId`.
- *   4. Flip `Inquiry.status → "CONVERTED"`.
+ *   3. If the inquiry has a linked company, MAX+1 `companyProjectNumber` scoped
+ *      to that company — independently assigned for the new Project (not copied
+ *      from the Inquiry's companyInquiryNumber, which is a different sequence).
+ *   4. Create the Project with the inquiry's fields + `inquiryId`.
+ *   5. Flip `Inquiry.status → "CONVERTED"`.
  *
  * Returns the newly created Project.
  *
  * Throws { code: "NOT_FOUND" } if the inquiry doesn't exist or is from another org.
  * Throws { code: "ALREADY_CLOSED" } if already DISMISSED or CONVERTED.
- * Throws { code: "SEQUENCE_CONFLICT" } on a concurrent projectNumber P2002.
+ * Throws { code: "SEQUENCE_CONFLICT" } on a concurrent projectNumber or
+ * companyProjectNumber P2002.
  */
 export async function convertInquiryToProject(
   session: SessionData,
@@ -293,28 +467,57 @@ export async function convertInquiryToProject(
       }
 
       // Step 2: MAX+1 projectNumber for this org (mirrors createProject pattern)
-      const max = await tx.project.aggregate({
+      const orgMax = await tx.project.aggregate({
         where: { organizationId: session.organizationId },
         _max: { projectNumber: true },
       });
-      const projectNumber = (max._max.projectNumber ?? 0) + 1;
+      const projectNumber = (orgMax._max.projectNumber ?? 0) + 1;
 
-      // Step 3: create the Project populated from the Inquiry's fields
+      // Step 3: per-company sequence number for the new Project — independently assigned,
+      // not copied from the Inquiry's companyInquiryNumber (those are separate sequences).
+      let companyProjectNumber: number | null = null;
+      if (inquiry.externalCompanyId) {
+        const companyMax = await tx.project.aggregate({
+          where: { externalCompanyId: inquiry.externalCompanyId },
+          _max: { companyProjectNumber: true },
+        });
+        companyProjectNumber = (companyMax._max.companyProjectNumber ?? 0) + 1;
+      }
+
+      // Step 4: create the Project populated from the Inquiry's fields
       const project = await tx.project.create({
         data: {
           organizationId: session.organizationId,
           createdByUserId: session.userId,
           projectNumber,
+          companyProjectNumber,
           name: inquiry.name,
           destinationCountry: inquiry.destinationCountry,
           currency: inquiry.currency,
+          projectLocation: inquiry.projectLocation ?? null,
           status: "DRAFT",
           externalCompanyId: inquiry.externalCompanyId ?? null,
           inquiryId: inquiry.id,
+          // Stage 14 Batch A — propagate all extended intake fields from Inquiry to Project
+          submissionDate: inquiry.submissionDate ?? null,
+          projectDeadline: inquiry.projectDeadline ?? null,
+          projectBudget: inquiry.projectBudget ?? null,
+          mainContractorName: inquiry.mainContractorName ?? null,
+          interiorContractorName: inquiry.interiorContractorName ?? null,
+          mainConsultantName: inquiry.mainConsultantName ?? null,
+          interiorConsultantName: inquiry.interiorConsultantName ?? null,
+          endClientName: inquiry.endClientName ?? null,
+          endClientPhone: inquiry.endClientPhone ?? null,
+          endClientEmail: inquiry.endClientEmail ?? null,
+          endClientAddressLine1: inquiry.endClientAddressLine1 ?? null,
+          endClientAddressLine2: inquiry.endClientAddressLine2 ?? null,
+          endClientCity: inquiry.endClientCity ?? null,
+          endClientState: inquiry.endClientState ?? null,
+          endClientGstNumber: inquiry.endClientGstNumber ?? null,
         },
       });
 
-      // Step 4: mark the inquiry as converted
+      // Step 5: mark the inquiry as converted
       await tx.inquiry.update({
         where: { id: inquiryId },
         data: { status: "CONVERTED" },
@@ -323,7 +526,8 @@ export async function convertInquiryToProject(
       return project;
     });
   } catch (err) {
-    // P2002 on (organizationId, projectNumber) = concurrent race collision
+    // P2002 on (organizationId, projectNumber) or (externalCompanyId, companyProjectNumber)
+    // = concurrent race collision on either sequence
     if (
       typeof err === "object" &&
       err !== null &&
