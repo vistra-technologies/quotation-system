@@ -61,7 +61,7 @@ export default async function OrgSlugLayout({
   const canManageFeatures = me.adminPermissions.includes("MANAGE_FEATURES");
 
   return (
-    <div className="flex min-h-screen bg-bg-page">
+    <div className="flex h-screen bg-bg-page">
       {/* Sidebar — Client Component owning collapse state */}
       <Sidebar
         orgSlug={orgSlug}

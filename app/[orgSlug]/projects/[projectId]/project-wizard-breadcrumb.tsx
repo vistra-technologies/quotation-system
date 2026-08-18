@@ -77,7 +77,7 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain }: Pro
           const linkClass = isActive
             ? "flex items-center gap-2 rounded-pill bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary"
             : isDone
-              ? "flex items-center gap-2 rounded-pill px-5 py-2.5 text-sm font-bold text-primary-dark"
+              ? "flex items-center gap-2 rounded-pill bg-status-paid-bg px-5 py-2.5 text-sm font-bold text-status-paid-text"
               : "flex items-center gap-2 rounded-pill px-5 py-2.5 text-sm font-bold text-text-muted";
 
           return (
@@ -90,7 +90,7 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain }: Pro
                 {/* Step indicator: checkmark when done, number otherwise */}
                 {isDone ? (
                   <span
-                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs text-primary"
+                    className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs text-status-paid-text"
                     aria-hidden="true"
                   >
                     ✓
