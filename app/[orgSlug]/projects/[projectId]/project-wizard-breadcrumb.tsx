@@ -30,9 +30,11 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain }: Pro
   const t = useTranslations("wizard");
   const pathname = usePathname();
 
-  // base: path-based (internal route), used for active-step detection.
-  // usePathname() always returns the internal path-based route even in subdomain
-  // mode, so active detection must compare against path-based strings.
+  // base: org-prefixed path, used only for step.href (kept for link construction).
+  // In subdomain mode, usePathname() returns the path WITHOUT the org-slug prefix
+  // (e.g. /projects/{id}/configuration, not /acme-glass/projects/{id}/configuration),
+  // so active-step detection must compare against hrefBase (path-only in subdomain
+  // mode, org-prefixed in path mode) — see activeIndex below.
   const base = `/${orgSlug}/projects/${projectId}`;
   // hrefBase: user-facing href — uses the server-computed isSubdomain flag so
   // the correct href is rendered in the SSR HTML without a hydration mismatch.
@@ -47,18 +49,21 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain }: Pro
   ];
 
   // Derive the active index so earlier steps can be shown as "done".
-  // Uses step.href (path-based) to match against usePathname()'s internal route.
+  // Uses step.linkHref (which equals hrefBase-derived paths) to match against
+  // usePathname()'s output. In subdomain mode, usePathname() returns paths without
+  // the org-slug prefix (e.g. /projects/{id}/configuration); step.linkHref also
+  // omits it in that mode. In path mode both are org-prefixed — identical behaviour.
   // Step 1 (index 0) uses a startsWith match combined with a negative check that
   // none of steps 2–5's hrefs also match — so /edit and other step-1 sub-routes
   // highlight Step 1 rather than leaving the breadcrumb unhighlighted (activeIndex -1).
   const activeIndex = steps.findIndex((step, i) => {
     if (i === 0) {
       return (
-        pathname.startsWith(step.href) &&
-        !steps.slice(1).some((s) => pathname.startsWith(s.href))
+        pathname.startsWith(step.linkHref) &&
+        !steps.slice(1).some((s) => pathname.startsWith(s.linkHref))
       );
     }
-    return pathname.startsWith(step.href);
+    return pathname.startsWith(step.linkHref);
   });
 
   return (

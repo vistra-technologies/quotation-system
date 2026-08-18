@@ -496,8 +496,8 @@ test("Inquiry edit: direct API PATCH on a DISMISSED inquiry returns 409", async 
   // Grab the inquiry ID from the detail page link
   const nameLink = page.getByRole("link", { name: inquiryName }).first();
   const href = await nameLink.getAttribute("href");
-  expect(href).toMatch(/\/acme-glass\/inquiries\/([0-9a-f-]{36})/);
-  const match = href!.match(/\/acme-glass\/inquiries\/([0-9a-f-]{36})/);
+  expect(href).toMatch(/\/inquiries\/([0-9a-f-]{36})/);
+  const match = href!.match(/\/inquiries\/([0-9a-f-]{36})/);
   const inquiryId = match![1];
 
   // Navigate to detail and dismiss
