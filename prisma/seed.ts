@@ -206,7 +206,6 @@ async function main() {
         roleName: "Admin",
         firstName: "Admin",
         lastName: "User",
-        displayName: `${org.slug} admin`,
         externalCompanyId: undefined as string | undefined,
       },
       {
@@ -214,7 +213,6 @@ async function main() {
         roleName: "Company Member",
         firstName: "Member",
         lastName: "User",
-        displayName: `${org.slug} member`,
         externalCompanyId: undefined as string | undefined,
       },
       {
@@ -222,7 +220,6 @@ async function main() {
         roleName: "Distributor",
         firstName: "Distributor",
         lastName: "User",
-        displayName: `${org.slug} distributor`,
         externalCompanyId: distCompany.id,
       },
       {
@@ -230,7 +227,6 @@ async function main() {
         roleName: "Architectural Firm",
         firstName: "Architect",
         lastName: "User",
-        displayName: `${org.slug} architect`,
         externalCompanyId: archCompany.id,
       },
     ];
@@ -238,11 +234,22 @@ async function main() {
     for (const slot of userSlots) {
       const synthEmail = toAuthEmail(slot.username, org.slug);
 
-      // Idempotent: skip if this synthetic email already exists.
+      // Idempotent: update name if user already exists (fixes stale displayName-style
+      // values that pre-date the firstName/lastName split), then skip creation.
       const existing = await prisma.user.findUnique({
         where: { email: synthEmail },
+        select: { id: true, name: true },
       });
-      if (existing) continue;
+      if (existing) {
+        const expectedName = `${slot.firstName} ${slot.lastName}`;
+        if (existing.name !== expectedName) {
+          await prisma.user.update({
+            where: { id: existing.id },
+            data: { name: expectedName },
+          });
+        }
+        continue;
+      }
 
       const roleId = roleMap[slot.roleName];
       if (!roleId) {
@@ -263,7 +270,8 @@ async function main() {
           data: {
             email: synthEmail,
             emailVerified: false,
-            name: slot.displayName,
+            // better-auth core display name — always firstName + lastName (same as createUser in lib/data/users.ts)
+            name: `${slot.firstName} ${slot.lastName}`,
             organizationId: org.id,
             username: slot.username,
             firstName: slot.firstName,
