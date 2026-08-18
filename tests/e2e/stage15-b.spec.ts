@@ -133,7 +133,7 @@ test("D1: dashboard greeting shows the user's actual stored name from /me", asyn
 
   // Navigate to the dashboard.
   await page.goto(orgUrl("acme-glass", "/dashboard"));
-  await page.waitForLoadState("networkidle");
+  // No waitForLoadState("networkidle") — hangs on apps with persistent connections; expect() below auto-retries.
 
   // The h1 greeting must contain me.name exactly.
   const greeting = page.getByRole("heading", { level: 1 });

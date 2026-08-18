@@ -767,3 +767,20 @@ MINOR: test comment incorrectly claims a reverted seed would fail the test; it w
 and the greeting would agree on the stale value). Comment should target the implementation-drift scenario,
 not the seed scenario.
 Detail: `.engineering/stage-15/review-pv1-fixes.md`
+
+### 2026-08-18 — tester — post-PV1-fix regression: FAIL
+
+Verdict: **FAIL** — 1 MAJOR outside known baseline.
+
+| Severity | Count | Description |
+|---|---|---|
+| MAJOR | 1 | D1 greeting-name test (`stage15-b.spec.ts:120`) consistently times out at `waitForLoadState("networkidle")` — test design bug |
+| MINOR | 1 | `stage15-f.spec.ts:203` cross-file ordering race (new instance, same mechanism as documented `stage15-f-constraints.spec.ts:94/308`) |
+
+Full suite: 172 passed / 7 failed / 33 did not run (8.1m, 8 workers against `test.easeetool.com`).
+Product behavior confirmed correct: seed fix verified via curl — `/api/auth/sign-in` and `/me` both return `"name":"Admin User"`. Test implementation is the blocker.
+Detail: returned inline in tester message.
+
+---
+**developer** · 2026-08-18 · fix D1 networkidle hang (`feature/fix-d1-test-networkidle-hang`, `53b82dc`)
+Removed `waitForLoadState("networkidle")` from `tests/e2e/stage15-b.spec.ts:136`; added comment matching `subdomain-navigation.spec.ts:121` pattern. The subsequent `expect(greeting).toContainText()` auto-retries via Playwright's built-in polling — no replacement wait needed.
