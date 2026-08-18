@@ -753,3 +753,17 @@ regex.
 cross-file-ordering flakes under parallel load, not product bugs. Three inline-signIn spec files
 remain the root cause and are still the human's call to fix (deferred, per Stage 15's original bug
 report).
+
+### 2026-08-18 — reviewer — PV1 fixes review complete
+APPROVE-WITH-NITS. 0 CRITICAL, 0 IMPORTANT, 1 MINOR.
+CSS sticky analysis: new single-`overflow-auto` container is correct — bounded height confirmed by
+flex chain, no intermediate overflow wrapper, sticky `<thead>` will work in both axes. Seed fix
+confirmed safe: only `name` touched on update, conditional, consistent with `createUser`/`updateUserProfile`;
+blast radius on all five `User.name` consumers is improvements, not breakage. Root cause for the
+greeting is the same `displayName` convention in the seed as the prior batch's "no change" call —
+the human's re-report overrides that decision; fix is correct. Test is a real regression guard for
+the dashboard implementation (would catch dashboard reading from a different source than `/me`).
+MINOR: test comment incorrectly claims a reverted seed would fail the test; it would not (both /me
+and the greeting would agree on the stale value). Comment should target the implementation-drift scenario,
+not the seed scenario.
+Detail: `.engineering/stage-15/review-pv1-fixes.md`
