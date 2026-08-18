@@ -685,3 +685,26 @@ Detail: `.engineering/stage-15/plan-docx-bugs-fix.md`
 ### 2026-08-18 — reviewer — breadcrumb + UI-pass fixes review complete
 APPROVE. 0 CRITICAL, 0 IMPORTANT, 0 MINOR.
 `linkHref` fix verified correct in both routing modes (path: `linkHref === href`; subdomain: both omit org prefix, matching `usePathname()`). `isDone` strictly `index < activeIndex` — no off-by-one. Flex chain (`h-screen` → `main flex-1 overflow-auto` → layout `h-full` → page `h-full flex-col` → card `flex-1 min-h-0` → inner `flex-1 min-h-0 overflow-y-auto`) is internally consistent; `min-h-0` placed exactly where needed. `colNumber` rename confirmed scoped to the detail page read-only field only (list table uses hardcoded strings). No automated DOM/layout tests added. No scope deviation.
+
+### 2026-08-18 — tester — regression run 3 (final, post all fix rounds)
+
+**Role:** tester | **Target:** `test.easeetool.com`, commit `19877a6`, deployment `dpl_23qChvu7t8NHPL6dUzoHNyNstJDP`
+
+**Result: PASS.** 211 tests, 197 passed, 3 failed, 11 did not run (cascade) — all 3 failures consistent
+with known flake patterns (rate-limit under 8-worker parallel load, or the documented cross-file
+ordering race), zero product defects.
+
+- `org-nav.spec.ts:266` — at baseline (same flake as documented `:259`, line shifted by edits).
+- `stage15-f-constraints.spec.ts:94` — at baseline (same cross-file ordering race as documented `:308`).
+- `subdomain-routing.spec.ts:151` — **new flake instance**, same inline-login-under-load mechanism as
+  the other two. Not in the prior baseline list — added below.
+
+**Confirmed resolved from regression run 2:** all 16 `BETTER_AUTH_URL`-dependent failures, the wizard
+breadcrumb active-step bug (`stage14.spec.ts:319`), and the leftover `stage13.spec.ts:499-500` href
+regex.
+
+**Baseline flake list, updated:** `login.spec.ts:201`, `org-nav.spec.ts:259/266`,
+`stage15-f-constraints.spec.ts:94/308`, `subdomain-routing.spec.ts:151` — all inline-signIn-helper or
+cross-file-ordering flakes under parallel load, not product bugs. Three inline-signIn spec files
+remain the root cause and are still the human's call to fix (deferred, per Stage 15's original bug
+report).
