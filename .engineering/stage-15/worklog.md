@@ -568,3 +568,90 @@ Verify: tester to run full suite with `PLAYWRIGHT_BASE_URL=https://test.easeetoo
 ### 2026-08-18 — reviewer — subdomain URL fix review complete
 APPROVE-WITH-NITS. 0 CRITICAL, 0 IMPORTANT, 1 MINOR.
 Helpers correct (isSubdomain detection, orgUrl, apiUrl, orgUrlPattern regex verified in both modes). All 15 spec files fully fixed — no half-fixed cases (goto + waitForURL/toHaveURL updated together throughout). stage15-user-mgmt.spec.ts (not in diff) confirmed safe: its relative API calls resolve via the page's current origin after signIn(), which in subdomain mode is the org subdomain. Scope clean — no product code touched. MINOR: orgUrlPattern does not regex-escape orgSlug; safe in practice (all test slugs are [a-z-]+), but would silently misbehave if a slug ever contained regex metacharacters. Detail: returned in reviewer's message (no report file per system instructions).
+
+### 2026-08-18 — tester — post-subdomain-fix regression: FAIL
+Verdict: **FAIL** — 2 MAJOR, 1 MINOR outside known baseline.
+
+| Severity | Count | Description |
+|---|---|---|
+| MAJOR | 2 | `BETTER_AUTH_URL` not set → cross-subdomain cookies disabled; wizard breadcrumb broken in subdomain mode |
+| MINOR | 1 | `stage13.spec.ts:499` href regex missed in subdomain URL fix |
+
+Run results: 144 passed / 8 failed / 59 did not run (run 2 of 2; all failures isolated individually).
+
+Findings reported inline in tester message (no bugs-3.md — per system instructions, reports are returned as text, not files). Key finding: `curl` confirmed `Set-Cookie` has no `Domain=.easeetool.com` attribute, meaning `crossSubDomainCookies.enabled=false` on staging (`BETTER_AUTH_URL` not set to `https://test.easeetool.com`). Impacts 4 tests (cross-org notice × 3, U3 API call × 1). Breadcrumb bug confirmed by code analysis (`project-wizard-breadcrumb.tsx:36,54-62`).
+
+Reviewer note retroactively incorrect: `stage15-user-mgmt.spec.ts` relative API calls do NOT resolve via the page's current origin — `page.request.get()` uses Playwright config `baseURL` (`test.easeetool.com` apex), not the current page URL.
+
+### 2026-08-18 — devops — BETTER_AUTH_URL set for Preview; cross-subdomain cookies confirmed
+
+**Root cause confirmed:** `BETTER_AUTH_URL` existed only in the Production Vercel environment (set 37 days
+ago). The Preview environment had no entry, so `lib/auth.ts` line ~81's `BETTER_AUTH_URL.includes("easeetool.com")` evaluated false on `staging`, leaving `crossSubDomainCookies.enabled = false`.
+
+**Fix applied:**
+
+1. Confirmed the gap via `npx vercel env ls --scope=vistra-indias-projects` — `BETTER_AUTH_URL` showed
+   only `Production`; no `Preview` or `Development` row.
+
+2. Added the env var to the Preview environment:
+   ```
+   echo "https://test.easeetool.com" | npx vercel env add BETTER_AUTH_URL preview --scope=vistra-indias-projects
+   ```
+   Vercel CLI 59.1.4 confirmed: `✓ Added BETTER_AUTH_URL / Environments: Preview / Type: Sensitive`.
+   Production env var was not touched.
+
+3. Pushed an empty retrigger commit to `staging` to force a new build that picks up the new env var:
+   ```
+   git commit --allow-empty -m "ci: retrigger Vercel build — BETTER_AUTH_URL now set for Preview"
+   git push origin staging
+   ```
+   Commit SHA: `052a577`.
+
+4. **New deployment:** `dpl_Er1aW1y3fuoRYBW2Em8dJmUsFmGB`
+   URL: `quotation-system-7y0d2zeus-vistra-indias-projects.vercel.app`
+   State: READY (~39s build)
+   Aliases: `test.easeetool.com`, `*.test.easeetool.com`, `quotation-system-git-staging-…`
+   Health: `GET https://test.easeetool.com/api/health` → HTTP 200 `{"status":"ok","database":"connected"}`
+   Migrations: none pending.
+
+5. **Cookie verification (before/after):**
+   - Before this fix: `Set-Cookie` from `/api/auth/sign-in/email` had NO `Domain=` attribute (tester's
+     curl evidence from prior entry).
+   - After this fix (verified against the new deployment):
+     ```
+     curl -i -X POST https://test.easeetool.com/api/auth/sign-in/email \
+       -H "Content-Type: application/json" \
+       -d '{"email":"admin@acme-glass.internal","password":"Seed1234!","rememberMe":false}'
+     ```
+     Response: HTTP 200. Two `Set-Cookie` headers, both with `Domain=.easeetool.com`:
+     ```
+     Set-Cookie: __Secure-qs.session_token=…; Domain=.easeetool.com; Path=/; HttpOnly; Secure; SameSite=Lax
+     Set-Cookie: __Secure-qs.dont_remember=…; Domain=.easeetool.com; Path=/; HttpOnly; Secure; SameSite=Lax
+     ```
+   Cross-subdomain cookies are now active on `staging`.
+
+### 2026-08-18 — developer — breadcrumb active-step fix + stale href regex (commit `166f027`)
+
+**Bug 1 (MAJOR):** `app/[orgSlug]/projects/[projectId]/project-wizard-breadcrumb.tsx` — `activeIndex`
+compared `pathname` (from `usePathname()`) against `step.href`, which was always built from the
+org-slug-prefixed `base`. In subdomain mode `usePathname()` returns paths without the org-slug prefix,
+so the comparison always failed and `activeIndex` stayed `-1`. Fix: changed the three `startsWith`
+comparisons in `activeIndex` to use `step.linkHref` instead — `linkHref` is built from `hrefBase`, which
+already omits the org-slug in subdomain mode (same pattern already used for `<Link href>`). In path-based
+mode `linkHref === href`, so no regression. Updated the stale comment block that incorrectly claimed
+"usePathname() always returns the internal path-based route even in subdomain mode."
+
+**Bug 2 (MINOR):** `tests/e2e/stage13.spec.ts` lines 499-500 — two regexes still matched
+`/\/acme-glass\/inquiries\/...`; in subdomain mode `<Link href>` is path-only (`/inquiries/{uuid}`).
+Dropped the `\/acme-glass` prefix from both regexes, consistent with stage7/stage12 already fixed in
+`4e6c21a`. UUID capture group `([0-9a-f-]{36})` preserved in both.
+
+**Static:** lint exit 0; tsc pre-existing errors only (`isInternalRole` in `lib/data/users.ts` and
+`prisma/seed.ts` — Batch G's generated client not regenerated locally; resolves during Vercel build).
+
+**Verify:** tester to run suite against the Vercel preview for `feature/fix-subdomain-auth-and-breadcrumb`
+@ `166f027`. Bug 1: navigate to a project under `{orgSlug}.easeetool.com` and confirm the correct
+breadcrumb step is highlighted (`aria-current="step"`). Bug 2: `stage13.spec.ts` "Inquiry edit: direct
+API PATCH on a DISMISSED inquiry returns 409" should no longer crash on the href match.
+
+Plan: `.engineering/stage-15/plan-breadcrumb-fix.md`
