@@ -686,6 +686,51 @@ Detail: `.engineering/stage-15/plan-docx-bugs-fix.md`
 APPROVE. 0 CRITICAL, 0 IMPORTANT, 0 MINOR.
 `linkHref` fix verified correct in both routing modes (path: `linkHref === href`; subdomain: both omit org prefix, matching `usePathname()`). `isDone` strictly `index < activeIndex` — no off-by-one. Flex chain (`h-screen` → `main flex-1 overflow-auto` → layout `h-full` → page `h-full flex-col` → card `flex-1 min-h-0` → inner `flex-1 min-h-0 overflow-y-auto`) is internally consistent; `min-h-0` placed exactly where needed. `colNumber` rename confirmed scoped to the detail page read-only field only (list table uses hardcoded strings). No automated DOM/layout tests added. No scope deviation.
 
+### 2026-08-18 — developer — PV1 fixes: sticky header + greeting name (commit `1cab3a0`)
+
+**Branch:** `feature/fix-sticky-header-and-greeting`
+
+**Bug 1 (sticky header):** Root cause — nested `overflow-x-auto` div created a CSS scroll container
+between the `overflow-y-auto` outer div and the `<thead>`, preventing `position:sticky` from
+working (sticky elements stick to their NEAREST scroll container; the inner wrapper never scrolled
+vertically). Fix: merged both axes into a single `overflow-auto` container on the outer div,
+removed the inner `overflow-x-auto` wrapper, added `sticky top-0 z-10 bg-bg-card` to `<thead>`.
+Applied to both `app/[orgSlug]/inquiries/page.tsx` and `app/[orgSlug]/projects/page.tsx`.
+No other list pages have this pattern (confirmed by grep).
+
+**Bug 2 (greeting name):** Traced from scratch (per instruction — did not rely on prior
+investigation's "seed data, not a bug" conclusion). Root cause confirmed as inconsistent seed data
+(NOT two different accounts):
+- Seed stored `name = "${orgSlug} admin"` (e.g. "vistra admin") via `displayName` field
+- Seed stored `firstName = "Admin"`, `lastName = "User"` separately
+- Dashboard reads `session.name` → `user.name` → "vistra admin"
+- Users list renders `firstName + " " + lastName` → "Admin User"
+- `createUser` and `updateUserProfile` in `lib/data/users.ts` both correctly set
+  `name = "${firstName} ${lastName}"` for API-created users; seed was the outlier
+- Idempotency check (`if (existing) continue`) meant re-running seed never fixed existing users
+
+Fix (`prisma/seed.ts`): removed `displayName` from userSlots; user create now uses
+`` name: `${slot.firstName} ${slot.lastName}` ``; added update path for existing seeded users
+(updates `name` when it doesn't match `"${firstName} ${lastName}"`). Seed run locally against
+dev Neon branch — existing users' `name` fields updated; staging picks up corrected values via
+`getSession()` (reads current DB on each request, not a cached token).
+
+**Test (D1):** Added to `tests/e2e/stage15-b.spec.ts`. Signs in as "admin" for "acme-glass",
+fetches `me.name` via `/api/v1/orgs/acme-glass/me`, navigates to dashboard, asserts the h1
+greeting contains `me.name` exactly. Falsifiable: old code showed "acme-glass admin", which
+does not equal "Admin User" — test would fail.
+
+**Static:** lint 0 errors (5 pre-existing warnings, none in changed files); tsc clean (pre-existing
+`isInternalRole` errors from stale generated client resolve on Vercel build).
+
+**Verify:** tester to run against Vercel preview for `1cab3a0`:
+- Bug 1 (manual only — per wireframe rule): inquiries and projects list pages — column headers
+  stay pinned while body rows scroll.
+- Bug 2 (automated): `npx playwright test stage15-b.spec.ts` with `PLAYWRIGHT_BASE_URL` set
+  to the preview URL.
+
+Plan: `.engineering/stage-15/plan-pv1-fixes.md`
+
 ### 2026-08-18 — tester — regression run 3 (final, post all fix rounds)
 
 **Role:** tester | **Target:** `test.easeetool.com`, commit `19877a6`, deployment `dpl_23qChvu7t8NHPL6dUzoHNyNstJDP`
