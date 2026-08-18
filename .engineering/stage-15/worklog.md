@@ -681,3 +681,7 @@ Plan: `.engineering/stage-15/plan-breadcrumb-fix.md`
 
 **Verify:** tester to run against Vercel preview for `feature/fix-subdomain-auth-and-breadcrumb` @ `19ece12`.
 Detail: `.engineering/stage-15/plan-docx-bugs-fix.md`
+
+### 2026-08-18 — reviewer — breadcrumb + UI-pass fixes review complete
+APPROVE. 0 CRITICAL, 0 IMPORTANT, 0 MINOR.
+`linkHref` fix verified correct in both routing modes (path: `linkHref === href`; subdomain: both omit org prefix, matching `usePathname()`). `isDone` strictly `index < activeIndex` — no off-by-one. Flex chain (`h-screen` → `main flex-1 overflow-auto` → layout `h-full` → page `h-full flex-col` → card `flex-1 min-h-0` → inner `flex-1 min-h-0 overflow-y-auto`) is internally consistent; `min-h-0` placed exactly where needed. `colNumber` rename confirmed scoped to the detail page read-only field only (list table uses hardcoded strings). No automated DOM/layout tests added. No scope deviation.
