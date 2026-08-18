@@ -17,7 +17,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { signIn, apiUrl } from "./helpers";
+import { signIn, apiUrl, orgUrl } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -105,4 +105,37 @@ test("D3: stats API returns 401 for unauthenticated requests", async ({
 
   const res = await page.request.get(apiUrl("acme-glass", "/api/v1/orgs/acme-glass/stats"));
   expect(res.status()).toBe(401);
+});
+
+// ---------------------------------------------------------------------------
+// D1 — Dashboard greeting matches the user's actual stored name
+// ---------------------------------------------------------------------------
+// Data-correctness invariant: the greeting "Welcome, {name}" must show the
+// same name that /me returns from the DB, not a stale or username-derived value.
+//
+// Falsifiable: if the dashboard reads from a cached/derived source (e.g.
+// the old seed "acme-glass admin" style) instead of the current User.name,
+// the greeting would not contain me.name ("Admin User") and the test fails.
+
+test("D1: dashboard greeting shows the user's actual stored name from /me", async ({
+  page,
+}) => {
+  // Clear any residual session cookies.
+  await page.context().clearCookies();
+  await signIn(page, "admin", process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!", "acme-glass");
+
+  // Fetch the user's current name from /me — the same source the dashboard reads.
+  const meRes = await page.request.get(
+    apiUrl("acme-glass", "/api/v1/orgs/acme-glass/me"),
+  );
+  expect(meRes.status()).toBe(200);
+  const me = (await meRes.json()) as { name: string };
+
+  // Navigate to the dashboard.
+  await page.goto(orgUrl("acme-glass", "/dashboard"));
+  await page.waitForLoadState("networkidle");
+
+  // The h1 greeting must contain me.name exactly.
+  const greeting = page.getByRole("heading", { level: 1 });
+  await expect(greeting).toContainText(me.name);
 });

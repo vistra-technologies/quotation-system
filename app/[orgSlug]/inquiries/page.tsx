@@ -204,7 +204,7 @@ export default async function InquiriesPage({
       {/* flex-1 min-h-0 flex-col: table card takes remaining height; inner table
           area scrolls vertically so pagination is always pinned at the bottom. */}
       <div className="flex flex-1 min-h-0 flex-col rounded-md border border-border bg-bg-card shadow-card">
-        <div className="flex-1 min-h-0 overflow-y-auto px-4">
+        <div className="flex-1 min-h-0 overflow-auto px-4">
           {inquiries.length === 0 ? (
             <p className="py-8 text-center text-[13px] text-text-muted">
               {search || dateRange || scope === "mine"
@@ -212,84 +212,82 @@ export default async function InquiriesPage({
                 : "No inquiries yet. Create your first inquiry."}
             </p>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      Project Name
-                    </th>
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      {clientColumnHeader}
-                    </th>
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      Location
-                    </th>
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      Status
-                    </th>
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      Created On
-                    </th>
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      Submission Date
-                    </th>
-                    <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
-                      Created By
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {inquiries.map((inquiry) => (
-                  <tr
-                    key={inquiry.id}
-                    className="border-b border-border/60 last:border-0 hover:bg-primary-softer"
-                  >
-                    {/* Project Name — links to inquiry detail */}
-                    <td className="px-3 py-[11px] text-[13px] font-semibold text-text-heading">
-                      <Link
-                        href={`${base}/inquiries/${inquiry.id}`}
-                        className="hover:underline"
-                      >
-                        {inquiry.name}
-                      </Link>
-                    </td>
-                    {/* Client Name / Company */}
-                    <td className="px-3 py-[11px] text-[13px] text-text-body">
-                      {inquiry.externalCompany?.name ?? (
-                        <span className="text-text-placeholder">—</span>
-                      )}
-                    </td>
-                    {/* Location (destinationCountry) */}
-                    <td className="px-3 py-[11px] text-[13px] text-text-body">
-                      {inquiry.destinationCountry || (
-                        <span className="text-text-placeholder">—</span>
-                      )}
-                    </td>
-                    {/* Status badge */}
-                    <td className="px-3 py-[11px]">
-                      {statusBadge(inquiry.status)}
-                    </td>
-                    {/* Created On */}
-                    <td className="px-3 py-[11px] text-[13px] text-text-muted">
-                      {new Date(inquiry.createdAt).toLocaleDateString()}
-                    </td>
-                    {/* Submission Date — no submittedAt field in current schema */}
-                    <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
-                      —
-                    </td>
-                    {/* Created By — L2: username shown, full name on hover via title */}
-                    <td
-                      className="px-3 py-[11px] text-[13px] text-text-muted"
-                      title={inquiry.createdBy.name}
+            <table className="w-full">
+              <thead className="sticky top-0 z-10 bg-bg-card">
+                <tr className="border-b border-border">
+                <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                  Project Name
+                </th>
+                <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                  {clientColumnHeader}
+                </th>
+                <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                  Location
+                </th>
+                <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                  Status
+                </th>
+                <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                  Created On
+                </th>
+                <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                  Submission Date
+                </th>
+                <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                  Created By
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {inquiries.map((inquiry) => (
+                <tr
+                  key={inquiry.id}
+                  className="border-b border-border/60 last:border-0 hover:bg-primary-softer"
+                >
+                  {/* Project Name — links to inquiry detail */}
+                  <td className="px-3 py-[11px] text-[13px] font-semibold text-text-heading">
+                    <Link
+                      href={`${base}/inquiries/${inquiry.id}`}
+                      className="hover:underline"
                     >
-                      {inquiry.createdBy.username}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
+                      {inquiry.name}
+                    </Link>
+                  </td>
+                  {/* Client Name / Company */}
+                  <td className="px-3 py-[11px] text-[13px] text-text-body">
+                    {inquiry.externalCompany?.name ?? (
+                      <span className="text-text-placeholder">—</span>
+                    )}
+                  </td>
+                  {/* Location (destinationCountry) */}
+                  <td className="px-3 py-[11px] text-[13px] text-text-body">
+                    {inquiry.destinationCountry || (
+                      <span className="text-text-placeholder">—</span>
+                    )}
+                  </td>
+                  {/* Status badge */}
+                  <td className="px-3 py-[11px]">
+                    {statusBadge(inquiry.status)}
+                  </td>
+                  {/* Created On */}
+                  <td className="px-3 py-[11px] text-[13px] text-text-muted">
+                    {new Date(inquiry.createdAt).toLocaleDateString()}
+                  </td>
+                  {/* Submission Date — no submittedAt field in current schema */}
+                  <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
+                    —
+                  </td>
+                  {/* Created By — L2: username shown, full name on hover via title */}
+                  <td
+                    className="px-3 py-[11px] text-[13px] text-text-muted"
+                    title={inquiry.createdBy.name}
+                  >
+                    {inquiry.createdBy.username}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
             </table>
-          </div>
           )}
         </div>
 
