@@ -96,6 +96,17 @@ better-auth currently keys users by a synthetic email `{username}@{orgSlug}.inte
 
 ---
 
+## Candidate addition (not yet scoped): app-wide loading indicator
+
+Raised by the human during Stage 15 deploy (`Bugs and Issues1.docx`, 2026-08-17): pages load slowly
+across the app with no loading overlay/skeleton to show progress — checked, **not already covered** by
+this brief or anything in `development-cycles/`. Deliberately **not** picked up in Stage 15 — it's an
+app-wide UI pattern (skeleton vs. spinner vs. route-level `loading.tsx`), not a one-file bug fix, and
+Stage 15 is scoped as a pure bug-fix sweep. Flagging here so `engineering:stage-prep` scopes it into
+Stage 16 (or a stage of its own) rather than losing it.
+
+---
+
 ## Interaction with Stage 15 (checked — no conflict)
 
 Stage 15 item **U6** cleans up E2E-generated permissions (test teardown + one-time purge). That fix is
