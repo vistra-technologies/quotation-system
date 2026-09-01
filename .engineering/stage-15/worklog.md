@@ -823,3 +823,49 @@ files bypassing the hardened `signIn` helper, still the human's call to fix.
 
 **Stage 15 is now regression-clean on `staging` across 5 rounds.** Ready for human PV1 recheck, then
 production.
+
+---
+
+### 2026-08-18 — devops — Stage 15 production deploy
+
+**Role:** devops | **Branch:** `master` | **Commit:** `550b84a` ("Merge staging into master: Stage 15 bug fix sweep + regression hardening")
+**Deployment ID:** `dpl_3WoqHHcuJenNasMCuACvMw2WqLjC` | **State:** READY
+**Target:** production | **Build time:** ~40s (07:41:23–07:42:03 UTC)
+**Production URLs:** `easeetool.com`, `v-quote.vercel.app` (and `*.easeetool.com`)
+
+**Migrations applied (all 6, against production Neon branch ep-little-paper-aipm0o0i):**
+
+Applied automatically by `prisma migrate deploy` inside the `npm run build` script during the Vercel production build. Output from build log (07:41:31):
+- `20260811190919_add_project_location` — applied
+- `20260811192114_add_company_country_currency` — applied
+- `20260812000001_add_company_sequence_numbers` — applied
+- `20260813000001_add_extended_inquiry_project_fields` — applied
+- `20260814000001_add_is_internal_role_to_role` — applied
+- `20260814000002_set_builtin_role_internal_flags` — applied
+
+"All migrations have been successfully applied." (17 total in schema, 6 were pending.)
+
+**Route list confirmation (from build log — key Stage 9–15 routes verified present):**
+- `/[orgSlug]/projects/[projectId]/edit` ✓
+- `/[orgSlug]/projects/[projectId]/configuration` ✓
+- `/[orgSlug]/projects/[projectId]/summary` ✓
+- `/[orgSlug]/projects/[projectId]/quotation` ✓
+- `/[orgSlug]/projects/[projectId]/design` ✓
+- `/[orgSlug]/admin/external-companies/[companyId]` ✓
+- `/[orgSlug]/orders` ✓
+- `/api/v1/orgs/[orgSlug]/orders` ✓
+- `ƒ Proxy (Middleware)` ✓ (subdomain routing)
+
+**Health check:** `GET https://easeetool.com/api/health` → HTTP 200
+```json
+{"status":"ok","database":"connected","healthCheckRows":0,"timestamp":"2026-08-18T07:42:25.043Z"}
+```
+
+**File exclusion list used:** N/A — git auto-deploy, no hand-assembled payload. Vercel built directly from the `master` branch in GitHub.
+
+**Explicitly verified vs. assumed:**
+- VERIFIED: deployment ID, commit SHA `550b84a`, state READY, production target
+- VERIFIED: all 6 new migrations applied (build log output, database name "neondb" at production endpoint)
+- VERIFIED: route list from build log includes all expected Stage 9+ routes
+- VERIFIED: `/api/health` returns `{"status":"ok","database":"connected"}` on `easeetool.com`
+- ASSUMED: production Neon branch is `ep-little-paper-aipm0o0i` (per CLAUDE.md; DATABASE_URL value was REDACTED in build log, but build log confirms "PostgreSQL database neondb" which matches)
