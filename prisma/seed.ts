@@ -3,6 +3,7 @@ import { PrismaClient } from "../app/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { auth } from "@/lib/auth";
 import { toAuthEmail, toPlatformAuthEmail } from "@/lib/auth-utils";
+import { DEFAULT_ROLE_DEFS } from "@/lib/org-role-defaults";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -46,42 +47,9 @@ const permissionCatalog = [
 ];
 
 // ─── Role definitions with permission matrix ────────────────────────────────
-// Source: design-docs/02-roles-and-journeys.md
-// Stage 15 Batch G (U3): isInternalRole=true for Admin + Company Member (internal staff
-// who may leave External Company blank). External roles (Distributor, Architectural Firm)
-// default to false and require an External Company on user create/edit.
-const roleDefs = [
-  {
-    name: "Admin",
-    description: "Full organizational administration",
-    isInternalRole: true,
-    permissions: [
-      "MANAGE_USERS",
-      "MANAGE_FEATURES",
-      "VIEW_ALL_DATA",
-      "MANAGE_PRICING",
-      "APPLY_DISCOUNT",
-    ],
-  },
-  {
-    name: "Company Member",
-    description: "Internal staff with pricing access",
-    isInternalRole: true,
-    permissions: ["VIEW_ALL_DATA", "MANAGE_PRICING", "APPLY_DISCOUNT"],
-  },
-  {
-    name: "Distributor",
-    description: "External distributor company user",
-    isInternalRole: false,
-    permissions: ["DESIGN", "QUOTE", "ORDER"],
-  },
-  {
-    name: "Architectural Firm",
-    description: "External architectural firm user",
-    isInternalRole: false,
-    permissions: ["DESIGN"],
-  },
-];
+// Imported from lib/org-role-defaults.ts — shared with the SuperAdmin create-org path.
+// See DEFAULT_ROLE_DEFS for the canonical list and its source documentation.
+const roleDefs = DEFAULT_ROLE_DEFS;
 
 async function main() {
   // ── 0a. One-time cleanup: purge E2E test artifacts ─────────────────────────
