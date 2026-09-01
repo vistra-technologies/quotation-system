@@ -101,7 +101,17 @@ export async function proxy(request: NextRequest) {
     // Test-env apex (test.easeetool.com itself) → passthrough (org selector).
     // Must precede the bare .easeetool.com endsWith check below — "test" would
     // otherwise be extracted as an org slug and produce a 404.
-    // Non-root paths on the apex hostname are rejected immediately — see top comment.
+    // /controls/** is carved out before the BUG-3 guard — it is served on the apex host.
+    if (pathname.startsWith("/controls")) {
+      // Stage 16: SuperAdmin console lives at /controls on the apex host.
+      // Strip org headers — /controls has no org context.
+      const stripped = new Headers(request.headers);
+      stripped.delete("x-org-id");
+      stripped.delete("x-org-slug");
+      return NextResponse.next({ request: { headers: stripped } });
+    }
+    // BUG-3 guard: reject all other non-root paths on the apex host immediately —
+    // no DB lookup, no path-based org routing on apex hosts.
     if (pathname !== "/") {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -113,7 +123,17 @@ export async function proxy(request: NextRequest) {
     fromSubdomain = true;
   } else if (hostname === "easeetool.com" || hostname === "www.easeetool.com") {
     // Production apex domain → passthrough (org selector).
-    // Non-root paths on the apex hostname are rejected immediately — see top comment.
+    // /controls/** is carved out before the BUG-3 guard — it is served on the apex host.
+    if (pathname.startsWith("/controls")) {
+      // Stage 16: SuperAdmin console lives at /controls on the apex host.
+      // Strip org headers — /controls has no org context.
+      const stripped = new Headers(request.headers);
+      stripped.delete("x-org-id");
+      stripped.delete("x-org-slug");
+      return NextResponse.next({ request: { headers: stripped } });
+    }
+    // BUG-3 guard: reject all other non-root paths on the apex host immediately —
+    // no DB lookup, no path-based org routing on apex hosts.
     if (pathname !== "/") {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }

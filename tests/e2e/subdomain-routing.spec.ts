@@ -37,7 +37,10 @@ const VISTRA_LOGIN = "https://vistra.test.easeetool.com/login";
 const VISTRA_DASHBOARD = "https://vistra.test.easeetool.com/dashboard";
 const VISTRA_ROOT = "https://vistra.test.easeetool.com/";
 const UNKNOWN_ORG_ROOT = "https://nope.test.easeetool.com/";
-const APEX_NON_ROOT = "https://test.easeetool.com/nonexistent-org/login";
+// Narrowed in Stage 16 Batch A: must NOT be a /controls path — the proxy now
+// carves /controls out of the BUG-3 guard. Use a clearly non-controls path.
+const APEX_NON_ROOT = "https://test.easeetool.com/definitely-not-controls/login";
+const APEX_CONTROLS = "https://test.easeetool.com/controls";
 
 // ---------------------------------------------------------------------------
 // 1.  Apex root → 200 with EaseeTool heading
@@ -86,6 +89,20 @@ test("test.easeetool.com/<non-root-path> → 404 JSON", async ({ page }) => {
   // Proxy returns { error: "Not found" } for apex non-root paths (distinct from the
   // unknown-org body { error: "Organization not found" } from the DB-lookup branch).
   expect(body).toContain("Not found");
+});
+
+// ---------------------------------------------------------------------------
+// 3b. Proxy carve-out: test.easeetool.com/controls must NOT 404 (Stage 16 Batch A)
+// ---------------------------------------------------------------------------
+test("test.easeetool.com/controls does not 404 (proxy carve-out for /controls)", async ({
+  page,
+}) => {
+  // Stage 16 Stage A: the proxy carves /controls out of the BUG-3 guard.
+  // /controls may redirect to /controls/login or render a page — any response
+  // other than a 404 (or 405) from the proxy is acceptable at this stage.
+  // We commit to "not 404"; the login page response is verified in Batch B.
+  const response = await page.goto(APEX_CONTROLS, { waitUntil: "commit" });
+  expect(response?.status()).not.toBe(404);
 });
 
 // ---------------------------------------------------------------------------
