@@ -168,3 +168,36 @@ Manual verification against `release/stage-17`'s own preview + the committed E2E
   string literal (same type as 4a MINOR #2, docs-only); (2) suspended-org guard is picker-only —
   direct URL navigation to `?orgId=<suspended-org-id>` still renders the add-user form (pre-existing
   pattern from `/controls/roles` template, not a regression). Details in `review-item4b.md`.
+- **2026-09-03 — post-merge bug (human report) + fix — item 4b `/controls/users` crash on org
+  select:** Human reported selecting an org under `/controls/users` reliably hit
+  `app/global-error.tsx` ("Try again"). Root cause: `create-user-form.tsx` imported the shared
+  `@/components/loading-overlay`, whose `LoadingOverlay` calls `useTranslations()` unconditionally on
+  mount — `/controls` has no `NextIntlClientProvider`, so mounting throws immediately once
+  `CreateUserForm` renders (i.e. as soon as an org with roles is selected). **Identical failure mode**
+  to the Stage 16 `permission-toggle-button.tsx` post-deploy hotfix (2026-09-02) — same fix applied: a
+  local, translation-free `PendingOverlay` (visible-prop-driven `<div>`, no `useTranslations()`).
+  Fixed on `feature/4b-superadmin-users-crash-fix` (off `release/stage-17`), `npm run lint` clean,
+  merged `873f728` → `release/stage-17` at `e01e24a`. **Not click-through verified** — SuperAdmin
+  credentials (`SUPERADMIN_*_PASSWORD`) aren't available outside Vercel/CI env, so this needs
+  confirming in the credentialed `engineering:test` pass. Documented in `AGENTS.md` (new "`/controls`
+  has no `NextIntlClientProvider`" section) so any future `/controls/**` client component copies the
+  local-overlay pattern instead of reintroducing this a third time.
+- **2026-09-03 — separate bug found (human report), NOT fixed this stage — recurring
+  `BETTER_AUTH_URL`/`crossSubDomainCookies` login-redirect-loop:** Human reported signing in on this
+  stage's own `release/stage-17` ad-hoc preview (`quotation-system-nwr3b0eiw-...vercel.app`) bounces
+  back to the login screen. Confirmed via direct `curl` against `/api/auth/sign-in/email`: the 200
+  response's `Set-Cookie` sets `Domain=.easeetool.com` on a request served from a `*.vercel.app` host —
+  RFC 6265 host-match failure, browser drops the cookie silently, next request has no session.
+  Root cause: `lib/auth.ts`'s `crossSubDomainCookies.enabled`/`.domain` are computed once, at
+  `betterAuth()` construction, from the single static `BETTER_AUTH_URL` env value for the whole Preview
+  environment — which cannot be simultaneously correct for `test.easeetool.com` (needs the shared
+  `.easeetool.com` cookie domain) and any ad-hoc branch preview (needs none). **This is not new** — the
+  same env-var tradeoff has been hit and patched as a one-off at least four times already (Stage 2,
+  Stage 10 Batch 2, Stage 13 H1, Stage 15 Round 2); this is the same structural bug recurring on a fifth
+  branch. **Not fixed here** — a real fix (driving `crossSubDomainCookies` per-request off the inbound
+  Host header, e.g. via better-auth's dynamic-baseURL support, rather than a static env var) touches
+  production auth-cookie behavior and needs its own implement pass, not an ad hoc patch mid-verification.
+  Documented in full in `AGENTS.md` so the next agent that hits "login succeeds but bounces back" on a
+  branch preview recognizes it immediately instead of re-diagnosing from scratch. **Recommend scoping a
+  dedicated fix as a future stage or as `engineering:stage-prep` input** — out of Stage 17's approved
+  scope to fix now.
