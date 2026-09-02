@@ -51,8 +51,6 @@ export function CreateInquiryForm({
   const t = useTranslations("inquiries");
   const [state, formAction, isPending] = useActionState(createInquiry, initialState);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
-  // isIndia drives the GST required-ness — set from locked company or updated when dropdown changes
-  const [isIndia, setIsIndia] = useState(lockedCompany?.country === "INDIA");
 
   // C6: currency defaults to company's defaultCurrency, else INR (decision 6).
   const [selectedCurrency, setSelectedCurrency] = useState<string>(
@@ -150,7 +148,6 @@ export function CreateInquiryForm({
                     onChange={(id) => {
                       setSelectedCompanyId(id);
                       const co = externalCompanies.find((c) => c.id === id);
-                      setIsIndia(co?.country === "INDIA");
                       // C6: update currency default when company selection changes.
                       setSelectedCurrency(co?.defaultCurrency ?? "INR");
                     }}
@@ -282,12 +279,14 @@ export function CreateInquiryForm({
           <div className="p-5 grid grid-cols-1 gap-x-5 gap-y-0 sm:grid-cols-2">
             <div className="flex flex-col gap-1 mb-[14px]">
               <label htmlFor="mainContractorName" className={labelCls}>
-                {t("fieldMainContractorName")}
+                {t("fieldMainContractorName")}{" "}
+                <span className="text-status-failed-text font-normal">*</span>
               </label>
               <input
                 id="mainContractorName"
                 name="mainContractorName"
                 type="text"
+                required
                 autoComplete="off"
                 pattern="[A-Za-z0-9 \-]*"
                 className={inputCls}
@@ -352,87 +351,72 @@ export function CreateInquiryForm({
           </div>
 
           <div className="p-5 grid grid-cols-1 gap-x-5 gap-y-0 sm:grid-cols-2">
-            {/* End Client Name * */}
+            {/* End Client Name */}
             <div className="flex flex-col gap-1 mb-[14px]">
               <label htmlFor="endClientName" className={labelCls}>
-                {t("fieldEndClientName")}{" "}
-                <span className="text-status-failed-text font-normal">*</span>
+                {t("fieldEndClientName")}
               </label>
               <input
                 id="endClientName"
                 name="endClientName"
                 type="text"
-                required
                 autoComplete="off"
                 pattern="[A-Za-z0-9 \-]*"
                 className={inputCls}
               />
             </div>
 
-            {/* End Client Phone * */}
+            {/* End Client Phone */}
             <div className="flex flex-col gap-1 mb-[14px]">
               <label htmlFor="endClientPhone" className={labelCls}>
-                {t("fieldEndClientPhone")}{" "}
-                <span className="text-status-failed-text font-normal">*</span>
+                {t("fieldEndClientPhone")}
               </label>
               <input
                 id="endClientPhone"
                 name="endClientPhone"
                 type="tel"
-                required
                 autoComplete="off"
                 className={inputCls}
               />
             </div>
 
-            {/* End Client Email * */}
+            {/* End Client Email */}
             <div className="flex flex-col gap-1 mb-[14px]">
               <label htmlFor="endClientEmail" className={labelCls}>
-                {t("fieldEndClientEmail")}{" "}
-                <span className="text-status-failed-text font-normal">*</span>
+                {t("fieldEndClientEmail")}
               </label>
               <input
                 id="endClientEmail"
                 name="endClientEmail"
                 type="email"
-                required
                 autoComplete="off"
                 className={inputCls}
               />
             </div>
 
-            {/* GST Number — required only for India (D20) */}
+            {/* GST Number — optional (D20) */}
             <div className="flex flex-col gap-1 mb-[14px]">
               <label htmlFor="endClientGstNumber" className={labelCls}>
                 {t("fieldEndClientGstNumber")}
-                {isIndia && (
-                  <span className="text-status-failed-text font-normal"> *</span>
-                )}
               </label>
               <input
                 id="endClientGstNumber"
                 name="endClientGstNumber"
                 type="text"
-                required={isIndia}
                 autoComplete="off"
                 className={inputCls}
               />
-              {isIndia && (
-                <span className="text-[10px] text-text-muted">{t("gstRequiredHint")}</span>
-              )}
             </div>
 
-            {/* Address Line 1 * */}
+            {/* Address Line 1 */}
             <div className="flex flex-col gap-1 mb-[14px]">
               <label htmlFor="endClientAddressLine1" className={labelCls}>
-                {t("fieldEndClientAddressLine1")}{" "}
-                <span className="text-status-failed-text font-normal">*</span>
+                {t("fieldEndClientAddressLine1")}
               </label>
               <input
                 id="endClientAddressLine1"
                 name="endClientAddressLine1"
                 type="text"
-                required
                 autoComplete="off"
                 placeholder="Street address, building"
                 className={inputCls}
@@ -454,34 +438,30 @@ export function CreateInquiryForm({
               />
             </div>
 
-            {/* City * */}
+            {/* City */}
             <div className="flex flex-col gap-1 mb-[14px]">
               <label htmlFor="endClientCity" className={labelCls}>
-                {t("fieldEndClientCity")}{" "}
-                <span className="text-status-failed-text font-normal">*</span>
+                {t("fieldEndClientCity")}
               </label>
               <input
                 id="endClientCity"
                 name="endClientCity"
                 type="text"
-                required
                 autoComplete="off"
                 pattern="[A-Za-z0-9 \-]*"
                 className={inputCls}
               />
             </div>
 
-            {/* State * */}
+            {/* State */}
             <div className="flex flex-col gap-1 mb-[14px]">
               <label htmlFor="endClientState" className={labelCls}>
-                {t("fieldEndClientState")}{" "}
-                <span className="text-status-failed-text font-normal">*</span>
+                {t("fieldEndClientState")}
               </label>
               <input
                 id="endClientState"
                 name="endClientState"
                 type="text"
-                required
                 autoComplete="off"
                 pattern="[A-Za-z0-9 \-]*"
                 className={inputCls}

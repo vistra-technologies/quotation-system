@@ -99,13 +99,9 @@ export function EditProjectForm({
   companyProjectNumber,
   inquiryNumber,
   lockedCompany,
-  companyCountry,
 }: EditProjectFormProps) {
   const t = useTranslations("projects");
   const [state, formAction, isPending] = useActionState(updateProject, initialState);
-
-  // GST conditional — static on edit (company can't change).
-  const isIndia = companyCountry === "INDIA";
 
   // C6: track selected currency to drive the blur formatter (decision 7).
   // On edit the currency is pre-populated from initialCurrency; tracked as state
@@ -324,11 +320,13 @@ export function EditProjectForm({
               <div className={fieldCls}>
                 <label htmlFor="mainContractorName" className={labelCls}>
                   {t("fieldMainContractorName")}
+                  {reqMark}
                 </label>
                 <input
                   id="mainContractorName"
                   name="mainContractorName"
                   type="text"
+                  required
                   defaultValue={initialMainContractorName ?? ""}
                   autoComplete="off"
                   pattern="[A-Za-z0-9 \-]*"
@@ -400,13 +398,11 @@ export function EditProjectForm({
               <div className={fieldCls}>
                 <label htmlFor="endClientName" className={labelCls}>
                   {t("fieldEndClientName")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientName"
                   name="endClientName"
                   type="text"
-                  required
                   defaultValue={initialEndClientName ?? ""}
                   autoComplete="off"
                   pattern="[A-Za-z0-9 \-]*"
@@ -417,13 +413,11 @@ export function EditProjectForm({
               <div className={fieldCls}>
                 <label htmlFor="endClientPhone" className={labelCls}>
                   {t("fieldEndClientPhone")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientPhone"
                   name="endClientPhone"
                   type="tel"
-                  required
                   defaultValue={initialEndClientPhone ?? ""}
                   autoComplete="off"
                   className={inputCls}
@@ -433,51 +427,40 @@ export function EditProjectForm({
               <div className={fieldCls}>
                 <label htmlFor="endClientEmail" className={labelCls}>
                   {t("fieldEndClientEmail")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientEmail"
                   name="endClientEmail"
                   type="email"
-                  required
                   defaultValue={initialEndClientEmail ?? ""}
                   autoComplete="off"
                   className={inputCls}
                 />
               </div>
 
-              {/* GST Number — conditionally required for India (D20) */}
+              {/* GST Number — optional (D20) */}
               <div className={fieldCls}>
                 <label htmlFor="endClientGstNumber" className={labelCls}>
                   {t("fieldEndClientGstNumber")}
-                  {isIndia && reqMark}
                 </label>
                 <input
                   id="endClientGstNumber"
                   name="endClientGstNumber"
                   type="text"
-                  required={isIndia}
                   defaultValue={initialEndClientGstNumber ?? ""}
                   autoComplete="off"
                   className={inputCls}
                 />
-                {isIndia && (
-                  <span className="text-[10px] text-text-muted">
-                    {t("gstRequiredHint")}
-                  </span>
-                )}
               </div>
 
               <div className={fieldCls}>
                 <label htmlFor="endClientAddressLine1" className={labelCls}>
                   {t("fieldEndClientAddressLine1")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientAddressLine1"
                   name="endClientAddressLine1"
                   type="text"
-                  required
                   defaultValue={initialEndClientAddressLine1 ?? ""}
                   autoComplete="off"
                   className={inputCls}
@@ -502,13 +485,11 @@ export function EditProjectForm({
               <div className={fieldCls}>
                 <label htmlFor="endClientCity" className={labelCls}>
                   {t("fieldEndClientCity")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientCity"
                   name="endClientCity"
                   type="text"
-                  required
                   defaultValue={initialEndClientCity ?? ""}
                   autoComplete="off"
                   pattern="[A-Za-z0-9 \-]*"
@@ -519,13 +500,11 @@ export function EditProjectForm({
               <div className={fieldCls}>
                 <label htmlFor="endClientState" className={labelCls}>
                   {t("fieldEndClientState")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientState"
                   name="endClientState"
                   type="text"
-                  required
                   defaultValue={initialEndClientState ?? ""}
                   autoComplete="off"
                   pattern="[A-Za-z0-9 \-]*"
