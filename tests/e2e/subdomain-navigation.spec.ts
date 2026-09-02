@@ -548,21 +548,8 @@ test("new-entry-point buttons across all list pages navigate to clean subdomain 
     `${BASE}/admin/users/new`,
   );
 
-  // + Create Role (admin roles list — button text is t("createRole") = "Create Role")
-  await checkNewButton(
-    `${BASE}/admin/roles`,
-    /Roles/i,
-    /Create Role/i,
-    `${BASE}/admin/roles/new`,
-  );
-
-  // + Create Permission (admin permissions list — page h1 is "Permission Catalog", button = t("createPermission") = "Create Permission")
-  await checkNewButton(
-    `${BASE}/admin/permissions`,
-    /Permission Catalog/i,
-    /Create Permission/i,
-    `${BASE}/admin/permissions/new`,
-  );
+  // NOTE (Stage 16 Batch F): admin/roles and admin/permissions checkNewButton calls removed.
+  // Those routes are deleted — roles/permissions admin moved to /controls/roles.
 
   // + Create Company (admin external-companies list — button text is t("createCompany") = "Create Company")
   await checkNewButton(

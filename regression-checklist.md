@@ -62,7 +62,7 @@ Automated: `tests/e2e/pricing-stage3.spec.ts` (serial mode, 90 s timeout per tes
 
 ## Stage 4 — Admin section (users, roles, permissions)
 21. **MANAGE_USERS gating:** a role without MANAGE_USERS navigating to `/{orgSlug}/admin/users` → redirect to dashboard.
-22. **MANAGE_FEATURES gating:** a role without MANAGE_FEATURES navigating to `/{orgSlug}/admin/roles` → redirect to dashboard.
+22. **MANAGE_FEATURES gating (Stage 16 Batch F — superseded):** `/{orgSlug}/admin/roles` is deleted; it returns 404, not a redirect. The MANAGE_FEATURES RBAC gate remains active on `/{orgSlug}/admin/components` (Component Types), which is the only remaining org-admin route gated by that permission. The roles/permissions admin console is now at `/controls/roles` (SuperAdmin only).
 23. **Cross-org user list isolation:** org A's admin cannot see org B's users by any URL manipulation.
 24. **Create-user + login round-trip:** admin creates a user with username/role/password → new user can log in immediately.
 25. **Password-reset round-trip:** admin sets a new password for a user → old password stops working; new password works.
@@ -208,11 +208,11 @@ All checks: verify via the Vercel preview URL for the merged `release/stage-11` 
 
 ### Batch 9 — Admin: Roles + Permissions + Pricing + apex + 404 pages
 
-73. **Roles cluster renders correctly:** `/admin/roles` list, `/admin/roles/new`, and `/admin/roles/[roleId]`
-    (with permission toggle buttons) render with Sage Ease tokens; create-role and permission-toggle actions
-    still work end-to-end.
-74. **Permissions cluster renders correctly:** `/admin/permissions` list and `/admin/permissions/new` render
-    with Sage Ease tokens; create-permission action still works.
+73. **Roles cluster (Stage 16 Batch F — superseded):** `app/[orgSlug]/admin/roles/` is deleted; these
+    routes return 404. Roles/permissions admin moved to the SuperAdmin console at `/controls/roles`
+    (covered by `tests/e2e/superadmin-roles.spec.ts`).
+74. **Permissions cluster (Stage 16 Batch F — superseded):** `app/[orgSlug]/admin/permissions/` is
+    deleted; these routes return 404. See item 73 above.
 75. **Pricing cluster renders correctly:** `/pricing` list and `/pricing/[itemId]` edit page render with
     Sage Ease tokens (no stray `min-h-screen` wrapper); price CRUD still works.
 76. **Apex org selector renders correctly:** `/` renders the org-selector cards with Sage Ease tokens;
@@ -384,13 +384,15 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      to `/pricing` with no slug prefix, "Pricing Management" h1 renders.
      Automated: `subdomain-navigation.spec.ts` — "flyout: Pricing".
 
-103. **Admin flyout — Roles → admin/roles (clean URL):** Hovering Admin, clicking Roles navigates to
-     `/admin/roles` with no slug prefix.
-     Automated: `subdomain-navigation.spec.ts` — "flyout: Roles".
+103. **Admin flyout — Roles (Stage 16 Batch F — superseded):** The "Roles" sidebar flyout link is
+     deleted; the org-admin flyout no longer contains a Roles entry. The automated test in
+     `subdomain-navigation.spec.ts` was removed in the same batch. Roles admin is now at
+     `/controls/roles` (SuperAdmin console); see `superadmin-roles.spec.ts` tests 11–12 for the 404
+     verification on the old route.
 
-104. **Admin flyout — Permissions → admin/permissions (clean URL):** Hovering Admin, clicking
-     Permissions navigates to `/admin/permissions` with no slug prefix, "Permission Catalog" h1 renders.
-     Automated: `subdomain-navigation.spec.ts` — "flyout: Permissions".
+104. **Admin flyout — Permissions (Stage 16 Batch F — superseded):** Same as item 103 — the
+     "Permissions" sidebar flyout link is deleted and its automated test removed. The old
+     `/admin/permissions` route returns 404.
 
 105. **Admin flyout — Component Types → admin/components (clean URL):** Hovering Admin, clicking
      Component Types navigates to `/admin/components` with no slug prefix.
@@ -406,9 +408,9 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      click navigates to user detail, "← Back to Users" back-link href = `/admin/users`, click returns.
      Automated: `subdomain-navigation.spec.ts` — "admin users: Actions link + back-link".
 
-108. **Admin Roles list→detail→back:** "Role Permissions" link href starts with `/admin/roles/` (no
-     slug), click navigates to role detail, "← Back to Roles" back-link href = `/admin/roles`, returns.
-     Automated: `subdomain-navigation.spec.ts` — "admin roles: Role Permissions link + back-link".
+108. **Admin Roles list→detail→back (Stage 16 Batch F — superseded):** `app/[orgSlug]/admin/roles/`
+     is deleted. The automated test in `subdomain-navigation.spec.ts` was removed in Batch F. The 404
+     behaviour is verified by `superadmin-roles.spec.ts` tests 11–12.
 
 109. **Admin Component Types list→detail→back:** "Edit Component Type" link href starts with
      `/admin/components/` (no slug), click navigates to edit page, "← Back to Component Types"
@@ -429,9 +431,10 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
 
 ### D. New/create entry-point buttons
 
-112. **New entry-point buttons across all list pages produce clean subdomain URLs:** "New Inquiry",
-     "New Project", "Create User", "Create Role", "Create Permission", "Create Company", "Create Type"
-     buttons all navigate to `/…/new` with no `/{orgSlug}/` prefix in the URL bar.
+112. **New entry-point buttons across surviving list pages produce clean subdomain URLs:** "New Inquiry",
+     "New Project", "Create User", "Create Company", "Create Type" buttons all navigate to `/…/new`
+     with no `/{orgSlug}/` prefix in the URL bar. (Stage 16 Batch F: "Create Role" and "Create
+     Permission" checks removed from the automated test — those routes are deleted.)
      Automated: `subdomain-navigation.spec.ts` — "new-entry-point buttons across all list pages".
 
 ## Stage 12 — Production regression pass (2026-08-04)
