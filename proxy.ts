@@ -159,6 +159,17 @@ export async function proxy(request: NextRequest) {
     orgSlug = hostname.slice(0, hostname.length - ".easeetool.com".length);
     fromSubdomain = true;
   } else {
+    // /controls/** is carved out here too — without this, every per-branch Vercel
+    // preview (and local/CI) treats "controls" as an org slug and 404s, which made
+    // /controls/** impossible to verify against a branch's own preview (documented
+    // as MINOR-1 in review-1.md; closed 2026-09-02 after it blocked verifying a
+    // /controls bug fix pre-merge).
+    if (pathname.startsWith("/controls")) {
+      const stripped = new Headers(request.headers);
+      stripped.delete("x-org-id");
+      stripped.delete("x-org-slug");
+      return NextResponse.next({ request: { headers: stripped } });
+    }
     // Local dev / CI / Playwright fallback — path-segment extraction (unchanged
     // from pre-Stage 10 behavior).  e.g. pathname "/vistra/dashboard" → "vistra".
     orgSlug = pathname.split("/")[1] ?? "";
