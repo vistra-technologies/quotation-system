@@ -222,6 +222,31 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
             </svg>
             {!collapsed && <span>Roles &amp; Permissions</span>}
           </Link>
+
+          {/* Users */}
+          <Link
+            href="/controls/users"
+            title="Users"
+            className={navItemClass("/controls/users")}
+          >
+            {/* People / users icon */}
+            <svg
+              className="h-5 w-5 shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            {!collapsed && <span>Users</span>}
+          </Link>
         </nav>
 
         {/* ── Bottom: log out ── */}
