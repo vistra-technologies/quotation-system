@@ -73,6 +73,26 @@ export async function requireSuperAdmin(): Promise<SuperAdminSessionData> {
 export async function requireSuperAdminFromRequest(
   request: Request,
 ): Promise<SuperAdminSessionData> {
+  // Architecture rule 7: SuperAdmin sessions must not be accepted on org subdomains.
+  // Check the Host header before doing any cookie lookup — this enforces the isolation
+  // at the server level regardless of browser/client cookie-jar behaviour (BUG-2-1).
+  // Mirrors proxy.ts's own hostname-branch logic (~lines 116–165) for what counts as
+  // an org subdomain vs. an apex host:
+  //   - *.test.easeetool.com           → org subdomain of staging → reject
+  //   - *.easeetool.com (not the three known apex hosts) → org subdomain of production → reject
+  //   - easeetool.com / www.easeetool.com / test.easeetool.com → apex hosts → allow
+  //   - everything else (Vercel hash preview URLs, localhost) → allow
+  const hostname = (request.headers.get("host") ?? "").split(":")[0];
+  const isOrgSubdomain =
+    hostname.endsWith(".test.easeetool.com") ||
+    (hostname.endsWith(".easeetool.com") &&
+      hostname !== "easeetool.com" &&
+      hostname !== "www.easeetool.com" &&
+      hostname !== "test.easeetool.com");
+  if (isOrgSubdomain) {
+    throw new SuperAdminUnauthorizedError();
+  }
+
   const cookieHeader = request.headers.get("cookie") ?? "";
   const token = _extractCookieValue(cookieHeader, SA_SESSION_COOKIE);
 
