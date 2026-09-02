@@ -1,8 +1,33 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { LoadingOverlay } from "@/components/loading-overlay";
 import { addUser, type AddUserState } from "./actions";
+
+/**
+ * Loading overlay, deliberately NOT the shared @/components/loading-overlay —
+ * that component calls next-intl's useTranslations() and requires a
+ * NextIntlClientProvider ancestor (provided by the org-admin layout). The
+ * /controls console has no such provider, so using it throws on mount and
+ * crashes to app/global-error.tsx (same failure mode already hotfixed once
+ * in permission-toggle-button.tsx — Stage 16 post-deploy bug, 2026-09-02).
+ */
+function PendingOverlay({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+
+  return (
+    <div
+      role="status"
+      aria-label="Loading"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/50"
+    >
+      <div
+        aria-hidden="true"
+        className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white"
+      />
+      <p className="mt-3 text-sm font-medium text-white">Loading…</p>
+    </div>
+  );
+}
 
 interface RoleOption {
   id: string;
@@ -44,7 +69,7 @@ export function CreateUserForm({ orgId, roles, externalCompanies }: CreateUserFo
 
   return (
     <>
-      <LoadingOverlay visible={isPending} />
+      <PendingOverlay visible={isPending} />
 
       {state.error && (
         <div className="mb-4 rounded-sm border border-status-failed-bg bg-status-failed-bg px-4 py-3">
