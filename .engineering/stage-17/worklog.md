@@ -155,3 +155,12 @@ Filled in once the developer's plan proposes a breakdown (Step 2). Scope has 4 p
   live and auth-guarded correctly).
   Manual UI verification required against preview URL: `/controls/users` page, org picker,
   user list rendering, add-user form submission, audit log row in Neon SQL editor.
+- **2026-09-02 — reviewer (item 4b):** APPROVE-WITH-NITS. 0 CRITICAL, 0 IMPORTANT, 2 MINOR. Both
+  tenancy invariants confirmed: `roleId` and `externalCompanyId` are each validated against the target
+  org in the DAL before the transaction (cross-org IDs correctly rejected as 400). All auth guards,
+  password handling, audit logging, and add-only scope checks pass. `OrgPicker` `basePath` extension
+  confirmed backward-compatible (roles page still passes no prop, default kicks in). `by-page.sql`
+  updated with full coverage. Minors: (1) `by-page.sql` audit-log INSERT has `<orgId>` inside JSON
+  string literal (same type as 4a MINOR #2, docs-only); (2) suspended-org guard is picker-only —
+  direct URL navigation to `?orgId=<suspended-org-id>` still renders the add-user form (pre-existing
+  pattern from `/controls/roles` template, not a regression). Details in `review-item4b.md`.
