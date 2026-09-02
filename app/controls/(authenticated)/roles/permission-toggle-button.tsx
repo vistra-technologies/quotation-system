@@ -1,16 +1,35 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
-import { LoadingOverlay } from "@/components/loading-overlay";
 import { grantSuperAdminRolePermission, revokeSuperAdminRolePermission } from "./actions";
 
 /**
- * Renders the loading overlay while the enclosing form action is pending.
+ * Renders a loading overlay while the enclosing form action is pending.
  * Must live inside <form> so useFormStatus() finds the correct ancestor.
+ *
+ * Deliberately does NOT use the shared @/components/loading-overlay — that
+ * component calls next-intl's useTranslations() and requires a
+ * NextIntlClientProvider ancestor (provided by the org-admin layout). The
+ * /controls console has no such provider, so using it here throws on mount
+ * and crashes to app/global-error.tsx (Stage 16 post-deploy bug, 2026-09-02).
  */
 function PendingOverlay() {
   const { pending } = useFormStatus();
-  return <LoadingOverlay visible={pending} />;
+  if (!pending) return null;
+
+  return (
+    <div
+      role="status"
+      aria-label="Loading"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/50"
+    >
+      <div
+        aria-hidden="true"
+        className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white"
+      />
+      <p className="mt-3 text-sm font-medium text-white">Loading…</p>
+    </div>
+  );
 }
 
 interface PermissionToggleButtonProps {

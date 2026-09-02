@@ -76,6 +76,10 @@ export default async function RolesPage({
 
   const orgs = ((await orgsRes.json()) as { orgs: OrgRow[] }).orgs;
 
+  // Suspended orgs are excluded from the picker — role management on a suspended
+  // org isn't a supported flow (the org itself is locked out of the product).
+  const selectableOrgs = orgs.filter((o) => !o.isSuspended);
+
   // Resolve selected org metadata (for display in headings).
   const selectedOrg = orgId ? orgs.find((o) => o.id === orgId) ?? null : null;
 
@@ -153,7 +157,7 @@ export default async function RolesPage({
 
       {/* ── Org picker ── */}
       <div className="mt-6 max-w-sm">
-        <OrgPicker orgs={orgs} selectedOrgId={orgId ?? null} />
+        <OrgPicker orgs={selectableOrgs} selectedOrgId={orgId ?? null} />
       </div>
 
       {/* ── Roles section (only when an org is selected) ── */}
