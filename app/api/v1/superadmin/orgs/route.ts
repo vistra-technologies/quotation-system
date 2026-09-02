@@ -80,19 +80,24 @@ export async function POST(request: Request): Promise<NextResponse> {
     typeof body !== "object" ||
     body === null ||
     typeof (body as Record<string, unknown>).name !== "string" ||
-    typeof (body as Record<string, unknown>).slug !== "string"
+    typeof (body as Record<string, unknown>).slug !== "string" ||
+    typeof (body as Record<string, unknown>).adminPassword !== "string"
   ) {
-    return apiBadRequest("name and slug are required");
+    return apiBadRequest("name, slug, and adminPassword are required");
   }
 
   const name = ((body as Record<string, unknown>).name as string).trim();
   const slug = ((body as Record<string, unknown>).slug as string).trim().toLowerCase();
+  const adminPassword = (body as Record<string, unknown>).adminPassword as string;
 
   if (!name) {
     return apiBadRequest("name is required");
   }
   if (!slug) {
     return apiBadRequest("slug is required");
+  }
+  if (adminPassword.length < 8) {
+    return apiBadRequest("adminPassword must be at least 8 characters");
   }
   if (slug.length > 63) {
     return apiBadRequest("slug must be 63 characters or fewer");
@@ -111,7 +116,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return apiBadRequest(`"${slug}" is a reserved slug and cannot be used`);
   }
 
-  const result = await createOrganizationWithDefaults(name, slug);
+  const result = await createOrganizationWithDefaults(name, slug, adminPassword);
 
   if (!result.ok) {
     if (result.reason === "slug_conflict") {
@@ -121,14 +126,21 @@ export async function POST(request: Request): Promise<NextResponse> {
     return apiServerError();
   }
 
-  // Write audit log after the transaction committed.
-  // Not wrapped in try/catch — an audit failure propagates as 500 (spec requires every
-  // mutation to have an audit row). On retry the org slug already exists → 409, so the
-  // admin sees a clear signal rather than a silent gap in the audit trail.
+  // Write two audit rows after the transaction committed (GATE A — Option B decision).
+  // Row 1: org creation.
+  // Row 2: the auto-created admin user (separate mutation, separate audit row per policy).
+  // Not wrapped in try/catch — audit failure propagates as 500 (every mutation must have a row).
   await createOrgAuditLog(sa.superAdminId, result.org.id, "org.create", {
     name: result.org.name,
     slug: result.org.slug,
   });
+  await createOrgAuditLog(
+    sa.superAdminId,
+    result.adminUserId,
+    "user.create",
+    { organizationId: result.org.id },
+    "User",
+  );
 
   return NextResponse.json({ org: result.org }, { status: 201 });
 }
