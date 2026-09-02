@@ -30,6 +30,22 @@ export type CreateOrgResult =
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
 /**
+ * Fetch a single organization by ID. Returns null if not found.
+ * Used by route handlers that need to verify org existence without a full list.
+ *
+ * superadmin-only — intentionally cross-org
+ */
+export async function getOrgById(
+  orgId: string,
+): Promise<{ id: string; name: string } | null> {
+  // superadmin-only — intentionally cross-org
+  return prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { id: true, name: true },
+  });
+}
+
+/**
  * List all organizations with suspension status and user count. Cross-org by design.
  * Used by the SuperAdmin console org list (/controls/orgs).
  *

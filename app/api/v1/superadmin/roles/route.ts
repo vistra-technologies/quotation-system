@@ -11,7 +11,7 @@ import {
   createRoleForOrg,
   createRoleAuditLog,
 } from "@/lib/data/superadmin/roles";
-import { prisma } from "@/lib/prisma";
+import { getOrgById } from "@/lib/data/superadmin/orgs";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -41,10 +41,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   }
 
   // Verify the org exists (prevents leaking role data for non-existent orgs).
-  const org = await prisma.organization.findUnique({
-    where: { id: orgId },
-    select: { id: true },
-  });
+  const org = await getOrgById(orgId);
   if (!org) {
     return apiNotFound("Organization not found");
   }
@@ -109,10 +106,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (!name) return apiBadRequest("name is required");
 
   // Verify the org exists.
-  const org = await prisma.organization.findUnique({
-    where: { id: orgId },
-    select: { id: true, name: true },
-  });
+  const org = await getOrgById(orgId);
   if (!org) {
     return apiNotFound("Organization not found");
   }

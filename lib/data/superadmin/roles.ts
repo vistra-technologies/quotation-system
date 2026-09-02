@@ -224,8 +224,9 @@ export async function revokeRolePermissionForOrg(
   });
   if (!role) return false;
 
-  await prisma.rolePermission.delete({
-    where: { roleId_permissionId: { roleId, permissionId } },
+  // deleteMany is idempotent — no P2025 throw if the row doesn't exist.
+  await prisma.rolePermission.deleteMany({
+    where: { roleId, permissionId },
   });
 
   return true;
