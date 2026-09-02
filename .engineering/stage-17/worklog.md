@@ -201,3 +201,22 @@ Manual verification against `release/stage-17`'s own preview + the committed E2E
   branch preview recognizes it immediately instead of re-diagnosing from scratch. **Recommend scoping a
   dedicated fix as a future stage or as `engineering:stage-prep` input** — out of Stage 17's approved
   scope to fix now.
+- **2026-09-03 — tester (engineering:test pass 1):** FAIL. Tested against `https://test.easeetool.com` (staging, commit `36fecba`). Static checks clean (lint 0 errors, tsc 0 errors). All product code verified correct — scope 1 (all 4 intake forms), scope 2 (PATCH route full round-trip), scope 4a/4b (code inspection, SA API auth guards). 1 MAJOR + 1 MINOR found, both in the committed E2E test suite (not product code): `superadmin-orgs.spec.ts` tests 3, 5, and 9 were not updated to include the new required `adminPassword` in their POST bodies — they will fail when SA credentials are set (test 3 body assertion, tests 5 and 9 status assertions). Test 4 also silently passes for the wrong reason. SuperAdmin live click-through (gaps A/B/C: `/controls/users` crash fix confirmation, create-org 4a end-to-end, add-user 4b end-to-end) could not be completed — SA credentials unavailable outside Vercel/CI. See `.engineering/stage-17/bugs-1.md`.
+- **2026-09-03 — reviewer (bugfix batch 1):** APPROVE. 0 CRITICAL, 0 IMPORTANT, 0 MINOR. All 5 `adminPassword` call sites confirmed updated with a valid (≥8 char) value; test 5's `userCount` assertion (0→1) and title change verified correct and consistent with Stage 17 item 4a's auto-create behavior; no other stale assertions found in either file; diff confirmed scoped to exactly the two test files; lint 0 errors, tsc 0 errors. See `.engineering/stage-17/review-bugfix1.md`.
+- **2026-09-03 — conductor: credentialed SuperAdmin click-through (closes test-pass-1 gaps A/B/C).** Human
+  supplied bootstrap SuperAdmin credentials (`devadmin`/confirmed working against `test.easeetool.com`).
+  All three previously-unverified flows confirmed live, via direct API calls plus a direct read against
+  the same Neon dev-branch DB that backs `test.easeetool.com` (`DATABASE_URL_UNPOOLED` from local
+  `.env.local`, per CLAUDE.md's Neon-env-split note):
+  - **Gap A (`/controls/users` crash fix):** `GET /controls/users?orgId=<vistra>` with a valid SA session
+    renders "Add new user" in the HTML with zero "Something went wrong" markers. Confirmed fixed.
+  - **Gap B (item 4a, create-org-with-admin-password):** created a real throwaway org
+    (`verify-4a-<timestamp>`) via `POST /api/v1/superadmin/orgs` with `adminPassword`. Confirmed via DB
+    query: exactly one `user` row (`username: "admin"`), exactly two `SuperAdminAuditLog` rows
+    (`org.create` targeting the org id, `user.create` targeting the user id — GATE A Option B, exactly as
+    decided). Confirmed the auto-created admin can sign in (`POST /api/auth/sign-in/email` → 200).
+  - **Gap C (item 4b, cross-org add-user):** on the same throwaway org, confirmed a cross-org `roleId`
+    (vistra's Admin role) is rejected 400 (`"roleId does not belong to this organization"`); a same-org
+    role succeeds 201; the new user can sign in and appears in `GET .../users`.
+  All three gaps from `bugs-1.md` are now closed. Merged `feature/stage17-bugfix-batch-1` → `release/stage-17`
+  (`c31a50f`). Next: re-sync `staging`/`test.easeetool.com` and re-run the tester for a final PASS.
