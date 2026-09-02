@@ -93,6 +93,26 @@ export function CreateOrgForm() {
           </p>
         </div>
 
+        {/* Admin password */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="adminPassword" className={labelCls}>
+            Admin password
+          </label>
+          <input
+            id="adminPassword"
+            name="adminPassword"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            placeholder="At least 8 characters"
+            className={inputCls}
+          />
+          <p className="text-xs text-text-muted">
+            Password for the auto-created <code className="font-mono">admin</code> account on this org. At least 8 characters.
+          </p>
+        </div>
+
         <button
           type="submit"
           disabled={isPending}

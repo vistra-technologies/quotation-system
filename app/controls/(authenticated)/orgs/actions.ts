@@ -25,13 +25,16 @@ export async function createOrg(
 ): Promise<CreateOrgState> {
   const name = (formData.get("name") as string | null)?.trim();
   const slug = (formData.get("slug") as string | null)?.trim().toLowerCase();
+  const adminPassword = (formData.get("adminPassword") as string | null) ?? "";
 
   if (!name) return { error: "Organization name is required" };
   if (!slug) return { error: "Slug is required" };
+  if (!adminPassword) return { error: "Admin password is required" };
+  if (adminPassword.length < 8) return { error: "Admin password must be at least 8 characters" };
 
   const res = await internalFetch("/api/v1/superadmin/orgs", {
     method: "POST",
-    body: JSON.stringify({ name, slug }),
+    body: JSON.stringify({ name, slug, adminPassword }),
   });
 
   if (res.status === 401) {

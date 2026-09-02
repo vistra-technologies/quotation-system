@@ -6,6 +6,7 @@
 
 import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { auth } from "@/lib/auth";
 import { DEFAULT_ROLE_DEFS } from "@/lib/org-role-defaults";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -24,7 +25,7 @@ export interface OrgRow {
  * "slug_conflict" indicates the slug is already taken (caller should return 409).
  */
 export type CreateOrgResult =
-  | { ok: true; org: { id: string; slug: string; name: string } }
+  | { ok: true; org: { id: string; slug: string; name: string }; adminUserId: string }
   | { ok: false; reason: "slug_conflict" | "unknown_error"; message: string };
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
@@ -92,8 +93,14 @@ export async function listAllOrganizations(): Promise<OrgRow[]> {
 export async function createOrganizationWithDefaults(
   name: string,
   slug: string,
+  adminPassword: string,
 ): Promise<CreateOrgResult> {
   // superadmin-only — intentionally cross-org
+
+  // Hash the admin password before entering the transaction (better-auth uses Scrypt —
+  // the same hasher as the regular sign-in path in lib/data/users.ts).
+  const authCtx = await auth.$context;
+  const passwordHash = await authCtx.password.hash(adminPassword);
 
   // Fetch global permissions upfront (outside the transaction — read-only).
   const allPermissions = await prisma.permission.findMany({
@@ -102,7 +109,7 @@ export async function createOrganizationWithDefaults(
   const permByCode = new Map(allPermissions.map((p) => [p.code, p.id]));
 
   try {
-    const org = await prisma.$transaction(async (tx) => {
+    const { org, adminUserId } = await prisma.$transaction(async (tx) => {
       // 1. Create the organization row.
       const newOrg = await tx.organization.create({
         data: { name, slug },
@@ -110,6 +117,8 @@ export async function createOrganizationWithDefaults(
       });
 
       // 2. Create default roles and link permissions.
+      // Track the Admin role id so we can assign it to the auto-created admin user.
+      let adminRoleId: string | null = null;
       for (const roleDef of DEFAULT_ROLE_DEFS) {
         const role = await tx.role.create({
           data: {
@@ -121,6 +130,10 @@ export async function createOrganizationWithDefaults(
           select: { id: true },
         });
 
+        if (roleDef.name === "Admin") {
+          adminRoleId = role.id;
+        }
+
         for (const code of roleDef.permissions) {
           const permId = permByCode.get(code);
           if (!permId) continue; // missing permission — skip (same as seed.ts)
@@ -130,10 +143,45 @@ export async function createOrganizationWithDefaults(
         }
       }
 
-      return newOrg;
+      if (!adminRoleId) {
+        throw new Error(
+          'DEFAULT_ROLE_DEFS did not produce an "Admin" role — cannot create admin user',
+        );
+      }
+
+      // 3. Create the admin User + Account inside the same transaction.
+      // Synthetic email follows the same convention as lib/data/users.ts: {username}@{slug}.internal
+      const adminUser = await tx.user.create({
+        data: {
+          name: "Admin",
+          email: `admin@${newOrg.slug}.internal`,
+          emailVerified: false,
+          organizationId: newOrg.id,
+          username: "admin",
+          firstName: "Admin",
+          lastName: "User",
+          mobile: null,
+          profileEmail: null,
+          active: true,
+          roleId: adminRoleId,
+          externalCompanyId: null,
+        },
+        select: { id: true },
+      });
+
+      await tx.account.create({
+        data: {
+          userId: adminUser.id,
+          providerId: "credential",
+          accountId: adminUser.id,
+          password: passwordHash,
+        },
+      });
+
+      return { org: newOrg, adminUserId: adminUser.id };
     });
 
-    return { ok: true, org };
+    return { ok: true, org, adminUserId };
   } catch (err) {
     // Prisma unique-constraint violation on slug
     if (
@@ -218,17 +266,18 @@ export async function toggleOrgSuspension(
  */
 export async function createOrgAuditLog(
   superAdminId: string,
-  orgId: string,
+  targetId: string,
   action: string,
   metadata?: Record<string, unknown>,
+  targetType: string = "Organization",
 ): Promise<void> {
   // superadmin-only — intentionally cross-org
   await prisma.superAdminAuditLog.create({
     data: {
       superAdminId,
       action,
-      targetType: "Organization",
-      targetId: orgId,
+      targetType,
+      targetId,
       // Prisma nullable Json: omit the key when no metadata rather than passing null.
       ...(metadata !== undefined
         ? { metadata: metadata as Prisma.InputJsonValue }
