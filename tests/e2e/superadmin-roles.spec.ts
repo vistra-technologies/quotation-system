@@ -292,3 +292,27 @@ test("test.easeetool.com/controls/roles — unauthenticated redirects to /contro
   await page.goto(APEX_CONTROLS_ROLES, { waitUntil: "commit" });
   expect(page.url()).toContain("/controls/login");
 });
+
+// ---------------------------------------------------------------------------
+// BATCH F — Org-admin route removal verification (Tier 1, per-branch preview)
+//
+// After Stage 16 Batch F, app/[orgSlug]/admin/roles/** and
+// app/[orgSlug]/admin/permissions/** are deleted. Next.js App Router returns
+// 404 for missing page segments without running the parent layout, so these
+// routes no longer redirect to login — they return 404 directly.
+//
+// These tests use path-based mode (per-branch Vercel preview where "acme-glass"
+// is a path segment, not a subdomain).
+// ---------------------------------------------------------------------------
+
+// 11. Org-admin /admin/roles route → 404 post-removal
+test("org-admin /acme-glass/admin/roles → 404 after Batch F removal", async ({ request }) => {
+  const res = await request.get("/acme-glass/admin/roles");
+  expect(res.status()).toBe(404);
+});
+
+// 12. Org-admin /admin/permissions route → 404 post-removal
+test("org-admin /acme-glass/admin/permissions → 404 after Batch F removal", async ({ request }) => {
+  const res = await request.get("/acme-glass/admin/permissions");
+  expect(res.status()).toBe(404);
+});

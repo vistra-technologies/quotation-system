@@ -204,36 +204,8 @@ test("sidebar admin flyout: Pricing link → /pricing (clean URL)", async () => 
   await page.close();
 });
 
-test("sidebar admin flyout: Roles link → admin/roles (clean URL)", async () => {
-  const page = await ctx.newPage();
-  await page.goto(DASHBOARD);
-  await page.getByRole("button", { name: "Admin" }).hover();
-  const rolesLink = page.getByRole("link", { name: "Roles" });
-  await expect(rolesLink).toBeVisible({ timeout: 5_000 });
-  await rolesLink.click();
-  await page.waitForURL(`${BASE}/admin/roles`, { timeout: 15_000 });
-  assertCleanSubdomainUrl(page.url(), "/admin/roles");
-  await expect(page.getByRole("heading", { name: /Roles/i })).toBeVisible({
-    timeout: 10_000,
-  });
-  await page.close();
-});
-
-test("sidebar admin flyout: Permissions link → admin/permissions (clean URL)", async () => {
-  const page = await ctx.newPage();
-  await page.goto(DASHBOARD);
-  await page.getByRole("button", { name: "Admin" }).hover();
-  const permissionsLink = page.getByRole("link", { name: "Permissions" });
-  await expect(permissionsLink).toBeVisible({ timeout: 5_000 });
-  await permissionsLink.click();
-  await page.waitForURL(`${BASE}/admin/permissions`, { timeout: 15_000 });
-  assertCleanSubdomainUrl(page.url(), "/admin/permissions");
-  // Page h1 = "Permission Catalog" (t("pageTitle") in permissions namespace)
-  await expect(
-    page.getByRole("heading", { name: /Permission Catalog/i }),
-  ).toBeVisible({ timeout: 10_000 });
-  await page.close();
-});
+// NOTE (Stage 16 Batch F): Roles and Permissions flyout link tests removed.
+// Those sidebar links are gone — roles/permissions admin moved to /controls/roles.
 
 test("sidebar admin flyout: Component Types link → admin/components (clean URL)", async () => {
   const page = await ctx.newPage();
@@ -358,46 +330,8 @@ test("admin users: Actions link + back-link navigate with clean subdomain URLs",
   await page.close();
 });
 
-test("admin roles: Role Permissions link + back-link navigate with clean subdomain URLs", async () => {
-  const page = await ctx.newPage();
-
-  await page.goto(`${BASE}/admin/roles`);
-  await expect(page.getByRole("heading", { name: /Roles/i })).toBeVisible({
-    timeout: 15_000,
-  });
-
-  // "Role Permissions" is the link text for role rows (t("detailPageTitle")).
-  // 4 roles are seeded; use the first.
-  const detailLink = page.getByRole("link", { name: /Role Permissions/i }).first();
-  await expect(detailLink).toBeVisible({ timeout: 10_000 });
-  const href = await detailLink.getAttribute("href");
-  expect(
-    href,
-    `Role detail link must not contain /vistra/ prefix`,
-  ).not.toMatch(/^\/vistra\//);
-  expect(href).toMatch(/^\/admin\/roles\//);
-
-  await detailLink.click();
-  await page.waitForURL(/vistra\.test\.easeetool\.com\/admin\/roles\/[^/]+$/, {
-    timeout: 15_000,
-  });
-  assertCleanSubdomainUrl(page.url(), "/admin/roles/");
-  await expect(page.locator("h1")).toBeVisible({ timeout: 10_000 });
-
-  // Back link: "← Back to Roles"
-  const backLink = page.getByRole("link", { name: /Back to Roles/i });
-  await expect(backLink).toBeVisible({ timeout: 5_000 });
-  const backHref = await backLink.getAttribute("href");
-  expect(
-    backHref,
-    `Back link href must be "/admin/roles", got: "${backHref}"`,
-  ).toBe("/admin/roles");
-  await backLink.click();
-  await page.waitForURL(`${BASE}/admin/roles`, { timeout: 15_000 });
-  assertCleanSubdomainUrl(page.url(), "/admin/roles");
-
-  await page.close();
-});
+// NOTE (Stage 16 Batch F): "admin roles: Role Permissions link + back-link" test removed.
+// The org-admin roles route is gone — roles/permissions admin moved to /controls/roles.
 
 test("admin component types: Edit link + back-link navigate with clean subdomain URLs", async () => {
   const page = await ctx.newPage();
