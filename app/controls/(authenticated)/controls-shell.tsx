@@ -49,10 +49,18 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
     // Delete the SuperAdmin session server-side, then hard-navigate to login.
     // Hard navigation (not router.push) ensures the guard layout re-evaluates
     // requireSuperAdmin() without the now-cleared qs-sa-token cookie.
-    await fetch("/api/v1/superadmin/logout", {
-      method: "POST",
-      credentials: "same-origin",
-    });
+    //
+    // Best-effort: even if the fetch fails (network error), navigate to /controls/login
+    // anyway — the server-side guard will re-authenticate the next request and the
+    // session will expire naturally.
+    try {
+      await fetch("/api/v1/superadmin/logout", {
+        method: "POST",
+        credentials: "same-origin",
+      });
+    } catch {
+      // Network failure — proceed to redirect regardless; guard will catch an invalid session.
+    }
     window.location.href = "/controls/login";
   }
 

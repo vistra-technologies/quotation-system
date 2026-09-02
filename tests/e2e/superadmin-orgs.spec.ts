@@ -31,6 +31,23 @@ const isOnStaging = (process.env.PLAYWRIGHT_BASE_URL ?? "").includes(
   "test.easeetool.com",
 );
 
+/**
+ * Returns the URL to reach an org's root page.
+ *
+ * On staging (test.easeetool.com, subdomain routing): absolute subdomain URL,
+ * e.g. https://<slug>.test.easeetool.com/ — path-based requests hit the BUG-3
+ * apex guard and return 404 before the proxy org-lookup runs.
+ *
+ * On local/CI (path-based routing fallback): relative path /<slug>/.
+ */
+function orgRootUrl(slug: string): string {
+  if (isOnStaging) {
+    const baseHost = new URL(process.env.PLAYWRIGHT_BASE_URL!).host; // test.easeetool.com
+    return `https://${slug}.${baseHost}/`;
+  }
+  return `/${slug}/`;
+}
+
 const SA_USERNAME = process.env.TEST_SA_USERNAME ?? "";
 const SA_PASSWORD = process.env.TEST_SA_PASSWORD ?? "";
 const hasBootstrapCreds = Boolean(SA_USERNAME && SA_PASSWORD);
@@ -251,7 +268,9 @@ test("Batch E: suspend/reactivate lifecycle + proxy suspension check", async ({
 
   // "Active org unaffected" — the seeded vistra org (always active) must NOT be
   // blocked by the suspension check. Cold cache for this slug will fetch isSuspended:false.
-  const activeOrgRes = await request.get("/vistra/");
+  // On staging (subdomain routing), use the absolute subdomain URL — path-based requests
+  // on the apex host hit the BUG-3 guard and return 404 before the suspension check runs.
+  const activeOrgRes = await request.get(orgRootUrl("vistra"));
   expect(activeOrgRes.status()).not.toBe(403);
 
   // --- Suspend the new org ---
@@ -274,10 +293,11 @@ test("Batch E: suspend/reactivate lifecycle + proxy suspension check", async ({
   const afterSuspendRow = listAfterBody.orgs.find((o) => o.id === orgId);
   expect(afterSuspendRow?.isSuspended).toBe(true);
 
-  // Proxy suspension check (path-based, localhost/CI mode):
-  // A request to the suspended org's path should be blocked with 403.
+  // Proxy suspension check: a request to the suspended org's URL must be blocked with 403.
   // The slug is brand-new so the proxy cache is cold — DB value (isSuspended:true) is used.
-  const blockedRes = await request.get(`/${uniqueSlug}/`);
+  // On staging (subdomain routing), use the absolute subdomain URL — path-based requests
+  // on the apex host hit the BUG-3 guard and return 404 before the suspension check runs.
+  const blockedRes = await request.get(orgRootUrl(uniqueSlug));
   expect(blockedRes.status()).toBe(403);
   const blockedBody = (await blockedRes.json()) as { error?: string };
   expect(blockedBody.error).toMatch(/suspended/i);
