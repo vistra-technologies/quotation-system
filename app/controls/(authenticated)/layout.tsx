@@ -3,12 +3,13 @@ import {
   requireSuperAdmin,
   SuperAdminUnauthorizedError,
 } from "@/lib/superadmin-guard";
+import { ControlsShell } from "./controls-shell";
 
 // Always render live — reads the SuperAdminSession table on every request.
 export const dynamic = "force-dynamic";
 
 /**
- * Guard layout for all protected /controls/** routes (Batches C–E pages).
+ * Guard layout for all protected /controls/** routes.
  *
  * This layout lives in a Next.js App Router route group — app/controls/(authenticated)/ —
  * so it wraps only the pages inside this group without affecting the URL.
@@ -16,18 +17,23 @@ export const dynamic = "force-dynamic";
  * so it is NOT gated by this layout.
  *
  * If no valid SuperAdmin session is present: redirect to /controls/login.
- * If a valid session is present: render the page unchanged (children pass-through).
+ * If a valid session is present: render the page inside the SuperAdmin console
+ * shell (sidebar + top bar + padded content area).
  *
- * Future dashboard nav/shell chrome (Batches C–E) can be added here once
- * the authenticated pages exist.
+ * Stage 16 (post-implement nav fix): replaced the bare pass-through with
+ * <ControlsShell> so SuperAdmins can navigate between /controls/orgs and
+ * /controls/roles without typing URLs by hand.
  */
 export default async function ControlsAuthenticatedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  let username = "";
+
   try {
-    await requireSuperAdmin();
+    const session = await requireSuperAdmin();
+    username = session.username;
   } catch (err) {
     if (err instanceof SuperAdminUnauthorizedError) {
       redirect("/controls/login");
@@ -36,6 +42,6 @@ export default async function ControlsAuthenticatedLayout({
     throw err;
   }
 
-  // Authenticated — render the page.
-  return <>{children}</>;
+  // Authenticated — render inside the SuperAdmin console shell.
+  return <ControlsShell username={username}>{children}</ControlsShell>;
 }
