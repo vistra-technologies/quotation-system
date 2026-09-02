@@ -156,6 +156,156 @@ test("POST /api/v1/superadmin/orgs — new org is isolated (userCount=0)", async
 });
 
 // ---------------------------------------------------------------------------
+// TIER 1 (continued) — Batch E: Suspend/reactivate org (API-level, per-branch preview)
+// ---------------------------------------------------------------------------
+
+// 6. POST /api/v1/superadmin/orgs/[orgId]/suspend without cookie → 401
+test("POST /api/v1/superadmin/orgs/[orgId]/suspend — no cookie → 401", async ({
+  request,
+}) => {
+  const res = await request.post("/api/v1/superadmin/orgs/nonexistent-id/suspend", {
+    data: { suspend: true },
+  });
+  expect(res.status()).toBe(401);
+});
+
+// 7. POST /api/v1/superadmin/orgs/[orgId]/suspend — missing body field → 400
+test("POST /api/v1/superadmin/orgs/[orgId]/suspend — missing suspend field → 400 (requires session)", async ({
+  request,
+}) => {
+  test.skip(
+    !hasBootstrapCreds,
+    "FLAG-B3: TEST_SA_USERNAME/TEST_SA_PASSWORD not set — bootstrap accounts not yet provisioned",
+  );
+
+  const token = await loginAsSuperAdmin(request);
+
+  const res = await request.post("/api/v1/superadmin/orgs/nonexistent-id/suspend", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: { wrong_field: true },
+  });
+  expect(res.status()).toBe(400);
+});
+
+// 8. POST /api/v1/superadmin/orgs/[orgId]/suspend — unknown orgId → 404
+test("POST /api/v1/superadmin/orgs/[orgId]/suspend — unknown orgId → 404 (requires session)", async ({
+  request,
+}) => {
+  test.skip(
+    !hasBootstrapCreds,
+    "FLAG-B3: TEST_SA_USERNAME/TEST_SA_PASSWORD not set — bootstrap accounts not yet provisioned",
+  );
+
+  const token = await loginAsSuperAdmin(request);
+
+  const res = await request.post(
+    "/api/v1/superadmin/orgs/clxxxxxxxxxxxxxxxxxxxxxxxxx/suspend",
+    {
+      headers: { Cookie: `qs-sa-token=${token}` },
+      data: { suspend: true },
+    },
+  );
+  expect(res.status()).toBe(404);
+});
+
+// 9. Suspend org → 200; org appears suspended in list; reactivate → 200; org active again.
+//    Also validates the middleware suspension check: a request to the suspended org's
+//    path-based URL is blocked with 403; an active org's (vistra) path is NOT blocked.
+//    Skipped when bootstrap creds absent.
+//
+//    NOTE on proxy cache: proxy.ts caches isSuspended for up to 60 s per in-process
+//    instance. The suspension check assertion works reliably because the test creates a
+//    brand-new slug (cold cache on every Vercel serverless instance). The "active org
+//    unaffected" assertion uses the seeded "vistra" org (always active, never suspended).
+//    The post-reactivation proxy assertion is intentionally omitted — it would be flaky
+//    if the cached isSuspended:true entry is still warm on the same instance.
+test("Batch E: suspend/reactivate lifecycle + proxy suspension check", async ({
+  request,
+}) => {
+  test.skip(
+    !hasBootstrapCreds,
+    "FLAG-B3: TEST_SA_USERNAME/TEST_SA_PASSWORD not set — bootstrap accounts not yet provisioned",
+  );
+
+  const token = await loginAsSuperAdmin(request);
+  const uniqueSlug = `e2e-suspend-${Date.now()}`;
+
+  // Create a test org.
+  const createRes = await request.post("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: { name: "E2E Suspend Test", slug: uniqueSlug },
+  });
+  expect(createRes.status()).toBe(201);
+  const created = (await createRes.json()) as { org: { id: string } };
+  const orgId = created.org.id;
+
+  // Confirm org starts as active in the list.
+  const listBefore = await request.get("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+  const listBeforeBody = (await listBefore.json()) as {
+    orgs: Array<{ id: string; isSuspended: boolean }>;
+  };
+  const beforeRow = listBeforeBody.orgs.find((o) => o.id === orgId);
+  expect(beforeRow?.isSuspended).toBe(false);
+
+  // "Active org unaffected" — the seeded vistra org (always active) must NOT be
+  // blocked by the suspension check. Cold cache for this slug will fetch isSuspended:false.
+  const activeOrgRes = await request.get("/vistra/");
+  expect(activeOrgRes.status()).not.toBe(403);
+
+  // --- Suspend the new org ---
+  const suspendRes = await request.post(
+    `/api/v1/superadmin/orgs/${orgId}/suspend`,
+    {
+      headers: { Cookie: `qs-sa-token=${token}` },
+      data: { suspend: true },
+    },
+  );
+  expect(suspendRes.status()).toBe(200);
+
+  // Org list now shows isSuspended: true.
+  const listAfterSuspend = await request.get("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+  const listAfterBody = (await listAfterSuspend.json()) as {
+    orgs: Array<{ id: string; isSuspended: boolean }>;
+  };
+  const afterSuspendRow = listAfterBody.orgs.find((o) => o.id === orgId);
+  expect(afterSuspendRow?.isSuspended).toBe(true);
+
+  // Proxy suspension check (path-based, localhost/CI mode):
+  // A request to the suspended org's path should be blocked with 403.
+  // The slug is brand-new so the proxy cache is cold — DB value (isSuspended:true) is used.
+  const blockedRes = await request.get(`/${uniqueSlug}/`);
+  expect(blockedRes.status()).toBe(403);
+  const blockedBody = (await blockedRes.json()) as { error?: string };
+  expect(blockedBody.error).toMatch(/suspended/i);
+
+  // --- Reactivate the org ---
+  const reactivateRes = await request.post(
+    `/api/v1/superadmin/orgs/${orgId}/suspend`,
+    {
+      headers: { Cookie: `qs-sa-token=${token}` },
+      data: { suspend: false },
+    },
+  );
+  expect(reactivateRes.status()).toBe(200);
+
+  // Org list now shows isSuspended: false — reactivation confirmed at the API level.
+  // (Proxy unblock is not asserted here because the in-process cache may still hold
+  // isSuspended:true for up to 60 s on the same serverless instance — see note above.)
+  const listAfterReactivate = await request.get("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+  const listReactivateBody = (await listAfterReactivate.json()) as {
+    orgs: Array<{ id: string; isSuspended: boolean }>;
+  };
+  const afterReactivateRow = listReactivateBody.orgs.find((o) => o.id === orgId);
+  expect(afterReactivateRow?.isSuspended).toBe(false);
+});
+
+// ---------------------------------------------------------------------------
 // TIER 2 — Page navigation (test.easeetool.com only, post-staging-merge)
 // ---------------------------------------------------------------------------
 

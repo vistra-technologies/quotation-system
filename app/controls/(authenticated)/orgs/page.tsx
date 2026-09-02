@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { internalFetch } from "@/lib/internal-fetch";
+import { SuspendOrgButton } from "./_suspend-button";
 
 // Always render live — reads the SuperAdminSession table (via guard layout) and live DB.
 export const dynamic = "force-dynamic";
@@ -88,13 +89,16 @@ export default async function OrgsPage() {
                 <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
                   Created
                 </th>
+                <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
               {orgs.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={5}
+                    colSpan={6}
                     className="px-5 py-8 text-center text-sm text-text-muted"
                   >
                     No organizations yet.
@@ -130,6 +134,13 @@ export default async function OrgsPage() {
                         month: "short",
                         year: "numeric",
                       })}
+                    </td>
+                    <td className="px-5 py-4">
+                      <SuspendOrgButton
+                        orgId={org.id}
+                        orgName={org.name}
+                        isSuspended={org.isSuspended}
+                      />
                     </td>
                   </tr>
                 ))

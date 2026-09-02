@@ -140,6 +140,59 @@ export async function createOrganizationWithDefaults(
 }
 
 /**
+ * Typed result for toggleOrgSuspension.
+ * "not_found" indicates the orgId does not exist in the DB.
+ */
+export type ToggleOrgSuspensionResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" | "unknown_error"; message: string };
+
+/**
+ * Flip the isSuspended flag on an Organization row.
+ *
+ * Pass suspend=true to suspend, suspend=false to reactivate.
+ * Idempotent: calling suspend on an already-suspended org is a no-op (same result).
+ *
+ * Does NOT write the audit log — the caller is responsible for calling
+ * createOrgAuditLog() after this returns ok: true, following the same
+ * pattern as createOrganizationWithDefaults + createOrgAuditLog.
+ *
+ * superadmin-only — intentionally cross-org
+ */
+export async function toggleOrgSuspension(
+  orgId: string,
+  suspend: boolean,
+): Promise<ToggleOrgSuspensionResult> {
+  // superadmin-only — intentionally cross-org
+  try {
+    await prisma.organization.update({
+      where: { id: orgId },
+      data: { isSuspended: suspend },
+      select: { id: true },
+    });
+    return { ok: true };
+  } catch (err) {
+    // Prisma P2025 = record not found
+    if (
+      err instanceof Error &&
+      "code" in err &&
+      (err as { code: string }).code === "P2025"
+    ) {
+      return {
+        ok: false,
+        reason: "not_found",
+        message: `Organization "${orgId}" not found`,
+      };
+    }
+    return {
+      ok: false,
+      reason: "unknown_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
+/**
  * Write a SuperAdminAuditLog row (append-only).
  *
  * Must be called after a successful mutation, not inside the mutation transaction
