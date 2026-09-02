@@ -49,6 +49,8 @@ export default async function OrgsPage() {
   }
 
   const orgs = ((await res.json()) as { orgs: OrgRow[] }).orgs;
+  const activeOrgs = orgs.filter((o) => !o.isSuspended);
+  const suspendedOrgs = orgs.filter((o) => o.isSuspended);
 
   return (
     <div>
@@ -68,86 +70,113 @@ export default async function OrgsPage() {
         </Link>
       </div>
 
-      {/* ── Table ── */}
-      <div className="mt-6 rounded-md border border-border bg-bg-card shadow-card">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Name
-                </th>
-                <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Slug
-                </th>
-                <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Status
-                </th>
-                <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Users
-                </th>
-                <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Created
-                </th>
-                <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Actions
-                </th>
+      {/* ── Active orgs ── */}
+      <div className="mt-6">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-text-muted">
+          Active
+        </h2>
+        <OrgsTable orgs={activeOrgs} emptyMessage="No active organizations." />
+      </div>
+
+      {/* ── Suspended orgs — kept separate so they don't clutter the active list ── */}
+      {suspendedOrgs.length > 0 && (
+        <div className="mt-8">
+          <h2 className="text-sm font-bold uppercase tracking-wide text-text-muted">
+            Suspended
+          </h2>
+          <OrgsTable orgs={suspendedOrgs} emptyMessage="No suspended organizations." />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OrgsTable({
+  orgs,
+  emptyMessage,
+}: {
+  orgs: OrgRow[];
+  emptyMessage: string;
+}) {
+  return (
+    <div className="mt-3 rounded-md border border-border bg-bg-card shadow-card">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
+                Name
+              </th>
+              <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
+                Slug
+              </th>
+              <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
+                Status
+              </th>
+              <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
+                Users
+              </th>
+              <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
+                Created
+              </th>
+              <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {orgs.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={6}
+                  className="px-5 py-8 text-center text-sm text-text-muted"
+                >
+                  {emptyMessage}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {orgs.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="px-5 py-8 text-center text-sm text-text-muted"
-                  >
-                    No organizations yet.
+            ) : (
+              orgs.map((org) => (
+                <tr
+                  key={org.id}
+                  className="border-b border-border last:border-0 hover:bg-primary-softer/40"
+                >
+                  <td className="px-5 py-4 font-bold text-text-heading">
+                    {org.name}
+                  </td>
+                  <td className="px-5 py-4 font-mono text-sm text-text-body">
+                    {org.slug}
+                  </td>
+                  <td className="px-5 py-4">
+                    {org.isSuspended ? (
+                      <span className="inline-flex items-center rounded-pill bg-status-failed-bg px-2.5 py-0.5 text-xs font-bold text-status-failed-text">
+                        Suspended
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-pill bg-status-paid-bg px-2.5 py-0.5 text-xs font-bold text-status-paid-text">
+                        Active
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-5 py-4 text-text-body">{org.userCount}</td>
+                  <td className="px-5 py-4 text-text-muted">
+                    {new Date(org.createdAt).toLocaleDateString("en-GB", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                  </td>
+                  <td className="px-5 py-4">
+                    <SuspendOrgButton
+                      orgId={org.id}
+                      orgName={org.name}
+                      isSuspended={org.isSuspended}
+                    />
                   </td>
                 </tr>
-              ) : (
-                orgs.map((org) => (
-                  <tr
-                    key={org.id}
-                    className="border-b border-border last:border-0 hover:bg-primary-softer/40"
-                  >
-                    <td className="px-5 py-4 font-bold text-text-heading">
-                      {org.name}
-                    </td>
-                    <td className="px-5 py-4 font-mono text-sm text-text-body">
-                      {org.slug}
-                    </td>
-                    <td className="px-5 py-4">
-                      {org.isSuspended ? (
-                        <span className="inline-flex items-center rounded-pill bg-status-failed-bg px-2.5 py-0.5 text-xs font-bold text-status-failed-text">
-                          Suspended
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center rounded-pill bg-status-paid-bg px-2.5 py-0.5 text-xs font-bold text-status-paid-text">
-                          Active
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-5 py-4 text-text-body">{org.userCount}</td>
-                    <td className="px-5 py-4 text-text-muted">
-                      {new Date(org.createdAt).toLocaleDateString("en-GB", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </td>
-                    <td className="px-5 py-4">
-                      <SuspendOrgButton
-                        orgId={org.id}
-                        orgName={org.name}
-                        isSuspended={org.isSuspended}
-                      />
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
