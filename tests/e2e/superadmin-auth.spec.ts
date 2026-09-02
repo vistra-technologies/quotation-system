@@ -102,7 +102,8 @@ test("POST /api/v1/superadmin/login — valid creds → qs-sa-token cookie, no D
   const setCookieHeader = res.headers()["set-cookie"] ?? "";
   expect(setCookieHeader).toContain("qs-sa-token=");
   expect(setCookieHeader).toContain("HttpOnly");
-  expect(setCookieHeader).toContain("SameSite=Lax");
+  // SameSite attribute value is case-insensitive per RFC 6265bis; Next.js emits lowercase "lax".
+  expect(setCookieHeader.toLowerCase()).toContain("samesite=lax");
 
   // Crucial: no Domain= attribute must be present.
   // RFC 6265 §5.3: omitting Domain binds the cookie to the exact request host

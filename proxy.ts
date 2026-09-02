@@ -199,9 +199,17 @@ export async function proxy(request: NextRequest) {
   }
 
   // Stage 16 Batch E — suspended org check.
-  // If the org is suspended, block all incoming requests with a clear 403.
+  // If the org is suspended, block incoming page route requests with a clear 403.
   // Active sessions are NOT forcibly invalidated on suspension (deferred per spec) —
   // users are blocked here on their next request, which is sufficient.
+  //
+  // NOTE: this check only covers page routes matched by the proxy config below.
+  // /api/** routes are excluded from the matcher entirely (see config.matcher comment)
+  // so a suspended org's API routes (including /api/health) are NOT blocked by this
+  // proxy. In practice, all org-scoped /api/v1/** handlers require the x-org-id header
+  // injected by this proxy, so they effectively fail without it — but informational-only
+  // routes like /api/health will still return 200 on a suspended org's subdomain.
+  // Broadening the matcher to cover /api/** is a larger change deferred to a future stage.
   if (org.isSuspended) {
     return NextResponse.json(
       {
@@ -249,6 +257,11 @@ export const config = {
     // listing.  Excluding all of /api prevents "api" from being read as an org slug and
     // avoids needless DB lookups on health checks, auth callbacks, etc.  The /organizations
     // dev page is similarly excluded so "organizations" is never treated as a slug.
+    //
+    // CONSEQUENCE: the suspension check above does NOT run for /api/** paths.
+    // A suspended org's /api/health (and any other API route that doesn't strictly
+    // require x-org-id) will still return a normal response.  See the suspension
+    // check comment above for details.  Broadening this matcher is deferred.
     "/((?!_next/static|_next/image|favicon\\.ico|api|organizations).*)",
   ],
 };
