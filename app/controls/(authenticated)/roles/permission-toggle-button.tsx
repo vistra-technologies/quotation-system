@@ -2,7 +2,7 @@
 
 import { useFormStatus } from "react-dom";
 import { LoadingOverlay } from "@/components/loading-overlay";
-import { addRolePermission, removeRolePermission } from "../actions";
+import { grantSuperAdminRolePermission, revokeSuperAdminRolePermission } from "./actions";
 
 /**
  * Renders the loading overlay while the enclosing form action is pending.
@@ -13,43 +13,47 @@ function PendingOverlay() {
   return <LoadingOverlay visible={pending} />;
 }
 
-interface PermissionActionButtonProps {
-  orgSlug: string;
+interface PermissionToggleButtonProps {
+  orgId: string;
   roleId: string;
   permissionId: string;
-  action: "add" | "remove";
+  action: "grant" | "revoke";
   label: string;
 }
 
 /**
- * Single add or remove permission button (Client Component).
+ * Single grant or revoke permission button (Client Component).
  *
  * Each button renders its own <form> pointing at the appropriate server action.
  * The PendingOverlay child shows the full-screen overlay while the action is
  * in flight and disappears automatically when the action settles.
  *
- * Stage 11 (Batch 9): restyled to Sage Ease tokens.
+ * Mirrors app/[orgSlug]/admin/roles/[roleId]/permission-buttons.tsx — same
+ * useFormStatus() pattern, same Sage Ease styling tokens.
+ *
+ * Stage 16 Batch D — F3.
  */
-export function PermissionActionButton({
-  orgSlug,
+export function PermissionToggleButton({
+  orgId,
   roleId,
   permissionId,
   action,
   label,
-}: PermissionActionButtonProps) {
-  const serverAction = action === "add" ? addRolePermission : removeRolePermission;
+}: PermissionToggleButtonProps) {
+  const serverAction =
+    action === "grant" ? grantSuperAdminRolePermission : revokeSuperAdminRolePermission;
 
   return (
     <form action={serverAction}>
       {/* PendingOverlay is inside the form so useFormStatus() resolves correctly */}
       <PendingOverlay />
-      <input type="hidden" name="orgSlug" value={orgSlug} />
+      <input type="hidden" name="orgId" value={orgId} />
       <input type="hidden" name="roleId" value={roleId} />
       <input type="hidden" name="permissionId" value={permissionId} />
       <button
         type="submit"
         className={
-          action === "remove"
+          action === "revoke"
             ? "text-sm font-semibold text-red-600 underline-offset-2 hover:underline"
             : "text-sm font-semibold text-primary underline-offset-2 hover:text-primary-dark hover:underline"
         }

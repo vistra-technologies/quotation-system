@@ -24,6 +24,8 @@ model Organization {
   id                String            @id @default(uuid())
   slug              String            @unique
   name              String
+  // Stage 16: platform-level suspension flag. false by default; set by SuperAdmin only.
+  isSuspended       Boolean           @default(false)
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
   // Stage 2 relations
@@ -459,6 +461,60 @@ model Partition {
   floor           Floor        @relation(fields: [floorId], references: [id])
 
   @@unique([organizationId, partitionNumber])
+}
+
+// ────────────────────────────────────────────────────────────
+// Stage 16 — SuperAdmin platform identity
+//
+// SuperAdmin rows are NOT in the `user` table (which FKs into Organization).
+// Platform identity shape: {username}@platform.internal (enforced by toPlatformAuthEmail()).
+// Sessions use a separate SuperAdminSession table + a distinct apex-only cookie
+// (qs-sa-token, Domain omitted) to prevent bleed into org subdomains — see the
+// architectural decision note in stage-16.md Migration 1.
+// ────────────────────────────────────────────────────────────
+
+model SuperAdmin {
+  id           String               @id @default(cuid())
+  username     String               @unique
+  email        String               @unique   // {username}@platform.internal
+  passwordHash String
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  sessions     SuperAdminSession[]
+  auditLogs    SuperAdminAuditLog[]
+}
+
+model SuperAdminSession {
+  id           String     @id @default(cuid())
+  token        String     @unique
+  superAdminId String
+  expiresAt    DateTime
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  superAdmin   SuperAdmin @relation(fields: [superAdminId], references: [id], onDelete: Cascade)
+}
+
+// ────────────────────────────────────────────────────────────
+// Stage 16 — SuperAdmin audit log (append-only)
+//
+// Every SuperAdmin mutation (create org, suspend/reactivate, role create/edit,
+// permission assignment change) writes one row. Read-only operations are not logged.
+// No UPDATE or DELETE may be issued against this table in application code.
+// targetId is polymorphic (no FK) — targetType tells you which table to look up.
+// ────────────────────────────────────────────────────────────
+
+model SuperAdminAuditLog {
+  id           String     @id @default(cuid())
+  superAdminId String
+  action       String     // e.g. "org.create", "org.suspend", "role.create", "permission.assign"
+  targetType   String     // "Organization" | "Role" | "Permission"
+  targetId     String     // polymorphic — not a FK; look up via targetType
+  metadata     Json?      // before/after snapshot or relevant payload, at discretion of the writer
+  createdAt    DateTime   @default(now())
+
+  superAdmin   SuperAdmin @relation(fields: [superAdminId], references: [id])
 }
 
 // ────────────────────────────────────────────────────────────

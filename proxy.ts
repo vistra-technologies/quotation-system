@@ -54,21 +54,37 @@ import { prisma } from "@/lib/prisma";
 interface OrgCacheEntry {
   id: string;
   slug: string;
+  // Stage 16 Batch E: isSuspended is cached alongside id/slug so the suspension
+  // check does not add a second DB round-trip per request. The 60 s TTL means a
+  // newly suspended org may continue to serve requests for up to 60 s before the
+  // flag propagates from the cache — acceptable per spec ("blocked at next request").
+  isSuspended: boolean;
   expiresAt: number;
 }
 const _orgCache = new Map<string, OrgCacheEntry>();
 
-function _getCachedOrg(slug: string): { id: string; slug: string } | null {
+function _getCachedOrg(
+  slug: string,
+): { id: string; slug: string; isSuspended: boolean } | null {
   const entry = _orgCache.get(slug);
   if (entry && Date.now() < entry.expiresAt) {
-    return { id: entry.id, slug: entry.slug };
+    return { id: entry.id, slug: entry.slug, isSuspended: entry.isSuspended };
   }
   _orgCache.delete(slug);
   return null;
 }
 
-function _setCachedOrg(org: { id: string; slug: string }): void {
-  _orgCache.set(org.slug, { id: org.id, slug: org.slug, expiresAt: Date.now() + 60_000 });
+function _setCachedOrg(org: {
+  id: string;
+  slug: string;
+  isSuspended: boolean;
+}): void {
+  _orgCache.set(org.slug, {
+    id: org.id,
+    slug: org.slug,
+    isSuspended: org.isSuspended,
+    expiresAt: Date.now() + 60_000,
+  });
 }
 
 /**
@@ -101,7 +117,17 @@ export async function proxy(request: NextRequest) {
     // Test-env apex (test.easeetool.com itself) → passthrough (org selector).
     // Must precede the bare .easeetool.com endsWith check below — "test" would
     // otherwise be extracted as an org slug and produce a 404.
-    // Non-root paths on the apex hostname are rejected immediately — see top comment.
+    // /controls/** is carved out before the BUG-3 guard — it is served on the apex host.
+    if (pathname.startsWith("/controls")) {
+      // Stage 16: SuperAdmin console lives at /controls on the apex host.
+      // Strip org headers — /controls has no org context.
+      const stripped = new Headers(request.headers);
+      stripped.delete("x-org-id");
+      stripped.delete("x-org-slug");
+      return NextResponse.next({ request: { headers: stripped } });
+    }
+    // BUG-3 guard: reject all other non-root paths on the apex host immediately —
+    // no DB lookup, no path-based org routing on apex hosts.
     if (pathname !== "/") {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -113,7 +139,17 @@ export async function proxy(request: NextRequest) {
     fromSubdomain = true;
   } else if (hostname === "easeetool.com" || hostname === "www.easeetool.com") {
     // Production apex domain → passthrough (org selector).
-    // Non-root paths on the apex hostname are rejected immediately — see top comment.
+    // /controls/** is carved out before the BUG-3 guard — it is served on the apex host.
+    if (pathname.startsWith("/controls")) {
+      // Stage 16: SuperAdmin console lives at /controls on the apex host.
+      // Strip org headers — /controls has no org context.
+      const stripped = new Headers(request.headers);
+      stripped.delete("x-org-id");
+      stripped.delete("x-org-slug");
+      return NextResponse.next({ request: { headers: stripped } });
+    }
+    // BUG-3 guard: reject all other non-root paths on the apex host immediately —
+    // no DB lookup, no path-based org routing on apex hosts.
     if (pathname !== "/") {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -148,7 +184,9 @@ export async function proxy(request: NextRequest) {
   if (!org) {
     const dbOrg = await prisma.organization.findUnique({
       where: { slug: orgSlug },
-      select: { id: true, slug: true },
+      // Stage 16 Batch E: select isSuspended so the suspension check below does
+      // not require a separate DB query. Cached for up to 60 s (see OrgCacheEntry).
+      select: { id: true, slug: true, isSuspended: true },
     });
     if (!dbOrg) {
       return NextResponse.json(
@@ -158,6 +196,20 @@ export async function proxy(request: NextRequest) {
     }
     _setCachedOrg(dbOrg);
     org = dbOrg;
+  }
+
+  // Stage 16 Batch E — suspended org check.
+  // If the org is suspended, block all incoming requests with a clear 403.
+  // Active sessions are NOT forcibly invalidated on suspension (deferred per spec) —
+  // users are blocked here on their next request, which is sufficient.
+  if (org.isSuspended) {
+    return NextResponse.json(
+      {
+        error:
+          "This organization has been suspended. Please contact your platform administrator.",
+      },
+      { status: 403 },
+    );
   }
 
   // Attach org headers so Server Components downstream can read them.

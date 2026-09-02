@@ -102,7 +102,7 @@ test("unauthenticated request to admin/users redirects to login", async ({ page 
   await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/login"));
 });
 
-test("distributor role is denied MANAGE_USERS + MANAGE_FEATURES admin pages (combined to limit sign-ins)", async ({
+test("distributor role is denied MANAGE_USERS admin page (redirects to dashboard)", async ({
   page,
 }) => {
   // Rate-limit pacing: tests 1-4 each sign in within ~11s. Wait for the window to clear
@@ -112,12 +112,8 @@ test("distributor role is denied MANAGE_USERS + MANAGE_FEATURES admin pages (com
   // MANAGE_USERS gate: admin/users must redirect to dashboard for distributor
   await page.goto(orgUrl("acme-glass", "/admin/users"), { waitUntil: "commit" });
   await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
-  // MANAGE_FEATURES gate: admin/roles must redirect to dashboard (same session)
-  await page.goto(orgUrl("acme-glass", "/admin/roles"), { waitUntil: "commit" });
-  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
-  // MANAGE_FEATURES gate: admin/permissions must redirect to dashboard (same session)
-  await page.goto(orgUrl("acme-glass", "/admin/permissions"), { waitUntil: "commit" });
-  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
+  // Note (Stage 16 Batch F): admin/roles and admin/permissions are removed from the org
+  // admin UI — those routes now return 404, no longer need RBAC-redirect testing here.
 });
 
 test("admin side panel shows admin section links (Users link visible)", async ({ page }) => {
@@ -230,108 +226,9 @@ test("self-deactivation: Deactivate button disabled on own account with explanat
 });
 
 // ---------------------------------------------------------------------------
-// Roles: create, add permission, remove permission
+// NOTE (Stage 16 Batch F): Roles and Permissions sections removed.
+// The org-admin roles/permissions UI (app/[orgSlug]/admin/roles/**,
+// app/[orgSlug]/admin/permissions/**) has been deleted. Roles and permissions
+// management is now exclusively in the SuperAdmin console (/controls/roles).
+// See tests/e2e/superadmin-roles.spec.ts for the replacement coverage.
 // ---------------------------------------------------------------------------
-
-test("create role → detail page shows empty granted permissions and full available list", async ({
-  page,
-}) => {
-  const roleName = `E2E Role ${Date.now()}`;
-  await signIn(page, "admin");
-  await page.goto(orgUrl("acme-glass", "/admin/roles/new"));
-  await page.locator("input[name='name']").fill(roleName);
-  await page.locator("input[name='description']").fill("Stage 4 e2e test role");
-  await page.getByRole("button", { name: "Create Role" }).click();
-  // Redirects to role detail — UUID pattern ensures we wait past /roles/new
-  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/admin/roles/[0-9a-f-]{36}"), {
-    timeout: 15_000,
-  });
-  await expect(page.getByRole("heading", { name: roleName })).toBeVisible();
-  await expect(page.getByText(/no permissions/i)).toBeVisible();
-  await expect(
-    page.getByRole("heading", { name: "Available Permissions" }),
-  ).toBeVisible();
-});
-
-test("role permissions: add a permission then remove it", async ({ page }) => {
-  // Create a fresh role so we don't mutate seeded data
-  const roleName = `E2E Perm Test ${Date.now()}`;
-  await signIn(page, "admin");
-  await page.goto(orgUrl("acme-glass", "/admin/roles/new"));
-  await page.locator("input[name='name']").fill(roleName);
-  await page.getByRole("button", { name: "Create Role" }).click();
-  // UUID pattern ensures we wait past /roles/new before asserting granted permissions
-  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/admin/roles/[0-9a-f-]{36}"), {
-    timeout: 15_000,
-  });
-
-  // Add DESIGN permission — wait for it to appear in the Granted section
-  await page
-    .getByRole("listitem")
-    .filter({ hasText: /^DESIGN/ })
-    .getByRole("button", { name: "Add" })
-    .click();
-  // A Remove button will appear in the listitem once DESIGN is granted
-  await expect(
-    page
-      .getByRole("listitem")
-      .filter({ hasText: /^DESIGN/ })
-      .getByRole("button", { name: "Remove" }),
-  ).toBeVisible({ timeout: 15_000 });
-
-  // Remove DESIGN
-  await page
-    .getByRole("listitem")
-    .filter({ hasText: /^DESIGN/ })
-    .getByRole("button", { name: "Remove" })
-    .click();
-  await expect(page.getByText(/no permissions/i)).toBeVisible({
-    timeout: 15_000,
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Permissions: catalog inert caveat, create, duplicate code error
-// ---------------------------------------------------------------------------
-
-test("permissions catalog shows inert-by-design caveat", async ({ page }) => {
-  await signIn(page, "admin");
-  await page.goto(orgUrl("acme-glass", "/admin/permissions"));
-  await expect(page.getByText(/inert by design/i)).toBeVisible();
-});
-
-test("create permission: inert caveat visible on create page", async ({ page }) => {
-  await signIn(page, "admin");
-  await page.goto(orgUrl("acme-glass", "/admin/permissions/new"));
-  await expect(page.getByText(/inert by design/i)).toBeVisible();
-});
-
-test("create permission: duplicate code shows inline error, stays on create page", async ({
-  page,
-}) => {
-  await signIn(page, "admin");
-  await page.goto(orgUrl("acme-glass", "/admin/permissions/new"));
-  await page.locator("input[name='code']").fill("MANAGE_USERS");
-  await page.locator("input[name='description']").fill("Duplicate test");
-  await page.getByRole("button", { name: "Create Permission" }).click();
-  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/admin/permissions/new"));
-  await expect(page.getByText(/already exists/i)).toBeVisible({ timeout: 15_000 });
-});
-
-test("create permission: valid code appears in catalog with inert caveat", async ({
-  page,
-}) => {
-  const code = `E2E_PERM_${Date.now()}`;
-  await signIn(page, "admin");
-  await page.goto(orgUrl("acme-glass", "/admin/permissions/new"));
-  await page.locator("input[name='code']").fill(code);
-  await page.locator("input[name='description']").fill("Stage 4 automated e2e test permission");
-  await page.getByRole("button", { name: "Create Permission" }).click();
-  // Redirects to permissions catalog
-  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/admin/permissions$"), {
-    timeout: 15_000,
-  });
-  await expect(page.getByRole("cell", { name: code })).toBeVisible();
-  // Inert caveat still visible on catalog page
-  await expect(page.getByText(/inert by design/i)).toBeVisible();
-});

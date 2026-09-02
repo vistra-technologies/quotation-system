@@ -333,26 +333,12 @@ export function Sidebar({
               )}
 
               {canManageFeatures && (
-                <>
-                  <Link
-                    href={href("/admin/roles")}
-                    className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
-                  >
-                    Roles
-                  </Link>
-                  <Link
-                    href={href("/admin/permissions")}
-                    className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
-                  >
-                    Permissions
-                  </Link>
-                  <Link
-                    href={href("/admin/components")}
-                    className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
-                  >
-                    Component Types
-                  </Link>
-                </>
+                <Link
+                  href={href("/admin/components")}
+                  className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
+                >
+                  Component Types
+                </Link>
               )}
             </div>
           </div>

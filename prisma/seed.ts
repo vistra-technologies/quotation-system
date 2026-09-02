@@ -2,7 +2,8 @@ import "dotenv/config";
 import { PrismaClient } from "../app/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { auth } from "@/lib/auth";
-import { toAuthEmail } from "@/lib/auth-utils";
+import { toAuthEmail, toPlatformAuthEmail } from "@/lib/auth-utils";
+import { DEFAULT_ROLE_DEFS } from "@/lib/org-role-defaults";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -46,42 +47,9 @@ const permissionCatalog = [
 ];
 
 // ─── Role definitions with permission matrix ────────────────────────────────
-// Source: design-docs/02-roles-and-journeys.md
-// Stage 15 Batch G (U3): isInternalRole=true for Admin + Company Member (internal staff
-// who may leave External Company blank). External roles (Distributor, Architectural Firm)
-// default to false and require an External Company on user create/edit.
-const roleDefs = [
-  {
-    name: "Admin",
-    description: "Full organizational administration",
-    isInternalRole: true,
-    permissions: [
-      "MANAGE_USERS",
-      "MANAGE_FEATURES",
-      "VIEW_ALL_DATA",
-      "MANAGE_PRICING",
-      "APPLY_DISCOUNT",
-    ],
-  },
-  {
-    name: "Company Member",
-    description: "Internal staff with pricing access",
-    isInternalRole: true,
-    permissions: ["VIEW_ALL_DATA", "MANAGE_PRICING", "APPLY_DISCOUNT"],
-  },
-  {
-    name: "Distributor",
-    description: "External distributor company user",
-    isInternalRole: false,
-    permissions: ["DESIGN", "QUOTE", "ORDER"],
-  },
-  {
-    name: "Architectural Firm",
-    description: "External architectural firm user",
-    isInternalRole: false,
-    permissions: ["DESIGN"],
-  },
-];
+// Imported from lib/org-role-defaults.ts — shared with the SuperAdmin create-org path.
+// See DEFAULT_ROLE_DEFS for the canonical list and its source documentation.
+const roleDefs = DEFAULT_ROLE_DEFS;
 
 async function main() {
   // ── 0a. One-time cleanup: purge E2E test artifacts ─────────────────────────
@@ -628,7 +596,49 @@ async function main() {
   }
   console.log(`CatalogItems + ItemPrices seeded for ${allOrgs.length} orgs`);
 
-  // ── 6. Summary ──────────────────────────────────────────────────────────────
+  // ── 6. SuperAdmin bootstrap accounts ────────────────────────────────────────
+  // Reads SUPERADMIN_DEVADMIN_PASSWORD, SUPERADMIN_ISHAN_PASSWORD,
+  // SUPERADMIN_SHAJI_PASSWORD from env. If ANY are missing, skips the entire
+  // SuperAdmin seed step with a warning — the rest of the seed still completes.
+  // Never logs plaintext passwords.
+  //
+  // The three env vars must be set in Vercel (Production + Preview + Development)
+  // before this seed step can run on any deployed environment.
+  // See profile.md "Ops prerequisite" section.
+  const superAdminDefs = [
+    { username: "devadmin", envVar: "SUPERADMIN_DEVADMIN_PASSWORD" },
+    { username: "ishan",    envVar: "SUPERADMIN_ISHAN_PASSWORD" },
+    { username: "shaji",    envVar: "SUPERADMIN_SHAJI_PASSWORD" },
+  ];
+
+  const missingVars = superAdminDefs.filter((d) => !process.env[d.envVar]);
+  if (missingVars.length > 0) {
+    console.warn(
+      `\nSuperAdmin seed SKIPPED — missing env vars: ${missingVars.map((d) => d.envVar).join(", ")}`,
+    );
+    console.warn("Set those env vars in Vercel (Production + Preview + Development) and re-seed.");
+  } else {
+    let superAdminCount = 0;
+    for (const def of superAdminDefs) {
+      const plaintext = process.env[def.envVar]!; // asserted non-null above
+      const hash = await authCtx.password.hash(plaintext);
+      const email = toPlatformAuthEmail(def.username);
+
+      await prisma.superAdmin.upsert({
+        where: { username: def.username },
+        update: { passwordHash: hash, email },
+        create: {
+          username: def.username,
+          email,
+          passwordHash: hash,
+        },
+      });
+      superAdminCount++;
+    }
+    console.log(`SuperAdmins: ${superAdminCount} (3 expected)`);
+  }
+
+  // ── 7. Summary ──────────────────────────────────────────────────────────────
   const totalRoles = await prisma.role.count();
   const totalCompanies = await prisma.externalCompany.count();
   const totalUsers = await prisma.user.count();
@@ -657,6 +667,8 @@ async function main() {
   console.log(
     `Component types:    ${totalComponentTypesCount}  (${componentTypeDefs.length}×${allOrgs.length}=${componentTypeDefs.length * allOrgs.length} expected)`,
   );
+  const totalSuperAdmins = await prisma.superAdmin.count();
+  console.log(`SuperAdmins:        ${totalSuperAdmins}  (3 expected when env vars are set)`);
   console.log(`\nSeeded password: ${SEED_PASSWORD}`);
   console.log(`Login at e.g. http://localhost:3000/acme-glass/login`);
   console.log(`========================`);

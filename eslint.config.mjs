@@ -39,10 +39,20 @@ const eslintConfig = defineConfig([
     files: ["app/\\[orgSlug\\]/**/*.ts", "app/\\[orgSlug\\]/**/*.tsx"],
     rules: {
       "no-restricted-imports": ["error", {
-        patterns: [{
-          group: ["@/lib/data/*"],
-          message: "Org-scoped pages/actions must not import lib/data/* — use internalFetch against API routes instead (Stage 12 layer separation). Deferred files may use eslint-disable with a note per stage-12.md.",
-        }],
+        patterns: [
+          {
+            group: ["@/lib/data/*"],
+            message: "Org-scoped pages/actions must not import lib/data/* — use internalFetch against API routes instead (Stage 12 layer separation). Deferred files may use eslint-disable with a note per stage-12.md.",
+          },
+          {
+            // FLAG-4 (Stage 16): also ban the two-level superadmin/* glob explicitly.
+            // The single-level @/lib/data/* glob above catches @/lib/data/admin but
+            // NOT @/lib/data/superadmin/orgs (two levels). Superadmin data functions
+            // are intentionally cross-org; org-scoped pages must never call them.
+            group: ["@/lib/data/superadmin/*"],
+            message: "Org-scoped pages must not use superadmin data functions — these are intentionally cross-org and bypass tenancy isolation.",
+          },
+        ],
       }],
     },
   },
