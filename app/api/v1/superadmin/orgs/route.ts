@@ -102,6 +102,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       "slug must contain only lowercase letters, digits, and hyphens, and must start and end with a letter or digit",
     );
   }
+  if (slug.includes("--")) {
+    return apiBadRequest("slug must not contain consecutive hyphens");
+  }
 
   // Wire up RESERVED_ORG_SLUGS — review-1.md nit from Batch A.
   if (RESERVED_ORG_SLUGS.includes(slug)) {
@@ -119,16 +122,13 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   // Write audit log after the transaction committed.
-  try {
-    await createOrgAuditLog(sa.superAdminId, result.org.id, "org.create", {
-      name: result.org.name,
-      slug: result.org.slug,
-    });
-  } catch (err) {
-    // Audit log failure is non-fatal — the org was created successfully.
-    // Log the error but do not fail the request.
-    console.error("[POST /api/v1/superadmin/orgs] createOrgAuditLog", err);
-  }
+  // Not wrapped in try/catch — an audit failure propagates as 500 (spec requires every
+  // mutation to have an audit row). On retry the org slug already exists → 409, so the
+  // admin sees a clear signal rather than a silent gap in the audit trail.
+  await createOrgAuditLog(sa.superAdminId, result.org.id, "org.create", {
+    name: result.org.name,
+    slug: result.org.slug,
+  });
 
   return NextResponse.json({ org: result.org }, { status: 201 });
 }

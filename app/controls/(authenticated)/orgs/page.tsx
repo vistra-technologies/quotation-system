@@ -39,9 +39,15 @@ interface OrgRow {
 export default async function OrgsPage() {
   const res = await internalFetch("/api/v1/superadmin/orgs");
 
-  const orgs: OrgRow[] = res.ok
-    ? ((await res.json()) as { orgs: OrgRow[] }).orgs
-    : [];
+  if (!res.ok) {
+    return (
+      <p className="p-8 text-center text-sm text-status-failed-text">
+        Failed to load organizations — please refresh.
+      </p>
+    );
+  }
+
+  const orgs = ((await res.json()) as { orgs: OrgRow[] }).orgs;
 
   return (
     <div>
