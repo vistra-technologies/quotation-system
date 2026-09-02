@@ -52,6 +52,9 @@ const SA_USERNAME = process.env.TEST_SA_USERNAME ?? "";
 const SA_PASSWORD = process.env.TEST_SA_PASSWORD ?? "";
 const hasBootstrapCreds = Boolean(SA_USERNAME && SA_PASSWORD);
 
+// Password used when creating test orgs that now require adminPassword (Stage 17 item 4a).
+const TEST_ORG_ADMIN_PASSWORD = "TestPass1234!";
+
 // ── Helper: log in as SuperAdmin and return the qs-sa-token cookie value ─────
 
 async function loginAsSuperAdmin(
@@ -101,7 +104,7 @@ test('POST /api/v1/superadmin/orgs — "platform" slug rejected → 400', async 
 
   const res = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "Platform Org", slug: "platform" },
+    data: { name: "Platform Org", slug: "platform", adminPassword: TEST_ORG_ADMIN_PASSWORD },
   });
   expect(res.status()).toBe(400);
   const body = await res.json();
@@ -121,16 +124,17 @@ test("POST /api/v1/superadmin/orgs — invalid slug format → 400 (requires ses
 
   const res = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "Bad Slug", slug: "Bad Slug!!!" },
+    data: { name: "Bad Slug", slug: "Bad Slug!!!", adminPassword: TEST_ORG_ADMIN_PASSWORD },
   });
   expect(res.status()).toBe(400);
 });
 
 // 5. Create a new org and verify isolation
 //    "New org is isolated": a subsequent GET /api/v1/superadmin/orgs scoped query
-//    shows the new org with userCount=0, confirming it has no bleed from other orgs.
+//    shows the new org with userCount=1 (Stage 17: org creation auto-creates one admin
+//    user), confirming it has no bleed from other orgs (i.e. not some larger count).
 //    Skipped when bootstrap creds absent.
-test("POST /api/v1/superadmin/orgs — new org is isolated (userCount=0)", async ({
+test("POST /api/v1/superadmin/orgs — new org is isolated (userCount=1, auto-created admin)", async ({
   request,
 }) => {
   test.skip(
@@ -144,7 +148,7 @@ test("POST /api/v1/superadmin/orgs — new org is isolated (userCount=0)", async
   // Create a new org.
   const createRes = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "E2E Isolation Test Org", slug: uniqueSlug },
+    data: { name: "E2E Isolation Test Org", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD },
   });
   expect(createRes.status()).toBe(201);
   const created = (await createRes.json()) as { org: { id: string; slug: string } };
@@ -161,8 +165,9 @@ test("POST /api/v1/superadmin/orgs — new org is isolated (userCount=0)", async
 
   const newOrg = list.orgs.find((o) => o.slug === uniqueSlug);
   expect(newOrg, "New org must appear in the org list").toBeDefined();
-  // The new org has no users — isolation check: no user rows from other orgs leaked in.
-  expect(newOrg!.userCount).toBe(0);
+  // The new org has exactly the one auto-created admin user (Stage 17 item 4a) — isolation
+  // check: no user rows from other orgs leaked in.
+  expect(newOrg!.userCount).toBe(1);
 
   // Also confirm the seeded orgs (vistra, acme-glass, etc.) each have userCount > 0,
   // proving the count is org-scoped and not a global count.
@@ -250,7 +255,7 @@ test("Batch E: suspend/reactivate lifecycle + proxy suspension check", async ({
   // Create a test org.
   const createRes = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "E2E Suspend Test", slug: uniqueSlug },
+    data: { name: "E2E Suspend Test", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD },
   });
   expect(createRes.status()).toBe(201);
   const created = (await createRes.json()) as { org: { id: string } };
