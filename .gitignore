@@ -45,7 +45,11 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated/prisma
-.engineering/
+# .engineering/<stage>/ is scratch (plans, diffs, reviews) except worklog.md,
+# which is the durable append-only board and stays tracked across the whole stage.
+.engineering/**
+!.engineering/**/
+!.engineering/**/worklog.md
 
 .vercel
 .env*
