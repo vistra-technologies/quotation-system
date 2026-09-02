@@ -64,7 +64,8 @@ async function createTestOrg(
   const slug = `e2e-roles-${suffix}-${Date.now()}`.slice(0, 63);
   const res = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: `E2E Roles Test Org ${suffix}`, slug },
+    // adminPassword required since Stage 17 item 4a (auto-created org-admin account).
+    data: { name: `E2E Roles Test Org ${suffix}`, slug, adminPassword: "TestPass1234!" },
   });
   if (res.status() !== 201) {
     throw new Error(`Failed to create test org ${suffix}: HTTP ${res.status()}`);
