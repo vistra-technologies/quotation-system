@@ -19,7 +19,11 @@ Filled in once the developer's plan proposes a breakdown (Step 2). Scope has 4 p
 | 1 | Intake form required/optional flips | `feature/1-intake-required-flips` | ✅ merged into `release/stage-17` |
 | 2 | Configuration page restyle + Selection edit | `feature/2-configuration-restyle` | ✅ merged into `release/stage-17` |
 | 4a | Create-org admin password field | `feature/4a-create-org-admin-password` | ✅ merged into `release/stage-17` |
-| 4b | SuperAdmin cross-org add-user | `feature/4b-superadmin-add-user` | in progress |
+| 4b | SuperAdmin cross-org add-user | `feature/4b-superadmin-add-user` | ✅ merged into `release/stage-17` |
+
+**All 4 work items merged. `release/stage-17` is fully up to date; no feature branches remain.
+Manual verification against `release/stage-17`'s own preview + the committed E2E suite is the
+`engineering:test` phase's job next.**
 
 ---
 
