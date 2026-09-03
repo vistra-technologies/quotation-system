@@ -20,10 +20,18 @@ Filled in once the developer's plan proposes a breakdown (Step 2). Scope has 4 p
 | 2 | Configuration page restyle + Selection edit | `feature/2-configuration-restyle` | ✅ merged into `release/stage-17` |
 | 4a | Create-org admin password field | `feature/4a-create-org-admin-password` | ✅ merged into `release/stage-17` |
 | 4b | SuperAdmin cross-org add-user | `feature/4b-superadmin-add-user` | ✅ merged into `release/stage-17` |
+| 4b-fix | Post-merge crash fix (`/controls/users` LoadingOverlay) | `feature/4b-superadmin-users-crash-fix` | ✅ merged into `release/stage-17` |
+| test-fix-1 | `superadmin-orgs.spec.ts`/`superadmin-roles.spec.ts` adminPassword payload fix | `feature/stage17-bugfix-batch-1` | ✅ merged into `release/stage-17` |
+| 5a | Layout fix — double max-width nesting in project wizard layout | `feature/5a-wizard-layout-padding-fix` | pending |
+| 5b | Starter ComponentType catalog seeds at org creation | `feature/5b-component-catalog-seeding` | pending |
+| 5c/5d | Icons + field-pairing layout + Saved Components/footer restyle | `feature/5cd-configuration-icons-layout` | pending |
 
-**All 4 work items merged. `release/stage-17` is fully up to date; no feature branches remain.
-Manual verification against `release/stage-17`'s own preview + the committed E2E suite is the
-`engineering:test` phase's job next.**
+**2026-09-03 — item 5 added (post-test, pre-deploy).** Human reviewed the live Configuration page
+against the mockup and found real gaps beyond items 1/2/4a/4b's scope — see
+`quotation-system-docs/design-docs/08-decisions-and-changelog.md`'s 2026-09-03 entry and
+`stage-17.md`'s item 5 for full detail. Reopens the stage for one more implement→test round before
+`engineering:deploy`. Items 1-4 (+ the crash fix and test fix above) remain merged, tested (PASS), and
+untouched by this addition — only item 5 needs building.
 
 ---
 
@@ -221,3 +229,21 @@ Manual verification against `release/stage-17`'s own preview + the committed E2E
   All three gaps from `bugs-1.md` are now closed. Merged `feature/stage17-bugfix-batch-1` → `release/stage-17`
   (`c31a50f`). Next: re-sync `staging`/`test.easeetool.com` and re-run the tester for a final PASS.
 - **2026-09-03 — tester (engineering:test pass 2):** PASS. Tested against `https://test.easeetool.com` (staging, commit `230f7f5`). Static checks clean (lint 0 errors, tsc 0 errors). All bugs-1.md issues confirmed resolved: tests 3, 4, 5, 9 in `superadmin-orgs.spec.ts` and the `createTestOrg()` helper in `superadmin-roles.spec.ts` all pass with SA credentials supplied. SuperAdmin full login round-trip, tenancy isolation, cross-org role ownership guard — all pass. 25/31 tests passed; 3 Tier-2 page-navigation tests showed transient `ERR_NETWORK_IO_SUSPENDED`/timeout failures due to parallel-worker resource contention (all 3 pass in isolation in 7s total); 3 tests cascaded-skipped from serial-mode. No new defects found. 0 CRITICAL, 0 MAJOR, 0 MINOR (new). Pre-existing MINOR flakiness noted: Tier-2 tests are sensitive to concurrent load from the tenancy-isolation test. See `.engineering/stage-17/test-pass-2.md`.
+- **2026-09-03 — developer (item 5c/5d):** Icons + field-pairing layout + sidebar/saved-items restyle + footer. Branch: `feature/5cd-configuration-icons-layout`, commit `053ef3a`.
+  New files:
+  - `lib/component-icons.tsx` — `ComponentIcon` lookup: GLASS (4-pane window), DOOR (rect + handle circle), PROFILE_STOP (extruded-rail bar + tick marks), fallback = box/package SVG reused from the empty state.
+  Changed files:
+  - `app/[orgSlug]/projects/[projectId]/configuration/add-selection-form.tsx` — (a) `pairFields()` helper groups consecutive `field`/`dropdown` entries into `grid-cols-2` rows; `radio`/`checkbox` always full-width (no `FieldEntry` interface change); (b) sidebar tiles restyled from flat text to vertical icon-over-label bordered cards; selected = `bg-primary text-text-on-primary`; (c) Saved Components rows restyled to icon chip + bold name + muted type subtitle + chevron `›`; editing row highlighted (border-primary bg-primary-softer), icon chip flips to bg-primary; (d) Configure button → `w-full bg-primary-soft border-primary-soft text-primary-dark` (soft treatment); submit button → `w-full`, stacked below Configure.
+  - `app/[orgSlug]/projects/[projectId]/configuration/page.tsx` — added `Link` import; compute `base` via `orgHref`; card footer (border-t, justify-between) with Back (outline) and Continue to Design (primary) links using subdomain-aware `${base}/projects/${projectId}` hrefs.
+  Lint: 0 errors (5 pre-existing warnings in test files). `tsc --noEmit`: exit 0.
+  Judgment calls: (1) icon shapes — GLASS=divided window, DOOR=rect+handle, PROFILE_STOP=bar+ticks (all 24×24 outlined, matching codebase icon language); (2) soft-button class combo = `bg-primary-soft border-primary-soft text-primary-dark` (direct translation of style guide's `.btn-soft`); (3) `pairFields` key = `row[0].key` (stable, field-schema-derived, not index).
+- **2026-09-03 — developer (item 5a):** Layout fix — removed double-centered max-width in project wizard layout. Changed: `app/[orgSlug]/projects/[projectId]/layout.tsx` line 74 — replaced `"mx-auto w-full max-w-5xl px-6 py-8"` with `"py-8"`. The parent `app/[orgSlug]/projects/layout.tsx` already applies `mx-auto max-w-[1180px] px-8`, so the inner wrapper's centering/width/horizontal-padding was redundant and wasted ~150-190px. Lint: 0 errors (5 pre-existing warnings). tsc: pre-existing errors only (generated Prisma client absent from worktree, unrelated `proxy.ts`/`users.ts` nullability — all pre-existing on the branch, not introduced by this change). Branch: `feature/5a-wizard-layout-padding-fix`, commit `f8577a2`, pushed. Vercel preview will be the functional verification.
+- **2026-09-03 — developer (item 5b):** Starter ComponentType catalog seeding at org creation. Changed files (app repo, branch `feature/5b-component-catalog-seeding`, commit `84f73fd`):
+  - `lib/component-catalog-seed.ts` (new) — shared module exporting `COMPONENT_TYPE_DEFS` (GLASS, DOOR, PROFILE_STOP with full `fieldsSchema`) and `SEEDED_CATALOG_CATEGORY_NAME = "Glass Partitions"`. DOOR's `doorType` field changed from `type: "radio"` to `type: "dropdown"` per the field-pairing decision (Stage 17 5b spec + decisions log 2026-09-03 decision #3).
+  - `lib/data/superadmin/orgs.ts` — imports shared module; inside the existing `$transaction`, after admin User+Account creation, adds `tx.componentCategory.create()` + loop over `COMPONENT_TYPE_DEFS` with `tx.componentType.create()` (plain `.create()`, not `.upsert()` — this path only runs once at org creation). No change to the function's return type or callers.
+  - `prisma/seed.ts` — imports `COMPONENT_TYPE_DEFS` and `SEEDED_CATALOG_CATEGORY_NAME` from the new module; removes the now-redundant inline `componentTypeDefs` array; updates all three log lines that referenced `componentTypeDefs.length`. The idempotent upsert loop is otherwise unchanged.
+  Docs repo (commit `c5326e7` on `main`):
+  - `design-docs/sql-queries/by-page.sql` — added Steps 9 and 10 under `/controls/orgs/new`: ComponentCategory INSERT and ComponentType INSERT (per def), inside the same transaction.
+  Static checks (from worktree after `npm install`): lint 0 errors (5 pre-existing warnings), tsc exit 0.
+  Live verification (org creation producing 3 ComponentTypes) is engineering:test's job against the Vercel preview.
+- **2026-09-03 — reviewer (item 5 — integrated 5a/5b/5c/5d):** APPROVE-WITH-NITS. 0 CRITICAL, 0 IMPORTANT, 1 MINOR. All per-item and integration correctness checks pass; lint 0 errors and tsc exit 0 confirmed independently (fresh run). See `.engineering/stage-17/review-item5.md`.
