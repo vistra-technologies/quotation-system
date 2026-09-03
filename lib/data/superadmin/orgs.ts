@@ -8,6 +8,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { DEFAULT_ROLE_DEFS } from "@/lib/org-role-defaults";
+import { COMPONENT_TYPE_DEFS, SEEDED_CATALOG_CATEGORY_NAME } from "@/lib/component-catalog-seed";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -177,6 +178,28 @@ export async function createOrganizationWithDefaults(
           password: passwordHash,
         },
       });
+
+      // 4. Seed the starter ComponentType catalog for this new org.
+      // Uses plain .create() (not .upsert()) because this path only ever runs
+      // once, at org-creation time — unlike prisma/seed.ts which uses upsert
+      // because it re-runs against pre-existing orgs.
+      const category = await tx.componentCategory.create({
+        data: { organizationId: newOrg.id, name: SEEDED_CATALOG_CATEGORY_NAME },
+        select: { id: true },
+      });
+
+      for (const def of COMPONENT_TYPE_DEFS) {
+        await tx.componentType.create({
+          data: {
+            organizationId: newOrg.id,
+            categoryId: category.id,
+            code: def.code,
+            name: def.name,
+            fieldsSchema: def.fieldsSchema,
+            active: true,
+          },
+        });
+      }
 
       return { org: newOrg, adminUserId: adminUser.id };
     });
