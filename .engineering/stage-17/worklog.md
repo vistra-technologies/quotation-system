@@ -22,10 +22,10 @@ Filled in once the developer's plan proposes a breakdown (Step 2). Scope has 4 p
 | 4b | SuperAdmin cross-org add-user | `feature/4b-superadmin-add-user` | ✅ merged into `release/stage-17` |
 | 4b-fix | Post-merge crash fix (`/controls/users` LoadingOverlay) | `feature/4b-superadmin-users-crash-fix` | ✅ merged into `release/stage-17` |
 | test-fix-1 | `superadmin-orgs.spec.ts`/`superadmin-roles.spec.ts` adminPassword payload fix | `feature/stage17-bugfix-batch-1` | ✅ merged into `release/stage-17` |
-| 5a | Layout fix — double max-width nesting in project wizard layout | `feature/5a-wizard-layout-padding-fix` | pending |
-| 5b | Starter ComponentType catalog seeds at org creation | `feature/5b-component-catalog-seeding` | pending |
+| 5a | Layout fix — double max-width nesting in project wizard layout | `feature/5a-wizard-layout-padding-fix` | ✅ merged into `release/stage-17` |
+| 5b | Starter ComponentType catalog seeds at org creation | `feature/5b-component-catalog-seeding` | ✅ merged into `release/stage-17` |
 | 5c/5d | Icons + field-pairing layout + Saved Components/footer restyle | `feature/5cd-configuration-icons-layout` | ✅ merged into `release/stage-17` |
-| 6a | SuperAdmin org hard-delete (suspended-only, transactional cascade, audit-logged) | `feature/6a-org-hard-delete` | 🔨 built, awaiting review |
+| 6a | SuperAdmin org hard-delete (suspended-only, transactional cascade, audit-logged) | `feature/6a-org-hard-delete` | ✅ merged into `release/stage-17` (TOCTOU fix `e77bc9e`, re-approved) |
 
 **2026-09-03 — item 5 added (post-test, pre-deploy).** Human reviewed the live Configuration page
 against the mockup and found real gaps beyond items 1/2/4a/4b's scope — see
