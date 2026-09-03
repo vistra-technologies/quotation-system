@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { ComponentIcon } from "@/lib/component-icons";
 import {
   createSelection,
   updateSelection,
@@ -52,16 +53,55 @@ interface AddSelectionFormProps {
 const initialCreateState: CreateSelectionState = { error: null };
 const initialUpdateState: UpdateSelectionState = { error: null };
 
+// ─── Field pairing helper ────────────────────────────────────────────────────
+
+/**
+ * Groups FieldEntry[] into display rows for the 2-column layout.
+ *
+ * Rules (per Stage 17 item 5d / architect decision):
+ *   - "field" and "dropdown" types are short controls → auto-paired into 2-column rows.
+ *   - "radio" and "checkbox" always render full-width (break any in-progress pair).
+ *   - A trailing unpaired "field"/"dropdown" (odd count in section) renders alone.
+ *
+ * Returns an array of row arrays: length-2 = paired row, length-1 = full-width row.
+ */
+function pairFields(fields: FieldEntry[]): FieldEntry[][] {
+  const rows: FieldEntry[][] = [];
+  let i = 0;
+  while (i < fields.length) {
+    const f = fields[i];
+    if (f.type === "field" || f.type === "dropdown") {
+      const next = fields[i + 1];
+      if (next && (next.type === "field" || next.type === "dropdown")) {
+        rows.push([f, next]);
+        i += 2;
+      } else {
+        rows.push([f]);
+        i += 1;
+      }
+    } else {
+      // radio / checkbox — always full-width alone
+      rows.push([f]);
+      i += 1;
+    }
+  }
+  return rows;
+}
+
 // ─── Main form component ─────────────────────────────────────────────────────
 
 /**
  * Client Component for the Configuration page — Stage 17 rework.
  *
  * Renders the finalized 3-column mockup layout:
- *   Left (200px) : ComponentType sidebar — click to select
- *   Center (1fr) : Add/Edit form — basic fields always visible;
- *                  "Configure" button reveals advanced fields (only when present)
- *   Right (300px): Saved Components list — click a row to enter edit mode
+ *   Left (200px) : ComponentType sidebar — vertical icon-over-label tiles,
+ *                  selected = filled primary background (5d)
+ *   Center (1fr) : Add/Edit form — basic fields always visible; consecutive
+ *                  field/dropdown entries auto-pair into 2-column rows (5d);
+ *                  "Configure" button (full-width soft) reveals advanced fields
+ *                  (only when present); both buttons full-width stacked (5d)
+ *   Right (300px): Saved Components list — icon chip + bold name + muted type
+ *                  subtitle + chevron per row (5d); editing row highlighted
  *
  * Edit mode state machine:
  *   - Null editingSelectionId = add mode (blank form, sidebar clickable)
@@ -72,7 +112,8 @@ const initialUpdateState: UpdateSelectionState = { error: null };
  * exist in the current fieldsSchema are silently dropped. Keys in the schema
  * with no matching config entry render blank (default state).
  *
- * Reuses: FieldInput sub-component (unchanged), LoadingOverlay, useActionState.
+ * Reuses: FieldInput sub-component (unchanged), LoadingOverlay, useActionState,
+ *         ComponentIcon (5c, new), pairFields helper (5d, new).
  */
 export function AddSelectionForm({
   orgSlug,
@@ -201,31 +242,33 @@ export function AddSelectionForm({
       {/* 3-column grid layout matching the finalized mockup */}
       <div className="grid grid-cols-[200px_1fr_300px] gap-6 p-7">
 
-        {/* ── Left: ComponentType sidebar ──────────────────────────────────── */}
+        {/* ── Left: ComponentType sidebar (5d — vertical icon-over-label tiles) ── */}
         <div>
           <p className="mb-3.5 text-[11px] font-bold uppercase tracking-[0.06em] text-text-muted">
             Components
           </p>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-3.5">
             {componentTypes.map((ct) => {
               const isSelected = ct.id === selectedTypeId;
+              const isLocked = editingSelectionId !== null && !isSelected;
               return (
                 <button
                   key={ct.id}
                   type="button"
                   onClick={() => handleTypeChange(ct.id)}
-                  className={[
-                    "w-full rounded-sm px-3 py-2.5 text-left text-sm font-bold transition-colors",
-                    isSelected
-                      ? "bg-primary text-text-on-primary"
-                      : editingSelectionId !== null
-                        ? "cursor-default text-text-muted opacity-60"
-                        : "text-text-body hover:bg-primary-softer hover:text-text-heading",
-                  ].join(" ")}
-                  disabled={editingSelectionId !== null && !isSelected}
+                  disabled={isLocked}
                   aria-pressed={isSelected}
+                  className={[
+                    "flex w-full flex-col items-center gap-2 rounded-md border py-[22px] px-3 text-sm font-bold transition-colors",
+                    isSelected
+                      ? "border-primary bg-primary text-text-on-primary"
+                      : isLocked
+                        ? "cursor-default border-border bg-bg-card text-text-muted opacity-50"
+                        : "border-border bg-bg-card text-text-body hover:border-primary/40 hover:bg-primary-softer hover:text-text-heading",
+                  ].join(" ")}
                 >
-                  {ct.name}
+                  <ComponentIcon code={ct.code} />
+                  <span>{ct.name}</span>
                 </button>
               );
             })}
@@ -282,29 +325,43 @@ export function AddSelectionForm({
               />
             </div>
 
-            {/* Basic fields (always visible when a type is selected) */}
+            {/* Basic fields — consecutive field/dropdown pairs rendered 2-per-row (5d) */}
             {selectedType && basicFields.length > 0 && (
               <div className="flex flex-col gap-4">
-                {basicFields.map((field) => (
-                  <FieldInput
-                    key={field.key}
-                    field={field}
-                    value={fieldValues[field.key]}
-                    onChange={(val) => updateField(field.key, val)}
-                  />
-                ))}
+                {pairFields(basicFields).map((row) =>
+                  row.length === 2 ? (
+                    <div key={row[0].key} className="grid grid-cols-2 gap-4">
+                      {row.map((field) => (
+                        <FieldInput
+                          key={field.key}
+                          field={field}
+                          value={fieldValues[field.key]}
+                          onChange={(val) => updateField(field.key, val)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <FieldInput
+                      key={row[0].key}
+                      field={row[0]}
+                      value={fieldValues[row[0].key]}
+                      onChange={(val) => updateField(row[0].key, val)}
+                    />
+                  ),
+                )}
               </div>
             )}
 
-            {/* Configure button — only when advanced fields exist */}
+            {/* Configure button (5d — full-width, soft/secondary treatment) */}
+            {/* Only rendered when advanced fields exist. */}
             {selectedType && advancedFields.length > 0 && (
               <>
                 <button
                   type="button"
                   onClick={() => setShowAdvanced((prev) => !prev)}
-                  className="self-start rounded-sm border border-border bg-bg-white px-4 py-2 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
+                  className="w-full rounded-sm border border-primary-soft bg-primary-soft px-4 py-2.5 text-sm font-bold text-primary-dark hover:bg-primary-soft/80 transition-colors"
                 >
-                  {showAdvanced ? "Hide Advanced" : `⚙️ Configure`}
+                  {showAdvanced ? "Hide Advanced" : "⚙ Configure"}
                 </button>
 
                 {showAdvanced && (
@@ -312,24 +369,39 @@ export function AddSelectionForm({
                     <p className="text-xs font-bold uppercase tracking-wider text-text-placeholder">
                       {t("advancedFields")}
                     </p>
-                    {advancedFields.map((field) => (
-                      <FieldInput
-                        key={field.key}
-                        field={field}
-                        value={fieldValues[field.key]}
-                        onChange={(val) => updateField(field.key, val)}
-                      />
-                    ))}
+                    {/* Advanced fields — same 2-column pairing as basic fields (5d) */}
+                    {pairFields(advancedFields).map((row) =>
+                      row.length === 2 ? (
+                        <div key={row[0].key} className="grid grid-cols-2 gap-4">
+                          {row.map((field) => (
+                            <FieldInput
+                              key={field.key}
+                              field={field}
+                              value={fieldValues[field.key]}
+                              onChange={(val) => updateField(field.key, val)}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <FieldInput
+                          key={row[0].key}
+                          field={row[0]}
+                          value={fieldValues[row[0].key]}
+                          onChange={(val) => updateField(row[0].key, val)}
+                        />
+                      ),
+                    )}
                   </div>
                 )}
               </>
             )}
 
-            <div className="flex items-center gap-3">
+            {/* Submit button (5d — full-width primary, stacked below Configure) */}
+            <div className="flex flex-col gap-3">
               <button
                 type="submit"
                 disabled={isPending}
-                className="rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
+                className="w-full rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50 transition-colors"
               >
                 {editingSelectionId !== null ? "Save Changes" : t("submitAdd")}
               </button>
@@ -347,7 +419,7 @@ export function AddSelectionForm({
           </form>
         </div>
 
-        {/* ── Right: Saved Components list ─────────────────────────────────── */}
+        {/* ── Right: Saved Components list (5d — icon chip + name + type + chevron) ── */}
         <div>
           <p className="mb-3.5 text-[11px] font-bold uppercase tracking-[0.06em] text-text-muted">
             Saved Components
@@ -356,6 +428,7 @@ export function AddSelectionForm({
           {selections.length === 0 ? (
             <div className="rounded-md border border-dashed border-border px-4 py-8 text-center">
               <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-[10px] bg-primary-softer text-primary">
+                {/* Fallback box/package icon — same SVG as ComponentIcon fallback */}
                 <svg
                   width="20"
                   height="20"
@@ -379,7 +452,7 @@ export function AddSelectionForm({
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-2.5">
               {selections.map((sel) => {
                 const isEditing = sel.id === editingSelectionId;
                 return (
@@ -388,18 +461,38 @@ export function AddSelectionForm({
                     type="button"
                     onClick={() => handleEditSelection(sel)}
                     className={[
-                      "w-full rounded-sm border px-3 py-2.5 text-left transition-colors",
+                      "flex w-full items-center gap-3 rounded-sm border px-3.5 py-3 text-left transition-colors",
                       isEditing
                         ? "border-primary bg-primary-softer"
-                        : "border-border bg-bg-white hover:border-primary/40 hover:bg-primary-softer/50",
+                        : "border-border bg-bg-white hover:border-primary-soft hover:bg-primary-softer",
                     ].join(" ")}
                   >
-                    <p className="text-sm font-bold text-text-heading leading-tight">
-                      {sel.label}
-                    </p>
-                    <p className="mt-0.5 text-xs text-text-muted">
-                      {sel.componentType.name}
-                    </p>
+                    {/* Icon chip (5d) — filled primary when editing */}
+                    <span
+                      className={[
+                        "flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[8px]",
+                        isEditing
+                          ? "bg-primary text-text-on-primary"
+                          : "bg-primary-softer text-primary",
+                      ].join(" ")}
+                    >
+                      <ComponentIcon code={sel.componentType.code} className="h-4 w-4" />
+                    </span>
+
+                    {/* Name + type subtitle */}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-bold leading-tight text-text-heading">
+                        {sel.label}
+                      </p>
+                      <p className="mt-0.5 text-xs text-text-muted">
+                        {sel.componentType.name}
+                      </p>
+                    </div>
+
+                    {/* Chevron */}
+                    <span className="shrink-0 text-text-placeholder" aria-hidden="true">
+                      ›
+                    </span>
                   </button>
                 );
               })}

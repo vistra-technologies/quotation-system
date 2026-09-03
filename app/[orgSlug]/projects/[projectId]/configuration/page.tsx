@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
@@ -68,6 +69,9 @@ export default async function ConfigurationPage({
 }) {
   const { orgSlug, projectId } = await params;
 
+  // Base URL for project-relative hrefs (subdomain-aware, matching wizard layout pattern).
+  const base = await orgHref(orgSlug, "");
+
   // Parallel fetch: project (React.cache() deduped with layout), selections,
   // component types.
   const [
@@ -137,6 +141,21 @@ export default async function ConfigurationPage({
             componentTypes={activeComponentTypes}
             selections={selections}
           />
+          {/* Card footer — Back / Continue to Design (Step 3 of the wizard, 5d) */}
+          <div className="flex items-center justify-between border-t border-border px-7 py-5">
+            <Link
+              href={`${base}/projects/${projectId}`}
+              className="rounded-sm border border-border bg-bg-white px-5 py-2.5 text-sm font-bold text-text-body transition-colors hover:bg-primary-softer hover:text-text-heading"
+            >
+              Back
+            </Link>
+            <Link
+              href={`${base}/projects/${projectId}/design`}
+              className="rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary transition-colors hover:bg-primary-dark"
+            >
+              Continue to Design
+            </Link>
+          </div>
         </div>
       )}
     </div>
