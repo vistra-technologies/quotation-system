@@ -13,6 +13,12 @@ export interface CreateSelectionInput {
   orderIndex: number;
 }
 
+export interface UpdateSelectionInput {
+  // componentTypeId is intentionally absent — locked after creation.
+  label?: string;
+  config?: Record<string, string | boolean | number | null>;
+}
+
 // ─── Queries ────────────────────────────────────────────────────────────────
 
 /**
@@ -77,6 +83,35 @@ export async function createSelection(
       label: input.label,
       config: input.config,
       orderIndex: input.orderIndex,
+    },
+  });
+}
+
+/**
+ * Update an existing Selection's label and/or config.
+ *
+ * componentTypeId is NOT patchable — locked after creation per spec.
+ *
+ * Tenancy guard: verifies the selection belongs to the session's org before
+ * updating. Returns null if not found (caller translates to 404).
+ */
+export async function updateSelection(
+  session: SessionData,
+  id: string,
+  input: UpdateSelectionInput,
+) {
+  // Tenancy guard — verify the selection belongs to the session's org.
+  const existing = await prisma.selection.findFirst({
+    where: { id, organizationId: session.organizationId },
+    select: { id: true },
+  });
+  if (!existing) return null;
+
+  return prisma.selection.update({
+    where: { id },
+    data: {
+      ...(input.label !== undefined ? { label: input.label } : {}),
+      ...(input.config !== undefined ? { config: input.config } : {}),
     },
   });
 }

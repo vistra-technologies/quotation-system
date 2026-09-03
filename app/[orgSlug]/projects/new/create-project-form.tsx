@@ -51,11 +51,6 @@ export function CreateProjectForm({
   const [state, formAction, isPending] = useActionState(createProject, initialState);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
 
-  // GST conditional: required when the linked company is India (D20).
-  // External (locked) user: static from lockedCompany.country.
-  // Internal (free-choice) user: updated when dropdown changes.
-  const [isIndia, setIsIndia] = useState(lockedCompany?.country === "INDIA");
-
   // C6: currency defaults to company's defaultCurrency, else INR (decision 6).
   const [selectedCurrency, setSelectedCurrency] = useState<string>(
     lockedCompany?.defaultCurrency ?? "INR",
@@ -153,7 +148,6 @@ export function CreateProjectForm({
                     onChange={(id) => {
                       setSelectedCompanyId(id);
                       const co = externalCompanies.find((c) => c.id === id);
-                      setIsIndia(co?.country === "INDIA");
                       // C6: update currency default when company selection changes.
                       setSelectedCurrency(co?.defaultCurrency ?? "INR");
                     }}
@@ -285,11 +279,13 @@ export function CreateProjectForm({
               <div className={fieldCls}>
                 <label htmlFor="mainContractorName" className={labelCls}>
                   {t("fieldMainContractorName")}
+                  {reqMark}
                 </label>
                 <input
                   id="mainContractorName"
                   name="mainContractorName"
                   type="text"
+                  required
                   autoComplete="off"
                   pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
@@ -354,87 +350,72 @@ export function CreateProjectForm({
 
           <div className="p-5">
             <div className="grid grid-cols-1 gap-x-5 sm:grid-cols-2">
-              {/* End Client Name * (C9) */}
+              {/* End Client Name (C9) */}
               <div className={fieldCls}>
                 <label htmlFor="endClientName" className={labelCls}>
                   {t("fieldEndClientName")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientName"
                   name="endClientName"
                   type="text"
-                  required
                   autoComplete="off"
                   pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
 
-              {/* End Client Phone * */}
+              {/* End Client Phone */}
               <div className={fieldCls}>
                 <label htmlFor="endClientPhone" className={labelCls}>
                   {t("fieldEndClientPhone")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientPhone"
                   name="endClientPhone"
                   type="tel"
-                  required
                   autoComplete="off"
                   className={inputCls}
                 />
               </div>
 
-              {/* End Client Email * */}
+              {/* End Client Email */}
               <div className={fieldCls}>
                 <label htmlFor="endClientEmail" className={labelCls}>
                   {t("fieldEndClientEmail")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientEmail"
                   name="endClientEmail"
                   type="email"
-                  required
                   autoComplete="off"
                   className={inputCls}
                 />
               </div>
 
-              {/* GST Number — conditionally required for India (D19/D20) */}
+              {/* GST Number — optional (D19/D20) */}
               <div className={fieldCls}>
                 <label htmlFor="endClientGstNumber" className={labelCls}>
                   {t("fieldEndClientGstNumber")}
-                  {isIndia && reqMark}
                 </label>
                 <input
                   id="endClientGstNumber"
                   name="endClientGstNumber"
                   type="text"
-                  required={isIndia}
                   autoComplete="off"
                   className={inputCls}
                 />
-                {isIndia && (
-                  <span className="text-[10px] text-text-muted">
-                    {t("gstRequiredHint")}
-                  </span>
-                )}
               </div>
 
-              {/* Address Line 1 * */}
+              {/* Address Line 1 */}
               <div className={fieldCls}>
                 <label htmlFor="endClientAddressLine1" className={labelCls}>
                   {t("fieldEndClientAddressLine1")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientAddressLine1"
                   name="endClientAddressLine1"
                   type="text"
-                  required
                   autoComplete="off"
                   placeholder="Street address, building"
                   className={inputCls}
@@ -456,34 +437,30 @@ export function CreateProjectForm({
                 />
               </div>
 
-              {/* City * (C9) */}
+              {/* City (C9) */}
               <div className={fieldCls}>
                 <label htmlFor="endClientCity" className={labelCls}>
                   {t("fieldEndClientCity")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientCity"
                   name="endClientCity"
                   type="text"
-                  required
                   autoComplete="off"
                   pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}
                 />
               </div>
 
-              {/* State * (C9) */}
+              {/* State (C9) */}
               <div className={fieldCls}>
                 <label htmlFor="endClientState" className={labelCls}>
                   {t("fieldEndClientState")}
-                  {reqMark}
                 </label>
                 <input
                   id="endClientState"
                   name="endClientState"
                   type="text"
-                  required
                   autoComplete="off"
                   pattern="[A-Za-z0-9 \-]*"
                   className={inputCls}

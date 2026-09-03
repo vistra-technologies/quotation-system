@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 interface OrgPickerProps {
   orgs: Array<{ id: string; name: string; slug: string }>;
   selectedOrgId: string | null;
+  /** Base path for org-picker navigation. Defaults to "/controls/roles". */
+  basePath?: string;
 }
 
 /**
@@ -16,15 +18,15 @@ interface OrgPickerProps {
  *
  * Stage 16 Batch D — F3.
  */
-export function OrgPicker({ orgs, selectedOrgId }: OrgPickerProps) {
+export function OrgPicker({ orgs, selectedOrgId, basePath = "/controls/roles" }: OrgPickerProps) {
   const router = useRouter();
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const value = e.target.value;
     if (value) {
-      router.push(`/controls/roles?orgId=${encodeURIComponent(value)}`);
+      router.push(`${basePath}?orgId=${encodeURIComponent(value)}`);
     } else {
-      router.push("/controls/roles");
+      router.push(basePath);
     }
   }
 

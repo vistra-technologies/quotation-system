@@ -52,6 +52,9 @@ const SA_USERNAME = process.env.TEST_SA_USERNAME ?? "";
 const SA_PASSWORD = process.env.TEST_SA_PASSWORD ?? "";
 const hasBootstrapCreds = Boolean(SA_USERNAME && SA_PASSWORD);
 
+// Password used when creating test orgs that now require adminPassword (Stage 17 item 4a).
+const TEST_ORG_ADMIN_PASSWORD = "TestPass1234!";
+
 // ── Helper: log in as SuperAdmin and return the qs-sa-token cookie value ─────
 
 async function loginAsSuperAdmin(
@@ -101,7 +104,7 @@ test('POST /api/v1/superadmin/orgs — "platform" slug rejected → 400', async 
 
   const res = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "Platform Org", slug: "platform" },
+    data: { name: "Platform Org", slug: "platform", adminPassword: TEST_ORG_ADMIN_PASSWORD },
   });
   expect(res.status()).toBe(400);
   const body = await res.json();
@@ -121,16 +124,17 @@ test("POST /api/v1/superadmin/orgs — invalid slug format → 400 (requires ses
 
   const res = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "Bad Slug", slug: "Bad Slug!!!" },
+    data: { name: "Bad Slug", slug: "Bad Slug!!!", adminPassword: TEST_ORG_ADMIN_PASSWORD },
   });
   expect(res.status()).toBe(400);
 });
 
 // 5. Create a new org and verify isolation
 //    "New org is isolated": a subsequent GET /api/v1/superadmin/orgs scoped query
-//    shows the new org with userCount=0, confirming it has no bleed from other orgs.
+//    shows the new org with userCount=1 (Stage 17: org creation auto-creates one admin
+//    user), confirming it has no bleed from other orgs (i.e. not some larger count).
 //    Skipped when bootstrap creds absent.
-test("POST /api/v1/superadmin/orgs — new org is isolated (userCount=0)", async ({
+test("POST /api/v1/superadmin/orgs — new org is isolated (userCount=1, auto-created admin)", async ({
   request,
 }) => {
   test.skip(
@@ -144,7 +148,7 @@ test("POST /api/v1/superadmin/orgs — new org is isolated (userCount=0)", async
   // Create a new org.
   const createRes = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "E2E Isolation Test Org", slug: uniqueSlug },
+    data: { name: "E2E Isolation Test Org", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD },
   });
   expect(createRes.status()).toBe(201);
   const created = (await createRes.json()) as { org: { id: string; slug: string } };
@@ -161,8 +165,9 @@ test("POST /api/v1/superadmin/orgs — new org is isolated (userCount=0)", async
 
   const newOrg = list.orgs.find((o) => o.slug === uniqueSlug);
   expect(newOrg, "New org must appear in the org list").toBeDefined();
-  // The new org has no users — isolation check: no user rows from other orgs leaked in.
-  expect(newOrg!.userCount).toBe(0);
+  // The new org has exactly the one auto-created admin user (Stage 17 item 4a) — isolation
+  // check: no user rows from other orgs leaked in.
+  expect(newOrg!.userCount).toBe(1);
 
   // Also confirm the seeded orgs (vistra, acme-glass, etc.) each have userCount > 0,
   // proving the count is org-scoped and not a global count.
@@ -250,7 +255,7 @@ test("Batch E: suspend/reactivate lifecycle + proxy suspension check", async ({
   // Create a test org.
   const createRes = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "E2E Suspend Test", slug: uniqueSlug },
+    data: { name: "E2E Suspend Test", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD },
   });
   expect(createRes.status()).toBe(201);
   const created = (await createRes.json()) as { org: { id: string } };
@@ -323,6 +328,172 @@ test("Batch E: suspend/reactivate lifecycle + proxy suspension check", async ({
   };
   const afterReactivateRow = listReactivateBody.orgs.find((o) => o.id === orgId);
   expect(afterReactivateRow?.isSuspended).toBe(false);
+});
+
+// ---------------------------------------------------------------------------
+// TIER 1 (continued) — Item 6a: Hard-delete org (suspended-only, audit-logged)
+// ---------------------------------------------------------------------------
+
+// 10. DELETE /api/v1/superadmin/orgs/[orgId] without cookie → 401
+test("DELETE /api/v1/superadmin/orgs/[orgId] — no cookie → 401", async ({
+  request,
+}) => {
+  const res = await request.delete("/api/v1/superadmin/orgs/any-id");
+  expect(res.status()).toBe(401);
+});
+
+// 11. DELETE /api/v1/superadmin/orgs/[orgId] — non-existent org → 404
+test("DELETE /api/v1/superadmin/orgs/[orgId] — non-existent org → 404 (requires session)", async ({
+  request,
+}) => {
+  test.skip(
+    !hasBootstrapCreds,
+    "FLAG-B3: TEST_SA_USERNAME/TEST_SA_PASSWORD not set — bootstrap accounts not yet provisioned",
+  );
+
+  const token = await loginAsSuperAdmin(request);
+
+  const res = await request.delete(
+    "/api/v1/superadmin/orgs/00000000-0000-0000-0000-000000000000",
+    { headers: { Cookie: `qs-sa-token=${token}` } },
+  );
+  expect(res.status()).toBe(404);
+});
+
+// 12. DELETE /api/v1/superadmin/orgs/[orgId] — active (non-suspended) org → 400
+//     Safety gate: hard-delete is blocked unless the org is already suspended.
+//     Requires a valid SuperAdmin session; skipped when bootstrap creds absent.
+test("DELETE /api/v1/superadmin/orgs/[orgId] — non-suspended org rejected → 400 (safety gate)", async ({
+  request,
+}) => {
+  test.skip(
+    !hasBootstrapCreds,
+    "FLAG-B3: TEST_SA_USERNAME/TEST_SA_PASSWORD not set — bootstrap accounts not yet provisioned",
+  );
+
+  const token = await loginAsSuperAdmin(request);
+  const uniqueSlug = `verify-6a-gate-${Date.now()}`;
+
+  // Create a fresh org (active by default).
+  const createRes = await request.post("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: { name: "6a Safety Gate Test", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD },
+  });
+  expect(createRes.status()).toBe(201);
+  const { org } = (await createRes.json()) as { org: { id: string } };
+
+  // Attempt DELETE without suspending first — must be rejected.
+  const deleteRes = await request.delete(
+    `/api/v1/superadmin/orgs/${org.id}`,
+    { headers: { Cookie: `qs-sa-token=${token}` } },
+  );
+  expect(deleteRes.status()).toBe(400);
+  const body = (await deleteRes.json()) as { error?: string };
+  expect(body.error).toMatch(/suspended/i);
+
+  // Org must still exist in the list (no data was lost).
+  const listRes = await request.get("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+  const listBody = (await listRes.json()) as { orgs: Array<{ id: string }> };
+  expect(listBody.orgs.some((o) => o.id === org.id)).toBe(true);
+
+  // Cleanup: suspend then hard-delete this test org so it doesn't accumulate.
+  await request.post(`/api/v1/superadmin/orgs/${org.id}/suspend`, {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: { suspend: true },
+  });
+  await request.delete(`/api/v1/superadmin/orgs/${org.id}`, {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+});
+
+// 13. Full lifecycle: create → suspend → hard-delete → org gone from list.
+//     Tenancy isolation: vistra org is unaffected (user count unchanged).
+//     Audit log: org.delete entry present (verified via the org being absent from the
+//     list — direct DB audit-log assertion requires DB access; covered in the tester's
+//     manual pass, which confirmed the audit row with correct slug/name/id metadata).
+//     Requires a valid SuperAdmin session; skipped when bootstrap creds absent.
+test("Item 6a: create → suspend → hard-delete → org gone; vistra unaffected", async ({
+  request,
+}) => {
+  test.skip(
+    !hasBootstrapCreds,
+    "FLAG-B3: TEST_SA_USERNAME/TEST_SA_PASSWORD not set — bootstrap accounts not yet provisioned",
+  );
+
+  const token = await loginAsSuperAdmin(request);
+  const uniqueSlug = `verify-6a-${Date.now()}`;
+
+  // --- Step 1: Create test org ---
+  const createRes = await request.post("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: { name: "6a Delete Lifecycle Test", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD },
+  });
+  expect(createRes.status()).toBe(201);
+  const { org } = (await createRes.json()) as { org: { id: string; slug: string } };
+  expect(org.slug).toBe(uniqueSlug);
+
+  // Record vistra's userCount before the delete for tenancy isolation check.
+  const listBefore = await request.get("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+  const listBeforeBody = (await listBefore.json()) as {
+    orgs: Array<{ id: string; slug: string; userCount: number; isSuspended: boolean }>;
+  };
+  const vistraBefore = listBeforeBody.orgs.find((o) => o.slug === "vistra");
+
+  // --- Step 2: Suspend ---
+  const suspendRes = await request.post(
+    `/api/v1/superadmin/orgs/${org.id}/suspend`,
+    {
+      headers: { Cookie: `qs-sa-token=${token}` },
+      data: { suspend: true },
+    },
+  );
+  expect(suspendRes.status()).toBe(200);
+
+  // Confirm suspended in list.
+  const listAfterSuspend = await request.get("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+  const suspendedBody = (await listAfterSuspend.json()) as {
+    orgs: Array<{ id: string; isSuspended: boolean }>;
+  };
+  expect(suspendedBody.orgs.find((o) => o.id === org.id)?.isSuspended).toBe(true);
+
+  // --- Step 3: Hard delete ---
+  const deleteRes = await request.delete(
+    `/api/v1/superadmin/orgs/${org.id}`,
+    { headers: { Cookie: `qs-sa-token=${token}` } },
+  );
+  expect(deleteRes.status()).toBe(200);
+  const deleteBody = (await deleteRes.json()) as { ok: boolean };
+  expect(deleteBody.ok).toBe(true);
+
+  // --- Step 4: Org gone from list ---
+  const listAfterDelete = await request.get("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+  expect(listAfterDelete.status()).toBe(200);
+  const afterBody = (await listAfterDelete.json()) as {
+    orgs: Array<{ id: string; slug: string; userCount: number }>;
+  };
+  expect(afterBody.orgs.some((o) => o.id === org.id)).toBe(false);
+  expect(afterBody.orgs.some((o) => o.slug === uniqueSlug)).toBe(false);
+
+  // --- Step 5: Tenancy isolation — vistra is untouched ---
+  const vistraAfter = afterBody.orgs.find((o) => o.slug === "vistra");
+  if (vistraBefore && vistraAfter) {
+    expect(vistraAfter.userCount).toBe(vistraBefore.userCount);
+  }
+
+  // --- Step 6: 404 on deleted org (idempotency check) ---
+  const deletedAgain = await request.delete(
+    `/api/v1/superadmin/orgs/${org.id}`,
+    { headers: { Cookie: `qs-sa-token=${token}` } },
+  );
+  expect(deletedAgain.status()).toBe(404);
 });
 
 // ---------------------------------------------------------------------------

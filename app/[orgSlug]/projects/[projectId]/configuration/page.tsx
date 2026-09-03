@@ -1,5 +1,5 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getTranslations } from "next-intl/server";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { fetchProjectDetail } from "../_project-fetch";
@@ -16,6 +16,8 @@ interface SelectionRow {
   label: string;
   orderIndex: number;
   componentType: { id: string; name: string; code: string };
+  // config is included so edit-mode can pre-fill fields (Stage 17).
+  config: Record<string, string | boolean | number | null>;
 }
 
 /**
@@ -48,19 +50,14 @@ interface ComponentTypeRow {
 /**
  * Configuration page — Step 2 of the project wizard (Server Component).
  *
- * Moved verbatim from [projectId]/page.tsx (Stage 9 URL restructure).
- * Shows the Selections list and the "Add component" form.
+ * Stage 17: reworked to the finalized 3-column mockup layout (ComponentType
+ * sidebar / form / Saved Components list). The three columns share client-side
+ * state (selected type, edit mode), so the entire block is a single Client
+ * Component (AddSelectionForm). This page fetches the data and passes it down.
  *
- * Stage 10 (Task 1.7): restyled to Sage Ease tokens — page heading, card
- * wrappers, table header/body, empty state, form wrapper. Parity-critical:
- * all data fetching, server actions, validation logic, and form IDs are
- * unchanged.
- *
- * Stage 12: switched from direct requireSession + DAL calls to internalFetch
- * against the new API routes. Project fetch reuses the React.cache()-wrapped
- * fetchProjectDetail helper shared with the layout and project-detail page —
- * no duplicate HTTP round-trip for the project data. Selections and component
- * types are fetched in parallel via internalFetch.
+ * Also extends the SelectionRow type to include `config` so edit-mode can
+ * pre-fill field values. The DAL already returns config (all scalar fields);
+ * only the TypeScript interface needed updating.
  *
  * Auth gate: API routes return 401/403 on unauthenticated/cross-tenant requests;
  * the page redirects to login on 401/403. 404 → notFound().
@@ -72,20 +69,21 @@ export default async function ConfigurationPage({
 }) {
   const { orgSlug, projectId } = await params;
 
+  // Base URL for project-relative hrefs (subdomain-aware, matching wizard layout pattern).
+  const base = await orgHref(orgSlug, "");
+
   // Parallel fetch: project (React.cache() deduped with layout), selections,
-  // component types, and translations.
+  // component types.
   const [
     { status: projectStatus, project },
     selectionsRes,
     componentTypesRes,
-    tSelections,
   ] = await Promise.all([
     fetchProjectDetail(orgSlug, projectId),
     internalFetch(
       `/api/v1/orgs/${orgSlug}/selections?projectId=${projectId}`,
     ),
     internalFetch(`/api/v1/orgs/${orgSlug}/component-types`),
-    getTranslations("selections"),
   ]);
 
   // Auth redirect on 401 or 403 from any of the three API calls.
@@ -115,7 +113,7 @@ export default async function ConfigurationPage({
       ).componentTypes
     : [];
 
-  // Only active ComponentTypes are offered in the "Add component" picker.
+  // Only active ComponentTypes are offered in the picker.
   const activeComponentTypes = allComponentTypes.filter((ct) => ct.active);
 
   return (
@@ -128,95 +126,38 @@ export default async function ConfigurationPage({
         </p>
       </div>
 
-      {/* Selections list */}
-      <section className="mb-8">
-        <h2 className="mb-3 flex items-center gap-2 text-base font-extrabold text-text-heading before:h-4 before:w-1 before:rounded-sm before:bg-primary before:content-['']">
-          {tSelections("sectionTitle")}
-        </h2>
-
-        <div className="rounded-md border border-border bg-bg-card shadow-card">
-          {selections.length === 0 ? (
-            /* Empty state — dashed border box */
-            <div className="m-5 rounded-md border border-dashed border-border px-6 py-10 text-center">
-              <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-[10px] bg-primary-softer text-primary">
-                {/* Box / package icon */}
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.8"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <path d="M16.5 9.4l-9-5.19M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                  <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12" />
-                </svg>
-              </div>
-              <p className="text-sm font-bold text-text-heading">
-                {tSelections("noSelections")}
-              </p>
-              <p className="mt-1 text-xs text-text-muted">
-                Use the form below to add your first component.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
-                      #
-                    </th>
-                    <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
-                      {tSelections("fieldLabel")}
-                    </th>
-                    <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
-                      {tSelections("stepPickType")}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selections.map((sel, i) => (
-                    <tr
-                      key={sel.id}
-                      className="border-b border-border last:border-0 hover:bg-primary-softer/40"
-                    >
-                      <td className="px-5 py-4 text-text-muted">{i + 1}</td>
-                      <td className="px-5 py-4 font-bold text-text-heading">{sel.label}</td>
-                      <td className="px-5 py-4 text-text-body">{sel.componentType.name}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Add component section */}
-      <section>
-        <h2 className="mb-3 flex items-center gap-2 text-base font-extrabold text-text-heading before:h-4 before:w-1 before:rounded-sm before:bg-primary before:content-['']">
-          {tSelections("addComponent")}
-        </h2>
-
-        {activeComponentTypes.length === 0 ? (
+      {activeComponentTypes.length === 0 ? (
+        <div className="rounded-md border border-border bg-bg-card p-8 shadow-card text-center">
           <p className="text-sm text-text-muted">
             No active component types available. Ask an admin to configure them under Component Types.
           </p>
-        ) : (
-          <div className="rounded-md border border-border bg-bg-card p-6 shadow-card">
-            <AddSelectionForm
-              orgSlug={orgSlug}
-              projectId={projectId}
-              orderIndex={selections.length}
-              componentTypes={activeComponentTypes}
-            />
+        </div>
+      ) : (
+        <div className="rounded-md border border-border bg-bg-card shadow-card">
+          <AddSelectionForm
+            orgSlug={orgSlug}
+            projectId={projectId}
+            orderIndex={selections.length}
+            componentTypes={activeComponentTypes}
+            selections={selections}
+          />
+          {/* Card footer — Back / Continue to Design (Step 3 of the wizard, 5d) */}
+          <div className="flex items-center justify-between border-t border-border px-7 py-5">
+            <Link
+              href={`${base}/projects/${projectId}`}
+              className="rounded-sm border border-border bg-bg-white px-5 py-2.5 text-sm font-bold text-text-body transition-colors hover:bg-primary-softer hover:text-text-heading"
+            >
+              Back
+            </Link>
+            <Link
+              href={`${base}/projects/${projectId}/design`}
+              className="rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary transition-colors hover:bg-primary-dark"
+            >
+              Continue to Design
+            </Link>
           </div>
-        )}
-      </section>
+        </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { auth } from "@/lib/auth";
 import { toAuthEmail, toPlatformAuthEmail } from "@/lib/auth-utils";
 import { DEFAULT_ROLE_DEFS } from "@/lib/org-role-defaults";
+import { COMPONENT_TYPE_DEFS, SEEDED_CATALOG_CATEGORY_NAME } from "@/lib/component-catalog-seed";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -263,171 +264,21 @@ async function main() {
   }
 
   // ── 4. ComponentCategories + ComponentTypes (idempotent by organizationId + code) ──
-  // A single seeded category per org for now — the category dropdown starts with
-  // just "Glass Partitions"; admins pick from whatever categories exist.
-  // Three starter types per org, all admin-editable — there is no developer-seeded/
-  // "core" distinction. fieldsSchema uses the Stage 6 FieldEntry shape:
-  //   type: "field" | "radio" | "dropdown" | "checkbox"
-  //   options: required for radio/dropdown
-  //   hint: optional helper text
-  //   basic: true = Basic section, false = Advanced section
-  // PLACEHOLDER — replace with real client field lists when available.
-  const componentTypeDefs = [
-    {
-      code: "GLASS",
-      name: "Glass",
-      fieldsSchema: [
-        // Basic fields
-        {
-          key: "thickness",
-          label: "Thickness (mm)",
-          type: "field",
-          hint: "Glass thickness in millimetres",
-          required: true,
-          basic: true,
-        },
-        {
-          key: "glassType",
-          label: "Glass Type",
-          type: "radio",
-          options: ["Clear", "Frosted", "Tinted"],
-          required: true,
-          basic: true,
-        },
-        {
-          key: "finish",
-          label: "Finish",
-          type: "dropdown",
-          options: ["Polished", "Satin", "Matt"],
-          required: false,
-          basic: true,
-        },
-        // Advanced fields
-        {
-          key: "note",
-          label: "Internal Note",
-          type: "field",
-          hint: "Internal reference note",
-          required: false,
-          basic: false,
-        },
-        {
-          key: "customOrder",
-          label: "Custom Order",
-          type: "checkbox",
-          hint: "Mark as custom order",
-          required: false,
-          basic: false,
-        },
-      ],
-    },
-    {
-      code: "DOOR",
-      name: "Door",
-      fieldsSchema: [
-        // Basic fields
-        {
-          key: "doorType",
-          label: "Door Type",
-          type: "radio",
-          options: ["Single Swing", "Double Swing", "Sliding"],
-          required: true,
-          basic: true,
-        },
-        {
-          key: "width",
-          label: "Width (mm)",
-          type: "field",
-          hint: "Width in mm",
-          required: true,
-          basic: true,
-        },
-        {
-          key: "glassVariant",
-          label: "Glass Variant",
-          type: "dropdown",
-          options: ["Standard", "Fire-Rated"],
-          required: false,
-          basic: true,
-        },
-        // Advanced fields
-        {
-          key: "handedness",
-          label: "Handedness",
-          type: "dropdown",
-          options: ["Left", "Right", "Reversible"],
-          required: false,
-          basic: false,
-        },
-        {
-          key: "hasCloser",
-          label: "Include Door Closer",
-          type: "checkbox",
-          hint: "Include door closer in the configuration",
-          required: false,
-          basic: false,
-        },
-      ],
-    },
-    {
-      code: "PROFILE_STOP",
-      name: "Profile Stop",
-      fieldsSchema: [
-        // Basic fields
-        {
-          key: "profileCode",
-          label: "Profile Code",
-          type: "field",
-          hint: "e.g. U-CH-25",
-          required: true,
-          basic: true,
-        },
-        {
-          key: "material",
-          label: "Material",
-          type: "dropdown",
-          options: ["Aluminium", "Steel", "Stainless Steel"],
-          required: true,
-          basic: true,
-        },
-        {
-          key: "lengthM",
-          label: "Length (m)",
-          type: "field",
-          hint: "Length in metres",
-          required: false,
-          basic: true,
-        },
-        // Advanced fields
-        {
-          key: "colour",
-          label: "Colour / Finish",
-          type: "field",
-          hint: "RAL code or finish name",
-          required: false,
-          basic: false,
-        },
-        {
-          key: "anodised",
-          label: "Anodised",
-          type: "checkbox",
-          required: false,
-          basic: false,
-        },
-      ],
-    },
-  ];
-
+  // Definitions imported from lib/component-catalog-seed.ts — shared with the
+  // createOrganizationWithDefaults() org-creation path so both callers use the
+  // same source of truth. The upsert pattern here is intentional: this seed script
+  // re-runs against pre-existing orgs and must be idempotent. The org-creation path
+  // uses plain .create() because it only ever runs once (at org creation time).
   for (const org of allOrgs) {
     const glassPartitions = await prisma.componentCategory.upsert({
       where: {
-        organizationId_name: { organizationId: org.id, name: "Glass Partitions" },
+        organizationId_name: { organizationId: org.id, name: SEEDED_CATALOG_CATEGORY_NAME },
       },
       update: {},
-      create: { organizationId: org.id, name: "Glass Partitions" },
+      create: { organizationId: org.id, name: SEEDED_CATALOG_CATEGORY_NAME },
     });
 
-    for (const def of componentTypeDefs) {
+    for (const def of COMPONENT_TYPE_DEFS) {
       // Upsert by organizationId + code so re-running the seed updates existing rows
       // (consistent with the upsert pattern used for all other seeded entities).
       await prisma.componentType.upsert({
@@ -457,7 +308,7 @@ async function main() {
     `ComponentCategories: ${totalComponentCategories}  (1×${allOrgs.length}=${allOrgs.length} expected)`,
   );
   console.log(
-    `ComponentTypes:     ${totalComponentTypes}  (${componentTypeDefs.length}×${allOrgs.length}=${componentTypeDefs.length * allOrgs.length} expected)`,
+    `ComponentTypes:     ${totalComponentTypes}  (${COMPONENT_TYPE_DEFS.length}×${allOrgs.length}=${COMPONENT_TYPE_DEFS.length * allOrgs.length} expected)`,
   );
 
   // ── 5. Catalog items and prices ─────────────────────────────────────────────
@@ -665,7 +516,7 @@ async function main() {
     `Item prices:        ${totalItemPrices}  (${priceDefs.length * catalogItemDefs.length}×${allOrgs.length}=${priceDefs.length * catalogItemDefs.length * allOrgs.length} expected)`,
   );
   console.log(
-    `Component types:    ${totalComponentTypesCount}  (${componentTypeDefs.length}×${allOrgs.length}=${componentTypeDefs.length * allOrgs.length} expected)`,
+    `Component types:    ${totalComponentTypesCount}  (${COMPONENT_TYPE_DEFS.length}×${allOrgs.length}=${COMPONENT_TYPE_DEFS.length * allOrgs.length} expected)`,
   );
   const totalSuperAdmins = await prisma.superAdmin.count();
   console.log(`SuperAdmins:        ${totalSuperAdmins}  (3 expected when env vars are set)`);
