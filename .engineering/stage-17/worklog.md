@@ -24,7 +24,8 @@ Filled in once the developer's plan proposes a breakdown (Step 2). Scope has 4 p
 | test-fix-1 | `superadmin-orgs.spec.ts`/`superadmin-roles.spec.ts` adminPassword payload fix | `feature/stage17-bugfix-batch-1` | ✅ merged into `release/stage-17` |
 | 5a | Layout fix — double max-width nesting in project wizard layout | `feature/5a-wizard-layout-padding-fix` | pending |
 | 5b | Starter ComponentType catalog seeds at org creation | `feature/5b-component-catalog-seeding` | pending |
-| 5c/5d | Icons + field-pairing layout + Saved Components/footer restyle | `feature/5cd-configuration-icons-layout` | pending |
+| 5c/5d | Icons + field-pairing layout + Saved Components/footer restyle | `feature/5cd-configuration-icons-layout` | ✅ merged into `release/stage-17` |
+| 6a | SuperAdmin org hard-delete (suspended-only, transactional cascade, audit-logged) | `feature/6a-org-hard-delete` | 🔨 built, awaiting review |
 
 **2026-09-03 — item 5 added (post-test, pre-deploy).** Human reviewed the live Configuration page
 against the mockup and found real gaps beyond items 1/2/4a/4b's scope — see
@@ -32,6 +33,13 @@ against the mockup and found real gaps beyond items 1/2/4a/4b's scope — see
 `stage-17.md`'s item 5 for full detail. Reopens the stage for one more implement→test round before
 `engineering:deploy`. Items 1-4 (+ the crash fix and test fix above) remain merged, tested (PASS), and
 untouched by this addition — only item 5 needs building.
+
+**2026-09-03 — item 6 added (post-item-5-test, pre-deploy).** Human retrospective observation:
+`engineering:test` passes against `staging` create orgs with no cleanup — confirmed 34/39 orgs (87%) in
+the shared Neon dev branch are `e2e-`/`test-`/`verify-` test debris, and there is no delete capability
+today (only suspend/reactivate). See `stage-17.md`'s item 6 for full detail (deletion order, safety gate,
+audit-log handling). 6a is app code, this stage; 6b (tester cleanup convention) is a marketplace-plugin
+instructions change, actioned separately, not part of this repo's build.
 
 ---
 
@@ -248,3 +256,13 @@ untouched by this addition — only item 5 needs building.
   Live verification (org creation producing 3 ComponentTypes) is engineering:test's job against the Vercel preview.
 - **2026-09-03 — reviewer (item 5 — integrated 5a/5b/5c/5d):** APPROVE-WITH-NITS. 0 CRITICAL, 0 IMPORTANT, 1 MINOR. All per-item and integration correctness checks pass; lint 0 errors and tsc exit 0 confirmed independently (fresh run). See `.engineering/stage-17/review-item5.md`.
 - **2026-09-03 — tester (engineering:test pass 3):** PASS. Tested against `https://test.easeetool.com` (staging, commit `f9d8c75` — items 5a/5b/5c/5d). Static checks clean (lint 0 errors, tsc exit 0). All item 5 deliverables verified: 5a double-max-width removed (confirmed in HTML + source); 5b new org gets exactly 3 seeded ComponentTypes (GLASS/DOOR/PROFILE_STOP, doorType=dropdown), auto-admin signs in, vistra untouched; 5c/5d icons present, field-pairing grid-cols-2 active, Saved Components rows show chevron + editing highlight, footer Back/Continue to Design correct. Regression (item 2 PATCH round-trip + componentTypeId lock): intact. 0 CRITICAL, 0 MAJOR, 0 MINOR (new). Pre-acknowledged MINOR from review-item5.md not re-reported. See `.engineering/stage-17/test-pass-3.md`.
+- **2026-09-03 — developer (item 6a):** Implemented SuperAdmin org hard-delete. Branch: `feature/6a-org-hard-delete`.
+  Changed files (app repo):
+  - `lib/data/superadmin/orgs.ts` — added `DeleteOrgResult` type + `deleteOrganization(orgId)` function: pre-flight findUnique (not_found → 404, not_suspended → 400 safety gate); 14-step `$transaction` deleting all org-scoped children in FK-safe order (Selection → Partition → Floor → Project → Inquiry → ItemPrice → CatalogItem → ComponentType → ComponentCategory → User → RolePermission via role.organizationId filter → ExternalCompany → Role → Organization); returns org identity captured before deletion for audit log.
+  - `app/api/v1/superadmin/orgs/[orgId]/route.ts` (new) — DELETE handler; auth guard (`requireSuperAdminFromRequest`); maps not_found→404, not_suspended→400, unknown_error→500; writes `createOrgAuditLog` with `action: "org.delete"`, `targetType: "Organization"`, `metadata: { slug, name }` after the transaction commits.
+  - `app/controls/(authenticated)/orgs/_delete-button.tsx` (new) — Client Component; `ConfirmDialog` (not `window.confirm`); names org in dialog copy; direct fetch to DELETE endpoint + `router.refresh()`; no `LoadingOverlay` (AGENTS.md rule — `/controls` has no `NextIntlClientProvider`); only rendered by the page for suspended orgs.
+  - `app/controls/(authenticated)/orgs/page.tsx` — added `DeleteOrgButton` import; `OrgsTable` gains optional `showDeleteButton` prop (default false); suspended-orgs section passes `showDeleteButton`; button rendered conditionally alongside `SuspendOrgButton` in a flex gap row.
+  Docs repo (same change, in `quotation-system-docs/`):
+  - `design-docs/sql-queries/by-page.sql` — added `/controls/orgs DELETE` section (Steps 0–15: pre-flight SELECT, all 14 DELETE statements in FK-safe order matching the transaction, post-transaction audit log INSERT note).
+  Static checks: `npm run lint` — 0 errors (5 pre-existing warnings, unchanged). `npx tsc --noEmit` — exit 0.
+  Verification: pushed to `feature/6a-org-hard-delete`, Vercel preview build pending — commit hash and preview URL to be appended once build completes.

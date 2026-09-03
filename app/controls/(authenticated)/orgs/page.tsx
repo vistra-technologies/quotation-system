@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { internalFetch } from "@/lib/internal-fetch";
 import { SuspendOrgButton } from "./_suspend-button";
+import { DeleteOrgButton } from "./_delete-button";
 
 // Always render live — reads the SuperAdminSession table (via guard layout) and live DB.
 export const dynamic = "force-dynamic";
@@ -84,7 +85,11 @@ export default async function OrgsPage() {
           <h2 className="text-sm font-bold uppercase tracking-wide text-text-muted">
             Suspended
           </h2>
-          <OrgsTable orgs={suspendedOrgs} emptyMessage="No suspended organizations." />
+          <OrgsTable
+            orgs={suspendedOrgs}
+            emptyMessage="No suspended organizations."
+            showDeleteButton
+          />
         </div>
       )}
     </div>
@@ -94,9 +99,13 @@ export default async function OrgsPage() {
 function OrgsTable({
   orgs,
   emptyMessage,
+  showDeleteButton = false,
 }: {
   orgs: OrgRow[];
   emptyMessage: string;
+  /** When true, renders a Delete button alongside the Suspend/Reactivate button.
+   *  Only pass this for the suspended-orgs section — deleted orgs are gone. */
+  showDeleteButton?: boolean;
 }) {
   return (
     <div className="mt-3 rounded-md border border-border bg-bg-card shadow-card">
@@ -166,11 +175,20 @@ function OrgsTable({
                     })}
                   </td>
                   <td className="px-5 py-4">
-                    <SuspendOrgButton
-                      orgId={org.id}
-                      orgName={org.name}
-                      isSuspended={org.isSuspended}
-                    />
+                    <div className="flex items-center gap-2">
+                      <SuspendOrgButton
+                        orgId={org.id}
+                        orgName={org.name}
+                        isSuspended={org.isSuspended}
+                      />
+                      {showDeleteButton && (
+                        <DeleteOrgButton
+                          orgId={org.id}
+                          orgName={org.name}
+                          orgSlug={org.slug}
+                        />
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))

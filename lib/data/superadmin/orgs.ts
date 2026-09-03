@@ -280,6 +280,126 @@ export async function toggleOrgSuspension(
 }
 
 /**
+ * Typed result for deleteOrganization.
+ * "not_found"    → org does not exist (caller should return 404).
+ * "not_suspended" → org exists but is not suspended (caller should return 400).
+ */
+export type DeleteOrgResult =
+  | { ok: true; org: { id: string; slug: string; name: string } }
+  | {
+      ok: false;
+      reason: "not_found" | "not_suspended" | "unknown_error";
+      message: string;
+    };
+
+/**
+ * Hard-delete an organization and all of its org-scoped child rows.
+ *
+ * Safety gate: only a currently-suspended org may be deleted. Returns
+ * `reason: "not_suspended"` (400) if the org is active.
+ *
+ * Deletes every organizationId-scoped table in FK-safe order inside a single
+ * $transaction, then deletes the Organization row itself. Session and Account
+ * rows cascade automatically from User (onDelete: Cascade declared on both).
+ * ItemPrice rows cascade from CatalogItem but are deleted explicitly for
+ * clarity. SuperAdminAuditLog is untouched — targetId is polymorphic with no
+ * FK to Organization, so the permanent audit trail survives the deletion.
+ *
+ * Returns { ok: true, org: { id, slug, name } } on success, capturing the
+ * org identity BEFORE deletion so the caller can write the audit log row.
+ *
+ * Does NOT write the audit log — the caller is responsible for calling
+ * createOrgAuditLog() after this returns ok: true.
+ *
+ * superadmin-only — intentionally cross-org
+ */
+export async function deleteOrganization(
+  orgId: string,
+): Promise<DeleteOrgResult> {
+  // superadmin-only — intentionally cross-org
+
+  // Fetch the org first (outside the transaction — read-only).
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { id: true, slug: true, name: true, isSuspended: true },
+  });
+
+  if (!org) {
+    return { ok: false, reason: "not_found", message: `Organization "${orgId}" not found` };
+  }
+
+  if (!org.isSuspended) {
+    return {
+      ok: false,
+      reason: "not_suspended",
+      message: `Organization "${org.slug}" must be suspended before it can be deleted`,
+    };
+  }
+
+  const orgIdentity = { id: org.id, slug: org.slug, name: org.name };
+
+  try {
+    await prisma.$transaction(async (tx) => {
+      // FK-safe deletion order — children before parents.
+      // Session and Account cascade from User; no need to delete them explicitly.
+
+      // 1. Selection — references Project + ComponentType
+      await tx.selection.deleteMany({ where: { organizationId: orgId } });
+
+      // 2. Partition — references Floor
+      await tx.partition.deleteMany({ where: { organizationId: orgId } });
+
+      // 3. Floor — references Project
+      await tx.floor.deleteMany({ where: { organizationId: orgId } });
+
+      // 4. Project — references User (createdByUserId), ExternalCompany, Inquiry (SetNull)
+      await tx.project.deleteMany({ where: { organizationId: orgId } });
+
+      // 5. Inquiry — references User (createdByUserId), ExternalCompany
+      await tx.inquiry.deleteMany({ where: { organizationId: orgId } });
+
+      // 6. ItemPrice — references CatalogItem (also cascades, but explicit for clarity)
+      await tx.itemPrice.deleteMany({ where: { organizationId: orgId } });
+
+      // 7. CatalogItem
+      await tx.catalogItem.deleteMany({ where: { organizationId: orgId } });
+
+      // 8. ComponentType — references ComponentCategory (Selection already gone)
+      await tx.componentType.deleteMany({ where: { organizationId: orgId } });
+
+      // 9. ComponentCategory
+      await tx.componentCategory.deleteMany({ where: { organizationId: orgId } });
+
+      // 10. User — Session + Account cascade via onDelete: Cascade on both
+      //     Must come after Project/Inquiry (which reference User.createdByUserId)
+      await tx.user.deleteMany({ where: { organizationId: orgId } });
+
+      // 11. RolePermission — no organizationId column; filter via the Role relation
+      await tx.rolePermission.deleteMany({
+        where: { role: { organizationId: orgId } },
+      });
+
+      // 12. ExternalCompany — User/Project/Inquiry already deleted
+      await tx.externalCompany.deleteMany({ where: { organizationId: orgId } });
+
+      // 13. Role — User (roleId FK) and RolePermission already deleted
+      await tx.role.deleteMany({ where: { organizationId: orgId } });
+
+      // 14. Organization — all children gone
+      await tx.organization.delete({ where: { id: orgId } });
+    });
+
+    return { ok: true, org: orgIdentity };
+  } catch (err) {
+    return {
+      ok: false,
+      reason: "unknown_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
+/**
  * Write a SuperAdminAuditLog row (append-only).
  *
  * Must be called after a successful mutation, not inside the mutation transaction
