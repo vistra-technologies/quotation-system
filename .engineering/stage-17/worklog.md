@@ -22,9 +22,10 @@ Filled in once the developer's plan proposes a breakdown (Step 2). Scope has 4 p
 | 4b | SuperAdmin cross-org add-user | `feature/4b-superadmin-add-user` | ✅ merged into `release/stage-17` |
 | 4b-fix | Post-merge crash fix (`/controls/users` LoadingOverlay) | `feature/4b-superadmin-users-crash-fix` | ✅ merged into `release/stage-17` |
 | test-fix-1 | `superadmin-orgs.spec.ts`/`superadmin-roles.spec.ts` adminPassword payload fix | `feature/stage17-bugfix-batch-1` | ✅ merged into `release/stage-17` |
-| 5a | Layout fix — double max-width nesting in project wizard layout | `feature/5a-wizard-layout-padding-fix` | pending |
-| 5b | Starter ComponentType catalog seeds at org creation | `feature/5b-component-catalog-seeding` | pending |
-| 5c/5d | Icons + field-pairing layout + Saved Components/footer restyle | `feature/5cd-configuration-icons-layout` | pending |
+| 5a | Layout fix — double max-width nesting in project wizard layout | `feature/5a-wizard-layout-padding-fix` | ✅ merged into `release/stage-17` |
+| 5b | Starter ComponentType catalog seeds at org creation | `feature/5b-component-catalog-seeding` | ✅ merged into `release/stage-17` |
+| 5c/5d | Icons + field-pairing layout + Saved Components/footer restyle | `feature/5cd-configuration-icons-layout` | ✅ merged into `release/stage-17` |
+| 6a | SuperAdmin org hard-delete (suspended-only, transactional cascade, audit-logged) | `feature/6a-org-hard-delete` | ✅ merged into `release/stage-17` (TOCTOU fix `e77bc9e`, re-approved) |
 
 **2026-09-03 — item 5 added (post-test, pre-deploy).** Human reviewed the live Configuration page
 against the mockup and found real gaps beyond items 1/2/4a/4b's scope — see
@@ -32,6 +33,13 @@ against the mockup and found real gaps beyond items 1/2/4a/4b's scope — see
 `stage-17.md`'s item 5 for full detail. Reopens the stage for one more implement→test round before
 `engineering:deploy`. Items 1-4 (+ the crash fix and test fix above) remain merged, tested (PASS), and
 untouched by this addition — only item 5 needs building.
+
+**2026-09-03 — item 6 added (post-item-5-test, pre-deploy).** Human retrospective observation:
+`engineering:test` passes against `staging` create orgs with no cleanup — confirmed 34/39 orgs (87%) in
+the shared Neon dev branch are `e2e-`/`test-`/`verify-` test debris, and there is no delete capability
+today (only suspend/reactivate). See `stage-17.md`'s item 6 for full detail (deletion order, safety gate,
+audit-log handling). 6a is app code, this stage; 6b (tester cleanup convention) is a marketplace-plugin
+instructions change, actioned separately, not part of this repo's build.
 
 ---
 
@@ -248,3 +256,16 @@ untouched by this addition — only item 5 needs building.
   Live verification (org creation producing 3 ComponentTypes) is engineering:test's job against the Vercel preview.
 - **2026-09-03 — reviewer (item 5 — integrated 5a/5b/5c/5d):** APPROVE-WITH-NITS. 0 CRITICAL, 0 IMPORTANT, 1 MINOR. All per-item and integration correctness checks pass; lint 0 errors and tsc exit 0 confirmed independently (fresh run). See `.engineering/stage-17/review-item5.md`.
 - **2026-09-03 — tester (engineering:test pass 3):** PASS. Tested against `https://test.easeetool.com` (staging, commit `f9d8c75` — items 5a/5b/5c/5d). Static checks clean (lint 0 errors, tsc exit 0). All item 5 deliverables verified: 5a double-max-width removed (confirmed in HTML + source); 5b new org gets exactly 3 seeded ComponentTypes (GLASS/DOOR/PROFILE_STOP, doorType=dropdown), auto-admin signs in, vistra untouched; 5c/5d icons present, field-pairing grid-cols-2 active, Saved Components rows show chevron + editing highlight, footer Back/Continue to Design correct. Regression (item 2 PATCH round-trip + componentTypeId lock): intact. 0 CRITICAL, 0 MAJOR, 0 MINOR (new). Pre-acknowledged MINOR from review-item5.md not re-reported. See `.engineering/stage-17/test-pass-3.md`.
+- **2026-09-03 — developer (item 6a):** Implemented SuperAdmin org hard-delete. Branch: `feature/6a-org-hard-delete`.
+  Changed files (app repo):
+  - `lib/data/superadmin/orgs.ts` — added `DeleteOrgResult` type + `deleteOrganization(orgId)` function: pre-flight findUnique (not_found → 404, not_suspended → 400 safety gate); 14-step `$transaction` deleting all org-scoped children in FK-safe order (Selection → Partition → Floor → Project → Inquiry → ItemPrice → CatalogItem → ComponentType → ComponentCategory → User → RolePermission via role.organizationId filter → ExternalCompany → Role → Organization); returns org identity captured before deletion for audit log.
+  - `app/api/v1/superadmin/orgs/[orgId]/route.ts` (new) — DELETE handler; auth guard (`requireSuperAdminFromRequest`); maps not_found→404, not_suspended→400, unknown_error→500; writes `createOrgAuditLog` with `action: "org.delete"`, `targetType: "Organization"`, `metadata: { slug, name }` after the transaction commits.
+  - `app/controls/(authenticated)/orgs/_delete-button.tsx` (new) — Client Component; `ConfirmDialog` (not `window.confirm`); names org in dialog copy; direct fetch to DELETE endpoint + `router.refresh()`; no `LoadingOverlay` (AGENTS.md rule — `/controls` has no `NextIntlClientProvider`); only rendered by the page for suspended orgs.
+  - `app/controls/(authenticated)/orgs/page.tsx` — added `DeleteOrgButton` import; `OrgsTable` gains optional `showDeleteButton` prop (default false); suspended-orgs section passes `showDeleteButton`; button rendered conditionally alongside `SuspendOrgButton` in a flex gap row.
+  Docs repo (same change, in `quotation-system-docs/`):
+  - `design-docs/sql-queries/by-page.sql` — added `/controls/orgs DELETE` section (Steps 0–15: pre-flight SELECT, all 14 DELETE statements in FK-safe order matching the transaction, post-transaction audit log INSERT note).
+  Static checks: `npm run lint` — 0 errors (5 pre-existing warnings, unchanged). `npx tsc --noEmit` — exit 0.
+  Commit: `e6ea331`. Pushed to `feature/6a-org-hard-delete`. Vercel preview build in progress — preview URL to be appended by orchestrator after polling deployment to READY.
+- **2026-09-03 — developer (item 6a — TOCTOU fix, review finding):** Addressed reviewer IMPORTANT finding: `deleteOrganization()` re-verifies `isSuspended` inside the `$transaction` (step 0) before the first delete. A concurrent reactivate between the pre-flight check and the transaction start no longer proceeds — `findUnique` inside the transaction reads the current committed state; if `isSuspended` is false (or row is gone), throws a NOT_SUSPENDED sentinel that is caught and mapped to `{ ok: false, reason: "not_suspended" }` instead of `unknown_error`. No other files changed. Lint: 0 errors (5 pre-existing). tsc: exit 0. Commit: `e77bc9e`, pushed.
+- **2026-09-03 — reviewer (item 6a):** CHANGES-NEEDED. 0 CRITICAL, 1 IMPORTANT, 0 MINOR. IMPORTANT: TOCTOU race on the suspended-only safety gate — `isSuspended` is read outside `$transaction` and not re-verified inside before the first DELETE; a concurrent reactivate between the pre-flight read and the transaction start could delete a live org (irreversible). Fix: re-read `isSuspended` inside the transaction before the first `deleteMany`. All other checks pass: FK-safe deletion order verified against real schema (all 14 steps + RolePermission relay filter), no missing tables, `orgIdentity` captured pre-delete, audit log action/targetType/metadata correct per spec, `ConfirmDialog` used (not `window.confirm`), no `@/components/loading-overlay` import, `showDeleteButton` gated to suspended-orgs section only, `finally` resets loading correctly, convention-consistent with sibling DAL functions. Lint 0 errors, tsc exit 0 independently confirmed. See `.engineering/stage-17/review-item6a.md`.
+- **2026-09-03 — reviewer (item 6a — TOCTOU fix re-check, commit `e77bc9e`):** APPROVE. 0 CRITICAL, 0 IMPORTANT, 0 MINOR. IMPORTANT finding confirmed resolved: `tx.organization.findUnique` (Step 0) is the first statement inside the `$transaction` callback; throws `{ code: "NOT_SUSPENDED" }` sentinel if `!locked || !locked.isSuspended`; Prisma aborts the transaction on throw (no deletes execute); catch maps sentinel → `{ ok: false, reason: "not_suspended" }`, not `unknown_error`. Error shape identical to pre-flight path. No other files changed. Lint 0 errors (5 pre-existing), tsc exit 0 confirmed. One nit not blocking: inline comment describes "Postgres serializable snapshot" but Prisma's default isolation is READ COMMITTED — fix is still adequate for this use case. See this worklog entry (no separate review file for a scoped re-check).
