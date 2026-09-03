@@ -20,10 +20,18 @@ Filled in once the developer's plan proposes a breakdown (Step 2). Scope has 4 p
 | 2 | Configuration page restyle + Selection edit | `feature/2-configuration-restyle` | ✅ merged into `release/stage-17` |
 | 4a | Create-org admin password field | `feature/4a-create-org-admin-password` | ✅ merged into `release/stage-17` |
 | 4b | SuperAdmin cross-org add-user | `feature/4b-superadmin-add-user` | ✅ merged into `release/stage-17` |
+| 4b-fix | Post-merge crash fix (`/controls/users` LoadingOverlay) | `feature/4b-superadmin-users-crash-fix` | ✅ merged into `release/stage-17` |
+| test-fix-1 | `superadmin-orgs.spec.ts`/`superadmin-roles.spec.ts` adminPassword payload fix | `feature/stage17-bugfix-batch-1` | ✅ merged into `release/stage-17` |
+| 5a | Layout fix — double max-width nesting in project wizard layout | `feature/5a-wizard-layout-padding-fix` | pending |
+| 5b | Starter ComponentType catalog seeds at org creation | `feature/5b-component-catalog-seeding` | pending |
+| 5c/5d | Icons + field-pairing layout + Saved Components/footer restyle | `feature/5cd-configuration-icons-layout` | pending |
 
-**All 4 work items merged. `release/stage-17` is fully up to date; no feature branches remain.
-Manual verification against `release/stage-17`'s own preview + the committed E2E suite is the
-`engineering:test` phase's job next.**
+**2026-09-03 — item 5 added (post-test, pre-deploy).** Human reviewed the live Configuration page
+against the mockup and found real gaps beyond items 1/2/4a/4b's scope — see
+`quotation-system-docs/design-docs/08-decisions-and-changelog.md`'s 2026-09-03 entry and
+`stage-17.md`'s item 5 for full detail. Reopens the stage for one more implement→test round before
+`engineering:deploy`. Items 1-4 (+ the crash fix and test fix above) remain merged, tested (PASS), and
+untouched by this addition — only item 5 needs building.
 
 ---
 
