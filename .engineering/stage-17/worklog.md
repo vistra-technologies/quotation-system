@@ -246,3 +246,4 @@ untouched by this addition — only item 5 needs building.
   - `design-docs/sql-queries/by-page.sql` — added Steps 9 and 10 under `/controls/orgs/new`: ComponentCategory INSERT and ComponentType INSERT (per def), inside the same transaction.
   Static checks (from worktree after `npm install`): lint 0 errors (5 pre-existing warnings), tsc exit 0.
   Live verification (org creation producing 3 ComponentTypes) is engineering:test's job against the Vercel preview.
+- **2026-09-03 — reviewer (item 5 — integrated 5a/5b/5c/5d):** APPROVE-WITH-NITS. 0 CRITICAL, 0 IMPORTANT, 1 MINOR. All per-item and integration correctness checks pass; lint 0 errors and tsc exit 0 confirmed independently (fresh run). See `.engineering/stage-17/review-item5.md`.
