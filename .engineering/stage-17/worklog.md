@@ -265,4 +265,4 @@ instructions change, actioned separately, not part of this repo's build.
   Docs repo (same change, in `quotation-system-docs/`):
   - `design-docs/sql-queries/by-page.sql` — added `/controls/orgs DELETE` section (Steps 0–15: pre-flight SELECT, all 14 DELETE statements in FK-safe order matching the transaction, post-transaction audit log INSERT note).
   Static checks: `npm run lint` — 0 errors (5 pre-existing warnings, unchanged). `npx tsc --noEmit` — exit 0.
-  Verification: pushed to `feature/6a-org-hard-delete`, Vercel preview build pending — commit hash and preview URL to be appended once build completes.
+  Commit: `e6ea331`. Pushed to `feature/6a-org-hard-delete`. Vercel preview build in progress — preview URL to be appended by orchestrator after polling deployment to READY.
