@@ -71,7 +71,7 @@ export default async function ProjectWizardLayout({
       <ProjectWizardBreadcrumb orgSlug={orgSlug} projectId={projectId} isSubdomain={isSubdomain} />
 
       {/* Page content */}
-      <div className="mx-auto w-full max-w-5xl px-6 py-8">{children}</div>
+      <div className="py-8">{children}</div>
     </div>
   );
 }
