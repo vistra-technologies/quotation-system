@@ -340,6 +340,22 @@ export async function deleteOrganization(
 
   try {
     await prisma.$transaction(async (tx) => {
+      // Step 0 — re-verify isSuspended INSIDE the transaction to close the TOCTOU
+      // window: the pre-flight check above is a fast-path UX guard, but a concurrent
+      // reactivate could flip isSuspended between that read and this transaction start.
+      // Re-reading under the transaction lock (Postgres serializable snapshot) ensures
+      // the gate is atomic with the deletions that follow.
+      const locked = await tx.organization.findUnique({
+        where: { id: orgId },
+        select: { isSuspended: true },
+      });
+      if (!locked || !locked.isSuspended) {
+        // Throw a sentinel error that the catch block maps to "not_suspended".
+        // If !locked, the org disappeared between the pre-flight check and now —
+        // still treated as not_suspended so the caller returns 400, not 500.
+        throw Object.assign(new Error("not_suspended"), { code: "NOT_SUSPENDED" });
+      }
+
       // FK-safe deletion order — children before parents.
       // Session and Account cascade from User; no need to delete them explicitly.
 
@@ -391,6 +407,18 @@ export async function deleteOrganization(
 
     return { ok: true, org: orgIdentity };
   } catch (err) {
+    // Map the NOT_SUSPENDED sentinel (thrown inside the transaction) to the typed result.
+    if (
+      err instanceof Error &&
+      "code" in err &&
+      (err as { code: string }).code === "NOT_SUSPENDED"
+    ) {
+      return {
+        ok: false,
+        reason: "not_suspended",
+        message: `Organization "${orgIdentity.slug}" must be suspended before it can be deleted`,
+      };
+    }
     return {
       ok: false,
       reason: "unknown_error",
