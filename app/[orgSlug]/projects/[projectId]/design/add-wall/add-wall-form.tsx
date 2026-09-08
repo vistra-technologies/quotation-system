@@ -1,9 +1,12 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
-import { createWall, type CreateWallState } from "./actions";
+import {
+  resolveFloorAndRoom,
+  type ResolveFloorAndRoomState,
+} from "./actions";
 
 interface AddWallFormProps {
   orgSlug: string;
@@ -12,21 +15,35 @@ interface AddWallFormProps {
   existingFloorLabels: string[];
 }
 
-const initialState: CreateWallState = { error: null };
+interface FloorRow {
+  id: string;
+  label: string;
+}
+
+interface RoomRow {
+  id: string;
+  label: string;
+}
+
+const initialState: ResolveFloorAndRoomState = { error: null };
 
 /**
- * Client Component form for adding a new wall (Partition) to a project.
+ * "Add Wall" entry point form (Stage 18 rework of scope item 4).
  *
- * Fields:
- *   - Location: free text
- *   - Floor: free text with <datalist> of existing floor labels (auto-creates if new)
- *   - Height: number + unit selector (mm / feet)
- *   - Width:  number + unit selector (mm / feet)
+ * Superseded from the pre-Stage-18 free-text "floor label, auto-create wall
+ * inline" flow to a floor-select-or-create + room-select-or-create step
+ * ("the flow gains a room step" per the stage doc). Submitting resolves both
+ * (creating either if the typed label doesn't already exist) and redirects
+ * into the design page with the resolved room auto-expanded — actual wall
+ * (Partition) creation happens there via "Convert to Partition" on one of
+ * the room's PLAIN sides (design/convert-side-form.tsx), reused rather than
+ * duplicated here (see add-wall/actions.ts's doc comment).
  *
- * Unit normalisation is performed server-side in actions.ts before the DAL call.
- * Uses useActionState (React 19) so server-side validation errors surface in the form.
- *
- * Batch 8: restyled zinc-* classes to Sage Ease tokens. No behavior changes.
+ * Room suggestions are fetched client-side once the typed floor label
+ * resolves to an existing floor id (a brand-new floor has no rooms yet, so
+ * the room field is naturally create-only in that case). Plain browser
+ * fetch() to the API route — precedent:
+ * app/controls/(authenticated)/orgs/_suspend-button.tsx.
  */
 export function AddWallForm({
   orgSlug,
@@ -34,14 +51,55 @@ export function AddWallForm({
   existingFloorLabels,
 }: AddWallFormProps) {
   const t = useTranslations("design");
-  const [state, formAction, isPending] = useActionState(createWall, initialState);
+  const [state, formAction, isPending] = useActionState(
+    resolveFloorAndRoom,
+    initialState,
+  );
+
+  const [floorLabel, setFloorLabel] = useState("");
+  const [roomLabels, setRoomLabels] = useState<string[]>([]);
+
+  // When the typed floor label matches an existing floor, fetch its rooms
+  // for the room datalist suggestions. A new (unmatched) floor label has no
+  // rooms yet — the room field stays create-only.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadRooms() {
+      if (!floorLabel.trim()) {
+        setRoomLabels([]);
+        return;
+      }
+      const floorsRes = await fetch(
+        `/api/v1/orgs/${orgSlug}/floors?projectId=${projectId}`,
+      );
+      if (!floorsRes.ok) return;
+      const { floors } = (await floorsRes.json()) as { floors: FloorRow[] };
+      const matched = floors.find((f) => f.label === floorLabel);
+      if (!matched) {
+        if (!cancelled) setRoomLabels([]);
+        return;
+      }
+      const roomsRes = await fetch(
+        `/api/v1/orgs/${orgSlug}/rooms?floorId=${matched.id}`,
+      );
+      if (!roomsRes.ok) return;
+      const { rooms } = (await roomsRes.json()) as { rooms: RoomRow[] };
+      if (!cancelled) setRoomLabels(rooms.map((r) => r.label));
+    }
+
+    void loadRooms();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [floorLabel, orgSlug, projectId]);
 
   return (
     <>
       <LoadingOverlay visible={isPending} />
 
       {state.error && (
-        // X7 — restored dropped dark: variants on error banner
         <div className="rounded-sm border border-red-300 bg-red-50 px-4 py-3 dark:border-red-700/50 dark:bg-red-950/30">
           <p className="text-sm text-red-700 dark:text-red-400">{state.error}</p>
         </div>
@@ -52,25 +110,7 @@ export function AddWallForm({
         <input type="hidden" name="orgSlug" value={orgSlug} />
         <input type="hidden" name="projectId" value={projectId} />
 
-        {/* Location */}
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="location"
-            className="text-xs font-bold uppercase tracking-wide text-text-muted"
-          >
-            {t("fieldLocation")}
-          </label>
-          <input
-            id="location"
-            name="location"
-            type="text"
-            required
-            autoComplete="off"
-            className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
-          />
-        </div>
-
-        {/* Floor label — free text with datalist suggestions */}
+        {/* Floor — free text with datalist suggestions, create-if-new */}
         <div className="flex flex-col gap-1.5">
           <label
             htmlFor="floorLabel"
@@ -86,6 +126,8 @@ export function AddWallForm({
             required
             autoComplete="off"
             placeholder={t("fieldFloorPlaceholder")}
+            value={floorLabel}
+            onChange={(e) => setFloorLabel(e.target.value)}
             className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           />
           <datalist id="floor-suggestions">
@@ -95,60 +137,29 @@ export function AddWallForm({
           </datalist>
         </div>
 
-        {/* Height + unit */}
+        {/* Room — free text with datalist suggestions scoped to the typed floor */}
         <div className="flex flex-col gap-1.5">
           <label
-            htmlFor="height"
+            htmlFor="roomLabel"
             className="text-xs font-bold uppercase tracking-wide text-text-muted"
           >
-            {t("fieldHeight")}
+            {t("fieldRoom")}
           </label>
-          <div className="flex gap-2">
-            <input
-              id="height"
-              name="height"
-              type="number"
-              required
-              min="0.01"
-              step="any"
-              className="flex-1 rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
-            />
-            <select
-              name="unit_h"
-              className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
-            >
-              <option value="mm">{t("unitMm")}</option>
-              <option value="feet">{t("unitFeet")}</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Width + unit */}
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="width"
-            className="text-xs font-bold uppercase tracking-wide text-text-muted"
-          >
-            {t("fieldWidth")}
-          </label>
-          <div className="flex gap-2">
-            <input
-              id="width"
-              name="width"
-              type="number"
-              required
-              min="0.01"
-              step="any"
-              className="flex-1 rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
-            />
-            <select
-              name="unit_w"
-              className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
-            >
-              <option value="mm">{t("unitMm")}</option>
-              <option value="feet">{t("unitFeet")}</option>
-            </select>
-          </div>
+          <input
+            id="roomLabel"
+            name="roomLabel"
+            type="text"
+            list="room-suggestions"
+            required
+            autoComplete="off"
+            placeholder={t("fieldRoomPlaceholder")}
+            className="rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
+          />
+          <datalist id="room-suggestions">
+            {roomLabels.map((label) => (
+              <option key={label} value={label} />
+            ))}
+          </datalist>
         </div>
 
         <button
@@ -156,7 +167,7 @@ export function AddWallForm({
           disabled={isPending}
           className="rounded-sm bg-primary px-4 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
         >
-          {t("submitAddWall")}
+          {t("continueButton")}
         </button>
       </form>
     </>

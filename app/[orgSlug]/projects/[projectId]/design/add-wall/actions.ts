@@ -1,108 +1,132 @@
 "use server";
-/* eslint-disable no-restricted-imports -- deferred per stage-12.md: add-wall actions use floors/partitions DAL; migration blocked until interactive canvas stage */
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireSession } from "@/lib/data/session";
+import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
-import { getProjectById } from "@/lib/data/projects";
-import { createFloorIfNotExists } from "@/lib/data/floors";
-import { createPartition } from "@/lib/data/partitions";
 
 // ---------------------------------------------------------------------------
-// createWall
+// resolveFloorAndRoom
 // ---------------------------------------------------------------------------
 
-export type CreateWallState = { error: string | null };
+export type ResolveFloorAndRoomState = { error: string | null };
+
+interface FloorRow {
+  id: string;
+  label: string;
+}
+
+interface RoomRow {
+  id: string;
+  label: string;
+}
 
 /**
- * Server action: create a new wall (Partition) under a floor.
+ * Resolve-or-create a Floor, then resolve-or-create a Room under it
+ * (Stage 18 scope item 4: "the flow gains a room step" — supersedes the
+ * pre-Stage-18 free-text "floor label, auto-create" + createPartition()
+ * flow).
  *
- * Unit normalisation (before the DAL call):
- *   mm   → Math.round(value)
- *   feet → Math.round(value * 304.8)
+ * Design decision (see plan-item3.md / worklog): this action does NOT create
+ * a Partition itself. It only resolves floor+room, then redirects into the
+ * design page with ?openRoom=<id> so the user picks which PLAIN side to
+ * convert via the design page's own "Convert to Partition" form
+ * (design/convert-side-form.tsx + design/actions.ts's convertSideAction) —
+ * reusing that logic rather than duplicating a second height/width/label
+ * form and a second "which sides array am I patching" implementation here.
  *
- * Floor handling: the floor label is free text. If it matches an existing
- * Floor for the project it is reused; otherwise a new Floor row is created.
- * This is implemented by createFloorIfNotExists in lib/data/floors.ts.
- *
- * On success: revalidates the design page and redirects back to it.
+ * Both floor and room are "select existing (exact label match) or create"
+ * by free text, matching the pre-Stage-18 floor UX; room follows the same
+ * pattern, scoped to the resolved floor.
  */
-export async function createWall(
-  prevState: CreateWallState,
+export async function resolveFloorAndRoom(
+  prevState: ResolveFloorAndRoomState,
   formData: FormData,
-): Promise<CreateWallState> {
+): Promise<ResolveFloorAndRoomState> {
   const orgSlug = (formData.get("orgSlug") as string | null)?.trim() ?? "";
   const projectId = (formData.get("projectId") as string | null)?.trim() ?? "";
-  const location = (formData.get("location") as string | null)?.trim();
   const floorLabel = (formData.get("floorLabel") as string | null)?.trim();
-  const heightRaw = formData.get("height") as string | null;
-  const widthRaw = formData.get("width") as string | null;
-  const unitH = (formData.get("unit_h") as string | null) ?? "mm";
-  const unitW = (formData.get("unit_w") as string | null) ?? "mm";
+  const roomLabel = (formData.get("roomLabel") as string | null)?.trim();
 
-  // Validate required fields.
-  if (!location) return { error: "Location is required." };
-  if (!floorLabel) return { error: "Floor label is required." };
-  if (!heightRaw || isNaN(Number(heightRaw)) || Number(heightRaw) <= 0) {
-    return { error: "Height must be a positive number." };
+  if (!floorLabel) return { error: "Floor is required." };
+  if (!roomLabel) return { error: "Room is required." };
+
+  // ── Resolve or create the Floor ─────────────────────────────────────────
+  const floorsRes = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/floors?projectId=${projectId}`,
+  );
+  if (floorsRes.status === 401 || floorsRes.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
   }
-  if (!widthRaw || isNaN(Number(widthRaw)) || Number(widthRaw) <= 0) {
-    return { error: "Width must be a positive number." };
+  if (!floorsRes.ok) {
+    return { error: "Could not load floors — please try again." };
   }
+  const { floors } = (await floorsRes.json()) as { floors: FloorRow[] };
+  let floor = floors.find((f) => f.label === floorLabel);
 
-  // Unit normalisation.
-  const heightMm =
-    unitH === "feet"
-      ? Math.round(Number(heightRaw) * 304.8)
-      : Math.round(Number(heightRaw));
-  const widthMm =
-    unitW === "feet"
-      ? Math.round(Number(widthRaw) * 304.8)
-      : Math.round(Number(widthRaw));
-
-  const session = await requireSession(orgSlug);
-
-  // Verify the project belongs to the session's org — prevents cross-org Floor
-  // creation via a direct POST with a foreign projectId (client-supplied value).
-  const project = await getProjectById(session, projectId);
-  if (!project) return { error: "Project not found." };
-
-  // Resolve or create the floor (idempotent by label within the project).
-  let floor;
-  try {
-    floor = await createFloorIfNotExists(
-      projectId,
-      floorLabel,
-      session.organizationId,
+  if (!floor) {
+    const createFloorRes = await internalFetch(
+      `/api/v1/orgs/${orgSlug}/floors`,
+      {
+        method: "POST",
+        body: JSON.stringify({ projectId, label: floorLabel }),
+      },
     );
-  } catch {
-    return { error: "Failed to resolve floor — please try again." };
+    if (createFloorRes.status === 401 || createFloorRes.status === 403) {
+      redirect(await orgHref(orgSlug, "/login"));
+    }
+    if (!createFloorRes.ok) {
+      let errorMessage = "Failed to resolve floor — please try again.";
+      try {
+        const body = (await createFloorRes.json()) as { error?: string };
+        if (body.error) errorMessage = body.error;
+      } catch {
+        // ignore JSON parse failure
+      }
+      return { error: errorMessage };
+    }
+    floor = ((await createFloorRes.json()) as { floor: FloorRow }).floor;
   }
 
-  // Create the partition.
-  try {
-    await createPartition({
-      floorId: floor.id,
-      location,
-      heightMm,
-      widthMm,
-      organizationId: session.organizationId,
+  // ── Resolve or create the Room under that Floor ─────────────────────────
+  const roomsRes = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/rooms?floorId=${floor.id}`,
+  );
+  if (roomsRes.status === 401 || roomsRes.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+  if (!roomsRes.ok) {
+    return { error: "Could not load rooms — please try again." };
+  }
+  const { rooms } = (await roomsRes.json()) as { rooms: RoomRow[] };
+  let room = rooms.find((r) => r.label === roomLabel);
+
+  if (!room) {
+    const createRoomRes = await internalFetch(`/api/v1/orgs/${orgSlug}/rooms`, {
+      method: "POST",
+      body: JSON.stringify({ floorId: floor.id, label: roomLabel }),
     });
-  } catch (err) {
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "code" in err &&
-      (err as { code: string }).code === "SEQUENCE_CONFLICT"
-    ) {
-      return {
-        error: "A partition number conflict occurred — please try again.",
-      };
+    if (createRoomRes.status === 401 || createRoomRes.status === 403) {
+      redirect(await orgHref(orgSlug, "/login"));
     }
-    throw err;
+    if (!createRoomRes.ok) {
+      let errorMessage = "Failed to resolve room — please try again.";
+      try {
+        const body = (await createRoomRes.json()) as { error?: string };
+        if (body.error) errorMessage = body.error;
+      } catch {
+        // ignore JSON parse failure
+      }
+      return { error: errorMessage };
+    }
+    room = ((await createRoomRes.json()) as { room: RoomRow }).room;
   }
 
   revalidatePath(`/${orgSlug}/projects/${projectId}/design`);
-  redirect(await orgHref(orgSlug, `/projects/${projectId}/design`));
+  redirect(
+    await orgHref(
+      orgSlug,
+      `/projects/${projectId}/design?openRoom=${room.id}`,
+    ),
+  );
 }
