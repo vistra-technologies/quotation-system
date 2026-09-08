@@ -46,6 +46,8 @@ model Organization {
   // Stage 8 relations
   floors            Floor[]
   partitions        Partition[]
+  // Stage 18 relations
+  rooms             Room[]
 }
 
 // ────────────────────────────────────────────────────────────
@@ -429,27 +431,57 @@ model Floor {
 
   organization   Organization @relation(fields: [organizationId], references: [id])
   project        Project      @relation(fields: [projectId], references: [id])
-  partitions     Partition[]
+  rooms          Room[]
 
   @@unique([projectId, label])
 }
 
-// A single wall (partition) within a floor. Users see "Wall" / "Add Wall";
+// Stage 18 — sits between Floor and Partition. A room's perimeter/topology is
+// carried as an ordered JSONB array (sides), not as its own table — reading
+// sides front-to-back is a walk around the room's perimeter, and side order
+// IS the topology (see design-docs/04-data-model.md — Room, and stage-18.md's
+// decision to collapse the originally-planned RoomSide table into this JSONB
+// field). orderIndex is app-managed (MAX+1 at insert time, per floor).
+// sides element shape (validated in app code, no DB constraint):
+//   { id, kind: "PARTITION" | "PLAIN", partitionId, turnDegrees, lengthMm, label }
+// See design-docs/04-data-model.md — Room.
+model Room {
+  id             String       @id @default(uuid())
+  organizationId String
+  floorId        String
+  label          String
+  orderIndex     Int
+  isClosed       Boolean      @default(true)
+  sides          Json         @default("[]")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  floor          Floor        @relation(fields: [floorId], references: [id], onDelete: Cascade)
+  partitions     Partition[]
+
+  @@unique([floorId, label])
+}
+
+// A single wall (partition) within a room. Users see "Wall" / "Add Wall";
 // the DB entity is called Partition, matching the product's BOQ terminology.
 // partitionNumber is a per-org sequence enforced at the app layer (MAX+1
-// across all partitions for the project, regardless of floor) and backed by
+// across all partitions for the project, regardless of room) and backed by
 // @@unique([organizationId, partitionNumber]) at the DB level — consistent with
 // the Project.@@unique([organizationId, projectNumber]) pattern. This makes
 // numbers org-wide unique (stronger than per-project intent, but achievable and
 // collision-safe via P2002 on concurrent inserts). design is JSONB for the
 // interactive canvas payload — populated in Stage 9, nullable for now.
-// See design-docs/04-data-model.md — Partition.
+// Stage 18: floorId/location dropped in favor of roomId (ownership, a real FK
+// so cascade deletes work and a partition is never orphaned) and label
+// (user-editable display name — distinct from the room's positional data in
+// Room.sides). See design-docs/04-data-model.md — Partition.
 model Partition {
   id              String       @id @default(uuid())
   organizationId  String
-  floorId         String
+  roomId          String
   partitionNumber Int
-  location        String
+  label           String
   heightMm        Int
   widthMm         Int
   status          String       @default("DRAFT")
@@ -458,7 +490,7 @@ model Partition {
   updatedAt       DateTime     @updatedAt
 
   organization    Organization @relation(fields: [organizationId], references: [id])
-  floor           Floor        @relation(fields: [floorId], references: [id])
+  room            Room         @relation(fields: [roomId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, partitionNumber])
 }
