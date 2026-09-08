@@ -523,3 +523,60 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     list includes `/api/v1/orgs/[orgSlug]/rooms`, `/rooms/[id]`, `/rooms/[id]/sides` (not a stale build).
   - No BLOCKED items. One concern carried forward: the floor-delete cascade half of invariant 6 is
     untestable at the API level this stage (no route exists) — see point 6 above.
+
+- **2026-09-09 · reviewer · Item 4 (behavior-level E2E tests) — verdict: CHANGES-NEEDED.** 0 CRITICAL ·
+  2 IMPORTANT · 7 MINOR. Confirmed the Room-logic assertions themselves are strong: the no-duplicate-
+  `partitionId` test and the PARTITION-index reorder test were each hand-traced against a hypothetical
+  reversion of the bug they guard and both would genuinely fail. Both IMPORTANTs were in the new
+  `apiSignIn()` harness, not the Room test logic: (1) the re-attached session cookie used a host-only
+  `domain`, invisible on the path-routed `*.vercel.app` preview but breaking the cross-tenant 403 test on
+  subdomain-routed `test.easeetool.com` (cookie never travels cross-subdomain -> 401 instead of 403 ->
+  cascade-skips the other 6 tests in the `serial` file); (2) no 429 retry in `apiSignIn`, unlike the
+  `signIn()` helper it replaces, exposing the whole file to better-auth's documented rate-limit flake.
+  Full report: `.engineering/stage-18/review-item4.md`.
+
+- **2026-09-09 — Item 4 review fixes (developer agent)**: on `feature/rooms-tests` @ `940d469` (pushed),
+  fixing `review-item4.md`'s IMPORTANT 1 and IMPORTANT 2, plus 5 of 7 MINORs.
+  - **IMPORTANT 1 fixed** — `apiSignIn`'s cookie domain in subdomain mode is now `.{base.hostname}`
+    (leading dot), mirroring `lib/auth.ts`'s real `crossSubDomainCookies: { domain: ".easeetool.com" }`
+    exactly, so the re-attached cookie travels cross-subdomain the same way production's does — the
+    cross-tenant tenancy test now genuinely exercises the 403 guard on `test.easeetool.com` instead of
+    401-ing. Path mode (`*.vercel.app`) is unaffected (still host-only, no subdomains to begin with) —
+    re-ran the full suite against a fresh preview post-fix and confirmed 7/7 still pass there.
+  - **IMPORTANT 2 fixed** — ported `helpers.ts`'s 4-attempt, `X-Retry-After`-aware 429 retry into
+    `apiSignIn` verbatim (same shape, ~15 lines).
+  - **MINORs taken**: 3 (restored `TEST_ADMIN_PASSWORD` env fallback; dropped the two call-site literals
+    that were defeating it), 4 (cookie parsing now matches by `session_token` name substring across
+    newline-joined `Set-Cookie` headers instead of blindly taking the first one), 5 (added an explicit
+    `lengthMm: null`-on-PARTITION -> 200 assertion, closing the gap where only *omitted* and *numeric*
+    were covered), 6 (added a `GET /rooms?floorId=` re-read after the reorder PATCH, not just before it),
+    8 (tightened the "no duplicate Partition minted" check to compare the exact surviving partition id
+    set, not just a count, per the reviewer's own regression example).
+  - **MINORs not taken**: 7 (restructuring all 7 tests to use per-test fixture rooms instead of threading
+    Room A/B through the file) and 9 (adding coverage for room reorder/rename/`DUPLICATE_ROOM_LABEL`) —
+    both are out of `stage-18.md` §6's required invariant list per the review's own framing ("not a scope
+    failure... worth naming for a later stage"), left as-is.
+  - **Verify**: `npm run lint` — 0 errors (same 5 pre-existing unrelated warnings). `npx tsc --noEmit` —
+    0 errors. Pushed `940d469`; polled Vercel to `READY` for that exact commit SHA
+    (`quotation-system-1rc8yyqc9-vistra-indias-projects.vercel.app`, confirmed via `vercel inspect --logs`
+    showing `Commit: 940d469`), confirmed `/api/health` -> 200 connected, then ran
+    `PLAYWRIGHT_BASE_URL=<preview> npx playwright test stage18.spec.ts`: **all 7 tests passed** (17.3s).
+  - No BLOCKED items. Same carried-forward concern as before: the floor-delete-cascades-rooms half of
+    invariant 6 remains untestable at the API level this stage (no `DELETE /floors` route exists).
+
+- **2026-09-09 · reviewer · Item 4 (behavior-level E2E tests for Rooms) — verdict: CHANGES-NEEDED.**
+  0 CRITICAL · 2 IMPORTANT · 7 MINOR, reviewed against `bd60ae2`. Assertion quality confirmed **strong**
+  on every point that mattered: the no-duplicate-`partitionId` test builds a genuinely duplicate scenario
+  and is caught twice over; the PARTITION-index reorder test is the strong version (verifies the
+  `Partition` row survives via `GET /partitions` **and** that a follow-up PATCH still 200s) and was traced
+  against the old buggy `replaceSides` to confirm it would have failed there; convert-back is verified via
+  the partitions list, not just the sides array; tenancy uses two real orgs with correct 403-vs-404
+  expectations traced against `getApiSession`/`replaceSides`; below-3/`isClosed` and `lengthMm`-400 match
+  the Gate-A resolutions. Floor-delete gap confirmed accurate, legitimate, and documented three ways —
+  not something Item 2 should have built. `npx tsc --noEmit` exit 0 and `npm run lint` 0 errors both
+  re-run and true; no product code touched. Both IMPORTANTs are in the new `apiSignIn()` harness, not the
+  assertions: (1) the cross-tenant 403 assertion will 401 against `test.easeetool.com` because the
+  re-attached cookie is host-only, and as test #1 of a `serial` file it would cascade-skip the other six;
+  (2) no 429 retry, unlike the `signIn()` helper it replaces, so the repo's documented rate-limit flake
+  fails all 7 tests via `beforeAll`. Both are small local fixes. Full report:
+  `.engineering/stage-18/review-item4.md`.
