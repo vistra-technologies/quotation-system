@@ -111,3 +111,70 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   `tx.room.deleteMany` to `lib/data/superadmin/orgs.ts`'s org hard-delete cascade in Item 2, and note
   this branch cannot produce a READY Vercel preview on its own (TS errors fail `next build`; the
   migration still applies beforehand). Details: `review-item1.md`.
+
+- **2026-09-09 — Item 2: API layer + DAL (developer agent)**: on `feature/rooms-api-dal` @ `8475260`
+  (pushed). Plan: `.engineering/stage-18/plan-item2.md`.
+  - **`lib/data/rooms.ts`** (new) — session-first-arg DAL mirroring `lib/data/selections.ts`:
+    `listRoomsByFloor`, `getRoomById`, `createRoom` (MAX+1 `orderIndex` within floor, writes the 4-side
+    PLAIN `turnDegrees: 90` rectangle default, `isClosed: true`), `renameRoom`, `reorderRooms`
+    (all-or-nothing, rejects any `orderedRoomIds` set that isn't exactly the floor's current rooms),
+    `deleteRoom` (relies on FK cascade). **`replaceSides`** is the single function that owns all `sides`
+    writes, in one `prisma.$transaction`:
+    - **Invariant 1 (no duplicate `partitionId`)** — `Set`-based check over the incoming array before any
+      writes (`rooms.ts` ~L334-344).
+    - **Invariant 2 (`Partition.roomId` agreement)** — enforced by construction: a kept PARTITION element
+      is re-verified via `tx.partition.findFirst({ id, organizationId, roomId })` (~L372-385) before being
+      kept; a new convert creates the Partition with `roomId` = this room in the same tx
+      (`createPartitionInTx`); any previous PARTITION side no longer present anywhere in the new array
+      (removed outright, not converted back) has its Partition row explicitly deleted (~L457-474) so no
+      orphan is left agreeing with a room that no longer references it.
+    - **Invariant 3 (`lengthMm` only on PLAIN)** — enforced by the type system: `PartitionSide`'s
+      `lengthMm` is typed `null` and never set from user input; only `PlainSide` accepts a numeric value.
+    - **Below-3-sides only when closed** — `willBeClosed && newSides.length < 3` check (~L328-332), per
+      plan flag 1.
+    - **Convert-back deletes** — a PLAIN element at the same array position as a previous PARTITION
+      element triggers `tx.partition.delete` before rewriting the element to `{kind: PLAIN, partitionId:
+      null, ...}` (~L419-433), per plan flag 2.
+    - **Server-minted ids** — every element in `finalSides` gets either the previous side's id (kept
+      PARTITION matched by `partitionId`, or PLAIN matched positionally to a previous PLAIN) or a fresh
+      `crypto.randomUUID()` (new convert, convert-back, or a genuinely new position) — never trusts a
+      client-supplied id, per plan flag 3.
+  - **`lib/data/partitions.ts`** (rewrite) — `CreatePartitionInput.roomId`/`.label` replace
+    `.floorId`/`.location`; `listPartitionsByRoom(roomId, organizationId)` replaces
+    `listPartitionsByFloor`; the MAX+1 `partitionNumber` logic is factored into an exported
+    `createPartitionInTx(tx, input)` so `rooms.ts`'s `replaceSides` can call it inside its own already-open
+    transaction (Prisma doesn't support nested `$transaction`); `createPartition()` is now a thin wrapper
+    that opens its own transaction around the same helper, preserving its existing `SEQUENCE_CONFLICT`
+    error-mapping behavior for any future standalone caller.
+  - **New routes** under `app/api/v1/orgs/[orgSlug]/rooms/`: `route.ts` (GET `?floorId=`, POST
+    `{floorId,label}`, PATCH `{floorId,orderedRoomIds}` for reorder — reorder lives on the collection
+    route since it's a whole-floor operation, not single-resource), `[id]/route.ts` (PATCH `{label}`
+    rename, DELETE), `[id]/sides/route.ts` (PATCH `{sides,isClosed?}` → `replaceSides`, maps
+    `InvalidSidesError` to `apiBadRequest`). All follow `selections/route.ts`'s
+    `getApiSession`/`ApiAuthError`/`apiUnauthorized`/`apiForbidden`/`apiNotFound`/`apiBadRequest`/
+    `dynamic = "force-dynamic"` structure exactly.
+  - **`lib/data/superadmin/orgs.ts`** — added `await tx.room.deleteMany({ where: { organizationId: orgId
+    } })` between the `partition` and `floor` cascade steps (renumbered the trailing comments 3→16); the
+    carried-forward Item 1 review nit. Confirmed: `by-page.sql`'s matching cascade section updated with the
+    same `DELETE FROM "Room"` step and renumbering.
+  - **Docs sync**: `quotation-system-docs/design-docs/sql-queries/by-page.sql` — new "Stage 18 — Rooms"
+    heading with raw SQL for every `prisma.room.*`/`prisma.partition.*` call added/changed this item,
+    including the whole-array JSONB `sides` write as a plain `UPDATE ... SET "sides" = :sidesJson::jsonb`
+    (per the stage doc's explicit instruction to write these out, not placeholder). Also updated the
+    existing SuperAdmin hard-delete cascade SQL section with the new `Room` step + renumbering.
+    `quotation-system-docs/design-docs/07-roadmap-open-questions.md` — fixed the stale `RoomSide`'s
+    ordered chain" wording to `Room.sides`'s ordered array". **Note:** the docs repo already had several
+    other files (`04-data-model.md`, `08-decisions-and-changelog.md`, mockup, `README.md`) modified-but-
+    uncommitted in the working tree before I started (pre-existing from earlier stage-prep/Item-1 work,
+    not mine) — I did not commit anything in `quotation-system-docs/` since no prior item did either and
+    I wasn't asked to; my two file edits sit uncommitted alongside that pre-existing stack. Flagging so
+    whoever does commit the docs repo for this stage includes my changes too.
+  - **Verify**: `npm run lint` — 0 errors, same 5 pre-existing unrelated `tests/e2e/**` warnings.
+    `npx tsc --noEmit` — exactly 3 errors remaining, all in Item-3 scope: `app/[orgSlug]/projects/
+    [projectId]/design/add-wall/actions.ts:86` (`floorId` not in `CreatePartitionInput`) and
+    `app/[orgSlug]/projects/[projectId]/design/page.tsx:8,91` (`listPartitionsByFloor` no longer exported;
+    implicit-any on `partition` param) — confirmed nothing else regressed. Per Item 1's precedent, this
+    branch still cannot produce a `READY` Vercel preview on its own (`next build` fails on those 3 TS
+    errors) — not required for this item; Item 3 closes it out. Committed `8475260` and pushed to
+    `feature/rooms-api-dal`.
+  - No BLOCKED items; no new deviations beyond the 3 already-resolved plan flags.
