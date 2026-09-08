@@ -362,46 +362,54 @@ export async function deleteOrganization(
       // 1. Selection — references Project + ComponentType
       await tx.selection.deleteMany({ where: { organizationId: orgId } });
 
-      // 2. Partition — references Floor
+      // 2. Partition — references Room
       await tx.partition.deleteMany({ where: { organizationId: orgId } });
 
-      // 3. Floor — references Project
+      // 3. Room — references Floor (Stage 18; not strictly required since
+      //    Room_floorId_fkey is onDelete: Cascade from Floor, but explicit for
+      //    the same belt-and-braces reason as the other tables here — a Room
+      //    whose organizationId is this org but whose floorId points at
+      //    another org's Floor would otherwise abort the transaction on
+      //    Room_organizationId_fkey when Organization is deleted in step 15).
+      await tx.room.deleteMany({ where: { organizationId: orgId } });
+
+      // 4. Floor — references Project
       await tx.floor.deleteMany({ where: { organizationId: orgId } });
 
-      // 4. Project — references User (createdByUserId), ExternalCompany, Inquiry (SetNull)
+      // 5. Project — references User (createdByUserId), ExternalCompany, Inquiry (SetNull)
       await tx.project.deleteMany({ where: { organizationId: orgId } });
 
-      // 5. Inquiry — references User (createdByUserId), ExternalCompany
+      // 6. Inquiry — references User (createdByUserId), ExternalCompany
       await tx.inquiry.deleteMany({ where: { organizationId: orgId } });
 
-      // 6. ItemPrice — references CatalogItem (also cascades, but explicit for clarity)
+      // 7. ItemPrice — references CatalogItem (also cascades, but explicit for clarity)
       await tx.itemPrice.deleteMany({ where: { organizationId: orgId } });
 
-      // 7. CatalogItem
+      // 8. CatalogItem
       await tx.catalogItem.deleteMany({ where: { organizationId: orgId } });
 
-      // 8. ComponentType — references ComponentCategory (Selection already gone)
+      // 9. ComponentType — references ComponentCategory (Selection already gone)
       await tx.componentType.deleteMany({ where: { organizationId: orgId } });
 
-      // 9. ComponentCategory
+      // 10. ComponentCategory
       await tx.componentCategory.deleteMany({ where: { organizationId: orgId } });
 
-      // 10. User — Session + Account cascade via onDelete: Cascade on both
+      // 11. User — Session + Account cascade via onDelete: Cascade on both
       //     Must come after Project/Inquiry (which reference User.createdByUserId)
       await tx.user.deleteMany({ where: { organizationId: orgId } });
 
-      // 11. RolePermission — no organizationId column; filter via the Role relation
+      // 12. RolePermission — no organizationId column; filter via the Role relation
       await tx.rolePermission.deleteMany({
         where: { role: { organizationId: orgId } },
       });
 
-      // 12. ExternalCompany — User/Project/Inquiry already deleted
+      // 13. ExternalCompany — User/Project/Inquiry already deleted
       await tx.externalCompany.deleteMany({ where: { organizationId: orgId } });
 
-      // 13. Role — User (roleId FK) and RolePermission already deleted
+      // 14. Role — User (roleId FK) and RolePermission already deleted
       await tx.role.deleteMany({ where: { organizationId: orgId } });
 
-      // 14. Organization — all children gone
+      // 15. Organization — all children gone
       await tx.organization.delete({ where: { id: orgId } });
     });
 
