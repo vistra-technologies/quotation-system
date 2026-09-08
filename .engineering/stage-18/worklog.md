@@ -444,3 +444,82 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   reconciled and checked against the real DAL/routes, no duplication of Item 2's round-2 fix).
   `npm run lint` 0 errors, `npx tsc --noEmit` exit 0, both re-run. Browser click-through of the second
   convert carried to `engineering:test`. Full report: `.engineering/stage-18/review-item3-round2.md`.
+
+- **2026-09-09 — Item 4: E2E tests (developer agent)**: on `feature/rooms-tests` @ `bd60ae2` (pushed).
+  - **New `tests/e2e/stage18.spec.ts`** — API-level only (`page.request.get/post/patch/delete`), no DOM
+    assertions, per profile.md's testing posture. 7 tests, serial mode, one shared `acme-glass`/one shared
+    `nordic-walls` browser context (sign in once in `beforeAll`, matching `subdomain-navigation.spec.ts`'s
+    pattern), fixtures (1 project, 1 floor, 2 rooms) created via the real APIs. Covers, per
+    `stage-18.md` §6 / the task's 9-point checklist:
+    1. **Tenancy isolation** — cross-org GET returns `[]` (not a leak), cross-org PATCH-rename/PATCH-sides/
+       DELETE on a foreign room id all 404, and a mismatched-orgSlug-vs-session request 403s at
+       `getApiSession`'s cross-tenant guard.
+    2. **No duplicate `partitionId`** — the single most important test per the stage doc: converts two
+       sides to real Partitions, then attempts to place the same `partitionId` on both array slots -> 400,
+       and both original Partition rows are confirmed unmodified afterward.
+    3. **`Partition.roomId` agreement** — an unrecognized `partitionId` (matches nothing at all) -> 400
+       with no side-effect Partition created (`review-item2.md` IMPORTANT finding 2's regression test);
+       and a `partitionId` that legitimately belongs to a *different* room in the same org -> 400
+       ("not a side of this room"), with the other room's Partition confirmed untouched.
+    4. **Ordering round-trip + the CRITICAL reorder regression** (the highest-value test in this file, per
+       the coordinator's explicit carry-forward from `review-item2.md`/`review-item2-round2.md`): labels
+       4 sides, converts side **index 1** to PARTITION, then reorders it to **index 0** while the other
+       3 sides simultaneously change — asserts (a) the PATCH succeeds, (b) the underlying `Partition` row
+       still exists via `GET /partitions?roomId=`, (c) a follow-up PATCH on the room still succeeds (not
+       "bricked", which is exactly what the original bug did). A PLAIN-only reorder would not have caught
+       the original bug — this test moves the PARTITION side's own index, as required.
+    5. **Convert correctness both directions** — forward: exactly one Partition row created with the right
+       `roomId`/label; backward: the Partition row is deleted (`GET /partitions?roomId=` returns `[]`) and
+       no side in the array carries a dangling `partitionId`.
+    6. **Cascade correctness (partial)** — deleting a room removes its Partitions (`GET /partitions?roomId=`
+       -> `[]`) and the room itself disappears from `GET /rooms?floorId=`. **"Deleting a floor removes its
+       rooms" is NOT covered** — there is no `DELETE` route under `app/api/v1/orgs/[orgSlug]/floors/**`
+       (confirmed by listing the directory: GET + POST only), and Floor is explicitly untouched by this
+       stage, so there's no API-level way to drive that half of the invariant without direct DB access,
+       which would break the API-level-only approach this file otherwise holds to throughout. Documented in
+       a comment in the spec, not silently dropped — flagging here too for the tester/human to decide if a
+       floor-delete route should be scoped into a later stage, or if this half of the invariant is accepted
+       as untested until then.
+    7. **Adjacency read** — folded into test 4 (no dedicated adjacency endpoint exists; the invariant is
+       "array order is trustworthy," which test 4's index-by-index assertions across the reorder already
+       establish, including the wrap pair).
+    8. **Below-3-sides only when `isClosed: true`** — shrinking to 2 sides while closed -> 400; the same
+       2-side array with `isClosed: false` -> 200.
+    9. **`lengthMm` on a PARTITION element -> 400** — per Item 2's Gate-A-adjacent MINOR-3 resolution
+       (`null` accepted, a real numeric value rejected); also confirms the rejected PATCH did not partially
+       apply (Partition count unchanged).
+  - **Real, pre-existing bug found and worked around (not fixed in product code, out of this item's
+    scope)**: the shared `signIn()` helper (`tests/e2e/helpers.ts`, browser login form) is **broken against
+    every ad-hoc `feature/*` Vercel preview** — confirmed by direct `curl` to
+    `/api/auth/sign-in/email`: the response is a genuine `200` with a valid session token in the JSON body,
+    but `Set-Cookie` carries `Domain=.easeetool.com`, which the browser (and Playwright's own cookie jar,
+    same RFC 6265 rule) correctly refuses to store against a bare `*.vercel.app` host — so the login form
+    "succeeds" server-side and then immediately loses the session, spinning on `/login` forever. Root
+    cause: `lib/auth.ts`'s `crossSubDomainCookies.enabled` is gated on
+    `BETTER_AUTH_URL.includes("easeetool.com")`, and `npx vercel env ls` confirms the Vercel **"Preview"**
+    environment scope (which applies to every preview deployment, not just `staging`) has a single fixed
+    `BETTER_AUTH_URL` secret — almost certainly an `easeetool.com` value — so this isn't specific to this
+    branch or this item; **it affects any spec doing a browser-form `signIn()` against any feature-branch
+    preview**, and was already flagged (informationally) during Item 3's manual verification pass (see the
+    2026-09-09 Item 3 entries above) — this pass confirms the exact mechanism via `vercel env ls` +
+    `curl`, rather than just observing the symptom. **Worked around test-harness-side only**: added a local
+    `apiSignIn()` in `stage18.spec.ts` that calls the sign-in API directly via `page.request`, then
+    re-attaches the returned cookie to the browser context with the `Domain` corrected to the actual host
+    under test (`isSubdomain`-aware, matching `apiUrl()`'s own host-resolution logic). No product code
+    touched; every other part of the flow (API routes, DB, business logic) is still the real deployed
+    preview. Per the task's explicit ask to "find out and report either way" whether API-level tests are
+    affected: **yes, they are affected**, because authentication itself goes through the same broken
+    browser-login transport regardless of how the test body then talks to the API — the fix had to be in
+    how the tests sign in, not in what they do afterward. Recommending centralizing this `apiSignIn`
+    pattern into `helpers.ts` for future specs that need to run against feature-branch previews, and/or
+    fixing the Preview `BETTER_AUTH_URL` env var to be less broad — left as a decision for the human/
+    architect, not made unilaterally here.
+  - **Verify**: `npm run lint` — 0 errors (same 5 pre-existing unrelated `tests/e2e/**` warnings).
+    `npx tsc --noEmit` — 0 errors. Pushed `436752c` then `bd60ae2` (the `apiSignIn` fix) to
+    `feature/rooms-tests`; polled Vercel to `READY` for **`bd60ae2`'s own commit SHA** specifically
+    (`quotation-system-rigzwooex-vistra-indias-projects.vercel.app`, confirmed via `vercel inspect`), then
+    ran `PLAYWRIGHT_BASE_URL=<that preview> npx playwright test stage18.spec.ts` against it:
+    **all 7 tests passed** (15.8s). Also confirmed `/api/health` -> 200 connected, and the build log route
+    list includes `/api/v1/orgs/[orgSlug]/rooms`, `/rooms/[id]`, `/rooms/[id]/sides` (not a stale build).
+  - No BLOCKED items. One concern carried forward: the floor-delete cascade half of invariant 6 is
+    untestable at the API level this stage (no route exists) — see point 6 above.
