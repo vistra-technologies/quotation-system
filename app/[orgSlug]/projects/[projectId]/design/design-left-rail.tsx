@@ -100,17 +100,35 @@ export function DesignLeftRail({
     Record<string, PartitionRow[]>
   >({});
 
-  // Fetch partitions for any expanded room that has PARTITION sides and
-  // hasn't been fetched yet. Plain browser fetch() — precedent:
+  // Fetch partitions for any expanded room that has PARTITION sides not yet
+  // covered by the cache. Plain browser fetch() — precedent:
   // app/controls/(authenticated)/orgs/_suspend-button.tsx calls /api/v1/...
   // directly from a Client Component (cookies flow same-origin).
+  //
+  // Review-item3.md IMPORTANT 1: the cache check must be COVERAGE, not
+  // PRESENCE. A server-action redirect() (e.g. after converting a side) is a
+  // soft navigation — this component stays mounted, so a stale
+  // partitionsByRoom[room.id] entry from an earlier fetch survives. Checking
+  // only "does an entry exist for this room" meant a *second* convert in the
+  // same room never refetched (the entry from the first convert already
+  // existed), leaving the newly-converted side stuck on the loading
+  // placeholder. Instead, check that every PARTITION side's partitionId in
+  // the room's current `sides` is actually present in the cached array —
+  // refetch whenever one is missing.
   useEffect(() => {
     for (const floor of floors) {
       for (const room of floor.rooms) {
         if (!expandedRoomIds.has(room.id)) continue;
-        if (partitionsByRoom[room.id]) continue;
-        const hasPartitionSide = room.sides.some((s) => s.kind === "PARTITION");
-        if (!hasPartitionSide) continue;
+        const partitionSideIds = room.sides
+          .filter((s): s is Extract<RoomSide, { kind: "PARTITION" }> => s.kind === "PARTITION")
+          .map((s) => s.partitionId);
+        if (partitionSideIds.length === 0) continue;
+
+        const cached = partitionsByRoom[room.id];
+        const fullyCovered =
+          cached !== undefined &&
+          partitionSideIds.every((id) => cached.some((p) => p.id === id));
+        if (fullyCovered) continue;
 
         fetch(`/api/v1/orgs/${orgSlug}/partitions?roomId=${room.id}`)
           .then((res) => (res.ok ? res.json() : { partitions: [] }))
