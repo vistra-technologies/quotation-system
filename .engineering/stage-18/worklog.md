@@ -359,3 +359,80 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   - No BLOCKED items. One concern carried to `DONE_WITH_CONCERNS`: the pre-existing Preview
     `BETTER_AUTH_URL`/cookie-domain issue above, which is not this item's to fix but affects anyone doing
     real browser verification on a `feature/*` preview going forward.
+
+- **2026-09-09 · reviewer · Item 3 (design-page rework) — verdict: CHANGES-NEEDED.** 0 CRITICAL · 2
+  IMPORTANT · 8 MINOR. Confirmed the two new API routes (`floors`, `partitions`) are **not** a deviation
+  needing Gate A — forced, minimally-scoped, convention-conformant consequence of dropping the
+  `eslint-disable`. Flags 4/5 both confirmed compliant; side-id handling vs. `review-item2-round2.md`
+  finding 9 confirmed correct; add-wall decision confirmed coherent. IMPORTANT 1: the partition cache in
+  `design-left-rail.tsx` checked presence, not coverage, so a second convert in the same room got stuck on
+  "Loading…" after a soft-navigation redirect. IMPORTANT 2: `by-page.sql`'s "Stage 8" section documented
+  deleted code (`listPartitionsByFloor`, an `INSERT INTO "Partition"` using dropped `floorId`/`location`
+  columns) and had no entries for the two new routes. 8 MINORs deferred by the coordinator's explicit
+  scoping (not re-flagged here). Full report: `.engineering/stage-18/review-item3.md`.
+
+- **2026-09-09 — Item 3 review fixes (developer agent)**: on `feature/rooms-design-page` @ `a800e50`
+  (pushed), fixing `review-item3.md`'s IMPORTANT 1 and IMPORTANT 2.
+  - **IMPORTANT 1 fixed** (`design-left-rail.tsx`'s partition-fetch effect) — replaced the presence check
+    (`if (partitionsByRoom[room.id]) continue`) with a coverage check: compute the room's current
+    PARTITION-side `partitionId`s from the (always-fresh) `floors` prop, and only skip the refetch when
+    every one of them is already present in the cached array (`cached !== undefined &&
+    partitionSideIds.every(id => cached.some(p => p.id === id))`). A room with no PARTITION sides still
+    skips entirely (unchanged short-circuit, now via `partitionSideIds.length === 0`). Applied exactly the
+    reviewer's suggested fix shape.
+  - **IMPORTANT 2 fixed** (`quotation-system-docs/design-docs/sql-queries/by-page.sql`, docs repo) —
+    rewrote the stale "Stage 8 — Floors & Partitions (Wall Design)" section (still referencing
+    `listPartitionsByFloor()`, deleted in Item 2, and an `INSERT INTO "Partition"` using
+    `floorId`/`location`, dropped by Item 1's migration) as "Design page (Floor -> Room -> sides)",
+    matching the real post-Item-3 data flow: `GET /design` → floors route + rooms route (pointer to the
+    "Stage 18 — Rooms" section) + selections route; `GET/POST /design/add-wall` → floors + rooms routes,
+    no direct `Partition` insert (wall creation moved to the sides PATCH convert, reused from the design
+    page — matches `add-wall/actions.ts`'s actual behavior). Added the two routes' own SQL that had no
+    entries yet: `GET/POST /api/v1/orgs/[orgSlug]/floors` (`listFloorsByProject`,
+    `getProjectById` tenancy guard, `createFloorIfNotExists`) and `GET /api/v1/orgs/[orgSlug]/partitions`
+    (`listPartitionsByRoom`, noted read-only with an explanation of why). Committed `6f6ad4c` in the docs
+    repo and pushed to `origin/main`. Confirmed Item 2's round-2 `by-page.sql` fix (`31922ab`) was already
+    committed by the coordinator before I started — did not duplicate it, only diffed against it.
+  - **Verify**: `npm run lint` — 0 errors (same 5 pre-existing unrelated warnings). `npx tsc --noEmit` — 0
+    errors. Committed `a800e50` on `feature/rooms-design-page` and pushed. Polled Vercel to `READY` for
+    that exact commit SHA (confirmed via `vercel inspect --logs`: `Cloning ... Commit: a800e50`,
+    `✓ Compiled successfully`, `Finished TypeScript`).
+  - **Re-verified the multi-convert scenario** (coordinator's specific ask) against the new preview
+    (`quotation-system-fnqr8kpqu-vistra-indias-projects.vercel.app`), reusing the "Lobby E2E" room from
+    the Item 3 walkthrough (already `[PARTITION p1, PLAIN, PLAIN, PLAIN]`): `PATCH .../sides` converting
+    index 1 to a **second** PARTITION (`{label:"East Wall E2E", heightMm:2100, widthMm:900}`, no
+    `partitionId`, matching `convertSideAction`'s exact payload shape) → 200, room now
+    `[PARTITION p1, PARTITION p2, PLAIN, PLAIN]`. `GET /partitions?roomId=` → 200, returns **both**
+    partitions (`North Wall E2E` and `East Wall E2E`) in one call. Re-fetched `/design?openRoom=<id>` →
+    200, SSR HTML shows "4 sides" and only 2 "Untitled wall" rows remaining (down from 3 after the first
+    convert), consistent with 2 sides now converted.
+  - **Honest limitation, stated plainly**: the IMPORTANT 1 bug is a **client-side React state** bug
+    (a stale `partitionsByRoom` cache entry surviving a Next.js soft navigation after `redirect()`) — it
+    cannot be reproduced or disproven via `curl`, which always gets a fresh SSR render with no persisted
+    client state, whether or not the bug exists. No browser/Playwright tool was available in this session
+    (same constraint as the original Item 3 verification). What I *did* verify: (a) the fix's logic
+    hand-traced against the exact scenario the reviewer described — room `[p1, p2, PLAIN, PLAIN]`, stale
+    cache `{room: [p1]}` → `partitionSideIds = [p1id, p2id]` → `fullyCovered` is `false` because `p2id` is
+    missing from `cached` → refetch fires → and (b) confirmed via `curl` that the `/partitions` route the
+    refetch calls genuinely returns **both** partitions in one response, so once the fix's refetch fires,
+    the data it receives is complete and correct. This is the strongest verification available without a
+    browser in this environment; a real click-through (converting two sides in a row without a hard
+    reload, confirming neither gets stuck on "Loading…") is still owed and should happen at the
+    `engineering:test` phase, which per CLAUDE.md's hard rule also runs against a Vercel preview, not
+    locally.
+  - No BLOCKED items. Concerns unchanged from the original Item 3 pass: (1) the pre-existing
+    `BETTER_AUTH_URL`/cookie-domain issue on `*.vercel.app` previews (not this item's to fix, flagged for
+    the human separately per the reviewer's note); (2) the client-side soft-navigation fix above is
+    verified by logic + API-layer data correctness, not a literal browser click-through, for the reason
+    stated.
+
+- **2026-09-09 · reviewer · Item 3 (design-page rework) — verdict: CHANGES-NEEDED.** 0 CRITICAL ·
+  2 IMPORTANT · 8 MINOR, reviewed against `3faab65`. **The two new API routes (`/floors`, `/partitions`)
+  are NOT a deviation needing a Gate-A pause** — forced, minimal and convention-conformant consequence of
+  the mandated `eslint-disable no-restricted-imports` removal; verdict recorded in §1 of the report.
+  Flags 4 and 5 both confirmed compliant; side-id handling and the convert payload verified correct
+  against the real sides-PATCH contract; tenancy/auth unregressed. `lint`/`tsc` claims re-run and true.
+  IMPORTANTs: lazily-fetched partition cache is never invalidated (second convert in a room renders
+  "Loading…" permanently), and `by-page.sql` not reconciled (Stage 8 section documents deleted
+  columns/functions; new routes absent — plus Item 2's by-page.sql fix is still uncommitted in the docs
+  repo). Full report: `.engineering/stage-18/review-item3.md`.
