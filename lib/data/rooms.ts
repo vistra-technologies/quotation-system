@@ -292,15 +292,24 @@ export async function deleteRoom(session: SessionData, roomId: string) {
  * Side ids are always re-derived server-side, never trusted from the client
  * (Stage 18 plan's resolution of the id-generation open item):
  *   - PARTITION elements are matched to the room's previous sides by
- *     `partitionId` — matched ones keep their existing side id; unmatched
- *     ones are treated as a new plain->partition convert.
+ *     `partitionId` — matched ones keep their existing side id; a PARTITION
+ *     element with no `partitionId` at all is a new plain->partition convert
+ *     (creates a fresh Partition row); a PARTITION element whose supplied
+ *     `partitionId` does NOT match anything on this room is rejected with
+ *     InvalidSidesError (not silently treated as a new convert — see
+ *     stage-18 review-item2.md finding 2).
  *   - PLAIN elements are matched to the room's previous sides *positionally*
- *     (index in the incoming array vs. index in the previous array) — a PLAIN
- *     element in the same position as a previous PARTITION element is a
- *     convert-back (the underlying Partition row is deleted, per the plan's
- *     resolution of the convert-back open item); a PLAIN element in the same
- *     position as a previous PLAIN element keeps its id; anything else (new
- *     position, e.g. an added side) mints a fresh id.
+ *     purely for id continuity (a PLAIN element in the same position as a
+ *     previous PLAIN element keeps its id; anything else, including a
+ *     position previously occupied by a PARTITION, mints a fresh id).
+ *     Position is NOT used to decide whether a Partition gets deleted —
+ *     deletion is decided entirely by the order-independent sweep after the
+ *     loop (comparing the set of partitionIds referenced before vs. after
+ *     the write), specifically so that reordering a PARTITION side (moving
+ *     its index without changing its kind) can never be mistaken for a
+ *     convert-back and delete a live Partition out from under it (see
+ *     stage-18 review-item2.md finding 1 — this was a real bug in an earlier
+ *     version of this function).
  *
  * Tenancy guard: verifies the room belongs to the session's org.
  * Returns null if the room is not found (caller -> 404).
@@ -354,8 +363,21 @@ export async function replaceSides(
     }
 
     // ── Build the final array, resolving converts + re-deriving ids ────────
+    //
+    // NOTE: convert-back (PARTITION -> PLAIN) is intentionally NOT detected
+    // positionally here (a previous version compared newSides[i] against
+    // previousSides[i] and deleted on a PARTITION->PLAIN transition at the
+    // same index). That was wrong: a PATCH that reorders a PARTITION side
+    // (or inserts/removes a side ahead of one) shifts its index without the
+    // side itself changing kind, which the positional check couldn't tell
+    // apart from an actual convert-back — it deleted live Partition rows out
+    // from under sides that were simply moved. Convert-back deletion is
+    // instead handled entirely by the order-independent sweep below, which
+    // compares the *set* of partitionIds referenced before and after the
+    // write — a PARTITION side that doesn't appear anywhere in the new array
+    // (whether because it was converted back to PLAIN or removed outright)
+    // gets its Partition row deleted exactly once, regardless of position.
     const finalSides: RoomSide[] = [];
-    const deletedPartitionIds = new Set<string>();
     for (let i = 0; i < newSides.length; i++) {
       const incoming = newSides[i];
       const previousAtSamePos = previousSides[i];
@@ -367,6 +389,15 @@ export async function replaceSides(
                 (s) => s.kind === "PARTITION" && s.partitionId === incoming.partitionId,
               )
             : undefined;
+
+        if (incoming.partitionId != null && !matchedExisting) {
+          // An explicit partitionId that doesn't resolve to a side already on
+          // this room is an error, not an implicit "create a new one" — e.g.
+          // a stale client cache or a partitionId belonging to another room.
+          throw new InvalidSidesError(
+            `partitionId ${incoming.partitionId} is not a side of this room.`,
+          );
+        }
 
         if (matchedExisting && matchedExisting.kind === "PARTITION") {
           // Keep — verify the referenced Partition still belongs to this room.
@@ -392,7 +423,8 @@ export async function replaceSides(
             label: null,
           });
         } else {
-          // New convert: PLAIN -> PARTITION. Create the Partition row now.
+          // New convert: PLAIN -> PARTITION (no partitionId supplied at all).
+          // Create the Partition row now.
           if (!incoming.label || !incoming.heightMm || !incoming.widthMm) {
             throw new InvalidSidesError(
               "Converting a side to PARTITION requires label, heightMm, and widthMm.",
@@ -415,49 +447,27 @@ export async function replaceSides(
           });
         }
       } else {
-        // incoming.kind === "PLAIN"
-        if (previousAtSamePos && previousAtSamePos.kind === "PARTITION") {
-          // Convert-back: PARTITION -> PLAIN. Delete the underlying Partition
-          // row (Stage 18 plan's resolution: delete, not detach).
-          await tx.partition.delete({
-            where: { id: previousAtSamePos.partitionId },
-          });
-          deletedPartitionIds.add(previousAtSamePos.partitionId);
-          finalSides.push({
-            id: crypto.randomUUID(),
-            kind: "PLAIN",
-            partitionId: null,
-            turnDegrees: incoming.turnDegrees,
-            lengthMm: incoming.lengthMm ?? null,
-            label: incoming.label ?? null,
-          });
-        } else if (previousAtSamePos && previousAtSamePos.kind === "PLAIN") {
-          finalSides.push({
-            id: previousAtSamePos.id,
-            kind: "PLAIN",
-            partitionId: null,
-            turnDegrees: incoming.turnDegrees,
-            lengthMm: incoming.lengthMm ?? null,
-            label: incoming.label ?? null,
-          });
-        } else {
-          // New position (side added).
-          finalSides.push({
-            id: crypto.randomUUID(),
-            kind: "PLAIN",
-            partitionId: null,
-            turnDegrees: incoming.turnDegrees,
-            lengthMm: incoming.lengthMm ?? null,
-            label: incoming.label ?? null,
-          });
-        }
+        // incoming.kind === "PLAIN" — reuse the previous side's id only when
+        // a PLAIN side occupied this exact position before (no partition
+        // deletion here; see the sweep below for why).
+        finalSides.push({
+          id: previousAtSamePos?.kind === "PLAIN" ? previousAtSamePos.id : crypto.randomUUID(),
+          kind: "PLAIN",
+          partitionId: null,
+          turnDegrees: incoming.turnDegrees,
+          lengthMm: incoming.lengthMm ?? null,
+          label: incoming.label ?? null,
+        });
       }
     }
 
     // Any previous PARTITION sides that no longer appear anywhere in the new
-    // array (removed outright, not converted back) must have their
-    // Partition row deleted too — otherwise it becomes an orphan pointing at
-    // a room that no longer references it via `sides` (invariant 2).
+    // array — whether converted back to PLAIN or removed outright — must
+    // have their Partition row deleted, order-independently. This is the
+    // single place partition deletion happens for this function (see the
+    // note above the loop): comparing the *sets* of partitionIds before and
+    // after the write means a reorder that merely moves a PARTITION side
+    // (present in both sets) never triggers a delete.
     const finalPartitionIds = new Set(
       finalSides
         .filter((s): s is PartitionSide => s.kind === "PARTITION")
@@ -466,11 +476,15 @@ export async function replaceSides(
     const removedPartitionIds = previousSides
       .filter((s): s is PartitionSide => s.kind === "PARTITION")
       .map((s) => s.partitionId)
-      .filter(
-        (id) => !finalPartitionIds.has(id) && !deletedPartitionIds.has(id),
-      );
-    for (const id of removedPartitionIds) {
-      await tx.partition.delete({ where: { id } });
+      .filter((id) => !finalPartitionIds.has(id));
+    if (removedPartitionIds.length > 0) {
+      await tx.partition.deleteMany({
+        where: {
+          id: { in: removedPartitionIds },
+          organizationId: session.organizationId,
+          roomId,
+        },
+      });
     }
 
     return tx.room.update({

@@ -25,9 +25,13 @@ export const dynamic = "force-dynamic";
  *   Each element: { kind: "PLAIN", turnDegrees, lengthMm?, label? }
  *              or { kind: "PARTITION", turnDegrees, partitionId?, label?, heightMm?, widthMm? }
  *   `partitionId` on a PARTITION element, when it matches an existing side on
- *   this room, keeps that Partition; when it doesn't match (or is omitted),
- *   the element is a new plain->partition convert and must carry label,
- *   heightMm, and widthMm to create the Partition row.
+ *   this room, keeps that Partition. When it is omitted entirely, the
+ *   element is a new plain->partition convert and must carry label,
+ *   heightMm, and widthMm to create the Partition row. When it is present
+ *   but does NOT match any partition already on this room, the PATCH is
+ *   rejected with 400 — it is never silently treated as a new convert
+ *   (stale client cache / a partitionId from another room is a client bug,
+ *   not an implicit create).
  *
  * Returns 200 with the updated room on success.
  * Returns 404 when the room is not found in the session's org.
@@ -79,6 +83,13 @@ export async function PATCH(
     const turnDegrees = typeof el.turnDegrees === "number" ? el.turnDegrees : 90;
 
     if (el.kind === "PARTITION") {
+      // Invariant 3 (lengthMm only on PLAIN) — reject rather than silently
+      // drop: a client sending lengthMm on a PARTITION element is either
+      // confused about which side it's editing or has a stale form state,
+      // and dropping the field silently would hide that from them.
+      if (el.lengthMm !== undefined && el.lengthMm !== null) {
+        return apiBadRequest("lengthMm is not valid on a PARTITION side");
+      }
       sides.push({
         kind: "PARTITION",
         turnDegrees,
