@@ -232,3 +232,16 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     sides) — this is exactly the scenario that would have caught CRITICAL 1, and a test suite that only
     reorders PLAIN sides would pass against both the buggy and fixed code, giving false confidence.
   - No BLOCKED items.
+
+- **2026-09-09 · reviewer · Item 2 round 2 (review-fix verification) — verdict: APPROVE-WITH-NITS.**
+  0 CRITICAL · 0 IMPORTANT · 1 new MINOR (informational). Verified against `eee12fe`: the positional
+  convert-back delete is genuinely gone and all three round-1 failure scenarios were hand-traced against
+  the current code (both reorder cases no longer delete; a real convert-back and an outright removal still
+  delete, once, via the scoped sweep); the unmatched-`partitionId` 400 is in place; MINOR 3's "reject
+  `lengthMm` on PARTITION" is enforced in the route before the element is accepted, and correctly still
+  allows `lengthMm: null` so a read-then-PATCH round-trip works. Re-ran `npm run lint` (0 errors) and
+  `npx tsc --noEmit` (exactly the 3 expected Item-3 errors) — both claims true. `by-page.sql`'s collapsed
+  single scoped DELETE matches the new logic. New MINOR: PLAIN side ids are positional, so a reorder
+  reassigns them between logical sides — affects Item 3 UI keying and how Item 4 asserts round-trips.
+  MINORs 4-8 re-read and confirmed non-critical; not re-flagged per coordinator scoping. Full report:
+  `.engineering/stage-18/review-item2-round2.md`.
