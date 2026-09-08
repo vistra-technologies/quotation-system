@@ -33,13 +33,84 @@
  */
 
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
-import { signIn, apiUrl } from "./helpers";
+import { apiUrl, isSubdomain } from "./helpers";
+import { toAuthEmail } from "@/lib/auth-utils";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
 
 const ACME = "acme-glass";
 const NORDIC = "nordic-walls";
+const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
+
+/**
+ * API-level sign-in, bypassing the browser login form entirely.
+ *
+ * Why not the shared `signIn` helper (tests/e2e/helpers.ts): that helper
+ * drives the real login form, which works fine against test.easeetool.com/
+ * easeetool.com but is BROKEN against an ad-hoc `feature/*` Vercel preview
+ * (a bare *.vercel.app host) — confirmed by direct inspection while writing
+ * this spec (a pre-existing bug, not introduced by this change, and out of
+ * this item's scope to fix; reported in the worklog).
+ *
+ * Root cause (lib/auth.ts): `crossSubDomainCookies.enabled` is gated on
+ * `BETTER_AUTH_URL.includes("easeetool.com")`. The Vercel "Preview" env
+ * scope applies to EVERY preview deployment (not just staging), and its
+ * BETTER_AUTH_URL secret is fixed to an easeetool.com URL — so every
+ * feature-branch preview sets `Set-Cookie: ...; Domain=.easeetool.com`, which
+ * browsers (and Playwright's cookie jar, which enforces the same RFC 6265
+ * domain-match rule) correctly reject on a *.vercel.app host. The sign-in API
+ * call itself succeeds (200, valid session token in the JSON body) — only the
+ * cookie never lands, so the browser-form flow un-authenticates itself
+ * immediately after "signing in" and the login form spins forever.
+ *
+ * Workaround (test-harness only, no product code touched): call the sign-in
+ * API directly via page.request, then re-add the same cookie to the browser
+ * context ourselves with the Domain attribute corrected to the actual host
+ * being tested against. Everything else (the API routes under test, the DB,
+ * the business logic) is still the real deployed preview — this only works
+ * around a cookie-attribute mismatch in the login transport, matching how
+ * this file authenticates for API-level assertions in the first place.
+ */
+async function apiSignIn(
+  page: Page,
+  orgSlug: string,
+  username: string,
+  password = "Seed1234!",
+) {
+  const resp = await page.request.post(
+    apiUrl(orgSlug, "/api/auth/sign-in/email"),
+    { data: { email: toAuthEmail(username, orgSlug), password } },
+  );
+  if (!resp.ok()) {
+    throw new Error(
+      `apiSignIn(${username}@${orgSlug}) failed: ${resp.status()} ${await resp.text()}`,
+    );
+  }
+  const setCookie = resp.headers()["set-cookie"];
+  if (!setCookie) {
+    throw new Error(`apiSignIn(${username}@${orgSlug}): no Set-Cookie header in response`);
+  }
+  const [nameValue] = setCookie.split(";");
+  const eqIdx = nameValue.indexOf("=");
+  const name = nameValue.slice(0, eqIdx);
+  const value = decodeURIComponent(nameValue.slice(eqIdx + 1));
+
+  const base = new URL(BASE_URL);
+  const host = isSubdomain ? `${orgSlug}.${base.hostname}` : base.hostname;
+
+  await page.context().addCookies([
+    {
+      name,
+      value,
+      domain: host,
+      path: "/",
+      httpOnly: true,
+      secure: base.protocol === "https:",
+      sameSite: "Lax",
+    },
+  ]);
+}
 
 let acmeCtx: BrowserContext;
 let nordicCtx: BrowserContext;
@@ -55,13 +126,14 @@ let roomBId: string; // "Room B" — used for cross-room partitionId tests
 const RUN = Date.now();
 
 test.beforeAll(async ({ browser }) => {
+  test.setTimeout(120_000);
   acmeCtx = await browser.newContext();
   nordicCtx = await browser.newContext();
   acmePage = await acmeCtx.newPage();
   nordicPage = await nordicCtx.newPage();
 
-  await signIn(acmePage, "admin", "Seed1234!", ACME);
-  await signIn(nordicPage, "admin", "Seed1234!", NORDIC);
+  await apiSignIn(acmePage, ACME, "admin", "Seed1234!");
+  await apiSignIn(nordicPage, NORDIC, "admin", "Seed1234!");
 
   // Project -> Floor -> two Rooms, all via the real APIs (not direct DB access).
   const projRes = await acmePage.request.post(
