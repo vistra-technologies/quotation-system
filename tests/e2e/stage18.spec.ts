@@ -76,28 +76,67 @@ async function apiSignIn(
   page: Page,
   orgSlug: string,
   username: string,
-  password = "Seed1234!",
+  password = process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!",
 ) {
-  const resp = await page.request.post(
-    apiUrl(orgSlug, "/api/auth/sign-in/email"),
-    { data: { email: toAuthEmail(username, orgSlug), password } },
-  );
-  if (!resp.ok()) {
+  // Same 429 retry shape as helpers.ts's signIn() (~lines 152-192): better-auth
+  // rate-limits sign-ins to 3/10s/IP, in-memory per Vercel instance, and
+  // fullyParallel workers can cluster sign-ins onto one warm instance at
+  // suite startup. Without this, a 429 here fails the whole beforeAll (and
+  // therefore all 7 tests in this file), not just one test.
+  let resp;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    resp = await page.request.post(apiUrl(orgSlug, "/api/auth/sign-in/email"), {
+      data: { email: toAuthEmail(username, orgSlug), password },
+    });
+    if (resp.status() !== 429) break;
+    if (attempt < 4) {
+      const retryAfterSec = Number(resp.headers()["x-retry-after"] ?? "10");
+      await new Promise((resolve) => setTimeout(resolve, (retryAfterSec + 1) * 1_000));
+    }
+  }
+  if (!resp || !resp.ok()) {
     throw new Error(
-      `apiSignIn(${username}@${orgSlug}) failed: ${resp.status()} ${await resp.text()}`,
+      `apiSignIn(${username}@${orgSlug}) failed: ${resp?.status()} ${resp ? await resp.text() : ""}`,
     );
   }
+
+  // Playwright newline-joins multiple Set-Cookie headers; match by name
+  // prefix rather than blindly taking the first one (better-auth sets only
+  // one cookie today with no cookieCache configured, but this is cheap
+  // insurance against that changing silently).
   const setCookie = resp.headers()["set-cookie"];
   if (!setCookie) {
     throw new Error(`apiSignIn(${username}@${orgSlug}): no Set-Cookie header in response`);
   }
-  const [nameValue] = setCookie.split(";");
+  const sessionCookieLine = setCookie
+    .split("\n")
+    .find((line) => line.includes("session_token"));
+  if (!sessionCookieLine) {
+    throw new Error(
+      `apiSignIn(${username}@${orgSlug}): no session_token cookie in Set-Cookie header(s): ${setCookie}`,
+    );
+  }
+  const [nameValue] = sessionCookieLine.split(";");
   const eqIdx = nameValue.indexOf("=");
   const name = nameValue.slice(0, eqIdx);
   const value = decodeURIComponent(nameValue.slice(eqIdx + 1));
 
   const base = new URL(BASE_URL);
-  const host = isSubdomain ? `${orgSlug}.${base.hostname}` : base.hostname;
+  // In subdomain mode, mirror production's crossSubDomainCookies exactly
+  // (lib/auth.ts: `domain: ".easeetool.com"`) — an apex-wide, leading-dot
+  // domain so the cookie is sent to EVERY org subdomain, not just the one it
+  // was minted on. This matters specifically for the cross-tenant tenancy
+  // test: it re-uses this same session (signed in under its own org's
+  // subdomain) to call a DIFFERENT org's subdomain and expects the real
+  // cross-tenant 403 from getApiSession's guard. A host-only cookie (no
+  // leading dot) would simply never be sent cross-subdomain, so that request
+  // would arrive unauthenticated (401) instead of authenticated-but-denied
+  // (403) — passing on a path-routed *.vercel.app preview (single host, so
+  // the distinction is invisible) but silently going wrong on
+  // test.easeetool.com/easeetool.com (subdomain routing), which is exactly
+  // where this suite is meant to run next. Path mode has no subdomains to
+  // begin with, so a plain host-only cookie is correct and unambiguous there.
+  const host = isSubdomain ? `.${base.hostname}` : base.hostname;
 
   await page.context().addCookies([
     {
@@ -132,8 +171,8 @@ test.beforeAll(async ({ browser }) => {
   acmePage = await acmeCtx.newPage();
   nordicPage = await nordicCtx.newPage();
 
-  await apiSignIn(acmePage, ACME, "admin", "Seed1234!");
-  await apiSignIn(nordicPage, NORDIC, "admin", "Seed1234!");
+  await apiSignIn(acmePage, ACME, "admin");
+  await apiSignIn(nordicPage, NORDIC, "admin");
 
   // Project -> Floor -> two Rooms, all via the real APIs (not direct DB access).
   const projRes = await acmePage.request.post(
@@ -355,6 +394,28 @@ test("ordering round-trip, PARTITION-index reorder survives, and convert (PLAIN-
   );
   expect((await partitionsAfterBadPatch.json()).partitions).toHaveLength(1);
 
+  // lengthMm: null on a PARTITION element must be ACCEPTED (200), not
+  // rejected — this is what every real read-then-PATCH round-trip sends,
+  // since GET always returns lengthMm: null on a PARTITION side
+  // (review-item2-round2.md: a regression tightening the route's guard to
+  // `el.lengthMm !== undefined` — rejecting explicit null too — would break
+  // every real round-trip PATCH while still passing the 400-on-numeric case
+  // above, so this needs its own assertion).
+  const nullLengthRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/rooms/${roomAId}/sides`),
+    {
+      data: {
+        sides: [
+          { kind: "PLAIN", turnDegrees: 90, label: "S0", lengthMm: 1000 },
+          { kind: "PARTITION", turnDegrees: 90, partitionId: partitionIdP1, lengthMm: null },
+          { kind: "PLAIN", turnDegrees: 90, label: "S2", lengthMm: 3000 },
+          { kind: "PLAIN", turnDegrees: 90, label: "S3", lengthMm: 4000 },
+        ],
+      },
+    },
+  );
+  expect(nullLengthRes.status()).toBe(200);
+
   // --- THE critical regression test: reorder that moves the PARTITION
   // side's array index (not just a PLAIN-only reorder, which would pass
   // against both the buggy and the fixed code — see review-item2.md
@@ -394,6 +455,25 @@ test("ordering round-trip, PARTITION-index reorder survives, and convert (PLAIN-
   // assertions above already establish for all 4 positions including the
   // wrap pair (index 3 <-> index 0).
   expect(reordered.room.isClosed).toBe(true);
+
+  // Read-after-write for the REORDERED state too (not just the pre-reorder
+  // state checked earlier) — a separate GET must return the same order the
+  // reorder PATCH's own response claimed.
+  const reorderReadBack = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/rooms?floorId=${floorId}`),
+  );
+  const { rooms: reorderReadRooms } = (await reorderReadBack.json()) as {
+    rooms: {
+      id: string;
+      sides: { kind: string; label: string | null; partitionId: string | null }[];
+    }[];
+  };
+  const roomAAfterReorder = reorderReadRooms.find((r) => r.id === roomAId)!;
+  expect(roomAAfterReorder.sides.map((s) => s.kind)).toEqual(reordered.room.sides.map((s) => s.kind));
+  expect(roomAAfterReorder.sides.map((s) => s.label)).toEqual(reordered.room.sides.map((s) => s.label));
+  expect(roomAAfterReorder.sides.map((s) => s.partitionId)).toEqual(
+    reordered.room.sides.map((s) => s.partitionId),
+  );
 
   // (b) the underlying Partition row still exists — this is exactly what the
   // CRITICAL bug destroyed (a positional convert-back-delete fired on the
@@ -437,8 +517,8 @@ test("Partition.roomId agreement: unrecognized or foreign-room partitionId is re
   const before = await acmePage.request.get(
     apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions?roomId=${roomAId}`),
   );
-  const { partitions: beforeList } = (await before.json()) as { partitions: unknown[] };
-  const countBefore = beforeList.length;
+  const { partitions: beforeList } = (await before.json()) as { partitions: { id: string }[] };
+  const idsBefore = beforeList.map((p) => p.id).sort();
 
   const bogusRes = await acmePage.request.patch(
     apiUrl(ACME, `/api/v1/orgs/${ACME}/rooms/${roomAId}/sides`),
@@ -458,8 +538,13 @@ test("Partition.roomId agreement: unrecognized or foreign-room partitionId is re
   const after = await acmePage.request.get(
     apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions?roomId=${roomAId}`),
   );
-  const { partitions: afterList } = (await after.json()) as { partitions: unknown[] };
-  expect(afterList).toHaveLength(countBefore); // no duplicate Partition minted, no partitionNumber burned
+  const { partitions: afterList } = (await after.json()) as { partitions: { id: string }[] };
+  // Assert the exact surviving set, not just the count — a regression that
+  // silently minted a new Partition for the bogus partitionId AND swept away
+  // partitionIdP1 (now absent from the rejected request's array) would leave
+  // the count unchanged but swap which partition actually exists; comparing
+  // ids catches that where a bare length check would not.
+  expect(afterList.map((p) => p.id).sort()).toEqual(idsBefore);
 
   // (b) Convert a side of Room B to PARTITION, producing a Partition that
   // belongs to Room B — then try to attach that partitionId to Room A's
