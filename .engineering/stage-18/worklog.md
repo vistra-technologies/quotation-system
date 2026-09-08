@@ -101,3 +101,13 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   pushed. Note per profile.md: this migration is destructive to the shared dev DB's existing
   `Floor`/`Partition` rows — already wiped by the `migrate deploy` run above (expected/authorized, no
   real data existed).
+
+- **2026-09-09 — Item 1 review (reviewer agent)**: **APPROVE-WITH-NITS** on
+  `feature/rooms-schema-migration` @ `de04a76`. 0 CRITICAL · 1 IMPORTANT (follow-up, not a change to this
+  diff) · 1 IMPORTANT-informational (sequencing) · 3 MINOR · 1 repo-infra note. Schema verified
+  field-for-field against the stage doc; migration SQL and its delete ordering confirmed correct and
+  exactly as authorized (the `DELETE FROM "Floor"` is spec-mandated, not gratuitous); `lint` clean and
+  `tsc` errors confirmed to be exactly the 3 expected Item 2/3 files; scope clean. Carry-forwards: add
+  `tx.room.deleteMany` to `lib/data/superadmin/orgs.ts`'s org hard-delete cascade in Item 2, and note
+  this branch cannot produce a READY Vercel preview on its own (TS errors fail `next build`; the
+  migration still applies beforehand). Details: `review-item1.md`.
