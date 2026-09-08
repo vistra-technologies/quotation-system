@@ -1,29 +1,32 @@
-/* eslint-disable no-restricted-imports -- deferred per stage-12.md: add-wall page uses floors DAL; migration blocked until interactive canvas stage */
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { requireSession } from "@/lib/data/session";
-import { getProjectById } from "@/lib/data/projects";
-import { listFloorsByProject } from "@/lib/data/floors";
+import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import { fetchProjectDetail } from "../../_project-fetch";
 import { AddWallForm } from "./add-wall-form";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
 
+interface FloorRow {
+  id: string;
+  label: string;
+}
+
 /**
  * Add Wall page (Server Component).
  *
- * Fetches the project (tenancy guard / 404) and existing floor labels
- * (for the <datalist> suggestions in AddWallForm), then renders the form.
+ * Stage 18 rework: fetches the project (fetchProjectDetail, shared with the
+ * design page) and existing floor labels via the new
+ * /api/v1/orgs/[orgSlug]/floors route (was a direct lib/data/floors call —
+ * ends the Stage-12 eslint-disable deferral for this file) for the
+ * <datalist> suggestions in AddWallForm, then renders the form.
  *
- * The form lives at design/add-wall/ — consistent with the projects/new/
- * and inquiries/new/ pattern of dedicated sub-pages for create flows.
- *
- * After a successful save the server action redirects back to the design page.
- *
- * Batch 8: restyled zinc-* classes to Sage Ease tokens. Functional behavior
- * (floors DAL, canvas deferral) unchanged.
+ * After a successful submit the server action resolves/creates the floor and
+ * room and redirects into the design page with the room auto-expanded (see
+ * add-wall/actions.ts's doc comment for why wall creation itself happens
+ * there, not on this page).
  */
 export default async function AddWallPage({
   params,
@@ -32,17 +35,28 @@ export default async function AddWallPage({
 }) {
   const { orgSlug, projectId } = await params;
   const base = await orgHref(orgSlug, "");
-  const session = await requireSession(orgSlug);
 
-  const [project, floors, t] = await Promise.all([
-    getProjectById(session, projectId),
-    listFloorsByProject(projectId, session.organizationId),
+  const [{ status: projectStatus, project }, floorsRes, t] = await Promise.all([
+    fetchProjectDetail(orgSlug, projectId),
+    internalFetch(`/api/v1/orgs/${orgSlug}/floors?projectId=${projectId}`),
     getTranslations("design"),
   ]);
+
+  if (
+    projectStatus === 401 ||
+    projectStatus === 403 ||
+    floorsRes.status === 401 ||
+    floorsRes.status === 403
+  ) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
 
   // Tenancy guard: project not found or belongs to a different org.
   if (!project) notFound();
 
+  const floors: FloorRow[] = floorsRes.ok
+    ? ((await floorsRes.json()) as { floors: FloorRow[] }).floors
+    : [];
   const existingFloorLabels = floors.map((f) => f.label);
 
   return (

@@ -245,3 +245,202 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   reassigns them between logical sides — affects Item 3 UI keying and how Item 4 asserts round-trips.
   MINORs 4-8 re-read and confirmed non-critical; not re-flagged per coordinator scoping. Full report:
   `.engineering/stage-18/review-item2-round2.md`.
+
+- **2026-09-09 — Item 3: design-page rework (developer agent)**: on `feature/rooms-design-page` @
+  `3faab65` (pushed). Plan: `.engineering/stage-18/plan-item3.md`.
+  - **Two small new API routes** required and not anticipated by Item 2's file list (flagged as a
+    deviation in `plan-item3.md`): `app/api/v1/orgs/[orgSlug]/floors/route.ts` (GET `?projectId=`, POST
+    create-or-get — thin wrapper around the existing, unchanged `lib/data/floors.ts`, plus a
+    `getProjectById` tenancy check before create, mirroring the pre-Stage-18 add-wall action's inline
+    check) and `app/api/v1/orgs/[orgSlug]/partitions/route.ts` (GET `?roomId=`, read-only, wraps
+    `listPartitionsByRoom`). Needed because the `no-restricted-imports` eslint rule bans `@/lib/data/*`
+    from every `app/[orgSlug]/**` file — dropping the `eslint-disable` (this item's explicit mandate)
+    meant the page could no longer reach `lib/data/floors`/`lib/data/partitions` directly, and no
+    floors/partitions API route existed yet (Item 2 only shipped `rooms/**`). The partitions route is
+    also required because a PARTITION element in `Room.sides` carries no `label`/dimensions of its own —
+    those live only on the `Partition` row.
+  - **`app/[orgSlug]/projects/[projectId]/design/page.tsx`** rewritten — dropped the `eslint-disable`;
+    now `internalFetch`s `fetchProjectDetail` (existing cache helper), the new `/floors` route, and
+    `/rooms?floorId=` per floor, plus the existing `/selections` route for the right rail (unchanged
+    behavior). Reads `?openRoom=` (Next 16 `searchParams` Promise, pattern from
+    `app/[orgSlug]/projects/page.tsx`) to auto-expand a room after a create/convert redirect. Left rail
+    delegates to a new `DesignLeftRail` client component instead of the flat `<ul>`.
+  - **`design-left-rail.tsx`** (new, client) — Floor -> Room -> sides, sides as a **simple ordered list**
+    per plan flag 4 (not a 4-bar N/S/E/W square — the mock is an interaction-pattern reference only).
+    PLAIN sides are **read-only display** (`label`/`lengthMm`) with a "Convert to Partition" button —
+    **no edit affordance anywhere**, per plan flag 5 (GATE A cut). PARTITION sides show
+    `label — height × width mm`, fetched lazily per expanded room via the new partitions route (plain
+    browser `fetch()`, precedent: `app/controls/(authenticated)/orgs/_suspend-button.tsx`) since no
+    dedicated partition edit page exists anywhere in the repo — confirmed by grep, so per the task's own
+    instruction nothing new was built there; the row is informational only. Per
+    `review-item2-round2.md` finding 9 (PLAIN side ids are positional, not stable across reorders): this
+    component never keys UI state off a PLAIN `side.id` — the convert form receives the side's **array
+    index**, and every mutation redirects through the server action (fresh data on next render), so there
+    is no optimistic client-side patch-by-id to go stale.
+  - **`convert-side-form.tsx`** / **`new-room-form.tsx`** (new, client) — adapted from
+    `add-wall/add-wall-form.tsx`'s field pattern (label + height/width + unit selector,
+    `useActionState` + `LoadingOverlay`).
+  - **`design/actions.ts`** (new) — `createRoomAction` (POST `/rooms`, redirects to
+    `design?openRoom=<id>`) and `convertSideAction` (re-fetches the room's **current** `sides` fresh via
+    `GET /rooms?floorId=` rather than trusting anything client-cached — matches `replaceSides()`'s own
+    "never trust the client for array state" posture — then rebuilds the full array with only the target
+    index replaced, PATCHes `/rooms/[id]/sides`). Reuses `configuration/actions.ts`'s thin-marshaler
+    shape (401/403 -> login redirect, `internalFetch`, `useActionState`).
+  - **Add-wall flow decision** (`design/add-wall/{page,actions,add-wall-form}.tsx`, all rewritten, dropped
+    `eslint-disable`): **add-wall stays a separate top-level entry point whose only job is
+    resolving/creating a Floor and a Room, then redirecting to `design?openRoom=<roomId>`** — it does
+    **not** duplicate a second height/width/label conversion form. Reasoning: every Room already starts
+    with 4 PLAIN sides (Item 2's default rectangle), and the design page's own "Convert to Partition"
+    form (this item) already owns the one correct implementation of "which `sides` array am I patching" —
+    building a second, parallel form in add-wall would duplicate that logic and require keeping the two
+    in lock-step by hand for no benefit. Floor and room are both select-existing-by-exact-label-match-or-
+    create free text (same UX as the pre-Stage-18 floor field), with room suggestions fetched
+    client-side once the typed floor label resolves to an existing floor id. Trade-off: one extra click
+    (land on design page, then pick a PLAIN side) instead of one continuous form — accepted for the reuse
+    win. Full reasoning also in `add-wall/actions.ts`'s doc comment and `plan-item3.md`.
+  - **i18n** — extended the existing `design` namespace in `messages/en.json` (already forwarded
+    wholesale by `projects/layout.tsx`) with new keys (`newRoom`, `createRoom`, `cancel`, `sidesCount`,
+    `untitledSide`, `convertToPartition`, `loadingPartition`, `continueButton`, `fieldRoom`,
+    `fieldRoomPlaceholder`); no new namespace created. `wallsTitle`/`noWalls` copy updated to "Rooms"/"No
+    floors added yet." to match the new hierarchy.
+  - **Out of scope, not silently dropped** (see `plan-item3.md`): reorder UI (API supports it, task text
+    said "if your UI supports it," not "must" — skipped to keep the item scoped); convert-PARTITION-back-
+    to-PLAIN UI (API supports it, not asked for by the task's item list); a dedicated partition edit page
+    (confirmed none exists, not building one per the task's own instruction).
+  - **Verify**: `npm run lint` — 0 errors (one new `react-hooks/set-state-in-effect` error surfaced and
+    was fixed by moving the `setRoomLabels([])` reset branch inside the effect's async function rather
+    than calling it synchronously in the effect body — same 5 pre-existing unrelated warnings remain).
+    `npx tsc --noEmit` — **0 errors**, confirming the 3 previously-expected errors
+    (`add-wall/actions.ts:86`, `design/page.tsx:8,91`) are gone.
+  - **Push + Vercel**: pushed `3faab65` to `feature/rooms-design-page`. Polled via `npx vercel inspect`
+    (no Vercel MCP tools available in this session) until `READY`; confirmed the deployment actually
+    cloned commit `3faab65` (not a stale/cached build) and checked the full build log route list — it
+    genuinely compiles + typechecks (`✓ Compiled successfully`, `Finished TypeScript`) and lists every
+    expected route: `/api/v1/orgs/[orgSlug]/floors`, `/api/v1/orgs/[orgSlug]/partitions`,
+    `/api/v1/orgs/[orgSlug]/rooms`, `/rooms/[id]`, `/rooms/[id]/sides`,
+    `/[orgSlug]/projects/[projectId]/design`, `/design/add-wall`. `/api/health` → 200.
+  - **Manual verification — method note**: no browser/Playwright tool was available in this session, so
+    the walkthrough was done via `curl` against the live preview URL rather than clicking through a
+    browser — reporting this plainly per the wireframe-stage rule ("verified, reported, not skipped," not
+    "verified exactly as instructed"). Signed in via better-auth's `/api/auth/sign-in/email` (real
+    session token, real cookie) as `admin@acme-glass.internal` against the preview. **Discovered and
+    worked around a pre-existing, unrelated issue while doing this**: `better-auth`'s
+    `crossSubDomainCookies` (`lib/auth.ts`) is enabled whenever `BETTER_AUTH_URL` contains
+    `"easeetool.com"`, and the Preview-environment `BETTER_AUTH_URL` Vercel env var appears to be set to
+    an `easeetool.com` value (not per-deployment-URL-aware) — so the sign-in response's `Set-Cookie` had
+    `Domain=.easeetool.com`, which a real browser (and `curl`, correctly, matching browser cookie-domain
+    rules) would refuse to send back to a `*.vercel.app` host. This looks like it would silently break
+    interactive browser login on **every** `feature/*` preview (not just this one, not caused by my diff
+    — `lib/auth.ts` is untouched by Item 3), which the CLAUDE.md hard rule assumes works. Worked around
+    for my own verification by manually attaching the raw session-cookie value via an explicit `Cookie`
+    header (bypassing curl's domain store, which a browser cannot do) — this let me exercise the real
+    authenticated code paths despite the unrelated cookie issue. **Flagging this for the human/architect
+    — it's outside Item 3's scope to fix (auth config, not design-page code) but likely blocks real
+    browser-based manual verification on every feature-branch preview until someone confirms/fixes the
+    Preview `BETTER_AUTH_URL` value.**
+  - **What was actually exercised** (against `https://quotation-system-dwklmxzec-vistra-indias-projects.vercel.app`,
+    org `acme-glass`, project `#292`): `GET /design` → 200, left rail shows "No floors added yet."
+    `POST /floors {label:"Ground Floor E2E"}` → 201. `POST /rooms {floorId, label:"Lobby E2E"}` → 201,
+    **confirmed the response carries exactly 4 default PLAIN sides** (`turnDegrees: 90`, `isClosed: true`).
+    `GET /design?openRoom=<id>` → 200, HTML shows the room auto-expanded with "4 sides" and 4 "Untitled
+    wall" rows each with a "Convert to Partition" button. `PATCH /rooms/[id]/sides` converting index 0 to
+    `{kind:"PARTITION", label:"North Wall E2E", heightMm:2400, widthMm:1200}` → 200, response shows side 0
+    now `kind:"PARTITION"` with a real `partitionId`, sides 1-3 unchanged. `GET /partitions?roomId=` → 200,
+    returns the new Partition row (`label`, `heightMm`, `widthMm` all correct). Re-fetched `/design` →
+    room now shows "4 sides" with only 3 "Untitled wall" PLAIN rows (the converted one no longer PLAIN);
+    the PARTITION row itself shows "Loading…" in this curl-rendered SSR snapshot because
+    `DesignLeftRail`'s partition-label fetch is a client-side `useEffect` that only fires after hydration
+    in a real browser — separately confirmed the `/partitions` route itself returns the correct
+    label/dimensions, so this is expected SSR behavior, not a bug. `GET /design/add-wall` → 200, datalist
+    shows the existing floor label. Created a second room ("Meeting Room E2E") under the same floor via
+    `POST /rooms` (simulating `resolveFloorAndRoom`'s existing-floor/new-room branch) → 201, `orderIndex:1`.
+    Final `/design` fetch shows both rooms listed under the one floor. Did not exercise reorder (no UI
+    built, out of scope — see above).
+  - No BLOCKED items. One concern carried to `DONE_WITH_CONCERNS`: the pre-existing Preview
+    `BETTER_AUTH_URL`/cookie-domain issue above, which is not this item's to fix but affects anyone doing
+    real browser verification on a `feature/*` preview going forward.
+
+- **2026-09-09 · reviewer · Item 3 (design-page rework) — verdict: CHANGES-NEEDED.** 0 CRITICAL · 2
+  IMPORTANT · 8 MINOR. Confirmed the two new API routes (`floors`, `partitions`) are **not** a deviation
+  needing Gate A — forced, minimally-scoped, convention-conformant consequence of dropping the
+  `eslint-disable`. Flags 4/5 both confirmed compliant; side-id handling vs. `review-item2-round2.md`
+  finding 9 confirmed correct; add-wall decision confirmed coherent. IMPORTANT 1: the partition cache in
+  `design-left-rail.tsx` checked presence, not coverage, so a second convert in the same room got stuck on
+  "Loading…" after a soft-navigation redirect. IMPORTANT 2: `by-page.sql`'s "Stage 8" section documented
+  deleted code (`listPartitionsByFloor`, an `INSERT INTO "Partition"` using dropped `floorId`/`location`
+  columns) and had no entries for the two new routes. 8 MINORs deferred by the coordinator's explicit
+  scoping (not re-flagged here). Full report: `.engineering/stage-18/review-item3.md`.
+
+- **2026-09-09 — Item 3 review fixes (developer agent)**: on `feature/rooms-design-page` @ `a800e50`
+  (pushed), fixing `review-item3.md`'s IMPORTANT 1 and IMPORTANT 2.
+  - **IMPORTANT 1 fixed** (`design-left-rail.tsx`'s partition-fetch effect) — replaced the presence check
+    (`if (partitionsByRoom[room.id]) continue`) with a coverage check: compute the room's current
+    PARTITION-side `partitionId`s from the (always-fresh) `floors` prop, and only skip the refetch when
+    every one of them is already present in the cached array (`cached !== undefined &&
+    partitionSideIds.every(id => cached.some(p => p.id === id))`). A room with no PARTITION sides still
+    skips entirely (unchanged short-circuit, now via `partitionSideIds.length === 0`). Applied exactly the
+    reviewer's suggested fix shape.
+  - **IMPORTANT 2 fixed** (`quotation-system-docs/design-docs/sql-queries/by-page.sql`, docs repo) —
+    rewrote the stale "Stage 8 — Floors & Partitions (Wall Design)" section (still referencing
+    `listPartitionsByFloor()`, deleted in Item 2, and an `INSERT INTO "Partition"` using
+    `floorId`/`location`, dropped by Item 1's migration) as "Design page (Floor -> Room -> sides)",
+    matching the real post-Item-3 data flow: `GET /design` → floors route + rooms route (pointer to the
+    "Stage 18 — Rooms" section) + selections route; `GET/POST /design/add-wall` → floors + rooms routes,
+    no direct `Partition` insert (wall creation moved to the sides PATCH convert, reused from the design
+    page — matches `add-wall/actions.ts`'s actual behavior). Added the two routes' own SQL that had no
+    entries yet: `GET/POST /api/v1/orgs/[orgSlug]/floors` (`listFloorsByProject`,
+    `getProjectById` tenancy guard, `createFloorIfNotExists`) and `GET /api/v1/orgs/[orgSlug]/partitions`
+    (`listPartitionsByRoom`, noted read-only with an explanation of why). Committed `6f6ad4c` in the docs
+    repo and pushed to `origin/main`. Confirmed Item 2's round-2 `by-page.sql` fix (`31922ab`) was already
+    committed by the coordinator before I started — did not duplicate it, only diffed against it.
+  - **Verify**: `npm run lint` — 0 errors (same 5 pre-existing unrelated warnings). `npx tsc --noEmit` — 0
+    errors. Committed `a800e50` on `feature/rooms-design-page` and pushed. Polled Vercel to `READY` for
+    that exact commit SHA (confirmed via `vercel inspect --logs`: `Cloning ... Commit: a800e50`,
+    `✓ Compiled successfully`, `Finished TypeScript`).
+  - **Re-verified the multi-convert scenario** (coordinator's specific ask) against the new preview
+    (`quotation-system-fnqr8kpqu-vistra-indias-projects.vercel.app`), reusing the "Lobby E2E" room from
+    the Item 3 walkthrough (already `[PARTITION p1, PLAIN, PLAIN, PLAIN]`): `PATCH .../sides` converting
+    index 1 to a **second** PARTITION (`{label:"East Wall E2E", heightMm:2100, widthMm:900}`, no
+    `partitionId`, matching `convertSideAction`'s exact payload shape) → 200, room now
+    `[PARTITION p1, PARTITION p2, PLAIN, PLAIN]`. `GET /partitions?roomId=` → 200, returns **both**
+    partitions (`North Wall E2E` and `East Wall E2E`) in one call. Re-fetched `/design?openRoom=<id>` →
+    200, SSR HTML shows "4 sides" and only 2 "Untitled wall" rows remaining (down from 3 after the first
+    convert), consistent with 2 sides now converted.
+  - **Honest limitation, stated plainly**: the IMPORTANT 1 bug is a **client-side React state** bug
+    (a stale `partitionsByRoom` cache entry surviving a Next.js soft navigation after `redirect()`) — it
+    cannot be reproduced or disproven via `curl`, which always gets a fresh SSR render with no persisted
+    client state, whether or not the bug exists. No browser/Playwright tool was available in this session
+    (same constraint as the original Item 3 verification). What I *did* verify: (a) the fix's logic
+    hand-traced against the exact scenario the reviewer described — room `[p1, p2, PLAIN, PLAIN]`, stale
+    cache `{room: [p1]}` → `partitionSideIds = [p1id, p2id]` → `fullyCovered` is `false` because `p2id` is
+    missing from `cached` → refetch fires → and (b) confirmed via `curl` that the `/partitions` route the
+    refetch calls genuinely returns **both** partitions in one response, so once the fix's refetch fires,
+    the data it receives is complete and correct. This is the strongest verification available without a
+    browser in this environment; a real click-through (converting two sides in a row without a hard
+    reload, confirming neither gets stuck on "Loading…") is still owed and should happen at the
+    `engineering:test` phase, which per CLAUDE.md's hard rule also runs against a Vercel preview, not
+    locally.
+  - No BLOCKED items. Concerns unchanged from the original Item 3 pass: (1) the pre-existing
+    `BETTER_AUTH_URL`/cookie-domain issue on `*.vercel.app` previews (not this item's to fix, flagged for
+    the human separately per the reviewer's note); (2) the client-side soft-navigation fix above is
+    verified by logic + API-layer data correctness, not a literal browser click-through, for the reason
+    stated.
+
+- **2026-09-09 · reviewer · Item 3 (design-page rework) — verdict: CHANGES-NEEDED.** 0 CRITICAL ·
+  2 IMPORTANT · 8 MINOR, reviewed against `3faab65`. **The two new API routes (`/floors`, `/partitions`)
+  are NOT a deviation needing a Gate-A pause** — forced, minimal and convention-conformant consequence of
+  the mandated `eslint-disable no-restricted-imports` removal; verdict recorded in §1 of the report.
+  Flags 4 and 5 both confirmed compliant; side-id handling and the convert payload verified correct
+  against the real sides-PATCH contract; tenancy/auth unregressed. `lint`/`tsc` claims re-run and true.
+  IMPORTANTs: lazily-fetched partition cache is never invalidated (second convert in a room renders
+  "Loading…" permanently), and `by-page.sql` not reconciled (Stage 8 section documents deleted
+  columns/functions; new routes absent — plus Item 2's by-page.sql fix is still uncommitted in the docs
+  repo). Full report: `.engineering/stage-18/review-item3.md`.
+
+- **2026-09-09 — Item 3 round 2: review (reviewer agent)**: `feature/rooms-design-page` @ `a800e50`
+  (fix delta since `3faab65`) + docs repo `6f6ad4c`. **Verdict: APPROVE-WITH-NITS** — 0 CRITICAL ·
+  0 IMPORTANT · 2 MINOR. Both round-1 IMPORTANTs verified fixed (partition-cache coverage check traced
+  against the two-converts-in-one-room scenario, no refetch loop; `by-page.sql` design-page section
+  reconciled and checked against the real DAL/routes, no duplication of Item 2's round-2 fix).
+  `npm run lint` 0 errors, `npx tsc --noEmit` exit 0, both re-run. Browser click-through of the second
+  convert carried to `engineering:test`. Full report: `.engineering/stage-18/review-item3-round2.md`.
