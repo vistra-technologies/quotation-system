@@ -178,3 +178,57 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     errors) — not required for this item; Item 3 closes it out. Committed `8475260` and pushed to
     `feature/rooms-api-dal`.
   - No BLOCKED items; no new deviations beyond the 3 already-resolved plan flags.
+
+- **2026-09-09 · reviewer · Item 2 (API layer + DAL for `Room`) — verdict: CHANGES-NEEDED.**
+  1 CRITICAL, 1 IMPORTANT, 6 MINOR. Verified against `8475260`: lint clean, `tsc` shows exactly the 3
+  expected Item-3 errors, transactionality/tenancy/route conventions/`createPartitionInTx` dedup/
+  SuperAdmin cascade position/`by-page.sql` sync all confirmed correct. CRITICAL is the positional
+  convert-back delete in `replaceSides` breaking any reorder involving a PARTITION side. Full report:
+  `.engineering/stage-18/review-item2.md`.
+
+- **2026-09-09 — Item 2 review fixes (developer agent)**: on `feature/rooms-api-dal` @ `c6176e8`
+  (pushed), fixing `review-item2.md`'s CRITICAL, IMPORTANT, and MINOR 3.
+  - **CRITICAL 1 fixed** (`lib/data/rooms.ts` `replaceSides`) — removed the positional convert-back
+    branch entirely (it compared `newSides[i]` against `previousSides[i]` and deleted
+    `previousSides[i].partitionId` on any PARTITION→PLAIN transition at the same index, which fired
+    incorrectly on a plain reorder of a PARTITION side — see the review's Case A/B). The PLAIN branch now
+    only decides id continuity (`previousAtSamePos?.kind === "PLAIN" ? previousAtSamePos.id :
+    crypto.randomUUID()`); it never deletes. All Partition deletion happens in the single post-loop sweep
+    (`removedPartitionIds`, ~L464-488), which diffs the *set* of `partitionId`s referenced before vs.
+    after the write — order-independent by construction, so a PARTITION side that merely changes index
+    (present in both sets) is never touched, while one that's genuinely converted back or removed outright
+    (absent from the new set) still gets its `Partition` row deleted, exactly once, via a single
+    `tx.partition.deleteMany({ where: { id: { in: removedPartitionIds }, organizationId, roomId } })`
+    (org+room-scoped per the review's defence-in-depth suggestion, replacing the old per-id unscoped
+    deletes). **Manually traced both of the review's failing scenarios against the new code**: Case A
+    (`[PLAIN a, PARTITION p, PLAIN c, PLAIN d]` → `[PARTITION p, PLAIN a, PLAIN c, PLAIN d]`) — `p` ends up
+    in both the before-set and after-set, `removedPartitionIds` is empty, no delete, room stays patchable.
+    Case B (`[PARTITION p, PLAIN a]` → `[PLAIN a, PARTITION p]`) — same result, reorder now succeeds where
+    it previously 400'd. A genuine convert-back (`[PARTITION p, PLAIN a]` → `[PLAIN(new), PLAIN a]`, `p`
+    absent from the new array entirely) still deletes `p` correctly via the sweep.
+  - **IMPORTANT 2 fixed** (same function, ~L385-400) — a PARTITION element with a non-null `partitionId`
+    that doesn't match any PARTITION already on this room's previous `sides` now throws
+    `InvalidSidesError` (`partitionId ${id} is not a side of this room.`) instead of silently falling
+    through to the "new convert" branch and minting a fresh `Partition` row.
+  - **MINOR 3 addressed — explicit decision: reject, not silently drop.** `lengthMm` supplied on a
+    PARTITION element now returns 400 (`app/api/v1/orgs/[orgSlug]/rooms/[id]/sides/route.ts`, one check
+    before the element is pushed onto `sides`) rather than being silently dropped. **Item 4's invariant-3
+    test must assert a 400** when a PARTITION element carries `lengthMm`, not a 200 with the field ignored.
+  - MINORs 4-8 (turnDegrees coercion, unbounded height/width, `Promise.all` on a tx client in
+    `reorderRooms`, the "try again" wording on `DUPLICATE_ROOM_LABEL`, and convert-back not carrying
+    `lengthMm` over from `Partition.widthMm`) were **not** addressed — out of the scope the coordinator
+    asked for this pass (CRITICAL + IMPORTANT + the MINOR-3 decision only); left for a future pass or
+    Item 4 to flag if any turn out to matter for test correctness.
+  - **Docs**: `quotation-system-docs/design-docs/sql-queries/by-page.sql` — collapsed the sides-PATCH
+    section's two separate `DELETE FROM "Partition"` steps (old steps 4/5) into the one scoped
+    `deleteMany`-equivalent statement (`DELETE ... WHERE "id" = ANY(:removedPartitionIds) AND
+    "organizationId" = ... AND "roomId" = ...`), renumbering the trailing `sides`-write step 6→5, matching
+    the code change.
+  - **Verify**: `npm run lint` — 0 errors, same 5 pre-existing unrelated warnings. `npx tsc --noEmit` —
+    still exactly the same 3 expected Item-3-scope errors, nothing new. Committed `c6176e8`, pushed to
+    `feature/rooms-api-dal`.
+  - **Important note for Item 4**: per the coordinator's instruction, **the "ordering round-trips
+    exactly" / reorder test must include a case that moves a PARTITION side's index** (not just PLAIN
+    sides) — this is exactly the scenario that would have caught CRITICAL 1, and a test suite that only
+    reorders PLAIN sides would pass against both the buggy and fixed code, giving false confidence.
+  - No BLOCKED items.
