@@ -436,3 +436,11 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   "Loading…" permanently), and `by-page.sql` not reconciled (Stage 8 section documents deleted
   columns/functions; new routes absent — plus Item 2's by-page.sql fix is still uncommitted in the docs
   repo). Full report: `.engineering/stage-18/review-item3.md`.
+
+- **2026-09-09 — Item 3 round 2: review (reviewer agent)**: `feature/rooms-design-page` @ `a800e50`
+  (fix delta since `3faab65`) + docs repo `6f6ad4c`. **Verdict: APPROVE-WITH-NITS** — 0 CRITICAL ·
+  0 IMPORTANT · 2 MINOR. Both round-1 IMPORTANTs verified fixed (partition-cache coverage check traced
+  against the two-converts-in-one-room scenario, no refetch loop; `by-page.sql` design-page section
+  reconciled and checked against the real DAL/routes, no duplication of Item 2's round-2 fix).
+  `npm run lint` 0 errors, `npx tsc --noEmit` exit 0, both re-run. Browser click-through of the second
+  convert carried to `engineering:test`. Full report: `.engineering/stage-18/review-item3-round2.md`.
