@@ -1296,3 +1296,20 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   0 IMPORTANT / 0 MINOR). All 3 round-1 findings confirmed resolved; `npm run lint` 0 errors and
   `npx tsc --noEmit` 0 errors re-verified by me. Report: `review-test-fix-1-round2.md`. Ready to merge
   into `release/stage-18` and re-test.
+
+- **2026-09-09 · tester · `engineering:test` re-test pass (against `test.easeetool.com`, `staging` @
+  `afa9299`) — verdict: PASS.** 0 CRITICAL/MAJOR/MINOR. Re-verified all 3 GATE D-signed-off findings from
+  `bugs-test-1.md` via a real browser-driven Playwright click-through (screenshots reviewed), not code
+  trace — the first pass this stage with a genuine browser tool available: (1) MAJOR — zero-floor project's
+  Design page now shows the floor `<select>`/"＋ Floor" control and a full create-first-floor flow works
+  end-to-end; (2) MINOR — Configure mode's back button, clicked immediately after entering with no other
+  mutation, correctly restores the wall-bar's summary panel (not the default hint); (3) MINOR — a long
+  partition name truncates with an ellipsis, carries a `title=` tooltip, and the layout-width regression the
+  first patch introduced is also confirmed fixed (`ConfigureMode`'s root now fills its flex parent's content
+  width proportionally at multiple viewports, not shrink-to-fit collapsed). `npm run lint` (0 errors, 5
+  pre-existing warnings) and `npx tsc --noEmit` (0 errors) re-confirmed locally. `/api/health` → 200
+  connected. `tests/e2e/stage18.spec.ts` — **13/13 passed**, no regressions. Test data (5 throwaway
+  `RETEST-item7-*` projects/floors/rooms created to drive the click-through) had all rooms deleted via the
+  API; the parent floors and projects themselves can't be deleted (no `DELETE` route for either — re-flags
+  the same known gap from Item 4/`bugs-test-1.md`, not new). No product/test code left behind — `git status
+  --short` clean. Full report: `.engineering/stage-18/bugs-test-2.md`.
