@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import type { SessionData } from "@/lib/session";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -86,4 +87,22 @@ export async function createFloorIfNotExists(
     }
     throw err;
   }
+}
+
+/**
+ * Delete a Floor. Tenancy guard: verifies the floor belongs to the session's
+ * org before deleting. Rooms under it (Room.floorId, onDelete: Cascade) and
+ * their Partitions (Partition.roomId, onDelete: Cascade) are removed
+ * automatically by the DB — no manual cleanup needed.
+ * Returns null if not found (caller -> 404).
+ */
+export async function deleteFloor(session: SessionData, floorId: string) {
+  const existing = await prisma.floor.findFirst({
+    where: { id: floorId, organizationId: session.organizationId },
+    select: { id: true },
+  });
+  if (!existing) return null;
+
+  await prisma.floor.delete({ where: { id: floorId } });
+  return existing;
 }

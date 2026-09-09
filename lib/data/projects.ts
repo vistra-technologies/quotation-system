@@ -379,3 +379,81 @@ export async function updateProject(
 
   return { project: updated };
 }
+
+/**
+ * Delete a DRAFT Project and all its children in a FK-safe transaction.
+ *
+ * Guards:
+ *   - Returns null if the project does not exist or belongs to a different org
+ *     (caller -> 404).
+ *   - Returns { notDeletable: true } if the project exists but is not DRAFT
+ *     (caller -> 409).
+ *
+ * If this was the last Project linked to an Inquiry, the Inquiry is reverted
+ * to "NEW" status inside the same transaction (the delete-side counterpart to
+ * convertInquiry's one-way "already CONVERTED" guard).
+ *
+ * FK-safe deletion order (children before parents):
+ *   1. Selection  — references Project (FK_RESTRICT)
+ *   2. Room       — references Floor (Cascade from Floor, but explicit for
+ *                   belt-and-braces: a Room with this org's organizationId but
+ *                   whose Floor is gone would otherwise abort on FK_RESTRICT)
+ *   3. Floor      — references Project (FK_RESTRICT)
+ *   4. Project    — the row itself
+ * Partition rows cascade automatically when their Room is deleted (DB FK).
+ */
+export async function deleteProject(session: SessionData, projectId: string) {
+  // Verify the project exists and belongs to this org.
+  const existing = await prisma.project.findFirst({
+    where: { id: projectId, organizationId: session.organizationId },
+    select: { id: true, status: true, inquiryId: true },
+  });
+
+  if (!existing) return null;
+  if (existing.status !== "DRAFT") return { notDeletable: true as const };
+
+  const { inquiryId } = existing;
+
+  await prisma.$transaction(async (tx) => {
+    // Optional: revert Inquiry to NEW if this was its last project.
+    if (inquiryId) {
+      const remainingCount = await tx.project.count({
+        where: {
+          inquiryId,
+          organizationId: session.organizationId,
+          id: { not: projectId },
+        },
+      });
+      if (remainingCount === 0) {
+        await tx.inquiry.update({
+          where: { id: inquiryId },
+          data: { status: "NEW" },
+        });
+      }
+    }
+
+    // 1. Selections — references Project (RESTRICT)
+    await tx.selection.deleteMany({
+      where: { projectId, organizationId: session.organizationId },
+    });
+
+    // 2. Rooms — references Floor (Cascade, but explicit belt-and-braces per
+    //    the precedent in lib/data/superadmin/orgs.ts FK-safe ordering)
+    await tx.room.deleteMany({
+      where: {
+        floor: { projectId },
+        organizationId: session.organizationId,
+      },
+    });
+
+    // 3. Floors — references Project (RESTRICT); Rooms/Partitions already gone
+    await tx.floor.deleteMany({
+      where: { projectId, organizationId: session.organizationId },
+    });
+
+    // 4. Project itself
+    await tx.project.delete({ where: { id: projectId } });
+  });
+
+  return { id: projectId };
+}
