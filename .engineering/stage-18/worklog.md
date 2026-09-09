@@ -1111,7 +1111,7 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     error message through `t()`), so leaving them hardcoded is consistency with the rest of the codebase,
     not a gap specific to this page — converting only this page's errors would be a new, unilateral
     convention, not a fix.
-  - **New E2E** (`tests/e2e/stage18.spec.ts`, extended 11 → 14 tests): (1) convert-time seed dimensions —
+  - **New E2E** (`tests/e2e/stage18.spec.ts`, extended 11 → 13 tests): (1) convert-time seed dimensions —
     added assertions right after Room C's convert in `beforeAll` that the seed panel's `widthMm`/`heightMm`
     actually equal `Partition.widthMm`/`heightMm` (700/1200-style existence-only checks already existed;
     this is the dimension-equality invariant IMPORTANT 1 was actually about, per
@@ -1143,3 +1143,20 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     `tests/e2e/**` warnings (one `react-hooks/set-state-in-effect` error surfaced on the first draft of
     the stale-error-clear fix — a `useEffect` calling `setState` — caught by lint before push, rewritten
     to the render-time-adjust pattern, re-verified clean).
+  - **Push + Vercel**: pushed `ab5bdeb` to `feature/design-canvas`
+    (`https://quotation-system-1pjn6yq8y-vistra-indias-projects.vercel.app`). Polled to `READY`; build log
+    confirms it genuinely cloned `Commit: ab5bdeb` (not stale), `✓ Compiled successfully`,
+    `Finished TypeScript`, and the route list includes `ƒ /api/v1/orgs/[orgSlug]/partitions/[id]`.
+    `/api/health` → 200, `database: "connected"`. Ran
+    `PLAYWRIGHT_BASE_URL=<preview> npx playwright test tests/e2e/stage18.spec.ts`: **13/13 passed**
+    (29.1s) — the 11 pre-existing Piece-1/2 tests plus the 2 new Piece-3 tests (the seed-dimension
+    checks landed inside the existing `beforeAll`, not as separate `test()`s, so the count moved
+    11 → 13, not 11 → 14 as an earlier line in this entry said before verifying against the actual run).
+  - **Manual/visual verification — same constraint as every prior piece, stated plainly, not
+    approximated**: no browser/Playwright-with-UI tool was available in this session, so none of
+    `.engineering/stage-18/visual-qa-checklist-item7.md`'s items were exercised. Per Gate A, this is
+    deferred to `engineering:test` against `test.easeetool.com`.
+  - No BLOCKED items. Item 7 (all 3 pieces) is done: `feature/design-canvas` is ready for the
+    orchestrator's merge-to-`release/stage-18`/`staging` decision, with the visual-QA checklist and the
+    `BETTER_AUTH_URL` preview-login carry-forward (both already flagged at Piece 1/2 and in stage-18.md's
+    own carry-forward list) as the two open items the tester should know about going in.
