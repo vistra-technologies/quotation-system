@@ -326,19 +326,19 @@ export function DesignWorkspace({
       <div className="flex flex-1 gap-4 overflow-hidden p-4">
         {/* Left rail — floor bar + room list */}
         <aside className="flex w-64 shrink-0 flex-col overflow-hidden rounded-md border border-border bg-bg-card p-4">
+          <FloorBar
+            orgSlug={orgSlug}
+            projectId={projectId}
+            isSubdomain={isSubdomain}
+            floors={floors}
+            selectedFloorId={selectedFloorId}
+            onSelectFloor={selectFloor}
+            onFloorCreated={handleFloorCreated}
+          />
           {floors.length === 0 ? (
             <p className="text-sm text-text-muted">{t("noWalls")}</p>
           ) : (
             <>
-              <FloorBar
-                orgSlug={orgSlug}
-                projectId={projectId}
-                isSubdomain={isSubdomain}
-                floors={floors}
-                selectedFloorId={selectedFloorId}
-                onSelectFloor={selectFloor}
-                onFloorCreated={handleFloorCreated}
-              />
               <h2 className="mb-1 text-xs font-bold text-text-heading">{t("wallsTitle")}</h2>
               {selectedFloor ? (
                 <RoomList
@@ -361,20 +361,27 @@ export function DesignWorkspace({
           onClick={() => setLayoutSideSelection(null)}
         >
           {viewMode === "configure" && activePartitionId ? (
-            activePartition ? (
-              <ConfigureMode
-                partition={activePartition}
-                selections={selections}
-                floorLabel={selectedFloor?.label ?? ""}
-                roomLabel={selectedRoom?.label ?? ""}
-                selection={configureSelection}
-                onSelectionChange={setConfigureSelection}
-                onBack={backFromConfigureMode}
-                mutate={mutatePartition}
-              />
-            ) : (
-              <p className="text-xs text-text-muted">{t("loadingPartition")}</p>
-            )
+            // stopPropagation mirrors the Layout-mode branch below — without
+            // it, clicking the back button (or anything else) inside
+            // ConfigureMode bubbles up to this wrapper's background-click-to-
+            // deselect handler and immediately clobbers the
+            // layoutSideSelection that backFromConfigureMode() just restored.
+            <div onClick={(e) => e.stopPropagation()}>
+              {activePartition ? (
+                <ConfigureMode
+                  partition={activePartition}
+                  selections={selections}
+                  floorLabel={selectedFloor?.label ?? ""}
+                  roomLabel={selectedRoom?.label ?? ""}
+                  selection={configureSelection}
+                  onSelectionChange={setConfigureSelection}
+                  onBack={backFromConfigureMode}
+                  mutate={mutatePartition}
+                />
+              ) : (
+                <p className="text-xs text-text-muted">{t("loadingPartition")}</p>
+              )}
+            </div>
           ) : viewMode === "layout" && selectedRoom ? (
             <div className="flex w-full max-w-xl flex-col gap-4" onClick={(e) => e.stopPropagation()}>
               <div className="flex flex-wrap items-center gap-2">

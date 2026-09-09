@@ -107,15 +107,18 @@ export function FloorBar({
     );
   }
 
+  const selectedFloor = floors.find((f) => f.id === selectedFloorId) ?? null;
+
   return (
     <div className="mb-4 flex items-center gap-2">
       <select
         value={selectedFloorId ?? ""}
         onChange={(e) => onSelectFloor(e.target.value)}
-        className="min-w-0 flex-1 rounded-sm border border-border bg-bg-white px-2 py-1.5 text-xs font-bold text-text-heading focus:border-primary focus:outline-none"
+        title={selectedFloor?.label ?? ""}
+        className="min-w-0 flex-1 truncate rounded-sm border border-border bg-bg-white px-2 py-1.5 text-xs font-bold text-text-heading focus:border-primary focus:outline-none"
       >
         {floors.map((f) => (
-          <option key={f.id} value={f.id}>
+          <option key={f.id} value={f.id} title={f.label}>
             {f.label}
           </option>
         ))}
