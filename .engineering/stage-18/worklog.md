@@ -1207,3 +1207,10 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   ids listed in the report. No new automated coverage added (informational/visual findings only; the
   existing 13-test suite's assertions were not found lacking). Full report:
   `.engineering/stage-18/bugs-test-1.md`.
+
+- **2026-09-09 · GATE D (human).** Signed off on all 3 findings from `bugs-test-1.md`: the MAJOR (no
+  floor-bar/way to add a first floor from the Design page with zero floors), and both MINORs (Configure
+  mode's back button not restoring wall-bar selection state, isolate and confirm; long room/floor names
+  overflowing without ellipsis handling). Re-entering `engineering:implement` Step 4 on
+  `feature/item7-test-fixes` (cut from `release/stage-18`) to fix. Will re-run the tester once fixes are
+  review-clean.
