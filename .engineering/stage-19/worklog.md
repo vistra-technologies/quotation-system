@@ -41,3 +41,19 @@ independent and unblocks fixture cleanup for the rest; build it first.
   `quotation-system-jpa3mg4wa-vistra-indias-projects.vercel.app` → READY; `/api/health` 200 connected.
   Both new DELETE routes return 401 on unauthenticated curl (routes are wired). E2E:
   `PLAYWRIGHT_BASE_URL=...feature-floo... npx playwright test tests/e2e/stage19.spec.ts` → 2 passed (8.8s).
+- 2026-09-09 — Reviewer (batch-1): CHANGES-NEEDED. 1 IMPORTANT, 1 MINOR. Full findings in this message's
+  reviewer output (returned directly to orchestrator per workspace convention — no separate review file).
+  Fix required before merge: move `deleteProject`'s DRAFT-status precheck inside the `$transaction` to
+  close the TOCTOU race on a destructive delete.
+- 2026-09-09 — Developer (batch-1 review fix): DONE. Addressed IMPORTANT finding; MINOR skipped (not a
+  one-line change — the floor DELETE `{ ok: true }` vs `{ id }` divergence would require updating the E2E
+  test assertion too).
+  Files changed (commit 298ca6f):
+    - `lib/data/projects.ts` — `deleteProject`: removed the pre-transaction `findFirst`; moved
+      existence + DRAFT-status check into the `$transaction` callback using boolean flags
+      (`found`/`isDraft`) so TypeScript can type-check the three explicit return shapes correctly.
+      A single `Result` union variable approach caused a `never` narrowing error at the call site because
+      TypeScript can't track mutations across async closure boundaries; boolean flags + post-tx returns fix it.
+  Static: `npm run lint` (0 errors) + `npx tsc --noEmit` (clean).
+  Vercel preview `quotation-system-45a2182fe-vistra-indias-projects.vercel.app` → READY, `/api/health` 200 connected.
+  E2E: `PLAYWRIGHT_BASE_URL=...45a2182fe... npx playwright test tests/e2e/stage19.spec.ts` → 2 passed (9.5s).
