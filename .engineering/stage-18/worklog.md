@@ -1291,3 +1291,8 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     `/api/health` → 200, `database: "connected"`. `PLAYWRIGHT_BASE_URL=<preview> npx playwright test
     tests/e2e/stage18.spec.ts` → **13/13 passed** (29.0s), no regressions.
   - No BLOCKED items. Branch `feature/item7-test-fixes` ready for review/merge decision.
+
+- **reviewer — test-fix-1 round 2 (confirm-only re-review):** verdict **APPROVE** (0 CRITICAL /
+  0 IMPORTANT / 0 MINOR). All 3 round-1 findings confirmed resolved; `npm run lint` 0 errors and
+  `npx tsc --noEmit` 0 errors re-verified by me. Report: `review-test-fix-1-round2.md`. Ready to merge
+  into `release/stage-18` and re-test.
