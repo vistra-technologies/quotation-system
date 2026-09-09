@@ -603,3 +603,57 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   layout-mode floor-plan diagram, configure-mode panel/door/edge-profile editor, unit toggle).
   Dispatching developer to write `plan-item7.md`, then architect (Mode B) to verify it against
   `stage-18.md` §7 and the mockup before any code is written.
+
+- **2026-09-09 — Item 7 plan (developer agent)**: `plan-item7.md` written (no code yet). Read
+  `stage-18.md` §7, the full mockup, `lib/data/rooms.ts`/`partitions.ts`, the current `design/**` tree,
+  `app/globals.css` tokens, and the `Selection`/`ComponentType`/`ComponentCategory` schema. **Floor-plan
+  model gap resolved concretely**: one generic `RoomFloorPlan` SVG component keyed purely off
+  `sides.length`/array index (never named slots) — `N===4` uses the square's own 4 corners as vertices
+  (reproduces the mockup's literal square for the common default-room case), `N!==4` uses a regular N-gon
+  inscribed in a circle; open runs (`isClosed:false`) simply omit the wrap segment. Satisfies §7's "must
+  not hardcode top/left/right/bottom, must not truncate" requirement while keeping the mockup's visual
+  language (bars, hover tooltips, legend, click-to-convert). **6 items flagged at the top for the
+  architect/human gate**, none touching schema: (1) a new `GET`/`PATCH
+  /api/v1/orgs/[orgSlug]/partitions/[id]` route to write `label`/`heightMm`/`widthMm`/the existing
+  `design` JSONB (Configure mode has no write path today) — argued as forced/minimal, same reasoning
+  Item 3's `floors`/`partitions` routes got waved through on; (2) the floor-plan rendering approach above;
+  (3) the mockup's fixed 3-bucket `COMPONENT_LIBRARY` (partitions/doors/profiles) doesn't map to the real
+  catalog's free-text `ComponentCategory.name` — resolved by grouping the project's actual `Selection`
+  rows by their real category name dynamically, not a hardcoded 3; (4) mockup applies one glass choice to
+  a whole wall in one click, real schema stores `selectionId` per-panel — resolved by writing the same
+  selectionId onto every panel in one PATCH, reproducing the UX with the existing field, no per-panel
+  override UI; (5) `design.panels[].door.hinging` has no picker in the mockup either, so none is built,
+  defaulted to `"left"`; (6) **the one flagged as most worth a second look** — replacing Items 1–4's
+  `useActionState`+`redirect()` mutation pattern with plain client-side `fetch()` + local state updates
+  for in-page navigation and mutations, to match the mockup's instant no-reload interaction feel (a full
+  page nav per click would not read as "exactly like the mockup"). Proposed file/component breakdown
+  (new `design-workspace.tsx` as the single client state owner, mirroring the mockup's one `renderAll()`
+  state machine; `RoomFloorPlan`, `configure-mode.tsx`/`wall-canvas.tsx`/`edge-profile.tsx`,
+  `saved-components-rail.tsx`, `unit-context.tsx`/`unit-toggle.tsx`). Verification plan: `lint`/`tsc`
+  locally, push + Vercel `READY` + route-list check, a small new API-level (no-DOM) E2E addition to
+  `stage18.spec.ts` for the new partition route's tenancy + `design` JSONB round-trip, and an explicit
+  manual visual side-by-side against the mockup (flagged as needing a real browser tool this time, unlike
+  Items 3/4's curl-only workarounds, since "looks like the mockup" can't be verified via curl). **Proposed
+  serial, one developer, 3 ordered pieces** (Layout-mode shell+floor-plan → Configure-mode editor →
+  polish/unit-toggle/tests) — recommended against parallel dispatch since all 3 pieces converge on the
+  same `design-workspace.tsx` state owner and shared `unit-context.tsx`, which would put two developers
+  editing the same files concurrently. No BLOCKED items — all flags are informational/for-confirmation,
+  not stoppers, per the plan's own framing. Full detail in `plan-item7.md`.
+
+- **2026-09-09 · architect (Mode B) · Item 7 plan verification — verdict: PROCEED with corrections.**
+  Flags 1, 2, 4, 5 waved through (1 = new route over the pre-existing `Partition.design` field, same
+  precedent as Item 3's floors/partitions routes — inform the human, don't block; 2 = satisfies §7, plus
+  a fidelity fix: mitred quads not straight lines so N=4 matches the mockup). Flag 6 approved
+  **conditionally**: view/selection-as-client-state isn't a deviation, but every full-array/full-document
+  write (`sides`, `design`) must re-read server state immediately before building the payload — the
+  client must never be the source of a destructive replace (Item 2's CRITICAL was exactly that). **Flag 3
+  must be corrected before code — its premise is factually wrong**: orgs get one seeded category
+  ("Glass Partitions") with three ComponentTypes coded GLASS/DOOR/PROFILE_STOP, so group and gate the
+  rail by `componentType.code` (precedent: `lib/component-icons.tsx`), not `category.name`. Four further
+  gaps the plan missed: cross-tenant `selectionId` validation on the design PATCH, keeping
+  `Partition.widthMm = sum(panels[].widthMm)`, redundant `panels[].index`, and unnamed mockup
+  interactions (Escape/click-out/disabled states/hint). Serial 3-piece split agreed; move the
+  `partitions/[id]` route+DAL+E2E to the front of Piece 2. **One item escalated to the human:** the
+  `BETTER_AUTH_URL` preview-login bug blocks the browser-based visual QA this item's acceptance depends
+  on — fix the Preview env var (devops) or accept verification only at `test.easeetool.com` post-merge.
+  Full review: `.engineering/stage-18/architect-review-item7.md`.
