@@ -588,3 +588,18 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   re-run. Test file only; no product code, no weakening of any round-1-confirmed-strong test. Item 4 is
   ready; Stage 18 can move to `engineering:test`. Full report:
   `.engineering/stage-18/review-item4-round2.md`.
+
+- **2026-09-09 — implement orchestrator: STAGE REOPENED for item 7.** Items 1-4 had already merged to
+  `release/stage-18` and been merged onward to `staging`; the human then compared item 4's shipped
+  list-only left rail against `design-docs/mockups/design-step-poc.html` mid-`engineering:test` and
+  judged the gap too large to ship — explicit direction: rebuild the Design page to look and behave
+  exactly like the mockup, in this same stage, not a new one. Stage doc amended with new scope item 7
+  (see `stage-18.md` §7 for the full spec, including the one flagged model gap: the mockup's wall-bar
+  diagram is hardcoded to 4 fixed sides, but must render generically over the real arbitrary-length
+  `sides[]` array). `release/stage-18` re-checked-out (was already clean, `staging` merge did not delete
+  it). UI-only — no schema/route changes expected; any such need is a Gate-A deviation, not a silent
+  addition. Human explicitly asked for the architect to be involved given the size/complexity of matching
+  the mockup's interaction set (floor bar, collapsible room list w/ per-partition preview swatches,
+  layout-mode floor-plan diagram, configure-mode panel/door/edge-profile editor, unit toggle).
+  Dispatching developer to write `plan-item7.md`, then architect (Mode B) to verify it against
+  `stage-18.md` §7 and the mockup before any code is written.
