@@ -403,18 +403,31 @@ export async function updateProject(
  * Partition rows cascade automatically when their Room is deleted (DB FK).
  */
 export async function deleteProject(session: SessionData, projectId: string) {
-  // Verify the project exists and belongs to this org.
-  const existing = await prisma.project.findFirst({
-    where: { id: projectId, organizationId: session.organizationId },
-    select: { id: true, status: true, inquiryId: true },
-  });
-
-  if (!existing) return null;
-  if (existing.status !== "DRAFT") return { notDeletable: true as const };
-
-  const { inquiryId } = existing;
+  // Prisma interactive transactions don't support early-returning the outer
+  // function from inside the callback, so we use boolean flags set inside the
+  // closure and act on them after the transaction settles.  TypeScript can type
+  // the three explicit return statements below correctly; a typed union variable
+  // would confuse narrowing at the call site.
+  let found = false;
+  let isDraft = false;
 
   await prisma.$transaction(async (tx) => {
+    // Re-check existence and DRAFT status INSIDE the transaction to close the
+    // TOCTOU window: a concurrent PATCH could promote the project off DRAFT
+    // between an outer findFirst and the delete below.
+    const existing = await tx.project.findFirst({
+      where: { id: projectId, organizationId: session.organizationId },
+      select: { id: true, status: true, inquiryId: true },
+    });
+
+    if (!existing) return; // found stays false
+    found = true;
+
+    if (existing.status !== "DRAFT") return; // isDraft stays false
+    isDraft = true;
+
+    const { inquiryId } = existing;
+
     // Optional: revert Inquiry to NEW if this was its last project.
     if (inquiryId) {
       const remainingCount = await tx.project.count({
@@ -455,5 +468,7 @@ export async function deleteProject(session: SessionData, projectId: string) {
     await tx.project.delete({ where: { id: projectId } });
   });
 
+  if (!found) return null;
+  if (!isDraft) return { notDeletable: true as const };
   return { id: projectId };
 }
