@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { SelectField } from "@/components/select-field";
 import { updateComponentType } from "../actions";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
@@ -28,7 +29,7 @@ function SubmitButton({ label, disabled: extraDisabled }: { label: string; disab
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-const FIELD_TYPES: FieldEntry["type"][] = ["field", "radio", "dropdown", "checkbox"];
+const FIELD_TYPES: FieldEntry["type"][] = ["field", "dropdown", "checkbox"];
 
 // ─── Move helper ──────────────────────────────────────────────────────────────
 
@@ -217,17 +218,17 @@ function FieldRow({
           <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
             {labels.typeLabel}
           </label>
-          <select
+          <SelectField
             value={entry.type}
             onChange={(e) => {
               const newType = e.target.value as FieldEntry["type"];
               const updated: FieldEntry = { ...entry, type: newType };
-              // Seed options when switching to a type that requires them
-              if ((newType === "radio" || newType === "dropdown") && !updated.options) {
+              // Seed options when switching to dropdown type
+              if (newType === "dropdown" && !updated.options) {
                 updated.options = [];
               }
-              // Clear options when switching away from option-requiring types
-              if (newType !== "radio" && newType !== "dropdown") {
+              // Clear options when switching away from dropdown
+              if (newType !== "dropdown") {
                 delete updated.options;
               }
               onChange(updated);
@@ -239,7 +240,7 @@ function FieldRow({
                 {typeLabels[t]}
               </option>
             ))}
-          </select>
+          </SelectField>
         </div>
         {/* Move and remove buttons */}
         <div className="flex items-end gap-1 self-end">
@@ -605,22 +606,20 @@ export function EditComponentForm({
         >
           {labels.fieldCategoryLabel}
         </label>
-        <select
+        <SelectField
           id="categoryId"
           name="categoryId"
           required
           defaultValue={initialCategoryId}
           className={inputBase}
+          placeholder={labels.fieldCategoryPlaceholder}
         >
-          <option value="" disabled>
-            {labels.fieldCategoryPlaceholder}
-          </option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
-        </select>
+        </SelectField>
       </div>
 
       {/* Active toggle */}

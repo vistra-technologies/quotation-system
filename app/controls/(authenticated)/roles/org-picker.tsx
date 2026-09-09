@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { SelectField } from "@/components/select-field";
 
 interface OrgPickerProps {
   orgs: Array<{ id: string; name: string; slug: string }>;
@@ -38,19 +39,18 @@ export function OrgPicker({ orgs, selectedOrgId, basePath = "/controls/roles" }:
       >
         Organization
       </label>
-      <select
+      <SelectField
         id="org-picker"
         value={selectedOrgId ?? ""}
         onChange={handleChange}
-        className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
+        placeholder="Select organization"
       >
-        <option value="">— Select an organization —</option>
         {orgs.map((org) => (
           <option key={org.id} value={org.id}>
             {org.name} ({org.slug})
           </option>
         ))}
-      </select>
+      </SelectField>
     </div>
   );
 }
