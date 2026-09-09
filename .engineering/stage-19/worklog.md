@@ -10,7 +10,7 @@
 |---|---|---|---|
 | 1 | Floor/Project DELETE routes | `lib/data/floors.ts`, `lib/data/projects.ts`, `lib/data/inquiries.ts`, `app/api/v1/orgs/[orgSlug]/floors/[id]/route.ts` (new), `app/api/v1/orgs/[orgSlug]/projects/[projectId]/route.ts`, `tests/e2e/stage19.spec.ts` (new) | **done** — merged to `release/stage-19` @ `b989add` |
 | 2 | Shared `SelectField` + radio→dropdown fix | new `components/select-field.tsx` + 14 consumer files, `lib/component-catalog-seed.ts`, `create-component-form.tsx` | **done** — merged to `release/stage-19` @ `5805a8c` |
-| 3 | Configuration-page UX (popover + loading fixes) | `add-selection-form.tsx`, `configuration/loading.tsx`, `list-page-controls.tsx` | pending |
+| 3 | Configuration-page UX (popover + loading fixes) | `add-selection-form.tsx`, `configuration/loading.tsx`, `list-page-controls.tsx` | **done** — merged to `release/stage-19` @ `90fc545` |
 | 4 | Wizard fixes (copy, Back button, step-gating) | `project-wizard-breadcrumb.tsx`, `layout.tsx`, `_project-fetch.ts` | pending |
 | 5 | SuperAdmin Component-Type relocation | new `app/api/v1/superadmin/component-types/**`, `/controls` UI, retiring old `/admin/components` route + its E2E specs | pending |
 | 6 | Remaining loading/placeholder sweep | Inquiry/Orders screen spot-check | pending |
@@ -168,3 +168,6 @@ independent and unblocks fixture cleanup for the rest; build it first.
   startTransition dep-array inclusion is conservative-correct; no stale-closure risk; no double-navigation.
   Developer's -10px Save-button shift confirmed as viewport auto-scroll (out-of-flow popover), not layout push.
   Findings returned directly in reviewer message (no separate report file). Batch 3 clean and ready to merge.
+- 2026-09-10 — Conductor: merged `feature/configuration-page-ux` into `release/stage-19` (@ `90fc545`),
+  deleted the feature branch (local + remote). Batch 3 closed (APPROVE, 0 findings). Starting Batch 4
+  (wizard fixes: button copy, Back-button removal, sequential step-gating) next.
