@@ -2,48 +2,33 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { internalFetch } from "@/lib/internal-fetch";
-import { orgHref } from "@/lib/orgHref";
+import { orgHref, detectIsSubdomain } from "@/lib/orgHref";
 import { fetchProjectDetail } from "../_project-fetch";
-import { DesignLeftRail, type FloorWithRooms } from "./design-left-rail";
+import { DesignWorkspace } from "./design-workspace";
+import type { FloorRow, FloorWithRooms, SelectionRow } from "./types";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
 
-// ─── API response types (see design-left-rail.tsx for the RoomSide shape) ────
-
-interface FloorRow {
-  id: string;
-  label: string;
-}
-
-interface SelectionRow {
-  id: string;
-  label: string;
-  componentType: { name: string };
-}
-
 /**
  * Design page (Server Component).
  *
- * Stage 18 rework: left rail is now Floor -> Room -> sides (was a flat
- * floor-grouped Partition list). Ends the Stage-12 `eslint-disable
- * no-restricted-imports` deferral for this slice — all data now comes
- * through internalFetch + the app/api/v1/** routes (fetchProjectDetail,
- * the new /floors and /rooms routes, the existing /selections route)
- * instead of calling lib/data/floors|partitions|projects|selections
- * directly.
- *
- * Three-column layout (unchanged):
- *   Left rail  — Floor -> Room -> sides list + "New Room"
- *   Center     — canvas placeholder (interactive canvas still out of scope)
- *   Right      — read-only Selections palette
+ * Stage 18 item 7 rework: rebuilds the center/right columns to match
+ * design-step-poc.html (floor-plan diagram, layout-mode side panel, unit
+ * toggle) instead of the item-4 list-only left rail. This page stays the
+ * data-fetching entry point (floors + rooms + selections via internalFetch
+ * — unchanged data sources, Stage-12 layer separation preserved) but hands
+ * everything to one Client Component, design-workspace.tsx, which owns all
+ * further interaction as pure client state (plan-item7.md flag 6) — no more
+ * ?openRoom= redirect round trips for every click.
  *
  * Auth: API routes return 401/403 on unauthenticated/cross-tenant requests;
  * this page redirects to login on either. 404 -> notFound() on a missing/
  * cross-org project (tenancy guard).
  *
- * ?openRoom=<id> (set by the create-room and convert-side server actions
- * after a redirect) auto-expands that room in the left rail.
+ * ?openRoom=<id> is still read once, on initial load — it's set by
+ * add-wall/actions.ts's server-side redirect (a genuine top-level entry
+ * point, unchanged), not by any in-page mutation anymore.
  */
 export default async function DesignPage({
   params,
@@ -60,11 +45,13 @@ export default async function DesignPage({
     { status: projectStatus, project },
     floorsRes,
     selectionsRes,
+    isSubdomain,
     t,
   ] = await Promise.all([
     fetchProjectDetail(orgSlug, projectId),
     internalFetch(`/api/v1/orgs/${orgSlug}/floors?projectId=${projectId}`),
     internalFetch(`/api/v1/orgs/${orgSlug}/selections?projectId=${projectId}`),
+    detectIsSubdomain(orgSlug),
     getTranslations("design"),
   ]);
 
@@ -109,78 +96,34 @@ export default async function DesignPage({
   return (
     <div className="flex h-full flex-col">
       {/* Page header */}
-      <div className="border-b border-border px-6 py-4">
-        <Link
-          href={`${base}/projects/${projectId}`}
-          className="mb-2 inline-block text-sm text-text-muted hover:text-text-heading"
-        >
-          {t("backToProject")}
-        </Link>
-        <h1 className="text-xl font-extrabold tracking-tight text-text-heading">
-          {t("pageTitle")} — #{project.projectNumber} {project.name}
-        </h1>
-      </div>
-
-      {/* Three-column body */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left rail — Floor -> Room -> sides */}
-        <aside className="w-64 shrink-0 overflow-y-auto border-r border-border bg-bg-card px-4 py-5">
-          <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-text-muted">
-            {t("wallsTitle")}
-          </h2>
-
-          {floorsWithRooms.length === 0 ? (
-            <p className="text-sm text-text-muted">{t("noWalls")}</p>
-          ) : (
-            <DesignLeftRail
-              orgSlug={orgSlug}
-              projectId={projectId}
-              floors={floorsWithRooms}
-              initialOpenRoomId={sp.openRoom ?? null}
-            />
-          )}
-
-          <div className="mt-5">
-            <Link
-              href={`${base}/projects/${projectId}/design/add-wall`}
-              className="block w-full rounded-sm bg-primary px-4 py-2 text-center text-sm font-bold text-text-on-primary hover:bg-primary-dark"
-            >
-              {t("addWall")}
-            </Link>
-          </div>
-        </aside>
-
-        {/* Center — canvas placeholder */}
-        <div className="flex flex-1 items-center justify-center bg-bg-page">
-          <p className="text-sm text-text-muted">{t("canvasPlaceholder")}</p>
+      <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-6 py-4">
+        <div>
+          <Link
+            href={`${base}/projects/${projectId}`}
+            className="mb-2 inline-block text-sm text-text-muted hover:text-text-heading"
+          >
+            {t("backToProject")}
+          </Link>
+          <h1 className="text-xl font-extrabold tracking-tight text-text-heading">
+            {t("pageTitle")} — #{project.projectNumber} {project.name}
+          </h1>
         </div>
-
-        {/* Right — read-only Selections palette */}
-        <aside className="w-64 shrink-0 overflow-y-auto border-l border-border bg-bg-card px-4 py-5">
-          <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-text-muted">
-            {t("selectionsTitle")}
-          </h2>
-          {selections.length === 0 ? (
-            <p className="text-sm text-text-muted">No components added yet.</p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {selections.map((sel) => (
-                <li
-                  key={sel.id}
-                  className="rounded-sm border border-border bg-primary-softer px-3 py-2"
-                >
-                  <p className="text-sm font-semibold text-text-heading">
-                    {sel.label}
-                  </p>
-                  <p className="text-xs text-text-muted">
-                    {sel.componentType.name}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </aside>
+        <Link
+          href={`${base}/projects/${projectId}/design/add-wall`}
+          className="shrink-0 rounded-sm bg-primary px-4 py-2 text-center text-sm font-bold text-text-on-primary hover:bg-primary-dark"
+        >
+          {t("addWall")}
+        </Link>
       </div>
+
+      <DesignWorkspace
+        orgSlug={orgSlug}
+        projectId={projectId}
+        isSubdomain={isSubdomain}
+        initialFloors={floorsWithRooms}
+        selections={selections}
+        initialOpenRoomId={sp.openRoom ?? null}
+      />
     </div>
   );
 }
