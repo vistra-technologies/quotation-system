@@ -944,11 +944,13 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     `sum(panels[].widthMm)` (700+900=1600, never the value that would result from trusting a client-sent
     widthMm, which was never even sent), then removes one panel and confirms `widthMm` re-derives again
     (700) — proving the derivation isn't a one-time computation frozen at first write.
-  - **Push + Vercel**: pushed `<commit-sha-filled-below>` to `feature/design-canvas`. Polled to `READY`
-    for that exact commit SHA via `vercel inspect --logs`, confirmed the build log lists the new
-    `/api/v1/orgs/[orgSlug]/partitions/[id]` route and shows a genuine (not stale) compile, `/api/health`
-    → 200 `database: "connected"`. Ran
-    `PLAYWRIGHT_BASE_URL=<preview> npx playwright test stage18.spec.ts` against that preview.
+  - **Push + Vercel**: pushed `ff571e4` to `feature/design-canvas`
+    (`quotation-system-hana07kr6-vistra-indias-projects.vercel.app`). Polled to `READY`, confirmed via
+    `vercel inspect --logs` it genuinely cloned `Commit: ff571e4` (not stale), `✓ Compiled successfully`,
+    `Finished TypeScript`, and the route list includes `├ ƒ /api/v1/orgs/[orgSlug]/partitions/[id]`.
+    `/api/health` → 200 `database: "connected"`. Ran
+    `PLAYWRIGHT_BASE_URL=<preview> npx playwright test stage18.spec.ts`: **all 10 tests passed** (28.8s) —
+    the 7 pre-existing Room tests plus the 3 new Piece 2 tests.
   - **Manual verification — same constraint as every prior piece**: no browser/Playwright-with-UI tool
     was available in this session for a real click-through against `design-step-poc.html` side by side.
     What's verified: the new API contract (tenancy, cross-tenant reference rejection, `design`
