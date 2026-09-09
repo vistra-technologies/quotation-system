@@ -14,6 +14,7 @@ interface LayoutModePanelProps {
   partitions: PartitionRow[];
   onCancel: () => void;
   onConverted: (room: RoomRow) => void;
+  onConfigure: (partitionId: string, sideIndex: number) => void;
 }
 
 /**
@@ -31,6 +32,7 @@ export function LayoutModePanel({
   partitions,
   onCancel,
   onConverted,
+  onConfigure,
 }: LayoutModePanelProps) {
   const t = useTranslations("design");
   const { formatLen } = useUnit();
@@ -70,9 +72,8 @@ export function LayoutModePanel({
       <div className="flex gap-2">
         <button
           type="button"
-          disabled
-          title={t("configurePartitionComingSoon")}
-          className="flex-1 cursor-not-allowed rounded-sm bg-primary px-2.5 py-1.5 text-xs font-bold text-text-on-primary opacity-50"
+          onClick={() => onConfigure(side.partitionId, sideIndex)}
+          className="flex-1 rounded-sm bg-primary px-2.5 py-1.5 text-xs font-bold text-text-on-primary hover:bg-primary-dark"
         >
           {t("configurePartition")}
         </button>

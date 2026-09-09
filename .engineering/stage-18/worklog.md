@@ -818,3 +818,147 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   - Files: `convert-side-form.tsx`, `design-workspace.tsx`, `room-list.tsx`, new `room-name-input.tsx`,
     `messages/en.json`.
   - Status: DONE.
+
+- **2026-09-09 · reviewer · Item 7 Piece 1 round 2 (full Piece 1 diff, `4a0b48f`) — verdict:
+  APPROVE-WITH-NITS.** 0 CRITICAL · 0 IMPORTANT · 4 MINOR (3 new + the round-1 MINORs consciously not
+  taken). Both round-1 IMPORTANTs traced in the code and confirmed genuinely fixed, not just claimed;
+  the four claimed MINOR fixes are real; both architect-mandated corrections re-confirmed unregressed
+  (fix commit touched only 5 files — `room-floor-plan.tsx` byte-identical, and the convert form's
+  re-read-before-write survived the unit refactor). `npx tsc --noEmit` exit 0 and `npm run lint`
+  0 errors / same 5 pre-existing `tests/e2e/**` warnings, both re-run. New MINORs: duplicate-label
+  rename → 500 + silent revert (`renameRoom` lacks the `P2002` catch `createRoom` has; `RoomNameInput`
+  has no error surface), an inaccurate text-mirror comment Piece 2 will copy, an untrimmed-value echo
+  that self-heals, and a Piece-3 E2E pointer for the rename round-trip. Piece 1 is done; Piece 2
+  (Configure mode) can start. Full report:
+  `.engineering/stage-18/review-item7-piece1-round2.md`.
+
+- **2026-09-09 — Item 7 Piece 2: Configure mode (developer agent)**: on `feature/design-canvas`. Own
+  plan: `.engineering/stage-18/plan-item7-piece2.md`. Implements the 5 architect-mandated corrections to
+  `plan-item7.md` from `architect-review-item7.md` (Flag 3 corrected grouping, cross-tenant `selectionId`
+  validation, derived `widthMm`, dropped `panels[].index`, re-read-before-write).
+  - **New route + DAL (front of this piece, per architect sequencing)**: `lib/data/partitions.ts` — added
+    `updatePartition(session, id, patch)` (tenancy-guard-then-update, mirrors `renameRoom`'s shape) plus
+    `DesignDoor`/`DesignPanel`/`DesignStops`/`PartitionDesign`/`UpdatePartitionPatch` types and an
+    `InvalidDesignError` class. Reused the existing `getPartitionById` for the GET side rather than adding
+    a redundant `getPartitionByIdForOrg` (identical signature already existed). `updatePartition`: (a)
+    merges a partial `design` patch onto the previously-stored document rather than replacing it wholesale
+    — `measurements`/`distribution` (documented keys this UI doesn't touch) survive untouched; (b)
+    collects every `selectionId` referenced in `panels[].selectionId`/`panels[].door.selectionId`/
+    `stops.*` and verifies each resolves to a real `Selection` with the SAME `organizationId` AND the same
+    `projectId` (via `room.floor.projectId`) as this partition — throws `InvalidDesignError` listing the
+    offending id(s) otherwise, never silently drops or accepts a foreign reference; (c) derives
+    `widthMm = sum(panels[].widthMm)` server-side whenever `patch.design.panels` is present — never
+    accepts a client-supplied `widthMm` (there is no `widthMm` field in `UpdatePartitionPatch` at all).
+    `app/api/v1/orgs/[orgSlug]/partitions/[id]/route.ts` (new) — `GET` (tenancy-scoped single partition)
+    + `PATCH` (`label?`, `heightMm?`, `design?`), following `rooms/[id]/route.ts`'s exact
+    `getApiSession`/`ApiAuthError`/`apiNotFound`/`apiBadRequest` structure. The route does thin shape
+    validation only (types, panel array shape, positive numbers, door sub-object shape); every invariant
+    check lives in the DAL, matching the `sides` PATCH route's split. `design.panels[].index` is never
+    parsed or emitted anywhere in the route or DAL — array position is authoritative, per the architect's
+    binding correction.
+  - **Client types** (`design/types.ts`): added `DesignDoor`/`DesignPanel`/`DesignStops`/`PartitionDesign`
+    mirroring the DAL types (duplicated per the existing client/server type-duplication convention this
+    tree already uses), extended `PartitionRow` with an optional `design` field, and added
+    `EdgeSide`/`ConfigureSelection`/`PartitionPatch`/`MutateResult` for the new components below.
+  - **`configure-mode.tsx`** (new) — toolbar row (back button restoring the originating Layout-mode side
+    selection, name input committing on blur/Enter via the shared `mutate` transport, floor·room +
+    panel-count tags, width/height dimension inputs using **the exact canonical-mm pattern from
+    `convert-side-form.tsx`'s fixed version** — canonical value from the live `partition` prop, a raw-text
+    mirror cleared on unit-change-during-render, reset on partition-id-change during render, never a
+    stale unit-mismatched string). Width is edited as a **proportional rescale of every panel** (matches
+    `design-step-poc.html:1075-1082`'s `scale = newTotal/oldTotal` exactly, in mm) since `widthMm` itself
+    is server-derived, not a direct field — editing "width" always ends in a `design.panels` PATCH, never
+    a raw `widthMm` PATCH. Height edits `heightMm` directly and clamps any door's `outerFrame.h` to the
+    new (possibly shorter) wall height, matching the mockup. Add/Remove/Split-panel toolbar buttons
+    reproduce the mockup's exact enable/disable rules (`panels.length<=1`, `widthMm < MIN_SPLIT_WIDTH_MM`)
+    and logic (split moves selection to the first new half). Contextual hint line under the toolbar
+    (architect-review-item7.md missed-interaction #4). Background-click-to-deselect on the canvas wrap
+    (children `stopPropagation`); Escape-to-clear-selection is handled by extending
+    `design-workspace.tsx`'s existing single keydown listener (keyed on `viewMode`) rather than a second
+    listener.
+  - **`wall-canvas.tsx`** (new) — to-scale panel row (`flexBasis = widthMm/totalWidthMm*100%`, mm instead
+    of the mockup's inches), door notch as a bottom overlay sized to `door.outerFrame.h / heightMm`, a
+    door-height range slider shown only on the selected door panel. **Door height is stored in
+    `door.outerFrame.h`** — `04-data-model.md`'s documented `door` shape has no separate height field, and
+    `outerFrame: {w,h}` already documents the door leaf's own outer dimensions, which is exactly what the
+    mockup's slider controls; reusing it avoids inventing a new field for a mockup interaction the
+    architect review didn't separately flag. Slider commits on release (`onMouseUp`/`onTouchEnd`), not
+    every drag tick, via the same re-read-before-write `mutate` transport — a local `pendingHeight` state
+    gives live visual feedback during the drag without spamming PATCHes.
+  - **`panel-list.tsx`** (new) — itemized rows under the canvas, same click-to-select as the canvas
+    (`renderPanelList`).
+  - **`edge-profile.tsx`** (new) — the 4 top/left/right/bottom pickers (a genuinely fixed 4-slot concept
+    here, `design.stops`, unlike the room's arbitrary-N `sides[]` — no generalization built, per the
+    task's own framing), each showing the assigned `PROFILE_STOP` Selection's label or an empty state,
+    selected/dimmed states mirroring the mockup's mutual panel/edge exclusivity.
+  - **`saved-components-rail.tsx`** (new) — right rail in Configure mode, **grouped and gated by
+    `Selection.componentType.code`** (`GLASS`/`DOOR`/`PROFILE_STOP`), per architect-review-item7.md's
+    correction to the plan's originally-wrong `category.name` grouping — verified `lib/data/
+    selections.ts`'s `listSelections` already `select`s `code: true` on `componentType` (Item 3-era
+    query, unchanged), so no DAL/route change was needed to expose it, only a new client component
+    reading an already-present field. GLASS section always enabled (click writes that `selectionId` onto
+    **every** panel in one PATCH — flag 4, already approved); DOOR enabled only with a panel selected
+    (toggle on/off, default height `max(MIN_DOOR_HEIGHT_MM, round(wallHeight*0.85))` mirroring the
+    mockup's `defH`, `hinging` always `"left"` — flag 5, no picker); PROFILE_STOP enabled only with an
+    edge selected (writes `design.stops[side]`). Any Selection whose code isn't one of the 3 renders in a
+    trailing **display-only "Other"** section (architect's explicit ruling) — not a hardcoded 3, empty
+    sections are simply absent.
+  - **Wiring**: `layout-mode-panel.tsx`'s "Configure Partition →" button is no longer `disabled` — calls
+    a new `onConfigure(partitionId, sideIndex)` prop. `design-workspace.tsx`: new `activePartition`/
+    `configureSelection`/`configureFromSideIndex` state, a new effect fetching
+    `GET /partitions/[activePartitionId]` (full `design` document) whenever Configure mode's active
+    partition changes, and the centralized `mutatePartition()` transport (re-read-`GET`-then-`PATCH`-then-
+    sync-local-state, used by every Configure-mode mutation site — `configure-mode.tsx`,
+    `saved-components-rail.tsx` — so the re-read-before-write condition is enforced once, not
+    per-callsite) which also patches the matching entry in `selectedRoomPartitions` on success so the
+    floor-plan tooltip/left-rail preview stay current without a reload. Center/right columns render
+    `<ConfigureMode>`/`<SavedComponentsRail>` when `viewMode === 'configure'`. Back button restores
+    `layoutSideSelection` to the side index that opened Configure mode.
+  - **i18n**: extended `design` namespace in `messages/en.json` with ~20 new keys (toolbar/hint/edge/door/
+    section copy); removed the now-dead `configurePartitionComingSoon` key (the button it labelled is no
+    longer disabled). Re-scripted every `t("…")` call in `design/**` against `en.json`: 0 missing keys, 0
+    dead keys (the `edgeTop`/`edgeLeft`/`edgeRight`/`edgeBottom` keys are looked up dynamically via
+    `EDGE_LABEL_KEY[side]`, not literal `t("...")` calls, so a naive grep flags them as unused —
+    confirmed by hand they're exercised in `edge-profile.tsx` and `configure-mode.tsx`'s hint line).
+  - **Docs**: `quotation-system-docs/design-docs/sql-queries/by-page.sql` — new sections for
+    `GET`/`PATCH /api/v1/orgs/[orgSlug]/partitions/[id]` immediately after the existing
+    `GET .../partitions?roomId=` section, including the cross-tenant `Selection` validation read and the
+    whole-JSONB `UPDATE ... SET "design" = :designJson::jsonb, "widthMm" = :derivedWidthMm, ...` write,
+    per the stage's own convention of writing these out rather than placeholders. Not yet committed in the
+    docs repo (same posture as Item 3: uncommitted docs-repo changes accumulate until an orchestrator
+    commits them together — confirmed the pre-existing uncommitted stack from earlier items is still
+    there, untouched by me).
+  - **Verify**: `npx tsc --noEmit` — 0 errors. `npm run lint` — 0 errors, same 5 pre-existing
+    `tests/e2e/**` warnings (one new `no-unused-vars` on an `EDGE_SIDES` constant surfaced during
+    development and was removed, not suppressed).
+  - **New E2E** (`tests/e2e/stage18.spec.ts`, extended): a dedicated Room C + Partition fixture (not
+    reusing Room A/B, which earlier tests in the file mutate down to 0 partitions by the end), Selections
+    for GLASS/DOOR/PROFILE_STOP created via the real APIs, plus a second ACME project (cross-project,
+    same-org fixture) and a NORDIC project+Selection (cross-org fixture), all set up in `beforeAll`. Three
+    new tests: (1) tenancy — cross-org `GET`/`PATCH /partitions/[id]` 404, cross-org-slug 403, own-org 200;
+    (2) cross-tenant `selectionId` rejection — a same-org-different-project `selectionId` in `panels[]`
+    400s, a different-org `selectionId` in `panels[]` 400s, a different-org `selectionId` in `stops.top`
+    400s, and confirms neither rejected write partially applied (0 panels persisted); (3) a legitimate
+    round-trip — writes 2 panels (one with a door referencing the real `doorSelectionId`) + 2 `stops`
+    entries, asserts the response AND a fresh re-`GET` both show `widthMm` **derived** as
+    `sum(panels[].widthMm)` (700+900=1600, never the value that would result from trusting a client-sent
+    widthMm, which was never even sent), then removes one panel and confirms `widthMm` re-derives again
+    (700) — proving the derivation isn't a one-time computation frozen at first write.
+  - **Push + Vercel**: pushed `<commit-sha-filled-below>` to `feature/design-canvas`. Polled to `READY`
+    for that exact commit SHA via `vercel inspect --logs`, confirmed the build log lists the new
+    `/api/v1/orgs/[orgSlug]/partitions/[id]` route and shows a genuine (not stale) compile, `/api/health`
+    → 200 `database: "connected"`. Ran
+    `PLAYWRIGHT_BASE_URL=<preview> npx playwright test stage18.spec.ts` against that preview.
+  - **Manual verification — same constraint as every prior piece**: no browser/Playwright-with-UI tool
+    was available in this session for a real click-through against `design-step-poc.html` side by side.
+    What's verified: the new API contract (tenancy, cross-tenant reference rejection, `design`
+    round-trip + derived `widthMm`) via the new E2E, plus `tsc`/`lint`. **Not verified this pass**: the
+    actual Configure-mode click interactions (panel select/add/remove/split, door placement + height
+    drag, edge-profile assignment, Saved-Components-rail clicks) — these are pure client-side React state
+    changes with no server artifact to grep for via curl, same limitation Piece 1 stated. Per GATE A, the
+    full browser-based visual side-by-side against the mockup is deferred to `test.easeetool.com`
+    post-merge — stating this plainly, not approximating further.
+  - No BLOCKED items. Carried-forward concerns: same `BETTER_AUTH_URL`/`crossSubDomainCookies` preview
+    login issue as every prior piece (worked around in the test harness, not a product bug this piece
+    introduced or can fix); the interactive Configure-mode click paths need a real browser pass at
+    `engineering:test`.

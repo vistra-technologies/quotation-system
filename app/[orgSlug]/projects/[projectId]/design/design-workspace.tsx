@@ -8,10 +8,22 @@ import { FloorBar } from "./floor-bar";
 import { RoomList } from "./room-list";
 import { RoomFloorPlan } from "./room-floor-plan";
 import { LayoutModePanel } from "./layout-mode-panel";
+import { ConfigureMode } from "./configure-mode";
+import { SavedComponentsRail } from "./saved-components-rail";
 import { NewRoomForm } from "./new-room-form";
 import { RoomNameInput } from "./room-name-input";
 import { redirectToLogin } from "./login-redirect";
-import type { FloorRow, FloorWithRooms, PartitionRow, RoomRow, SelectionRow, ViewMode } from "./types";
+import type {
+  ConfigureSelection,
+  FloorRow,
+  FloorWithRooms,
+  MutateResult,
+  PartitionPatch,
+  PartitionRow,
+  RoomRow,
+  SelectionRow,
+  ViewMode,
+} from "./types";
 
 interface DesignWorkspaceProps {
   orgSlug: string;
@@ -68,23 +80,30 @@ export function DesignWorkspace({
     selectedRoomId ? "layout" : "empty",
   );
   const [layoutSideSelection, setLayoutSideSelection] = useState<number | null>(null);
-  // Wired for Piece 2 (Configure mode) — unused until then.
-  const [, setActivePartitionId] = useState<string | null>(null);
+  const [activePartitionId, setActivePartitionId] = useState<string | null>(null);
+  // The layout-mode side index that owns activePartitionId — restored as
+  // layoutSideSelection when Configure mode's back button returns to Layout.
+  const [configureFromSideIndex, setConfigureFromSideIndex] = useState<number | null>(null);
+  const [activePartition, setActivePartition] = useState<PartitionRow | null>(null);
+  const [configureSelection, setConfigureSelection] = useState<ConfigureSelection>(null);
   const [addingRoomForEmptyState, setAddingRoomForEmptyState] = useState(false);
   const [selectedRoomPartitions, setSelectedRoomPartitions] = useState<PartitionRow[]>([]);
 
   const selectedFloor = floors.find((f) => f.id === selectedFloorId) ?? null;
   const selectedRoom = selectedFloor?.rooms.find((r) => r.id === selectedRoomId) ?? null;
 
-  // Escape clears the current floor-plan side selection — mirrors the
-  // mockup's document-level keydown handler.
+  // Escape clears the current selection — mirrors the mockup's
+  // document-level keydown handler, extended to Configure mode's
+  // panel/edge selection (design-step-poc.html:1423-1427).
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") setLayoutSideSelection(null);
+      if (e.key !== "Escape") return;
+      if (viewMode === "configure") setConfigureSelection(null);
+      else setLayoutSideSelection(null);
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [viewMode]);
 
   // Fetch partitions for the selected room's PARTITION sides (needed for the
   // floor-plan tooltip and layout-mode-panel's summary — a PARTITION side
@@ -127,6 +146,113 @@ export function DesignWorkspace({
       cancelled = true;
     };
   }, [orgSlug, isSubdomain, selectedRoom]);
+
+  // Fetch the full partition (incl. design JSONB) whenever Configure mode's
+  // active partition changes — the collection route (GET /partitions?roomId=)
+  // never returns `design`, only the read used by Layout mode's summary.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      if (viewMode !== "configure" || !activePartitionId) {
+        if (!cancelled) setActivePartition(null);
+        return;
+      }
+      try {
+        const res = await fetch(`/api/v1/orgs/${orgSlug}/partitions/${activePartitionId}`);
+        if (res.status === 401 || res.status === 403) {
+          redirectToLogin(orgSlug, isSubdomain);
+          return;
+        }
+        if (!res.ok) {
+          if (!cancelled) setActivePartition(null);
+          return;
+        }
+        const { partition } = (await res.json()) as { partition: PartitionRow };
+        if (!cancelled) setActivePartition(partition);
+      } catch {
+        if (!cancelled) setActivePartition(null);
+      }
+    }
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [orgSlug, isSubdomain, viewMode, activePartitionId]);
+
+  /**
+   * Configure mode's single mutation transport: re-reads the partition
+   * fresh from the server, lets the caller build a partial PATCH body from
+   * that fresh copy, PATCHes it, then syncs local state (activePartition +
+   * the matching entry in selectedRoomPartitions, so the floor-plan tooltip
+   * and left-rail preview stay current without a reload). Every Configure-
+   * mode mutation goes through this — the re-read-before-write condition
+   * architect-review-item7.md attached to full-document writes, applied
+   * uniformly rather than per-callsite.
+   */
+  async function mutatePartition(
+    build: (fresh: PartitionRow) => PartitionPatch,
+  ): Promise<MutateResult> {
+    if (!activePartitionId) {
+      return { ok: false, error: "No active partition." };
+    }
+    try {
+      const freshRes = await fetch(`/api/v1/orgs/${orgSlug}/partitions/${activePartitionId}`);
+      if (freshRes.status === 401 || freshRes.status === 403) {
+        redirectToLogin(orgSlug, isSubdomain);
+        return { ok: false, error: "Redirecting to login." };
+      }
+      if (!freshRes.ok) {
+        return { ok: false, error: "Could not load the partition — please try again." };
+      }
+      const { partition: fresh } = (await freshRes.json()) as { partition: PartitionRow };
+      const patch = build(fresh);
+
+      const patchRes = await fetch(`/api/v1/orgs/${orgSlug}/partitions/${activePartitionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (patchRes.status === 401 || patchRes.status === 403) {
+        redirectToLogin(orgSlug, isSubdomain);
+        return { ok: false, error: "Redirecting to login." };
+      }
+      if (!patchRes.ok) {
+        const body = (await patchRes.json().catch(() => ({}))) as { error?: string };
+        return { ok: false, error: body.error ?? "An unexpected error occurred — please try again." };
+      }
+      const { partition: updated } = (await patchRes.json()) as { partition: PartitionRow };
+      setActivePartition(updated);
+      setSelectedRoomPartitions((prev) =>
+        prev.map((p) =>
+          p.id === updated.id
+            ? { id: updated.id, label: updated.label, heightMm: updated.heightMm, widthMm: updated.widthMm }
+            : p,
+        ),
+      );
+      return { ok: true, partition: updated };
+    } catch {
+      return { ok: false, error: "Network error — please try again." };
+    }
+  }
+
+  function enterConfigureMode(partitionId: string, sideIndex: number) {
+    setActivePartitionId(partitionId);
+    setConfigureFromSideIndex(sideIndex);
+    setConfigureSelection(null);
+    setViewMode("configure");
+    setLayoutSideSelection(null);
+  }
+
+  function backFromConfigureMode() {
+    setViewMode("layout");
+    setLayoutSideSelection(configureFromSideIndex);
+    setActivePartitionId(null);
+    setActivePartition(null);
+    setConfigureSelection(null);
+    setConfigureFromSideIndex(null);
+  }
 
   function selectFloor(floorId: string) {
     setSelectedFloorId(floorId);
@@ -227,12 +353,27 @@ export function DesignWorkspace({
           )}
         </aside>
 
-        {/* Center — empty / layout (Configure mode is Piece 2) */}
+        {/* Center — empty / layout / configure */}
         <div
           className="flex flex-1 flex-col items-center justify-center overflow-y-auto rounded-md border border-border bg-bg-card p-6"
           onClick={() => setLayoutSideSelection(null)}
         >
-          {viewMode === "layout" && selectedRoom ? (
+          {viewMode === "configure" && activePartitionId ? (
+            activePartition ? (
+              <ConfigureMode
+                partition={activePartition}
+                selections={selections}
+                floorLabel={selectedFloor?.label ?? ""}
+                roomLabel={selectedRoom?.label ?? ""}
+                selection={configureSelection}
+                onSelectionChange={setConfigureSelection}
+                onBack={backFromConfigureMode}
+                mutate={mutatePartition}
+              />
+            ) : (
+              <p className="text-xs text-text-muted">{t("loadingPartition")}</p>
+            )
+          ) : viewMode === "layout" && selectedRoom ? (
             <div className="flex w-full max-w-xl flex-col gap-4" onClick={(e) => e.stopPropagation()}>
               <div className="flex flex-wrap items-center gap-2">
                 <RoomNameInput
@@ -288,28 +429,47 @@ export function DesignWorkspace({
           )}
         </div>
 
-        {/* Right rail — layout-mode side details, or a context hint */}
-        <aside className="w-72 shrink-0 overflow-y-auto rounded-md border border-border bg-bg-card p-4">
-          <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-text-muted">
-            {t("selectionsTitle")}
-          </h2>
-          {viewMode === "layout" && selectedRoom && layoutSideSelection !== null ? (
-            <LayoutModePanel
-              orgSlug={orgSlug}
-              isSubdomain={isSubdomain}
-              floorId={selectedRoom.floorId}
-              room={selectedRoom}
-              sideIndex={layoutSideSelection}
-              partitions={selectedRoomPartitions}
-              onCancel={() => setLayoutSideSelection(null)}
-              onConverted={handleSideConverted}
-            />
-          ) : viewMode === "layout" && selectedRoom ? (
-            <p className="text-xs text-text-muted">{t("clickWallHint")}</p>
+        {/* Right rail — Saved Components (configure), layout-mode side
+            details, or a context hint. Context-sensitive per
+            design-step-poc.html's renderRightRail: Saved Components only
+            matter in Configure mode. */}
+        <aside className="flex w-72 shrink-0 flex-col overflow-y-auto rounded-md border border-border bg-bg-card p-4">
+          {viewMode === "configure" && activePartitionId ? (
+            activePartition ? (
+              <SavedComponentsRail
+                partition={activePartition}
+                selections={selections}
+                selection={configureSelection}
+                mutate={mutatePartition}
+              />
+            ) : (
+              <p className="text-xs text-text-muted">{t("loadingPartition")}</p>
+            )
           ) : (
-            <p className="text-xs text-text-muted">
-              {t("selectionsAvailable", { count: selections.length })}
-            </p>
+            <>
+              <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-text-muted">
+                {t("selectionsTitle")}
+              </h2>
+              {viewMode === "layout" && selectedRoom && layoutSideSelection !== null ? (
+                <LayoutModePanel
+                  orgSlug={orgSlug}
+                  isSubdomain={isSubdomain}
+                  floorId={selectedRoom.floorId}
+                  room={selectedRoom}
+                  sideIndex={layoutSideSelection}
+                  partitions={selectedRoomPartitions}
+                  onCancel={() => setLayoutSideSelection(null)}
+                  onConverted={handleSideConverted}
+                  onConfigure={enterConfigureMode}
+                />
+              ) : viewMode === "layout" && selectedRoom ? (
+                <p className="text-xs text-text-muted">{t("clickWallHint")}</p>
+              ) : (
+                <p className="text-xs text-text-muted">
+                  {t("selectionsAvailable", { count: selections.length })}
+                </p>
+              )}
+            </>
           )}
         </aside>
       </div>

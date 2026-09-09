@@ -162,6 +162,18 @@ let floorId: string;
 let roomAId: string; // "Room A" — used for reorder/convert/invariant tests
 let roomBId: string; // "Room B" — used for cross-room partitionId tests
 
+// Item 7 Piece 2 (Configure mode) fixtures — a dedicated room/partition and
+// a set of Selections spanning ACME's own project, a SECOND ACME project
+// (cross-project, same org), and NORDIC (cross-org), for the
+// PATCH /partitions/[id] design-JSONB reference-validation tests.
+let roomCId: string;
+let partitionCId: string;
+let glassSelectionId: string;
+let doorSelectionId: string;
+let profileSelectionId: string;
+let crossProjectSelectionId: string; // same org (ACME), different project
+let nordicSelectionId: string; // different org entirely
+
 const RUN = Date.now();
 
 test.beforeAll(async ({ browser }) => {
@@ -209,6 +221,111 @@ test.beforeAll(async ({ browser }) => {
   expect(roomBRes.status()).toBe(201);
   ({ room: { id: roomBId } } = (await roomBRes.json()) as {
     room: { id: string };
+  });
+
+  // ── Item 7 Piece 2 fixtures: Room C (its own partition) + Selections ──────
+  const roomCRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/rooms`),
+    { data: { floorId, label: `Room C ${RUN}` } },
+  );
+  expect(roomCRes.status()).toBe(201);
+  ({ room: { id: roomCId } } = (await roomCRes.json()) as { room: { id: string } });
+
+  const convertCRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/rooms/${roomCId}/sides`),
+    {
+      data: {
+        sides: [
+          { kind: "PARTITION", turnDegrees: 90, label: `Wall-C ${RUN}`, heightMm: 2400, widthMm: 1200 },
+          { kind: "PLAIN", turnDegrees: 90 },
+          { kind: "PLAIN", turnDegrees: 90 },
+          { kind: "PLAIN", turnDegrees: 90 },
+        ],
+      },
+    },
+  );
+  expect(convertCRes.status()).toBe(200);
+  const { room: convertedC } = (await convertCRes.json()) as {
+    room: { sides: { kind: string; partitionId?: string }[] };
+  };
+  partitionCId = convertedC.sides[0].partitionId!;
+  expect(partitionCId).toBeTruthy();
+
+  // ComponentTypes are org-seeded (lib/component-catalog-seed.ts): one
+  // "Glass Partitions" category with GLASS/DOOR/PROFILE_STOP codes.
+  async function componentTypeId(page: Page, orgSlug: string, code: string): Promise<string> {
+    const res = await page.request.get(apiUrl(orgSlug, `/api/v1/orgs/${orgSlug}/component-types`));
+    expect(res.status()).toBe(200);
+    const { componentTypes } = (await res.json()) as { componentTypes: { id: string; code: string }[] };
+    const found = componentTypes.find((c) => c.code === code);
+    if (!found) throw new Error(`No seeded ComponentType with code ${code} in ${orgSlug}`);
+    return found.id;
+  }
+
+  const acmeGlassTypeId = await componentTypeId(acmePage, ACME, "GLASS");
+  const acmeDoorTypeId = await componentTypeId(acmePage, ACME, "DOOR");
+  const acmeProfileTypeId = await componentTypeId(acmePage, ACME, "PROFILE_STOP");
+
+  async function createSelection(
+    page: Page,
+    orgSlug: string,
+    body: { projectId: string; componentTypeId: string; label: string },
+  ): Promise<string> {
+    const res = await page.request.post(apiUrl(orgSlug, `/api/v1/orgs/${orgSlug}/selections`), {
+      data: { ...body, config: {}, orderIndex: 0 },
+    });
+    expect(res.status()).toBe(201);
+    const { selection } = (await res.json()) as { selection: { id: string } };
+    return selection.id;
+  }
+
+  glassSelectionId = await createSelection(acmePage, ACME, {
+    projectId,
+    componentTypeId: acmeGlassTypeId,
+    label: `Clear Glass ${RUN}`,
+  });
+  doorSelectionId = await createSelection(acmePage, ACME, {
+    projectId,
+    componentTypeId: acmeDoorTypeId,
+    label: `Front Door ${RUN}`,
+  });
+  profileSelectionId = await createSelection(acmePage, ACME, {
+    projectId,
+    componentTypeId: acmeProfileTypeId,
+    label: `Black Aluminum ${RUN}`,
+  });
+
+  // A second ACME project, with its own Selection — same org, different
+  // project, for the cross-PROJECT reference-validation test.
+  const otherProjRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/projects`),
+    { data: { name: `Stage18 E2E Other ${RUN}`, currency: "AED" } },
+  );
+  expect(otherProjRes.status()).toBe(201);
+  const { project: { id: otherProjectId } } = (await otherProjRes.json()) as {
+    project: { id: string };
+  };
+  crossProjectSelectionId = await createSelection(acmePage, ACME, {
+    projectId: otherProjectId,
+    componentTypeId: acmeGlassTypeId,
+    label: `Other-Project Glass ${RUN}`,
+  });
+
+  // NORDIC: its own project + a GLASS Selection, for the cross-ORG
+  // reference-validation test.
+  const nordicProjRes = await nordicPage.request.post(
+    apiUrl(NORDIC, `/api/v1/orgs/${NORDIC}/projects`),
+    { data: { name: `Stage18 E2E Nordic ${RUN}`, currency: "USD" } },
+  );
+  expect(nordicProjRes.status()).toBe(201);
+  const { project: { id: nordicProjectId } } = (await nordicProjRes.json()) as {
+    project: { id: string };
+  };
+  const nordicGlassTypeId = await componentTypeId(nordicPage, NORDIC, "GLASS");
+  nordicSelectionId = await createSelection(nordicPage, NORDIC, {
+    projectId: nordicProjectId,
+    componentTypeId: nordicGlassTypeId,
+    label: `Nordic Glass ${RUN}`,
   });
 });
 
@@ -765,6 +882,190 @@ test("below-3-sides is rejected only when isClosed: true; an open room has no mi
   };
   expect(opened.room.isClosed).toBe(false);
   expect(opened.room.sides).toHaveLength(2);
+});
+
+// ---------------------------------------------------------------------------
+// Item 7 Piece 2 (Configure mode): GET/PATCH /partitions/[id] tenancy +
+// cross-tenant selectionId reference validation + design JSONB round-trip
+// (architect-review-item7.md's mandatory corrections for this route).
+// ---------------------------------------------------------------------------
+
+test("partitions/[id]: tenancy isolation — cross-org GET/PATCH 404, cross-org-slug 403", async () => {
+  // NORDIC cannot read or mutate ACME's partition via its own orgSlug.
+  const crossOrgGet = await nordicPage.request.get(
+    apiUrl(NORDIC, `/api/v1/orgs/${NORDIC}/partitions/${partitionCId}`),
+  );
+  expect(crossOrgGet.status()).toBe(404);
+
+  const crossOrgPatch = await nordicPage.request.patch(
+    apiUrl(NORDIC, `/api/v1/orgs/${NORDIC}/partitions/${partitionCId}`),
+    { data: { label: "Hijacked" } },
+  );
+  expect(crossOrgPatch.status()).toBe(404);
+
+  // ACME's own session hitting NORDIC's orgSlug in the URL 403s at
+  // getApiSession's cross-tenant guard (same pattern as the Room tests
+  // above).
+  const crossSlug = await acmePage.request.get(
+    apiUrl(NORDIC, `/api/v1/orgs/${NORDIC}/partitions/${partitionCId}`),
+  );
+  expect(crossSlug.status()).toBe(403);
+
+  // Sanity: ACME reading its own partition succeeds.
+  const ownGet = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+  );
+  expect(ownGet.status()).toBe(200);
+});
+
+test("PATCH /partitions/[id] design: rejects a selectionId from a different project (same org) and a different org", async () => {
+  const panelId = "panel-x";
+
+  // Same org, different project — must 400, not silently accepted.
+  const crossProjectRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+    {
+      data: {
+        design: {
+          panels: [
+            {
+              id: panelId,
+              type: "glass",
+              widthMm: 1200,
+              heightMm: 2400,
+              selectionId: crossProjectSelectionId,
+            },
+          ],
+        },
+      },
+    },
+  );
+  expect(crossProjectRes.status()).toBe(400);
+
+  // Different org entirely — must also 400.
+  const crossOrgRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+    {
+      data: {
+        design: {
+          panels: [
+            {
+              id: panelId,
+              type: "glass",
+              widthMm: 1200,
+              heightMm: 2400,
+              selectionId: nordicSelectionId,
+            },
+          ],
+        },
+      },
+    },
+  );
+  expect(crossOrgRes.status()).toBe(400);
+
+  // Confirm neither rejected write partially applied — the partition still
+  // has no panels written.
+  const afterRes = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+  );
+  const { partition: after } = (await afterRes.json()) as {
+    partition: { design: { panels?: unknown[] } | null };
+  };
+  expect(after.design?.panels ?? []).toHaveLength(0);
+
+  // Same check on `stops` — a PROFILE_STOP reference to a foreign org must
+  // also be rejected.
+  const crossOrgStopRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+    { data: { design: { stops: { top: nordicSelectionId } } } },
+  );
+  expect(crossOrgStopRes.status()).toBe(400);
+});
+
+test("PATCH /partitions/[id] design: legitimate round-trip persists panels/doors/stops and derives widthMm from panels", async () => {
+  const panelAId = "panel-a";
+  const panelBId = "panel-b";
+
+  const patchRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+    {
+      data: {
+        design: {
+          panels: [
+            {
+              id: panelAId,
+              type: "glass",
+              widthMm: 700,
+              heightMm: 2400,
+              selectionId: glassSelectionId,
+            },
+            {
+              id: panelBId,
+              type: "door",
+              widthMm: 900,
+              heightMm: 2400,
+              selectionId: glassSelectionId,
+              door: {
+                selectionId: doorSelectionId,
+                hinging: "left",
+                outerFrame: { w: 900, h: 2100 },
+              },
+            },
+          ],
+          stops: { top: profileSelectionId, bottom: profileSelectionId },
+        },
+      },
+    },
+  );
+  expect(patchRes.status()).toBe(200);
+  const { partition: patched } = (await patchRes.json()) as {
+    partition: {
+      widthMm: number;
+      design: { panels: { id: string; door?: { selectionId: string } }[]; stops: Record<string, string> };
+    };
+  };
+  // widthMm is DERIVED from sum(panels[].widthMm) — never trusted from the
+  // client (architect-review-item7.md binding correction 4).
+  expect(patched.widthMm).toBe(700 + 900);
+  expect(patched.design.panels).toHaveLength(2);
+  expect(patched.design.panels.find((p) => p.id === panelBId)?.door?.selectionId).toBe(doorSelectionId);
+  expect(patched.design.stops.top).toBe(profileSelectionId);
+  expect(patched.design.stops.bottom).toBe(profileSelectionId);
+
+  // Read back unchanged via a fresh GET.
+  const reReadRes = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+  );
+  const { partition: reRead } = (await reReadRes.json()) as {
+    partition: { widthMm: number; design: { panels: unknown[] } };
+  };
+  expect(reRead.widthMm).toBe(1600);
+  expect(reRead.design.panels).toHaveLength(2);
+
+  // Removing a panel (add/remove/split all go through the same
+  // panels-array PATCH) re-derives widthMm again — confirms it's not a
+  // one-time computation frozen at first write.
+  const removeRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+    {
+      data: {
+        design: {
+          panels: [
+            {
+              id: panelAId,
+              type: "glass",
+              widthMm: 700,
+              heightMm: 2400,
+              selectionId: glassSelectionId,
+            },
+          ],
+        },
+      },
+    },
+  );
+  expect(removeRes.status()).toBe(200);
+  const { partition: afterRemove } = (await removeRes.json()) as { partition: { widthMm: number } };
+  expect(afterRemove.widthMm).toBe(700);
 });
 
 // ---------------------------------------------------------------------------
