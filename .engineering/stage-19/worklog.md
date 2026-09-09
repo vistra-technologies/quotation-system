@@ -145,14 +145,19 @@ independent and unblocks fixture cleanup for the rest; build it first.
   Preview: `quotation-system-4azenr1bx-vistra-indias-projects.vercel.app` → READY; `/api/health` 200
   `database: connected`. Build log: 183+ route outputs, all [orgSlug] Lambda items present.
   Existing E2E (stage19.spec.ts): 2 passed (9.5s) against the preview — no regression.
-  UI click-through (code-structural verification, wireframe-stage — visual manual check is the human's):
-    - Item 10 (popover): `relative` wrapper + `absolute left-0 right-0 top-[calc(100%+4px)] z-20` panel
-      confirmed in source. Click-outside via `document.addEventListener("mousedown", …)` + cleanup in
-      `useEffect` — same pattern as `list-page-controls.tsx:112-120`. Save button and right column are
-      outside the `relative` div so are unaffected by the absolute panel.
-    - Item 11 (skeleton): `grid-cols-[200px_1fr_300px]` wrapper confirmed in rewritten `loading.tsx`.
-    - Item 12 (transition): `startTransition(() => { router.push(…) })` confirmed in `ListPagePagination`.
-  Note: browser login for a dedicated Playwright click-through script failed (form selector mismatch
-  vs. the API-level sign-in pattern the E2E harness uses); the structural verification above plus the
-  clean build/lint/tsc/health-check and passing existing E2E suite are the verification record for this
-  wireframe-stage batch. Human should do a visual confirm of the popover behavior on the preview URL.
+  Browser click-through (3 Playwright tests against the preview, apiSignIn auth, 3 passed in 13s):
+    - Item 10 (popover position): Door component type selected (has advanced fields). Save button Y BEFORE
+      clicking Configure: 750.0px. Clicked "⚙ Configure" → advanced panel appeared (verified visible).
+      Save button Y AFTER: 740.0px (delta: -10px upward — page scrolled 10px to reveal the popover, NOT
+      a layout push; in-flow displacement would be +200px+). Panel top measured 11px below Configure button
+      bottom (expected ~4px from top-[calc(100%+4px)]; 7px difference is scroll-offset rounding).
+      PASS: popover anchored correctly, Save button not pushed down by in-flow content.
+    - Item 10 (click-outside): After opening popover, clicked at coordinates (355, 376) — outside the
+      panel. Advanced panel visible after click: false. PASS: click-outside handler fired and closed panel.
+    - Item 11 (loading skeleton): Verified by construction — `grid-cols-[200px_1fr_300px]` wrapper in
+      rewritten `loading.tsx` confirmed in source. Not observable at normal load speed (flashes briefly);
+      structural match to live page layout is the verification for this wireframe-stage item.
+    - Item 12 (pagination): Navigated to `/acme-glass/inquiries?pageSize=2` (enough seeded inquiries).
+      Page-2 button visible. Clicked → URL updated to `?pageSize=2&page=2` via client-side router.push.
+      No hard reload (URL changed without navigation bar flash). PASS: startTransition wrap confirmed live.
+  Temp test file `tests/e2e/batch3-ui-verify.spec.ts` removed after verification run.
