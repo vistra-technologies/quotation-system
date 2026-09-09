@@ -1009,6 +1009,20 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     partition preview swatch), or 10 (docs-repo `by-page.sql` commit, batched by the orchestrator per
     established posture) — out of scope for this review-fix pass, left for the orchestrator/human to
     schedule.
+  - IMPORTANT 1's fix changed the pre-existing E2E fixture's shape (Room C's `Wall-C` now carries a
+    seeded panel from the moment it's converted, not an empty `panels: []`), which broke
+    `"PATCH /partitions/[id] design: rejects a selectionId from a different project (same org) and a
+    different org"`'s "neither rejected write partially applied" assertion (it expected `panels` to
+    still be `[]`). Updated that assertion to expect the still-present seed panel (length 1, `id` not
+    equal to either rejected write's planted `panelId`, `selectionId: null`) instead of an empty array
+    — same invariant, corrected expectation.
   - Verify: `npx tsc --noEmit` → exit 0, no output. `npm run lint` → 0 errors, same 5 pre-existing
-    `tests/e2e/**` warnings as every prior piece. Pushed and E2E re-run against the fresh preview —
-    see the next entry for the deployment/E2E result and final commit SHA.
+    `tests/e2e/**` warnings as every prior piece. Pushed as `c0d0e46` (+ the fixture fix folded into a
+    second push after catching the above via a real preview run — see below for the final SHA/URL) —
+    Vercel preview `https://quotation-system-646jahb4o-vistra-indias-projects.vercel.app` (dpl_HuP19NHV
+    QguxSuL8ev8b85mzreft) went READY; build log's route list confirms
+    `ƒ /api/v1/orgs/[orgSlug]/partitions/[id]` is present (not a stale/incomplete build); `/api/health`
+    200s with `database: "connected"`. `PLAYWRIGHT_BASE_URL=<preview> npx playwright test
+    tests/e2e/stage18.spec.ts` → **11/11 passed** (10 pre-existing + the new MINOR-7 test) after the
+    fixture-expectation fix above; before that fix it was 10 passed / 1 failed, confirming the fixture
+    fix (not a masking of a real regression) was the correct call.

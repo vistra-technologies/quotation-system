@@ -964,14 +964,19 @@ test("PATCH /partitions/[id] design: rejects a selectionId from a different proj
   expect(crossOrgRes.status()).toBe(400);
 
   // Confirm neither rejected write partially applied — the partition still
-  // has no panels written.
+  // only has its convert-time seed panel (review-item7-piece2 IMPORTANT 1:
+  // plain->partition convert seeds exactly one full-width panel), not the
+  // foreign-project/foreign-org panel either rejected PATCH tried to write.
   const afterRes = await acmePage.request.get(
     apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
   );
   const { partition: after } = (await afterRes.json()) as {
-    partition: { design: { panels?: unknown[] } | null };
+    partition: { design: { panels?: { id: string; selectionId: string | null }[] } | null };
   };
-  expect(after.design?.panels ?? []).toHaveLength(0);
+  const afterPanels = after.design?.panels ?? [];
+  expect(afterPanels).toHaveLength(1);
+  expect(afterPanels[0].id).not.toBe(panelId);
+  expect(afterPanels[0].selectionId).toBeNull();
 
   // Same check on `stops` — a PROFILE_STOP reference to a foreign org must
   // also be rejected.
