@@ -118,3 +118,41 @@ independent and unblocks fixture cleanup for the rest; build it first.
   deleted the feature branch (local + remote). Batch 2 closed (APPROVE-WITH-NITS, 1 MINOR deferred to dev
   discretion — legacy radio-field blank dropdown display, no data-integrity risk). Starting Batch 3
   (Configuration-page UX: anchored popover + two loading-state fixes) next.
+- 2026-09-09 — Developer (batch-3 plan): wrote `.engineering/stage-19/plan-batch3.md`. No deviations from
+  approved scope. Key findings: (1) no existing popover primitive in the repo beyond `company-dropdown.tsx`
+  and `list-page-controls.tsx`'s date-filter — reusing their `relative`/`absolute z-20` CSS-anchored
+  pattern with click-outside for item 10; (2) `configuration/loading.tsx` confirmed as pre-Stage-17
+  list+form skeleton — plan rewrites to 3-column `grid-cols-[200px_1fr_300px]` skeleton; (3)
+  `useTransition` is already imported in `list-page-controls.tsx` line 3, only needs wiring into
+  `ListPagePagination`. Three files total, no new dependencies, no Prisma changes. Ready to build.
+- 2026-09-09 — Developer (batch-3 implement): DONE. All three deliverables built and verified.
+  Files changed (commit 44c94ee on feature/configuration-page-ux):
+    - `app/[orgSlug]/projects/[projectId]/configuration/add-selection-form.tsx` — added `useRef`+`useEffect`
+      click-outside handler (closes `showAdvanced` on mousedown outside `panelRef`). Wrapped the Configure
+      button + advanced-fields conditional in `<div ref={panelRef} className="relative">`. Changed the
+      advanced-fields `<div>` from in-flow to
+      `absolute left-0 right-0 top-[calc(100%+4px)] z-20 … shadow-[…]`. Reused `company-dropdown.tsx`
+      CSS-anchoring pattern. Import line updated: added `useEffect`, `useRef`.
+    - `app/[orgSlug]/projects/[projectId]/configuration/loading.tsx` — full rewrite from old 2-section
+      (selections list + add-form) skeleton to 3-column `grid-cols-[200px_1fr_300px]` skeleton matching
+      the live Stage-17 layout. Left: 4 tile placeholders. Center: heading + label field + 2 field rows
+      (one paired 2-col) + Configure button + Submit button placeholders. Right: 3 saved-component card
+      row placeholders. `animate-pulse` wrapper retained.
+    - `components/list-page-controls.tsx` — `ListPagePagination`: added `const [, startTransition] =
+      useTransition()` (import already on line 3). Wrapped `router.push` in `startTransition(…)`.
+      Added `startTransition` to `useCallback` dep array.
+  Static: `npm run lint` (exit 0) + `npx tsc --noEmit` (clean, no output).
+  Preview: `quotation-system-4azenr1bx-vistra-indias-projects.vercel.app` → READY; `/api/health` 200
+  `database: connected`. Build log: 183+ route outputs, all [orgSlug] Lambda items present.
+  Existing E2E (stage19.spec.ts): 2 passed (9.5s) against the preview — no regression.
+  UI click-through (code-structural verification, wireframe-stage — visual manual check is the human's):
+    - Item 10 (popover): `relative` wrapper + `absolute left-0 right-0 top-[calc(100%+4px)] z-20` panel
+      confirmed in source. Click-outside via `document.addEventListener("mousedown", …)` + cleanup in
+      `useEffect` — same pattern as `list-page-controls.tsx:112-120`. Save button and right column are
+      outside the `relative` div so are unaffected by the absolute panel.
+    - Item 11 (skeleton): `grid-cols-[200px_1fr_300px]` wrapper confirmed in rewritten `loading.tsx`.
+    - Item 12 (transition): `startTransition(() => { router.push(…) })` confirmed in `ListPagePagination`.
+  Note: browser login for a dedicated Playwright click-through script failed (form selector mismatch
+  vs. the API-level sign-in pattern the E2E harness uses); the structural verification above plus the
+  clean build/lint/tsc/health-check and passing existing E2E suite are the verification record for this
+  wireframe-stage batch. Human should do a visual confirm of the popover behavior on the preview URL.
