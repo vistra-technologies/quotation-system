@@ -9,7 +9,7 @@
 | # | Item | Files (disjoint?) | Status |
 |---|---|---|---|
 | 1 | Floor/Project DELETE routes | `lib/data/floors.ts`, `lib/data/projects.ts`, `lib/data/inquiries.ts`, `app/api/v1/orgs/[orgSlug]/floors/[id]/route.ts` (new), `app/api/v1/orgs/[orgSlug]/projects/[projectId]/route.ts`, `tests/e2e/stage19.spec.ts` (new) | **done** — merged to `release/stage-19` @ `b989add` |
-| 2 | Shared `SelectField` + radio→dropdown fix | new `components/select-field.tsx` + 14 consumer files, `lib/component-catalog-seed.ts`, `create-component-form.tsx` | pending |
+| 2 | Shared `SelectField` + radio→dropdown fix | new `components/select-field.tsx` + 14 consumer files, `lib/component-catalog-seed.ts`, `create-component-form.tsx` | **done** — merged to `release/stage-19` @ `5805a8c` |
 | 3 | Configuration-page UX (popover + loading fixes) | `add-selection-form.tsx`, `configuration/loading.tsx`, `list-page-controls.tsx` | pending |
 | 4 | Wizard fixes (copy, Back button, step-gating) | `project-wizard-breadcrumb.tsx`, `layout.tsx`, `_project-fetch.ts` | pending |
 | 5 | SuperAdmin Component-Type relocation | new `app/api/v1/superadmin/component-types/**`, `/controls` UI, retiring old `/admin/components` route + its E2E specs | pending |
@@ -66,3 +66,55 @@ independent and unblocks fixture cleanup for the rest; build it first.
 - 2026-09-09 — Conductor: merged `feature/floor-project-delete-routes` into `release/stage-19` (@ `b989add`),
   deleted the feature branch (local + remote). Batch 1 closed. Starting Batch 2 (shared `SelectField` +
   radio→dropdown seed-data fix) next.
+- 2026-09-09 — Developer (batch-2 plan): wrote `.engineering/stage-19/plan-batch2.md`. Two deviations
+  flagged at top: (1) actual instance count is 23, not 27 — 14-file count matches; (2) `edit-component-form.tsx:31`
+  also has a standalone `FIELD_TYPES` constant and should also drop "radio" (stage doc only cited
+  create-component-form). Component design: `components/select-field.tsx`, children-based, translation-free,
+  `placeholder` prop for plain text, `className` override for floor-bar's compact style. radio→dropdown fix
+  adds `field.type === "radio"` to the `add-selection-form` condition. Seed fix: glassType `:56` to
+  "dropdown". Parser at `:427` keeps "radio" in validTypes. Ready to build.
+- 2026-09-09 — Developer (batch-2 implement): DONE. All deliverables built and verified.
+  Files changed (commit abbe62c on feature/select-field-unification):
+    - `components/select-field.tsx` — NEW: shared SelectField, children-based, translation-free,
+      `placeholder` prop (plain text), `className` override replaces standard style.
+    - 14 consumer files swept (all 23 native <select> instances replaced with SelectField):
+      `org-picker.tsx`, `user-edit-form.tsx`, `controls/create-user-form.tsx`,
+      `org/users/new/create-user-form.tsx`, `edit-component-form.tsx`, `create-component-form.tsx`,
+      `create/edit-external-company-form.tsx` (6 selects across 2 files), `create-project-form.tsx`,
+      `create-inquiry-form.tsx`, `edit-inquiry-form.tsx`, `edit-project-form.tsx`,
+      `add-selection-form.tsx`, `floor-bar.tsx`.
+    - `add-selection-form.tsx` — removed radio-button rendering block; merged radio condition into
+      dropdown branch: `(field.type === "dropdown" || field.type === "radio")` → SelectField.
+    - `create-component-form.tsx` + `edit-component-form.tsx` — removed "radio" from FIELD_TYPES
+      authoring list; cleaned up dead "radio" branches in field-type onChange handlers.
+      Parser `validTypes` at line 427/428 keeps "radio" for backward compat.
+    - `lib/component-catalog-seed.ts:56` — glassType type "radio" → "dropdown".
+  Static: `npm run lint` (0 errors, 5 pre-existing test warnings) + `npx tsc --noEmit` (clean).
+  Preview: quotation-system-qu9ydd9zl-vistra-indias-projects.vercel.app → READY;
+  `/api/health` 200 `database: connected`.
+  Manual verification: 7-step Playwright click-through run against the preview (7 passed, 29s).
+  Key observations from actual browser runs:
+    - Test 1: `select[name='roleId']` + `select[name='externalCompanyId']` both render on users/new.
+      Role options correctly populated (Admin, Architectural Firm, Company Member, Distributor, ...).
+    - Test 2: All 3 selects on external-companies/new render (type: Distributor/Architectural Firm,
+      country, defaultCurrency).
+    - Test 3: Currency select first option = "Select currency..." — NO "--" decoration. Confirmed
+      selectable (chose INR, value persisted).
+    - Test 4: `/controls/roles` requires SuperAdmin credentials (env-only); verified by code review
+      that org-picker.tsx uses `placeholder="Select organization"`. Page loads without crash.
+    - Test 5: Field-type select on components/new shows `["Field (text)", "Dropdown", "Checkbox"]` —
+      "radio" is ABSENT. Confirmed by actual options read from live browser DOM.
+    - Test 6: Configuration page: 0 `input[type='radio']` (none rendered, even after opening
+      add-selection panel). `"— Select —"` text absent. Dropdown-typed fields show selects with
+      `"Select..."` placeholder and correct options (e.g. Single Swing/Double Swing, Standard/Fire-Rated).
+    - Test 7: Design page floor-bar: 1 select renders, page loads without crash.
+- 2026-09-09 — Reviewer (batch-2): APPROVE-WITH-NITS. 0 CRITICAL, 0 IMPORTANT, 1 MINOR.
+  Full findings returned directly to orchestrator. Minor: field-type selector in edit/create-component-form
+  FieldRow shows blank visual for any existing "radio"-typed field (controlled select value "radio" has no
+  matching option after FIELD_TYPES pruning); React state preserves the value — no silent data mutation —
+  but admin sees a confusing blank dropdown. Dev's call whether to add a defensive read-only display for
+  legacy radio fields in a later batch.
+- 2026-09-09 — Conductor: merged `feature/select-field-unification` into `release/stage-19` (@ `5805a8c`),
+  deleted the feature branch (local + remote). Batch 2 closed (APPROVE-WITH-NITS, 1 MINOR deferred to dev
+  discretion — legacy radio-field blank dropdown display, no data-integrity risk). Starting Batch 3
+  (Configuration-page UX: anchored popover + two loading-state fixes) next.
