@@ -1296,3 +1296,37 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   0 IMPORTANT / 0 MINOR). All 3 round-1 findings confirmed resolved; `npm run lint` 0 errors and
   `npx tsc --noEmit` 0 errors re-verified by me. Report: `review-test-fix-1-round2.md`. Ready to merge
   into `release/stage-18` and re-test.
+
+- **2026-09-09 · tester · `engineering:test` re-test pass (against `test.easeetool.com`, `staging` @
+  `afa9299`) — verdict: PASS.** 0 CRITICAL/MAJOR/MINOR. Re-verified all 3 GATE D-signed-off findings from
+  `bugs-test-1.md` via a real browser-driven Playwright click-through (screenshots reviewed), not code
+  trace — the first pass this stage with a genuine browser tool available: (1) MAJOR — zero-floor project's
+  Design page now shows the floor `<select>`/"＋ Floor" control and a full create-first-floor flow works
+  end-to-end; (2) MINOR — Configure mode's back button, clicked immediately after entering with no other
+  mutation, correctly restores the wall-bar's summary panel (not the default hint); (3) MINOR — a long
+  partition name truncates with an ellipsis, carries a `title=` tooltip, and the layout-width regression the
+  first patch introduced is also confirmed fixed (`ConfigureMode`'s root now fills its flex parent's content
+  width proportionally at multiple viewports, not shrink-to-fit collapsed). `npm run lint` (0 errors, 5
+  pre-existing warnings) and `npx tsc --noEmit` (0 errors) re-confirmed locally. `/api/health` → 200
+  connected. `tests/e2e/stage18.spec.ts` — **13/13 passed**, no regressions. Test data (5 throwaway
+  `RETEST-item7-*` projects/floors/rooms created to drive the click-through) had all rooms deleted via the
+  API; the parent floors and projects themselves can't be deleted (no `DELETE` route for either — re-flags
+  the same known gap from Item 4/`bugs-test-1.md`, not new). No product/test code left behind — `git status
+  --short` clean. Full report: `.engineering/stage-18/bugs-test-2.md`.
+
+- **2026-09-09 · orchestrator · `engineering:deploy` — GATE E approved, merged to `master`.** Human
+  confirmed the one schema change in scope (migration `20260909000001_rooms_restructure`, destructive
+  clean-break, authorized since production carried no real Floor/Partition data) and approved production
+  deploy. `release/stage-18` merged into `master` (merge commit `0396d2a`; `release/stage-18` and `staging`
+  were identical — 0 diff — at merge time). devops-verified deploy: `dpl_6bg5QuHT6T4rNDDVKWZficct6otY`
+  READY, migration confirmed applied from build log, all expected routes present (design page,
+  `rooms`/`rooms/[id]`/`rooms/[id]/sides`, `partitions`/`partitions/[id]`), `/api/health` → 200 connected.
+  Post-deploy `engineering:regression` against `https://easeetool.com` — **PASS**: E2E suite deliberately
+  not run blind against prod (no `Floor`/`Project` DELETE route exists, would leave permanent orphans);
+  instead spot-checked the same invariants via `curl` against real seeded orgs (default 4-side room shape,
+  PLAIN→PARTITION convert, cascade delete, zero-floor add-first-floor fix reconfirmed live), tenancy
+  isolation on the new routes (403 cross-tenant, no cross-org data leak), and pre-existing pages
+  (projects/inquiries/catalog/`/controls`/subdomain routing/session cookie) all clean. One pre-existing,
+  non-blocking gap reconfirmed (not new): no `Floor`/`Project` delete route — 1 orphaned test `Floor`
+  (`e2e-tester-floor`, id `30e9bf73-65bd-467a-a3fb-63bbfbb6817c`, org `acme-glass`) left in production.
+  Stage 18 (items 1-4 + item 7) is now live at `easeetool.com`.
