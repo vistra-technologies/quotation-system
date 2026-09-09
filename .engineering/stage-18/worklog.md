@@ -812,7 +812,7 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     — deferred to post-merge visual QA), MINOR 10 (partition-cache dedup — only if Piece 2 touches it).
   - Verify: `npx tsc --noEmit` → exit 0. `npm run lint` → 0 errors, 5 warnings, all pre-existing and in
     `tests/e2e/**` (identical baseline to the review). Pushed `feature/design-canvas`, polled Vercel to
-    `READY` for commit `<FILL-IN-SHA>`, `/api/health` 200 with `database: "connected"`.
+    `READY` for commit `4a0b48f`, `/api/health` 200 with `database: "connected"`.
   - Files: `convert-side-form.tsx`, `design-workspace.tsx`, `room-list.tsx`, new `room-name-input.tsx`,
     `messages/en.json`.
   - Status: DONE.
