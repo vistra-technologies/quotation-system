@@ -8,7 +8,7 @@
 
 | # | Item | Files (disjoint?) | Status |
 |---|---|---|---|
-| 1 | Floor/Project DELETE routes | `lib/data/floors.ts`, `lib/data/projects.ts`, `lib/data/inquiries.ts`, `app/api/v1/orgs/[orgSlug]/floors/[id]/route.ts` (new), `app/api/v1/orgs/[orgSlug]/projects/[projectId]/route.ts`, `tests/e2e/stage19.spec.ts` (new) | pending |
+| 1 | Floor/Project DELETE routes | `lib/data/floors.ts`, `lib/data/projects.ts`, `lib/data/inquiries.ts`, `app/api/v1/orgs/[orgSlug]/floors/[id]/route.ts` (new), `app/api/v1/orgs/[orgSlug]/projects/[projectId]/route.ts`, `tests/e2e/stage19.spec.ts` (new) | **done** — merged to `release/stage-19` @ `b989add` |
 | 2 | Shared `SelectField` + radio→dropdown fix | new `components/select-field.tsx` + 14 consumer files, `lib/component-catalog-seed.ts`, `create-component-form.tsx` | pending |
 | 3 | Configuration-page UX (popover + loading fixes) | `add-selection-form.tsx`, `configuration/loading.tsx`, `list-page-controls.tsx` | pending |
 | 4 | Wizard fixes (copy, Back button, step-gating) | `project-wizard-breadcrumb.tsx`, `layout.tsx`, `_project-fetch.ts` | pending |
@@ -63,3 +63,6 @@ independent and unblocks fixture cleanup for the rest; build it first.
   all three outcomes with no ambiguous state; flag combination `(false, true)` is structurally unreachable.
   No new issues introduced. Previously-approved items (deleteFloor, RBAC, E2E tests, by-page.sql) spot-
   checked intact. Batch 1 is clean and ready to merge.
+- 2026-09-09 — Conductor: merged `feature/floor-project-delete-routes` into `release/stage-19` (@ `b989add`),
+  deleted the feature branch (local + remote). Batch 1 closed. Starting Batch 2 (shared `SelectField` +
+  radio→dropdown seed-data fix) next.
