@@ -366,7 +366,7 @@ export function DesignWorkspace({
             // ConfigureMode bubbles up to this wrapper's background-click-to-
             // deselect handler and immediately clobbers the
             // layoutSideSelection that backFromConfigureMode() just restored.
-            <div onClick={(e) => e.stopPropagation()}>
+            <div className="flex w-full max-w-2xl flex-col" onClick={(e) => e.stopPropagation()}>
               {activePartition ? (
                 <ConfigureMode
                   partition={activePartition}

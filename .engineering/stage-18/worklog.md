@@ -1214,3 +1214,76 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   overflowing without ellipsis handling). Re-entering `engineering:implement` Step 4 on
   `feature/item7-test-fixes` (cut from `release/stage-18`) to fix. Will re-run the tester once fixes are
   review-clean.
+
+- **2026-09-09 — developer — Item 7 test-fix round (`bugs-test-1.md` GATE D fixes).** All 3 signed-off
+  findings fixed on `feature/item7-test-fixes`:
+  - **MAJOR** (`design-workspace.tsx`): removed the `floors.length === 0` gate around the entire left
+    rail; `<FloorBar>` now always renders (matches `renderFloorBar()`'s unconditional call in the
+    mockup) — the room-list section alone stays gated on a selected floor. A zero-floor project can now
+    add its first floor directly from the Design page.
+  - **MINOR (back button)** — traced the real root cause rather than re-asserting the report's
+    uncertainty: `backFromConfigureMode()` genuinely does restore `layoutSideSelection` correctly, as
+    its code comment claims — that part was never broken. The actual bug is event bubbling: the center
+    column's outer wrapper has a background-click-to-deselect `onClick`; the Layout-mode branch already
+    guards it with `stopPropagation`, but the Configure-mode branch didn't, so clicking Configure mode's
+    back button bubbled up and immediately re-cleared the selection `backFromConfigureMode()` had just
+    set. Confirmed this is real and isolated (not an Add-Panel-interaction artifact) — fixed by adding
+    the same `stopPropagation` wrapper the Layout-mode branch already uses.
+  - **MINOR (long names)**: `room-name-input.tsx`'s input and `floor-bar.tsx`'s `<select>` now truncate
+    with `text-overflow: ellipsis` (Tailwind `truncate`) and carry a `title=` attribute for hover
+    discoverability.
+  - Reused: existing `stopPropagation` pattern already in the Layout-mode branch (no new pattern
+    introduced); `FloorBar`/`RoomList` components used as-is, no changes to their own logic.
+  - Plan: `.engineering/stage-18/plan-item7-test-fixes.md`.
+  - **Verify**: `npm run lint` → 0 errors, same 5 pre-existing `tests/e2e/**` warnings. `npx tsc
+    --noEmit` → 0 errors. Pushed `a2edfb0` to `feature/item7-test-fixes`
+    (`https://quotation-system-3satydwfm-vistra-indias-projects.vercel.app`); polled to `READY`; build
+    log confirms `Cloning … Commit: a2edfb0` (exact SHA, not stale) and the route list includes
+    `ƒ /[orgSlug]/projects/[projectId]/design` and `ƒ /api/health`. `/api/health` → 200,
+    `database: "connected"`. `PLAYWRIGHT_BASE_URL=<preview> npx playwright test tests/e2e/stage18.spec.ts`
+    → **13/13 passed** (29.4s) — no regressions, as expected (none of these 3 fixes touch data-layer/API
+    behavior).
+  - **No browser tool available this session** (same constraint every prior Item 7 piece hit, stated
+    plainly rather than approximated) — the zero-floors and back-button fixes were verified via careful
+    code trace (cited above) plus the passing E2E suite for the data layer, not a live click-through.
+    Both fixes are small, mechanical, and structurally match already-working sibling code paths
+    (`FloorBar`'s own empty-array handling; the Layout-mode branch's existing `stopPropagation`), so the
+    trace is high-confidence, but a real browser pass on `test.easeetool.com` during the next
+    `engineering:test` run is still the way to close this out for certain.
+  - No BLOCKED items. Branch `feature/item7-test-fixes` ready for review/merge decision.
+
+- **2026-09-09 — reviewer — Item 7 test-fix round 1 review (`feature/item7-test-fixes` @ `a2edfb0`).**
+  Verdict **CHANGES-NEEDED** — 0 CRITICAL, 1 IMPORTANT, 2 MINOR. Independently verified the dev's claims
+  rather than trusting them: `npm run lint` 0 errors (same 5 pre-existing `tests/e2e/**` warnings),
+  `npx tsc --noEmit` 0 errors, preview `/api/health` 200 `database: "connected"`, and re-ran
+  `tests/e2e/stage18.spec.ts` against the preview myself — 13/13 passed. No scope creep. MAJOR fix
+  (unconditional `FloorBar`) is correct and traced end-to-end through first-floor creation; the
+  back-button root-cause claim (Configure-mode branch missing the Layout branch's `stopPropagation`)
+  holds up under scrutiny and does not over-stop — `ConfigureMode` owns its own background-deselect
+  handler below the new wrapper. Blocking item is the wrapper itself: it has no `className`, so
+  `ConfigureMode`'s `w-full max-w-2xl` now resolves against a shrink-to-fit box instead of the centre
+  column. One-line fix. Full report: `.engineering/stage-18/review-test-fix-1.md`.
+
+- **2026-09-09 — developer — Item 7 test-fix round 2 (review findings from `review-test-fix-1.md`).**
+  Addressed all 3 findings on `feature/item7-test-fixes`:
+  - **[IMPORTANT-1] fixed** — `design-workspace.tsx:369`'s Configure-mode wrapper `<div>` now carries
+    `className="flex w-full max-w-2xl flex-col"` (matching the Layout-mode branch's own wrapper pattern
+    at L386), restoring the sizing context `ConfigureMode`'s `w-full max-w-2xl` root needs. The
+    `stopPropagation` from the round-1 back-button fix stayed on the same element, unchanged.
+  - **[MINOR-1] fixed** — `configure-mode.tsx`'s partition-name input (~L271, the exact input the
+    original bug report named) now has `truncate` + `title={nameValue}`, matching the treatment already
+    applied to `room-name-input.tsx` and `floor-bar.tsx` last round.
+  - **[MINOR-2] fixed** — confirmed `max-w-[220px]` on `room-name-input.tsx`'s input was genuinely
+    inert (no `size`/explicit width on the input, so its UA-default intrinsic width is already under
+    220px) and removed it; `truncate` + `title` do the real work.
+  - Reused: the Layout-mode branch's existing wrapper pattern (`design-workspace.tsx:386`) as the exact
+    template for the IMPORTANT-1 fix; `room-name-input.tsx`'s `truncate`/`title` pattern as the template
+    for MINOR-1. No new patterns introduced.
+  - **Verify**: `npm run lint` → 0 errors, same 5 pre-existing `tests/e2e/**` warnings. `npx tsc
+    --noEmit` → 0 errors, clean.
+  - Not flagged as new scope: reviewer explicitly said a full re-review isn't needed for a fix this
+    targeted — just confirming the 3 changed lines is correct, which was straightforward to verify by
+    reading (className mirrors an already-reviewed sibling branch verbatim; truncate/title mirrors an
+    already-reviewed sibling input verbatim; the max-w removal is a pure deletion with no behavior
+    change).
+  - No BLOCKED items. Push/Vercel-poll/e2e-rerun details below this entry once complete.

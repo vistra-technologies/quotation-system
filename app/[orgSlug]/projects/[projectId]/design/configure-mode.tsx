@@ -277,7 +277,8 @@ export function ConfigureMode({
             if (e.key === "Enter") e.currentTarget.blur();
             else if (e.key === "Escape") setNameValue(partition.label);
           }}
-          className="rounded-sm border border-transparent bg-transparent px-1 py-0.5 text-base font-extrabold text-text-heading hover:border-border focus:border-primary focus:bg-bg-white focus:outline-none"
+          title={nameValue}
+          className="truncate rounded-sm border border-transparent bg-transparent px-1 py-0.5 text-base font-extrabold text-text-heading hover:border-border focus:border-primary focus:bg-bg-white focus:outline-none"
         />
         <span className="rounded-pill border border-primary-soft bg-primary-softer px-2.5 py-0.5 text-[11px] font-semibold text-primary-dark">
           {floorLabel} · {roomLabel}

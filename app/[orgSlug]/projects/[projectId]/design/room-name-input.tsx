@@ -92,7 +92,7 @@ export function RoomNameInput({ orgSlug, isSubdomain, room, onRenamed }: RoomNam
           }
         }}
         title={value}
-        className="max-w-[220px] truncate rounded-sm border border-transparent bg-transparent px-1 py-0.5 text-base font-extrabold text-text-heading hover:border-border focus:border-primary focus:bg-bg-white focus:outline-none"
+        className="truncate rounded-sm border border-transparent bg-transparent px-1 py-0.5 text-base font-extrabold text-text-heading hover:border-border focus:border-primary focus:bg-bg-white focus:outline-none"
       />
       {error && <p className="px-1 text-[10.5px] text-red-700 dark:text-red-400">{error}</p>}
     </div>
