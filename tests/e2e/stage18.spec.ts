@@ -251,6 +251,29 @@ test.beforeAll(async ({ browser }) => {
   partitionCId = convertedC.sides[0].partitionId!;
   expect(partitionCId).toBeTruthy();
 
+  // Convert seeds design.panels with exactly one full-width panel matching
+  // the side's own dimensions (review-item7-piece2-round2.md MINOR 4 — the
+  // existing "neither rejected write partially applied" assertions further
+  // down only prove a seed panel EXISTS, never that its dimensions actually
+  // match Partition.widthMm/heightMm, which is the invariant IMPORTANT 1 was
+  // about).
+  const seedRes = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+  );
+  expect(seedRes.status()).toBe(200);
+  const { partition: seeded } = (await seedRes.json()) as {
+    partition: {
+      widthMm: number;
+      heightMm: number;
+      design: { panels: { widthMm: number; heightMm: number }[] } | null;
+    };
+  };
+  expect(seeded.widthMm).toBe(1200);
+  expect(seeded.design?.panels).toHaveLength(1);
+  expect(seeded.design?.panels[0].widthMm).toBe(1200);
+  expect(seeded.design?.panels[0].widthMm).toBe(seeded.widthMm);
+  expect(seeded.design?.panels[0].heightMm).toBe(seeded.heightMm);
+
   // ComponentTypes are org-seeded (lib/component-catalog-seed.ts): one
   // "Glass Partitions" category with GLASS/DOOR/PROFILE_STOP codes.
   async function componentTypeId(page: Page, orgSlug: string, code: string): Promise<string> {
@@ -1145,6 +1168,92 @@ test("PATCH /partitions/[id] design: server-side merge preserves measurements/st
   expect(spoofRes.status()).toBe(200);
   const { partition: spoofed } = (await spoofRes.json()) as { partition: { widthMm: number } };
   expect(spoofed.widthMm).toBe(500);
+});
+
+test("PATCH /partitions/[id] design: a heightMm-only PATCH (no design key) still normalizes stored panels/doors", async () => {
+  // review-item7-piece2-round2.md MINOR 1: the app's own UI never sends
+  // heightMm without design.panels, but the API itself must not leave stale
+  // panels[].heightMm/door.outerFrame.h behind for a caller that does.
+  const panelId = "panel-height-only";
+  const seedRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+    {
+      data: {
+        heightMm: 2400,
+        design: {
+          panels: [
+            {
+              id: panelId,
+              type: "door",
+              widthMm: 900,
+              heightMm: 2400,
+              selectionId: glassSelectionId,
+              door: { selectionId: doorSelectionId, hinging: "left", outerFrame: { w: 900, h: 2300 } },
+            },
+          ],
+        },
+      },
+    },
+  );
+  expect(seedRes.status()).toBe(200);
+
+  // Shrink the wall with NO `design` key in the body at all.
+  const heightOnlyRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+    { data: { heightMm: 2000 } },
+  );
+  expect(heightOnlyRes.status()).toBe(200);
+  const { partition: afterHeightOnly } = (await heightOnlyRes.json()) as {
+    partition: {
+      heightMm: number;
+      design: { panels: { id: string; heightMm: number; door?: { outerFrame?: { w: number; h: number } } }[] };
+    };
+  };
+  expect(afterHeightOnly.heightMm).toBe(2000);
+  // The panel's own heightMm and the door's outerFrame.h are re-normalized
+  // to the new wall height (not left at the pre-shrink 2400/2300) — same
+  // class of drift correction 3 already closes for widthMm, extended here to
+  // the heightMm-only path.
+  expect(afterHeightOnly.design.panels[0].heightMm).toBe(2000);
+  expect(afterHeightOnly.design.panels[0].door?.outerFrame?.h).toBe(2000);
+  expect(afterHeightOnly.design.panels[0].door?.outerFrame?.w).toBe(900);
+});
+
+test("PATCH /rooms/[id]: room rename round-trips and is visible on a fresh read", async () => {
+  // review-item7-piece1-round2.md MINOR 4: the rename route
+  // (app/api/v1/orgs/[orgSlug]/rooms/[id]/route.ts) was built under Item 2
+  // but had zero callers/tests until this piece wired room-name-input.tsx to
+  // it — a user-facing path deserves a data-correctness E2E, not just manual
+  // QA.
+  const newLabel = `Room C renamed ${RUN}`;
+  const renameRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/rooms/${roomCId}`),
+    { data: { label: newLabel } },
+  );
+  expect(renameRes.status()).toBe(200);
+  const { room: renamed } = (await renameRes.json()) as { room: { id: string; label: string } };
+  expect(renamed.label).toBe(newLabel);
+
+  const readRes = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/rooms?floorId=${floorId}`),
+  );
+  const { rooms: readRooms } = (await readRes.json()) as { rooms: { id: string; label: string }[] };
+  expect(readRooms.find((r) => r.id === roomCId)?.label).toBe(newLabel);
+
+  // A duplicate label on the same floor is a 400 (same mapping createRoom's
+  // POST route already uses for this collision), not an unhandled 500, and
+  // the room's label is unchanged afterward (review-item7-piece1-round2.md
+  // MINOR 1 — renameRoom() previously had no P2002 catch at all).
+  const dupRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/rooms/${roomCId}`),
+    { data: { label: `Room A ${RUN}` } },
+  );
+  expect(dupRes.status()).toBe(400);
+  const readAfterDupRes = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/rooms?floorId=${floorId}`),
+  );
+  const { rooms: readAfterDup } = (await readAfterDupRes.json()) as { rooms: { id: string; label: string }[] };
+  expect(readAfterDup.find((r) => r.id === roomCId)?.label).toBe(newLabel);
 });
 
 // ---------------------------------------------------------------------------

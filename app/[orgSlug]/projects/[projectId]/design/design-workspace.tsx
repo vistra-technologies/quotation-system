@@ -45,11 +45,13 @@ interface DesignWorkspaceProps {
  * (room-floor-plan.tsx, layout-mode-panel.tsx, convert-side-form.tsx) share
  * one unit toggle.
  *
- * Piece 1 (plan-item7.md) — viewMode can only reach 'empty' | 'layout' here;
- * 'configure' is wired into the ViewMode type (types.ts) for Piece 2 to
- * extend into without a signature change, but no Configure-mode UI exists
- * yet — "Configure Partition ->" in layout-mode-panel.tsx is an inert
- * affordance until then.
+ * `viewMode` reaches all 3 states ('empty' | 'layout' | 'configure') as of
+ * Piece 2 — Configure mode (partition/panel/door/edge editing) is wired via
+ * `enterConfigureMode`/`backFromConfigureMode`, `mutatePartition()`
+ * (re-read-before-write transport, shared by `ConfigureMode` and
+ * `SavedComponentsRail`), and the `activePartition`/`configureSelection`
+ * state below. "Configure Partition →" in `layout-mode-panel.tsx` is live,
+ * not the Piece-1-era inert affordance this comment used to describe.
  */
 export function DesignWorkspace({
   orgSlug,

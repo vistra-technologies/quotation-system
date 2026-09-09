@@ -25,7 +25,9 @@ export const dynamic = "force-dynamic";
  *
  * Returns 200 with the updated room on success.
  * Returns 404 when the room is not found in the session's org.
- * Returns 400 on invalid body (label missing).
+ * Returns 400 on invalid body (label missing) or a duplicate label on the
+ * same floor (@@unique([floorId, label]), same mapping createRoom's POST
+ * route already uses for the identical collision).
  */
 export async function PATCH(
   request: Request,
@@ -66,6 +68,14 @@ export async function PATCH(
     }
     return NextResponse.json({ room });
   } catch (err) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as { code: string }).code === "DUPLICATE_ROOM_LABEL"
+    ) {
+      return apiBadRequest(err instanceof Error ? err.message : "Invalid request");
+    }
     console.error("[PATCH /api/v1/orgs/[orgSlug]/rooms/[id]] renameRoom", err);
     return apiServerError();
   }

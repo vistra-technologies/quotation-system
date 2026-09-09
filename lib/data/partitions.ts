@@ -229,13 +229,17 @@ export async function updatePartition(
   if (patch.label !== undefined) data.label = patch.label;
   if (patch.heightMm !== undefined) data.heightMm = patch.heightMm;
 
+  const previousDesign = (existing.design as PartitionDesign | null) ?? {};
+  let nextDesign: PartitionDesign = previousDesign;
+  let designChanged = false;
+
   if (patch.design !== undefined) {
     // Preserve documented keys this UI pass doesn't render/write
     // (measurements, distribution) rather than dropping them on a partial
     // write — merge onto whatever's already stored, only overwriting the
     // keys actually present in the patch.
-    const previousDesign = (existing.design as PartitionDesign | null) ?? {};
-    const nextDesign: PartitionDesign = { ...previousDesign };
+    nextDesign = { ...previousDesign };
+    designChanged = true;
     if (patch.design.stops !== undefined) nextDesign.stops = patch.design.stops;
     if (patch.design.panels !== undefined) nextDesign.panels = patch.design.panels;
     if (patch.design.measurements !== undefined) nextDesign.measurements = patch.design.measurements;
@@ -278,27 +282,43 @@ export async function updatePartition(
     // item7.md binding correction 4).
     if (patch.design.panels !== undefined) {
       data.widthMm = nextDesign.panels!.reduce((sum, p) => sum + p.widthMm, 0);
+    }
+  }
 
-      // Normalize panels[].heightMm and door.outerFrame.w to the
-      // partition's own current dimensions rather than trusting whatever
-      // the client sent — the same class of drift correction 3 already
-      // applies to widthMm. A height edit, width rescale, or split can
-      // otherwise leave stale values with no visible symptom today, but
-      // garbage input for the future BOQ engine (review-item7-piece2
-      // IMPORTANT 3).
-      const effectiveHeightMm = patch.heightMm ?? existing.heightMm;
-      nextDesign.panels = nextDesign.panels!.map((p) => {
+  // Normalize panels[].heightMm and door.outerFrame.{w,h} to the
+  // partition's own current dimensions whenever EITHER the height OR the
+  // panel array changes — not only when both arrive in the same PATCH.
+  // A heightMm-only PATCH (no `design` key at all) used to leave every
+  // stored panels[].heightMm/door.outerFrame.h at the old value: reachable
+  // only from an API caller, not the app's own UI (which always sends
+  // `design.panels` alongside a height change), but still the same class
+  // of drift correction 3 already closes for widthMm
+  // (review-item7-piece2-round2.md MINOR 1). Door height is now clamped to
+  // the effective wall height, not just defaulted, so a shrink can't leave
+  // an oversized door on record.
+  if (
+    (patch.heightMm !== undefined || patch.design?.panels !== undefined) &&
+    (nextDesign.panels?.length ?? 0) > 0
+  ) {
+    const effectiveHeightMm = patch.heightMm ?? existing.heightMm;
+    nextDesign = {
+      ...nextDesign,
+      panels: nextDesign.panels!.map((p) => {
         const normalized: DesignPanel = { ...p, heightMm: effectiveHeightMm };
         if (normalized.door) {
+          const priorH = normalized.door.outerFrame?.h ?? effectiveHeightMm;
           normalized.door = {
             ...normalized.door,
-            outerFrame: { w: normalized.widthMm, h: normalized.door.outerFrame?.h ?? effectiveHeightMm },
+            outerFrame: { w: normalized.widthMm, h: Math.min(priorH, effectiveHeightMm) },
           };
         }
         return normalized;
-      });
-    }
+      }),
+    };
+    designChanged = true;
+  }
 
+  if (designChanged) {
     data.design = nextDesign as unknown as Prisma.InputJsonValue;
   }
 

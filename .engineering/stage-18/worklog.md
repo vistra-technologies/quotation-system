@@ -1030,3 +1030,116 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     tests/e2e/stage18.spec.ts` → **11/11 passed** (10 pre-existing + the new MINOR-7 test).
   - **Final commit SHA for this round: `613dfe0`.** Branch `feature/design-canvas` pushed; ready for
     the next review pass or merge decision per the orchestrator.
+
+- **2026-09-09 · reviewer · Item 7 Piece 2 round 2 (`613dfe0`) — APPROVE-WITH-NITS.** Re-traced
+  `ff571e4..613dfe0` in code: all 3 round-1 IMPORTANTs genuinely fixed (seed panel written in the convert
+  transaction with a width consistent with `Partition.widthMm`; add/split inherit `selectionId` with a
+  real all-panels-agree check; height/door-frame normalization uses the just-patched height and covers
+  every UI write path), the changed E2E assertion is a legitimate consequence of the seed rather than a
+  weakened invariant, and all 7 architect corrections are untouched. `tsc` exit 0, `lint` 0 errors / 5
+  pre-existing warnings — re-run, not taken on faith. **0 CRITICAL · 0 IMPORTANT · 5 MINOR** (heightMm-only
+  PATCH skips normalization; `by-page.sql` now wrong about the convert op; seed-on-convert undocumented;
+  no test on the seed's dimensions; rail busy/error i18n + stale-error nits) — 2 and 3 belong in Piece 3's
+  docs sync. Full report: `.engineering/stage-18/review-item7-piece2-round2.md`.
+
+- **2026-09-09 · developer · Item 7 Piece 3 (polish, closes out Item 7).** Full audit + the deferred
+  round-2 cleanup, per `plan-item7.md`'s own Piece 3 scope.
+  - **Unit-toggle propagation audit — found already clean.** Walked every length/dimension display and
+    input across `design/**` (floor-plan tooltips, Layout-mode summary, convert-form, Configure-mode
+    width/height/panel widths/door height, panel-list) — every one already routes through
+    `unit-context.tsx`'s `useUnit()`/`formatLen`/`toDisplay`/`fromDisplay`, canonical mm as the only
+    source of truth. Nothing to fix — Pieces 1–2 built this correctly the first time, confirming
+    `plan-item7.md`'s own prediction ("should be few, if built correctly — this is a final sweep, not a
+    rebuild"). `partition-preview.tsx`'s swatch has no text labels (a geometry-only aspect-ratio
+    rectangle, matching its own Piece 1 scope note), so nothing to convert there either.
+  - **`by-page.sql` sync** (review-item7-piece2-round2.md MINOR 2/3): fixed the sides-PATCH section's
+    Step 3 (was still describing the convert INSERT with `"design" … NULL` and no entry for the seed) —
+    added a Step 3b `UPDATE "Partition" SET "design" = …` documenting the seed-panel write Piece 2 added,
+    and a note on Step 3's own INSERT that `design` starts `NULL` there (the seed is a separate
+    statement, same transaction). Also updated the `partitions/[id]` PATCH section's own comment block to
+    document the heightMm-only normalization path added below (a PATCH can now write `design` even with
+    no `design` key in the request body). Verified the rest of the `partitions/[id]` GET/PATCH section
+    (from Piece 2) was already accurate — no changes needed there.
+  - **`04-data-model.md` doc** (review-item7-piece2-round2.md MINOR 3): added a note under
+    `Partition.design` JSONB shape describing the seed-on-convert behavior as a real documented contract,
+    not an undocumented implicit default. Also fixed a doc/code drift found while there: the shape
+    example still showed a `panels[].index` field the architect's binding correction (Piece 2) had
+    already ruled out of the code — removed it from the doc, added a one-line note that order is array
+    position.
+  - **`lib/data/partitions.ts` `updatePartition` — heightMm-only PATCH now normalizes too**
+    (review-item7-piece2-round2.md MINOR 1): the panel-height/door-frame normalization block used to live
+    entirely inside `if (patch.design !== undefined)`, so a `PATCH { heightMm }` with no `design` key at
+    all left every stored `panels[].heightMm`/`door.outerFrame.h` stale. Hoisted the normalization to run
+    whenever **either** `patch.heightMm` **or** `patch.design.panels` is present, re-normalizing the
+    *stored* panels in the heightMm-only case, and now genuinely clamps `door.outerFrame.h` to the
+    effective new height (was previously only defaulted, not clamped, when already set). Not reachable
+    from the app's own UI today (`commitHeight` always sends `design.panels` alongside `heightMm`) — this
+    closes an API-only gap, same class of drift correction 3 (widthMm) already covers.
+  - **Room-rename duplicate-label 500 → 400** (review-item7-piece1-round2.md MINOR 1): `renameRoom()`
+    (`lib/data/rooms.ts`) had no `P2002` catch, unlike `createRoom()` — a rename onto a sibling room's
+    existing label fell through to an unhandled 500. Added the same catch-and-rethrow
+    `DUPLICATE_ROOM_LABEL` shape `createRoom` uses; the PATCH route
+    (`app/api/v1/orgs/[orgSlug]/rooms/[id]/route.ts`) now maps it to `apiBadRequest` (400), same mapping
+    the POST route already uses for the identical collision (not 409 — kept consistent with the
+    existing sibling route rather than introducing a new status code for one endpoint).
+    `room-name-input.tsx` now has an error state and renders it (previously the only form in `design/**`
+    with no error surface — a failed rename silently snapped back with zero feedback). Also took MINOR 3
+    from the same report while in this file: a successful rename now sets local state from the server's
+    (trimmed) label immediately instead of waiting for the next blur to self-heal.
+  - **`convert-side-form.tsx` comment fix** (review-item7-piece1-round2.md MINOR 2): the raw-text-mirror
+    doc comment claimed a divergence-based clear the code doesn't have; rewritten to describe the actual
+    unit-toggle-only clear + `type="number"`'s own empty-string behavior for in-progress `"-"`/`"1."` —
+    worth fixing precisely because Piece 2 already copied this file's pattern into
+    `configure-mode.tsx`, so a wrong comment there is how it gets mis-cloned further.
+  - **`saved-components-rail.tsx` MINOR 5** (review-item7-piece2-round2.md): the dead-ish hardcoded
+    `"Busy — please wait."` string is now `t("busyPleaseWait")` (new `design.busyPleaseWait` key in
+    `en.json`), for consistency with the rest of the file even though it's not currently displayed
+    (buttons are disabled while busy, so the click can't fire). The stale-error nit (an error from a
+    previous mutation staying visible after switching panels/edges or leaving Configure mode) is fixed
+    via the same "adjust state during render on a genuine prop change" pattern
+    `room-name-input.tsx`/`configure-mode.tsx` already use (keyed on a `type:id`/`type:side` string
+    derived from `selection`) — not a `useEffect`, which `eslint`'s `react-hooks/set-state-in-effect`
+    correctly flagged on the first attempt (fixed before this pass, not shipped and caught later).
+  - **i18n cleanup**: re-swept every `t("…")` call in `design/**` against `messages/en.json`'s `design`
+    namespace — 0 missing keys, 0 dead keys (confirmed `edgeTop`/`edgeLeft`/`edgeRight`/`edgeBottom` are
+    still exercised dynamically via `EDGE_LABEL_KEY[side]`, same false-positive a naive grep would flag,
+    already confirmed by Piece 2's own review). No hardcoded English UI copy found needing a new key.
+    Hardcoded English `setError("...")` messages across `design/**` (convert-side-form.tsx,
+    new-room-form.tsx, floor-bar.tsx) were **not** converted to i18n keys — confirmed this matches the
+    app's own pre-existing convention (grepped `setError("` across `app/**`: the exact same pattern
+    already exists in `app/controls/login/login-form.tsx`, and no file anywhere in the app routes an
+    error message through `t()`), so leaving them hardcoded is consistency with the rest of the codebase,
+    not a gap specific to this page — converting only this page's errors would be a new, unilateral
+    convention, not a fix.
+  - **New E2E** (`tests/e2e/stage18.spec.ts`, extended 11 → 14 tests): (1) convert-time seed dimensions —
+    added assertions right after Room C's convert in `beforeAll` that the seed panel's `widthMm`/`heightMm`
+    actually equal `Partition.widthMm`/`heightMm` (700/1200-style existence-only checks already existed;
+    this is the dimension-equality invariant IMPORTANT 1 was actually about, per
+    review-item7-piece2-round2.md MINOR 4); (2) a dedicated heightMm-only-PATCH-normalizes test (seeds a
+    door panel, PATCHes `{ heightMm }` alone, asserts both the panel's `heightMm` and the door's
+    `outerFrame.h`/`.w` re-normalize); (3) a room-rename round-trip (rename, re-GET confirms it persisted)
+    plus the duplicate-label-is-400-not-500 regression check, both previously untested
+    (review-item7-piece1-round2.md MINOR 4).
+  - **Cheap MINORs explicitly not taken** (judged not "genuinely small" for this pass, left for the
+    orchestrator/human to schedule, same as prior pieces' declined lists): piece1-round2 MINOR 5/8/9/10
+    (no default convert dimensions; `sides[sideIndex]` bounds guard; 4 floor-plan/left-rail fidelity nits
+    → folded into the visual-QA checklist below instead; partition-cache dedup); piece2-round2's carried
+    round-1 declines (door-height slider keyboard commit; server-side empty-panels/type-door-consistency/
+    duplicate-id guards; mockup dimension minimums; left-rail preview swatch's stale "deferred" comment
+    label — re-labelled below in `design-workspace.tsx`/`partition-preview.tsx`'s own doc comments this
+    pass, not the substance).
+  - **Docs**: `stage-18.md` §7 execution log now has its own "Item 7" entry (was previously only in
+    `.engineering/` and this worklog) — the 3-piece build summary, all 6 architect corrections applied,
+    the seed-on-convert resolution, and the deferred-hinging/rail-grouping decisions, per
+    architect-review-item7.md's "docs landing" instruction (#5 of "what the plan missed"). Also appended
+    a 5th "known carry-forward" item for the still-unverified browser/visual surface.
+  - **Manual visual QA**: no browser/Playwright-with-UI tool was available in this session (same
+    constraint every piece in this item hit) — stating that plainly rather than approximating with more
+    curl. Wrote `.engineering/stage-18/visual-qa-checklist-item7.md` (gitignored scratch, per this repo's
+    `.engineering/` convention — referenced from `stage-18.md`'s carry-forward note instead of committed)
+    — a concrete, section-by-section click-through list (floor/room list, Layout mode, Configure mode,
+    Saved-Components rail, unit toggle, general) for whoever runs `engineering:test` next.
+  - **Verify**: `npx tsc --noEmit` → 0 errors. `npm run lint` → 0 errors, same 5 pre-existing
+    `tests/e2e/**` warnings (one `react-hooks/set-state-in-effect` error surfaced on the first draft of
+    the stale-error-clear fix — a `useEffect` calling `setState` — caught by lint before push, rewritten
+    to the render-time-adjust pattern, re-verified clean).

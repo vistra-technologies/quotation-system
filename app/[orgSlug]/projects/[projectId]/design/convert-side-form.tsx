@@ -53,11 +53,15 @@ export function ConvertSideForm({
   // the unit changes (design-step-poc.html:939,946,563-567).
   const [heightMm, setHeightMm] = useState<number | null>(null);
   const [widthMm, setWidthMm] = useState<number | null>(null);
-  // Raw text mirrors of the two fields, so the user can freely type
-  // intermediate states ("", "-", "1.") without them being clobbered by the
-  // derived-from-mm value on every keystroke. Cleared (falls back to the
-  // derived display) whenever the parsed value diverges — i.e. only used
-  // while actively typing in the *current* unit.
+  // Raw text mirrors of the two fields — `heightText`/`widthText` hold
+  // exactly what the user typed, so a keystroke never gets clobbered by a
+  // derived-from-mm re-render. They're cleared only on a unit-toggle change
+  // (below), not on every keystroke; `type="number"` inputs already report
+  // an empty string for an in-progress "-"/"1." to `handleChange`, so those
+  // intermediate states never need special-casing here. (Previously this
+  // comment claimed a divergence-based clear that the code doesn't have —
+  // review-item7-piece1-round2.md MINOR 2, fixed since Piece 2's
+  // configure-mode.tsx copies this exact pattern.)
   const [heightText, setHeightText] = useState("");
   const [widthText, setWidthText] = useState("");
   const [submitting, setSubmitting] = useState(false);

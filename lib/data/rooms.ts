@@ -179,6 +179,11 @@ export async function createRoom(
 /**
  * Rename an existing Room. Tenancy guard: verifies the room belongs to the
  * session's org before updating. Returns null if not found (caller -> 404).
+ * Throws { code: "DUPLICATE_ROOM_LABEL" } on a @@unique([floorId, label])
+ * collision, mirroring createRoom() — a rename onto an existing sibling
+ * label used to fall through to an unhandled P2002 and surface as a raw 500
+ * (review-item7-piece1-round2.md MINOR 1; this route had zero callers before
+ * room-name-input.tsx, so the gap went unnoticed until now).
  */
 export async function renameRoom(
   session: SessionData,
@@ -191,10 +196,25 @@ export async function renameRoom(
   });
   if (!existing) return null;
 
-  return prisma.room.update({
-    where: { id: roomId },
-    data: { label },
-  });
+  try {
+    return await prisma.room.update({
+      where: { id: roomId },
+      data: { label },
+    });
+  } catch (err) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as { code: string }).code === "P2002"
+    ) {
+      throw Object.assign(
+        new Error("A room with this name already exists on this floor."),
+        { code: "DUPLICATE_ROOM_LABEL" },
+      );
+    }
+    throw err;
+  }
 }
 
 /**

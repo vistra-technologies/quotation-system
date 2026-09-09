@@ -51,8 +51,21 @@ export function SavedComponentsRail({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // A stale error from a previous mutation shouldn't keep showing once the
+  // user has moved on to a different panel/edge selection (or left Configure
+  // mode entirely) — review-item7-piece2-round2.md MINOR 5b. Cleared during
+  // render on a genuine selection change (same "adjust state when a prop
+  // changes" pattern room-name-input.tsx/configure-mode.tsx already use for
+  // their own prop-keyed resets), not a useEffect.
+  const selectionKey = selection ? `${selection.type}:${selection.type === "panel" ? selection.panelId : selection.side}` : null;
+  const [prevSelectionKey, setPrevSelectionKey] = useState(selectionKey);
+  if (prevSelectionKey !== selectionKey) {
+    setPrevSelectionKey(selectionKey);
+    setError(null);
+  }
+
   async function run(build: (fresh: PartitionRow) => PartitionPatch): Promise<MutateResult> {
-    if (busy) return { ok: false, error: "Busy — please wait." };
+    if (busy) return { ok: false, error: t("busyPleaseWait") };
     setBusy(true);
     setError(null);
     const result = await mutate(build);

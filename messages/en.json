@@ -358,7 +358,8 @@
     "sectionDoors": "Doors",
     "sectionProfiles": "Profiles",
     "sectionOther": "Other",
-    "appliesEveryPanel": "Applies to every panel on this wall"
+    "appliesEveryPanel": "Applies to every panel on this wall",
+    "busyPleaseWait": "Busy — please wait."
   },
   "wizard": {
     "step1": "Project Details",
