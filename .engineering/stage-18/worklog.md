@@ -657,3 +657,13 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   `BETTER_AUTH_URL` preview-login bug blocks the browser-based visual QA this item's acceptance depends
   on — fix the Preview env var (devops) or accept verification only at `test.easeetool.com` post-merge.
   Full review: `.engineering/stage-18/architect-review-item7.md`.
+
+- **2026-09-09 · GATE A (human).** Plan approved to proceed with all of the architect's corrections
+  folded in (flag 3 corrected to group/gate by `componentType.code`, not `category.name`; cross-tenant
+  `selectionId` validation on the `design` PATCH; `Partition.widthMm` derived from `panels[].widthMm`;
+  drop redundant `panels[].index`; flag 6's re-read-before-write condition is binding). On the one
+  escalated item: **accept post-merge-only visual verification** — build normally on
+  `feature/design-canvas`, do the real browser side-by-side against `design-step-poc.html` once merged to
+  `release/stage-18`/`staging` and reachable at `test.easeetool.com` (subdomain routing, `BETTER_AUTH_URL`
+  bug doesn't block login there). No devops fix requested this stage. Proceeding to Step 4 (dev↔reviewer
+  loop), Piece 1 (Layout-mode shell + floor-plan) first.
