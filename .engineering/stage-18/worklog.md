@@ -1160,3 +1160,18 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     orchestrator's merge-to-`release/stage-18`/`staging` decision, with the visual-QA checklist and the
     `BETTER_AUTH_URL` preview-login carry-forward (both already flagged at Piece 1/2 and in stage-18.md's
     own carry-forward list) as the two open items the tester should know about going in.
+
+- **2026-09-09 · reviewer · Item 7 Piece 3 + final whole-item pass (`ab5bdeb`) — APPROVE-WITH-NITS.**
+  Traced `613dfe0..ab5bdeb` in code: the heightMm-only normalization hoist is complete (incl. the
+  `designChanged` write), the `renameRoom` P2002 mapping is provably scoped to `Room`'s only unique
+  constraint, the rail's render-time stale-error clear is sound and selection-keyed, both new E2E tests
+  fail against pre-fix code, and the unit-toggle "nothing to fix" audit holds on independent spot-check.
+  All 3 docs edits (`04-data-model.md` seed-on-convert + `panels[].index` removal, `by-page.sql` Step 3b +
+  normalization note, `stage-18.md` §7 execution log) are real and accurate; visual-QA checklist is
+  concrete and useful. `tsc` exit 0, `lint` 0 errors / 5 pre-existing warnings, 0 missing/dead i18n keys —
+  all re-run. Whole-item pass: no schema/migration change, all 6 architect corrections still live, tenancy
+  intact, no DOM-level test assertions. **0 CRITICAL · 0 IMPORTANT · 4 MINOR** (stage-18.md pre-declares
+  Piece 3's verdict; docs-repo edits still uncommitted — must land with the merge; room-name error line
+  survives a no-op blur; seed-dimension assertions sit in `beforeAll` not a named test).
+  **Item 7 is ready to merge into `release/stage-18`.** Full report:
+  `.engineering/stage-18/review-item7-piece3.md`.
