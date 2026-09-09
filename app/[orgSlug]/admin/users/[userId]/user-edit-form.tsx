@@ -3,6 +3,7 @@
 import { useActionState, useTransition, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { SelectField } from "@/components/select-field";
 import {
   updateUserProfile,
   changeUserRole,
@@ -179,7 +180,7 @@ export function UserEditForm({
               ? t("fieldExternalCompanyRequired")
               : t("fieldExternalCompany")}
           </label>
-          <select
+          <SelectField
             id="externalCompanyId"
             name="externalCompanyId"
             required={companyRequired}
@@ -192,7 +193,7 @@ export function UserEditForm({
                 {ec.name}
               </option>
             ))}
-          </select>
+          </SelectField>
         </div>
 
         <button
@@ -212,7 +213,7 @@ export function UserEditForm({
       <form onSubmit={handleRole} className="flex flex-col gap-3">
         <input type="hidden" name="orgSlug" value={orgSlug} />
         <input type="hidden" name="userId" value={userId} />
-        <select
+        <SelectField
           name="roleId"
           value={selectedRoleId}
           onChange={(e) => setSelectedRoleId(e.target.value)}
@@ -223,7 +224,7 @@ export function UserEditForm({
               {r.name}
             </option>
           ))}
-        </select>
+        </SelectField>
         <button
           type="submit"
           disabled={anyPending}

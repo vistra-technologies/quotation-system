@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { redirectToLogin } from "./login-redirect";
+import { SelectField } from "@/components/select-field";
 import type { FloorRow } from "./types";
 
 interface FloorBarProps {
@@ -111,7 +112,7 @@ export function FloorBar({
 
   return (
     <div className="mb-4 flex items-center gap-2">
-      <select
+      <SelectField
         value={selectedFloorId ?? ""}
         onChange={(e) => onSelectFloor(e.target.value)}
         title={selectedFloor?.label ?? ""}
@@ -122,7 +123,7 @@ export function FloorBar({
             {f.label}
           </option>
         ))}
-      </select>
+      </SelectField>
       <button
         type="button"
         onClick={() => {

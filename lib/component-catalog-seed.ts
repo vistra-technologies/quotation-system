@@ -53,7 +53,7 @@ export const COMPONENT_TYPE_DEFS: {
       {
         key: "glassType",
         label: "Glass Type",
-        type: "radio",
+        type: "dropdown",
         options: ["Clear", "Frosted", "Tinted"],
         required: true,
         basic: true,

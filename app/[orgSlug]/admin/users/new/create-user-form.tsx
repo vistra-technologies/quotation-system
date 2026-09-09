@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { SelectField } from "@/components/select-field";
 import { createUser, type CreateUserState } from "../actions";
 
 interface RoleOption {
@@ -111,7 +112,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
           <label htmlFor="roleId" className={labelCls}>
             {t("fieldRole")}
           </label>
-          <select
+          <SelectField
             id="roleId"
             name="roleId"
             required
@@ -124,7 +125,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
                 {r.name}
               </option>
             ))}
-          </select>
+          </SelectField>
         </div>
 
         {/* Initial password */}
@@ -179,7 +180,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
               ? t("fieldExternalCompanyRequired")
               : t("fieldExternalCompany")}
           </label>
-          <select
+          <SelectField
             id="externalCompanyId"
             name="externalCompanyId"
             required={companyRequired}
@@ -193,7 +194,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
                 {ec.name}
               </option>
             ))}
-          </select>
+          </SelectField>
           {companyRequired && (
             <p className="text-xs text-status-failed-text">
               This role requires an external company.

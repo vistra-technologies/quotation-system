@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { SelectField } from "@/components/select-field";
 import { ComponentIcon } from "@/lib/component-icons";
 import {
   createSelection,
@@ -557,40 +558,19 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
         />
       )}
 
-      {field.type === "radio" && (
-        <div className="flex flex-col gap-2">
-          {field.options!.map((opt) => (
-            <label
-              key={opt}
-              className="flex cursor-pointer items-center gap-2 text-sm text-text-body"
-            >
-              <input
-                type="radio"
-                name={`field-radio-${field.key}`}
-                value={opt}
-                checked={(value as string) === opt}
-                onChange={() => onChange(opt)}
-                className="accent-primary"
-              />
-              {opt}
-            </label>
-          ))}
-        </div>
-      )}
-
-      {field.type === "dropdown" && (
-        <select
+      {(field.type === "dropdown" || field.type === "radio") && (
+        <SelectField
           value={(value as string) ?? ""}
           onChange={(e) => onChange(e.target.value)}
           className={inputClass}
+          placeholder="Select..."
         >
-          <option value="">— Select —</option>
           {field.options!.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
             </option>
           ))}
-        </select>
+        </SelectField>
       )}
 
       {field.type === "checkbox" && (
