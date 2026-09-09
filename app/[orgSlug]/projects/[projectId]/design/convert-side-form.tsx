@@ -1,123 +1,255 @@
 "use client";
 
-import { useActionState } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
-import { convertSideAction, type ConvertSideState } from "./actions";
+import { redirectToLogin } from "./login-redirect";
+import { useUnit } from "./unit-context";
+import type { RoomRow } from "./types";
 
 interface ConvertSideFormProps {
   orgSlug: string;
-  projectId: string;
+  isSubdomain: boolean;
   floorId: string;
   roomId: string;
-  /** Array index of the PLAIN side being converted (see actions.ts doc comment
-   * — identity is by array index, not side.id, per review-item2-round2.md
-   * finding 9: PLAIN side ids are not stable across reorders). */
+  /** Array index of the PLAIN side being converted — identity is by array
+   * index, not side.id (PLAIN side ids are not stable across reorders, per
+   * review-item2-round2.md finding 9). */
   sideIndex: number;
   onCancel: () => void;
+  /** Called with the freshly PATCHed room on success. */
+  onConverted: (room: RoomRow) => void;
 }
 
-const initialState: ConvertSideState = { error: null };
-
 /**
- * "Convert to Partition" form (Stage 18 scope item 4-3) — adapted from the
- * pre-Stage-18 add-wall/add-wall-form.tsx (same label + height/width + unit
- * fields), but targets a specific side of an existing Room instead of
- * creating a standalone Partition directly. Submits to convertSideAction,
- * which PATCHes the room's sides array (full-replace contract).
+ * "Convert to Partition" form — mirrors design-step-poc.html's
+ * `renderWallDetails` plain-side branch. Client `fetch()`
+ * (plan-item7.md flag 6), but per architect-review-item7.md's binding
+ * condition on that flag: this is a full-array `sides` PATCH, so it
+ * RE-READS the room's current sides fresh via GET immediately before
+ * building the payload — never trusts a stale prop/cache, matching
+ * lib/data/rooms.ts replaceSides()'s own "never trust the client for array
+ * state" posture (same rule the now-removed convertSideAction followed).
  */
 export function ConvertSideForm({
   orgSlug,
-  projectId,
+  isSubdomain,
   floorId,
   roomId,
   sideIndex,
   onCancel,
+  onConverted,
 }: ConvertSideFormProps) {
   const t = useTranslations("design");
-  const [state, formAction, isPending] = useActionState(
-    convertSideAction,
-    initialState,
-  );
+  const { unit, toDisplay, fromDisplay } = useUnit();
+  const [label, setLabel] = useState("");
+  // Canonical mm is the source of truth (never a free-floating display
+  // string) — the displayed value is derived from it via toDisplay() on
+  // every render, so switching the unit toggle mid-form re-interprets the
+  // *same* canonical number through the new unit instead of silently
+  // reinterpreting stale digits through fromDisplay() at submit time (the
+  // 900mm-typed/then-toggled-to-m/then-submitted-as-900m bug). Mirrors the
+  // mockup's renderAll() rebuilding every input from toDisplay() whenever
+  // the unit changes (design-step-poc.html:939,946,563-567).
+  const [heightMm, setHeightMm] = useState<number | null>(null);
+  const [widthMm, setWidthMm] = useState<number | null>(null);
+  // Raw text mirrors of the two fields — `heightText`/`widthText` hold
+  // exactly what the user typed, so a keystroke never gets clobbered by a
+  // derived-from-mm re-render. They're cleared only on a unit-toggle change
+  // (below), not on every keystroke; `type="number"` inputs already report
+  // an empty string for an in-progress "-"/"1." to `handleChange`, so those
+  // intermediate states never need special-casing here. (Previously this
+  // comment claimed a divergence-based clear that the code doesn't have —
+  // review-item7-piece1-round2.md MINOR 2, fixed since Piece 2's
+  // configure-mode.tsx copies this exact pattern.)
+  const [heightText, setHeightText] = useState("");
+  const [widthText, setWidthText] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // When the unit toggle changes, the raw text mirrors go stale relative to
+  // the new unit (they were typed against the old one) — clear them so the
+  // display falls back to re-deriving from canonical mm through the new
+  // unit's toDisplay(). Canonical mm itself is untouched, so no precision is
+  // lost and nothing is silently reinterpreted. Done during render (React's
+  // "adjusting state when a prop/derived value changes" pattern) rather
+  // than in a useEffect, to avoid the extra render pass + set-state-in-effect
+  // lint rule.
+  const [prevUnit, setPrevUnit] = useState(unit);
+  if (prevUnit !== unit) {
+    setPrevUnit(unit);
+    setHeightText("");
+    setWidthText("");
+  }
+
+  const heightDisplay = heightText !== "" ? heightText : heightMm !== null ? String(toDisplay(heightMm)) : "";
+  const widthDisplay = widthText !== "" ? widthText : widthMm !== null ? String(toDisplay(widthMm)) : "";
+
+  function handleHeightChange(text: string) {
+    setHeightText(text);
+    const parsed = Number(text);
+    setHeightMm(text !== "" && !isNaN(parsed) ? fromDisplay(parsed) : null);
+  }
+  function handleWidthChange(text: string) {
+    setWidthText(text);
+    const parsed = Number(text);
+    setWidthMm(text !== "" && !isNaN(parsed) ? fromDisplay(parsed) : null);
+  }
+
+  async function submit() {
+    const trimmedLabel = label.trim();
+    if (!trimmedLabel) {
+      setError("Label is required.");
+      return;
+    }
+    if (heightMm === null || heightMm <= 0) {
+      setError("Height must be a positive number.");
+      return;
+    }
+    if (widthMm === null || widthMm <= 0) {
+      setError("Width must be a positive number.");
+      return;
+    }
+    const finalHeightMm = Math.round(heightMm);
+    const finalWidthMm = Math.round(widthMm);
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      // Re-read current server state before building the payload — see doc
+      // comment above.
+      const roomsRes = await fetch(
+        `/api/v1/orgs/${orgSlug}/rooms?floorId=${floorId}`,
+      );
+      if (roomsRes.status === 401 || roomsRes.status === 403) {
+        redirectToLogin(orgSlug, isSubdomain);
+        return;
+      }
+      if (!roomsRes.ok) {
+        setError("Could not load the room — please try again.");
+        return;
+      }
+      const { rooms } = (await roomsRes.json()) as { rooms: RoomRow[] };
+      const room = rooms.find((r) => r.id === roomId);
+      if (!room) {
+        setError("Room not found — please reload and try again.");
+        return;
+      }
+      if (sideIndex < 0 || sideIndex >= room.sides.length) {
+        setError("Side no longer exists — please reload and try again.");
+        return;
+      }
+      const targetSide = room.sides[sideIndex];
+      if (targetSide.kind !== "PLAIN") {
+        setError("This side has already been converted — please reload.");
+        return;
+      }
+
+      const newSides = room.sides.map((side, i) => {
+        if (i === sideIndex) {
+          return {
+            kind: "PARTITION" as const,
+            turnDegrees: side.turnDegrees,
+            label: trimmedLabel,
+            heightMm: finalHeightMm,
+            widthMm: finalWidthMm,
+          };
+        }
+        if (side.kind === "PARTITION") {
+          return {
+            kind: "PARTITION" as const,
+            turnDegrees: side.turnDegrees,
+            partitionId: side.partitionId,
+          };
+        }
+        return {
+          kind: "PLAIN" as const,
+          turnDegrees: side.turnDegrees,
+          lengthMm: side.lengthMm,
+          label: side.label,
+        };
+      });
+
+      const patchRes = await fetch(
+        `/api/v1/orgs/${orgSlug}/rooms/${roomId}/sides`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sides: newSides }),
+        },
+      );
+      if (patchRes.status === 401 || patchRes.status === 403) {
+        redirectToLogin(orgSlug, isSubdomain);
+        return;
+      }
+      if (!patchRes.ok) {
+        const body = (await patchRes.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        setError(body.error ?? "An unexpected error occurred — please try again.");
+        return;
+      }
+
+      const { room: updatedRoom } = (await patchRes.json()) as { room: RoomRow };
+      onConverted(updatedRoom);
+    } catch {
+      setError("Network error — please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <div className="mt-1 rounded-sm border border-border bg-bg-white p-3">
-      <LoadingOverlay visible={isPending} />
-      {state.error && (
-        <p className="mb-2 text-xs text-red-700 dark:text-red-400">
-          {state.error}
-        </p>
-      )}
-      <form action={formAction} className="flex flex-col gap-2.5">
-        <input type="hidden" name="orgSlug" value={orgSlug} />
-        <input type="hidden" name="projectId" value={projectId} />
-        <input type="hidden" name="floorId" value={floorId} />
-        <input type="hidden" name="roomId" value={roomId} />
-        <input type="hidden" name="sideIndex" value={sideIndex} />
-
+    <div className="relative rounded-md border border-border bg-bg-card p-3.5">
+      <LoadingOverlay visible={submitting} />
+      <h4 className="mb-2.5 text-xs font-bold text-text-heading">
+        {t("convertPanelTitle")}
+      </h4>
+      {error && <p className="mb-2 text-xs text-red-700 dark:text-red-400">{error}</p>}
+      <div className="flex flex-col gap-2.5">
         <div className="flex flex-col gap-1">
           <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
             {t("fieldLocation")}
           </label>
           <input
-            name="label"
             type="text"
-            required
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
             autoComplete="off"
             className="rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs text-text-body placeholder:text-text-placeholder focus:border-primary focus:outline-none"
           />
         </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
-            {t("fieldHeight")}
-          </label>
-          <div className="flex gap-1.5">
+        <div className="flex gap-3">
+          <label className="flex flex-1 flex-col gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
+              {t("fieldWidth")} ({unit})
+            </span>
             <input
-              name="height"
               type="number"
-              required
-              min="0.01"
               step="any"
-              className="flex-1 rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs text-text-body focus:border-primary focus:outline-none"
+              value={widthDisplay}
+              onChange={(e) => handleWidthChange(e.target.value)}
+              className="rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs text-text-body focus:border-primary focus:outline-none"
             />
-            <select
-              name="unit_h"
-              className="rounded-sm border border-border bg-bg-white px-1.5 py-1.5 text-xs text-text-body focus:border-primary focus:outline-none"
-            >
-              <option value="mm">{t("unitMm")}</option>
-              <option value="feet">{t("unitFeet")}</option>
-            </select>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
-            {t("fieldWidth")}
           </label>
-          <div className="flex gap-1.5">
+          <label className="flex flex-1 flex-col gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
+              {t("fieldHeight")} ({unit})
+            </span>
             <input
-              name="width"
               type="number"
-              required
-              min="0.01"
               step="any"
-              className="flex-1 rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs text-text-body focus:border-primary focus:outline-none"
+              value={heightDisplay}
+              onChange={(e) => handleHeightChange(e.target.value)}
+              className="rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs text-text-body focus:border-primary focus:outline-none"
             />
-            <select
-              name="unit_w"
-              className="rounded-sm border border-border bg-bg-white px-1.5 py-1.5 text-xs text-text-body focus:border-primary focus:outline-none"
-            >
-              <option value="mm">{t("unitMm")}</option>
-              <option value="feet">{t("unitFeet")}</option>
-            </select>
-          </div>
+          </label>
         </div>
-
         <div className="flex gap-2">
           <button
-            type="submit"
-            disabled={isPending}
+            type="button"
+            onClick={() => void submit()}
+            disabled={submitting}
             className="flex-1 rounded-sm bg-primary px-2.5 py-1.5 text-xs font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
           >
             {t("convertToPartition")}
@@ -130,7 +262,7 @@ export function ConvertSideForm({
             {t("cancel")}
           </button>
         </div>
-      </form>
+      </div>
     </div>
   );
 }
