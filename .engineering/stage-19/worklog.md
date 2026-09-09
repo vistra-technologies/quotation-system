@@ -57,3 +57,9 @@ independent and unblocks fixture cleanup for the rest; build it first.
   Static: `npm run lint` (0 errors) + `npx tsc --noEmit` (clean).
   Vercel preview `quotation-system-45a2182fe-vistra-indias-projects.vercel.app` → READY, `/api/health` 200 connected.
   E2E: `PLAYWRIGHT_BASE_URL=...45a2182fe... npx playwright test tests/e2e/stage19.spec.ts` → 2 passed (9.5s).
+- 2026-09-09 — Reviewer (batch-1, round 2): APPROVE. 0 CRITICAL, 0 IMPORTANT, 0 MINOR.
+  TOCTOU race confirmed closed — existence + DRAFT-status check now inside the `$transaction` callback at
+  `lib/data/projects.ts:281` using `tx.project.findFirst`. Boolean-flag pattern (`found`/`isDraft`) covers
+  all three outcomes with no ambiguous state; flag combination `(false, true)` is structurally unreachable.
+  No new issues introduced. Previously-approved items (deleteFloor, RBAC, E2E tests, by-page.sql) spot-
+  checked intact. Batch 1 is clean and ready to merge.
