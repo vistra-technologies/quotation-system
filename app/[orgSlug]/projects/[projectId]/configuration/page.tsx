@@ -101,6 +101,11 @@ export default async function ConfigurationPage({
   // Tenancy guard: project not found or belongs to a different org.
   if (!project) notFound();
 
+  // No step-gate on Configuration itself — this is the page where you ADD
+  // Selections, so it must be reachable from the start (via the Project Details
+  // "Next: Configuration →" button). The breadcrumb shows it as locked until
+  // selectionCount > 0, but the page itself is always accessible. (Stage 19 Batch 4)
+
   const selections: SelectionRow[] = selectionsRes.ok
     ? ((await selectionsRes.json()) as { selections: SelectionRow[] }).selections
     : [];

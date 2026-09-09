@@ -69,6 +69,14 @@ export default async function DesignPage({
   // Tenancy guard: project not found or belongs to a different org.
   if (!project) notFound();
 
+  // Step-gating: Design requires ≥1 Selection to have content to work with.
+  // A project with 0 Selections has nothing to design — redirect to Project Details.
+  // The Configuration page (where Selections are added) is always accessible, so
+  // users are not left with no path forward. (Stage 19 Batch 4)
+  if (project.selectionCount === 0) {
+    redirect(await orgHref(orgSlug, `/projects/${projectId}`));
+  }
+
   const floors: FloorRow[] = floorsRes.ok
     ? ((await floorsRes.json()) as { floors: FloorRow[] }).floors
     : [];

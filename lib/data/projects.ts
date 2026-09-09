@@ -159,18 +159,35 @@ export async function listProjectsPaginated(
 /**
  * Get a single project by id, scoped to the session org (tenancy guard).
  * Returns null if not found or if it belongs to a different org.
+ *
+ * Stage 19 Batch 4: also returns selectionCount and partitionCount for
+ * wizard step-gating. The three queries run in parallel via Promise.all.
+ * Tenancy on partitionCount is derived: projectId is already scoped to
+ * session.organizationId by the findFirst, so the Partition→Room→Floor→Project
+ * traversal cannot reach a different org's data.
  */
 export async function getProjectById(session: SessionData, projectId: string) {
-  return prisma.project.findFirst({
-    where: { id: projectId, organizationId: session.organizationId },
-    include: {
-      externalCompany: { select: { id: true, name: true, country: true } },
-      createdBy: { select: { id: true, username: true } },
-      // Pull the linked inquiry's human-readable display numbers so the detail
-      // and edit pages can show "INQ-42" / "#7" instead of a raw CUID2 FK.
-      inquiry: { select: { inquiryNumber: true, companyInquiryNumber: true } },
-    },
-  });
+  const [project, selectionCount, partitionCount] = await Promise.all([
+    prisma.project.findFirst({
+      where: { id: projectId, organizationId: session.organizationId },
+      include: {
+        externalCompany: { select: { id: true, name: true, country: true } },
+        createdBy: { select: { id: true, username: true } },
+        // Pull the linked inquiry's human-readable display numbers so the detail
+        // and edit pages can show "INQ-42" / "#7" instead of a raw CUID2 FK.
+        inquiry: { select: { inquiryNumber: true, companyInquiryNumber: true } },
+      },
+    }),
+    prisma.selection.count({
+      where: { projectId, organizationId: session.organizationId },
+    }),
+    prisma.partition.count({
+      where: { room: { floor: { projectId } } },
+    }),
+  ]);
+
+  if (!project) return null;
+  return { ...project, selectionCount, partitionCount };
 }
 
 // ─── Mutations ──────────────────────────────────────────────────────────────
