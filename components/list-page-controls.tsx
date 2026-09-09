@@ -337,6 +337,7 @@ export function ListPagePagination({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [, startTransition] = useTransition();
 
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize));
 
@@ -344,9 +345,11 @@ export function ListPagePagination({
     (p: number) => {
       const next = new URLSearchParams(searchParams.toString());
       next.set("page", String(p));
-      router.push(`${pathname}?${next.toString()}`);
+      startTransition(() => {
+        router.push(`${pathname}?${next.toString()}`);
+      });
     },
-    [router, pathname, searchParams],
+    [router, pathname, searchParams, startTransition],
   );
 
   // Build a compact page-number list: always include first, last, and current ±1.

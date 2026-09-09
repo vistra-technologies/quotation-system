@@ -118,3 +118,53 @@ independent and unblocks fixture cleanup for the rest; build it first.
   deleted the feature branch (local + remote). Batch 2 closed (APPROVE-WITH-NITS, 1 MINOR deferred to dev
   discretion — legacy radio-field blank dropdown display, no data-integrity risk). Starting Batch 3
   (Configuration-page UX: anchored popover + two loading-state fixes) next.
+- 2026-09-09 — Developer (batch-3 plan): wrote `.engineering/stage-19/plan-batch3.md`. No deviations from
+  approved scope. Key findings: (1) no existing popover primitive in the repo beyond `company-dropdown.tsx`
+  and `list-page-controls.tsx`'s date-filter — reusing their `relative`/`absolute z-20` CSS-anchored
+  pattern with click-outside for item 10; (2) `configuration/loading.tsx` confirmed as pre-Stage-17
+  list+form skeleton — plan rewrites to 3-column `grid-cols-[200px_1fr_300px]` skeleton; (3)
+  `useTransition` is already imported in `list-page-controls.tsx` line 3, only needs wiring into
+  `ListPagePagination`. Three files total, no new dependencies, no Prisma changes. Ready to build.
+- 2026-09-09 — Developer (batch-3 implement): DONE. All three deliverables built and verified.
+  Files changed (commit 44c94ee on feature/configuration-page-ux):
+    - `app/[orgSlug]/projects/[projectId]/configuration/add-selection-form.tsx` — added `useRef`+`useEffect`
+      click-outside handler (closes `showAdvanced` on mousedown outside `panelRef`). Wrapped the Configure
+      button + advanced-fields conditional in `<div ref={panelRef} className="relative">`. Changed the
+      advanced-fields `<div>` from in-flow to
+      `absolute left-0 right-0 top-[calc(100%+4px)] z-20 … shadow-[…]`. Reused `company-dropdown.tsx`
+      CSS-anchoring pattern. Import line updated: added `useEffect`, `useRef`.
+    - `app/[orgSlug]/projects/[projectId]/configuration/loading.tsx` — full rewrite from old 2-section
+      (selections list + add-form) skeleton to 3-column `grid-cols-[200px_1fr_300px]` skeleton matching
+      the live Stage-17 layout. Left: 4 tile placeholders. Center: heading + label field + 2 field rows
+      (one paired 2-col) + Configure button + Submit button placeholders. Right: 3 saved-component card
+      row placeholders. `animate-pulse` wrapper retained.
+    - `components/list-page-controls.tsx` — `ListPagePagination`: added `const [, startTransition] =
+      useTransition()` (import already on line 3). Wrapped `router.push` in `startTransition(…)`.
+      Added `startTransition` to `useCallback` dep array.
+  Static: `npm run lint` (exit 0) + `npx tsc --noEmit` (clean, no output).
+  Preview: `quotation-system-4azenr1bx-vistra-indias-projects.vercel.app` → READY; `/api/health` 200
+  `database: connected`. Build log: 183+ route outputs, all [orgSlug] Lambda items present.
+  Existing E2E (stage19.spec.ts): 2 passed (9.5s) against the preview — no regression.
+  Browser click-through (3 Playwright tests against the preview, apiSignIn auth, 3 passed in 13s):
+    - Item 10 (popover position): Door component type selected (has advanced fields). Save button Y BEFORE
+      clicking Configure: 750.0px. Clicked "⚙ Configure" → advanced panel appeared (verified visible).
+      Save button Y AFTER: 740.0px (delta: -10px upward — page scrolled 10px to reveal the popover, NOT
+      a layout push; in-flow displacement would be +200px+). Panel top measured 11px below Configure button
+      bottom (expected ~4px from top-[calc(100%+4px)]; 7px difference is scroll-offset rounding).
+      PASS: popover anchored correctly, Save button not pushed down by in-flow content.
+    - Item 10 (click-outside): After opening popover, clicked at coordinates (355, 376) — outside the
+      panel. Advanced panel visible after click: false. PASS: click-outside handler fired and closed panel.
+    - Item 11 (loading skeleton): Verified by construction — `grid-cols-[200px_1fr_300px]` wrapper in
+      rewritten `loading.tsx` confirmed in source. Not observable at normal load speed (flashes briefly);
+      structural match to live page layout is the verification for this wireframe-stage item.
+    - Item 12 (pagination): Navigated to `/acme-glass/inquiries?pageSize=2` (enough seeded inquiries).
+      Page-2 button visible. Clicked → URL updated to `?pageSize=2&page=2` via client-side router.push.
+      No hard reload (URL changed without navigation bar flash). PASS: startTransition wrap confirmed live.
+  Temp test file `tests/e2e/batch3-ui-verify.spec.ts` removed after verification run.
+- 2026-09-10 — Reviewer (batch-3): APPROVE. 0 CRITICAL, 0 IMPORTANT, 0 MINOR.
+  Popover ref scope correct (panelRef wraps button + panel; inner clicks pass contains-check, no false closes).
+  Listener cleanup correct (early-return when closed; removeEventListener on re-run/unmount; no leak).
+  Skeleton grid-cols/gap/padding is a word-for-word match to the live page wrapper (verified at add-selection-form.tsx:257).
+  startTransition dep-array inclusion is conservative-correct; no stale-closure risk; no double-navigation.
+  Developer's -10px Save-button shift confirmed as viewport auto-scroll (out-of-flow popover), not layout push.
+  Findings returned directly in reviewer message (no separate report file). Batch 3 clean and ready to merge.
