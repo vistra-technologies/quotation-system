@@ -734,10 +734,32 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     `react-hooks/set-state-in-effect` surfaced and was fixed the same way Item 3 fixed its equivalent —
     wrapped the reset branches in an async function inside the effect rather than calling `setState`
     directly in the effect body). `npx tsc --noEmit` — 0 errors.
-  - **Push + Vercel**: not yet done as of this entry — pushing next and will poll to `READY` for the exact
-    commit SHA, confirm `/api/health` 200 and the build log route list is unchanged (no new routes this
-    piece), before returning status.
-  - **Manual visual QA**: per GATE A's decision above, deferred to `test.easeetool.com` post-merge — no
-    browser tool was available in this session (consistent with Items 3/4's precedent). Stating this
-    plainly rather than approximating with curl, since "looks like the mockup" cannot be verified that way.
-  - No BLOCKED items.
+  - **Push + Vercel**: pushed `a67b75e` to `feature/design-canvas`. `npx vercel`'s npx cache was corrupted
+    (`ERR_MODULE_NOT_FOUND` on a stale `_npx/<hash>` dir) — cleared it (`rm -rf` that one cache dir, not a
+    global npx wipe) and `npx vercel@latest` worked cleanly afterward; flagging in case another agent hits
+    the same stale-cache symptom. Polled `vercel ls` → `vercel inspect --logs` until the branch's own
+    deployment (`quotation-system-ia8mhzp4v-...vercel.app`) was `Ready`; confirmed via the build log it
+    genuinely cloned **`Commit: a67b75e`** (not stale), `✓ Compiled successfully`, `Finished TypeScript`,
+    and the route list is exactly unchanged from before this piece (`/design`, `/design/add-wall`,
+    `/api/v1/orgs/[orgSlug]/floors`, `/partitions`, `/rooms`, `/rooms/[id]`, `/rooms/[id]/sides` — no new
+    routes, as expected for Piece 1). `/api/health` → 200 connected.
+  - **Manual verification — method note, same constraint as Items 3/4**: no browser/Playwright tool was
+    available in this session, so verification is `curl` + a manually re-attached session cookie (same
+    `BETTER_AUTH_URL`/`crossSubDomainCookies` workaround Item 3 documented — `Set-Cookie` carries
+    `Domain=.easeetool.com`, refused by a `*.vercel.app` host, worked around by attaching the raw cookie
+    value via an explicit header). **What this proves and doesn't**: confirms the page renders (200, no
+    500/error boundary) in both the zero-floors empty state (`t("noWalls")` branch: "No floors added yet.",
+    unit-toggle mm/in/m buttons present, "Saved Components" / "No saved components yet" right-rail hint)
+    and, after creating a floor + room via the real API, the Layout-mode floor-plan SSR path (`GET
+    /design?openRoom=<roomId>` → 200; SSR HTML contains exactly 5 `<polygon>` elements — 4 mitred wall-bar
+    quads + 1 dashed interior polygon, matching the N=4 closed-room case — 4 `cursor-pointer` clickable
+    segments, the legend's "Wall"/"Partition" labels, and "4 sides"). **Cannot verify via curl**: the actual
+    click interactions (select a side, convert-to-partition form, Escape/background-click-to-deselect, the
+    unit toggle actually converting values) — all client-side React state changes with no server round trip
+    by design (that's the point of flag 6), so there's no SSR artifact to grep for. Per GATE A's decision,
+    the full browser-based visual side-by-side against `design-step-poc.html` is deferred to
+    `test.easeetool.com` post-merge — stating this plainly rather than approximating further with curl.
+  - No BLOCKED items. One concern for the reviewer: the interactive-state paths (click-to-convert,
+    Escape/background-deselect, unit-toggle math) are implemented per the mockup's own logic and compile/
+    lint clean, but are **not yet exercised end-to-end** by anything — the reviewer or `engineering:test`
+    tester should prioritize a real click-through of these once a browser is available.
