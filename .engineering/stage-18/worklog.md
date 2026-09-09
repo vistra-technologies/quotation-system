@@ -1175,3 +1175,35 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   survives a no-op blur; seed-dimension assertions sit in `beforeAll` not a named test).
   **Item 7 is ready to merge into `release/stage-18`.** Full report:
   `.engineering/stage-18/review-item7-piece3.md`.
+
+- **2026-09-09 · tester · `engineering:test` formal pass (against `test.easeetool.com`, `staging` @
+  `2b9e9aa`) — verdict: FAIL.** 1 MAJOR · 2 MINOR · 2 INFORMATIONAL. `npm run lint` (0 errors, 5
+  pre-existing warnings) and `npx tsc --noEmit` (0 errors) re-confirmed locally. `tests/e2e/stage18.spec.ts`
+  — **13/13 passed** against real subdomain routing on `test.easeetool.com` (first time this suite has run
+  against that host rather than a `*.vercel.app`/path-based preview) — confirms the Item 4 `apiSignIn()`
+  cross-subdomain cookie fix genuinely works there. `/api/health` → 200 connected. Carry-forward #1
+  confirmed: real browser-form login works cleanly on `test.easeetool.com` (the `BETTER_AUTH_URL` bug does
+  not block it, as expected). Carry-forward #2 confirmed for real via actual browser clicks (not just code
+  trace): converting two different sides in the same room, no reload, both take effect — Item 3's original
+  bug stays fixed. Carry-forward #3 (Item 7's visual/interaction surface) — did a full real
+  Playwright-driven browser walkthrough (screenshots reviewed) against `design-step-poc.html`: floor-plan
+  diagram, hover tooltips, convert form, Configure mode, Add Panel (grows not shrinks), Saved-Components
+  rail grouping, Escape-to-deselect, and the unit-toggle pill all matched the mockup faithfully with zero
+  console errors. **MAJOR found**: with zero floors, `design-workspace.tsx` hides the entire `FloorBar` (the
+  "+ Floor" control) behind a `floors.length === 0` check, showing only a static "No floors added yet."
+  message with no way to add the first floor from the Design page itself — contradicts both the mockup
+  (`renderFloorBar()` always renders, empty list or not) and this item's own visual-QA checklist's first
+  line item. Workaround exists (the separate `/design/add-wall` entry point still works), so not a hard
+  blocker to using the app, but a real, concrete miss against "exactly like the mockup," the acceptance bar
+  the human set for this reopened item. 2 MINORs: Configure mode's "back" button didn't visibly restore the
+  originating wall-bar's selected/summary state in one observed sequence (not fully isolated from a
+  concurrent Add Panel click — flagged for a focused re-check, not confirmed root cause); long room/floor
+  names overflow their containers without ellipsis in a couple of spots (cosmetic). Informational: the
+  Doors/Profiles rail sections and door/edge-profile assignment were not clicked through this pass because
+  the test project had no DOOR/PROFILE_STOP Selections seeded (gating logic itself confirmed correct in
+  code) — recommend a follow-up pass with a fully-seeded project. Also re-flagged (not newly discovered) the
+  known no-`DELETE /floors`-route gap, hit firsthand while cleaning up: 4 test rooms created during this
+  pass were deleted via the API cleanly, but their 4 parent floor rows can't be removed (no route exists) —
+  ids listed in the report. No new automated coverage added (informational/visual findings only; the
+  existing 13-test suite's assertions were not found lacking). Full report:
+  `.engineering/stage-18/bugs-test-1.md`.
