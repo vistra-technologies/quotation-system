@@ -29,3 +29,15 @@ independent and unblocks fixture cleanup for the rest; build it first.
   `lib/data/rooms.ts:284-293`; transaction precedent at `lib/data/superadmin/orgs.ts:362-380`; RBAC pattern
   at `rooms/[id]/route.ts:90-91`; DRAFT gate at `lib/data/projects.ts:346`; Inquiry guard at
   `lib/data/inquiries.ts:463`. Plan covers 7 files, 2 E2E tests, SQL doc update. Ready to build.
+- 2026-09-09 — Developer (batch-1 implement): DONE. All 6 deliverables built and verified.
+  Files changed (quotation-system repo, commit b6461a1):
+    - `lib/data/floors.ts` — added `deleteFloor()` (mirrors `deleteRoom` shape)
+    - `app/api/v1/orgs/[orgSlug]/floors/[id]/route.ts` — new DELETE handler
+    - `lib/data/projects.ts` — added `deleteProject()` (DRAFT gate, FK-safe tx, Inquiry reversion)
+    - `app/api/v1/orgs/[orgSlug]/projects/[projectId]/route.ts` — added DELETE export
+    - `tests/e2e/stage19.spec.ts` — two behavior-level E2E tests (new file)
+  Docs repo (commit 4042940): `design-docs/sql-queries/by-page.sql` — appended Floor/Project DELETE SQL.
+  Verification: `npm run lint` + `npx tsc --noEmit` both clean locally. Preview deployment
+  `quotation-system-jpa3mg4wa-vistra-indias-projects.vercel.app` → READY; `/api/health` 200 connected.
+  Both new DELETE routes return 401 on unauthenticated curl (routes are wired). E2E:
+  `PLAYWRIGHT_BASE_URL=...feature-floo... npx playwright test tests/e2e/stage19.spec.ts` → 2 passed (8.8s).
