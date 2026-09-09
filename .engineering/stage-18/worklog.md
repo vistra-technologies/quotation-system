@@ -1286,4 +1286,8 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     reading (className mirrors an already-reviewed sibling branch verbatim; truncate/title mirrors an
     already-reviewed sibling input verbatim; the max-w removal is a pure deletion with no behavior
     change).
-  - No BLOCKED items. Push/Vercel-poll/e2e-rerun details below this entry once complete.
+  - Pushed `9c37570` to `feature/item7-test-fixes`
+    (`https://quotation-system-cnx3nokd2-vistra-indias-projects.vercel.app`); polled to `READY`;
+    `/api/health` → 200, `database: "connected"`. `PLAYWRIGHT_BASE_URL=<preview> npx playwright test
+    tests/e2e/stage18.spec.ts` → **13/13 passed** (29.0s), no regressions.
+  - No BLOCKED items. Branch `feature/item7-test-fixes` ready for review/merge decision.
