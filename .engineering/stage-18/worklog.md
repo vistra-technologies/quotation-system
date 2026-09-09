@@ -1017,12 +1017,16 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     equal to either rejected write's planted `panelId`, `selectionId: null`) instead of an empty array
     — same invariant, corrected expectation.
   - Verify: `npx tsc --noEmit` → exit 0, no output. `npm run lint` → 0 errors, same 5 pre-existing
-    `tests/e2e/**` warnings as every prior piece. Pushed as `c0d0e46` (+ the fixture fix folded into a
-    second push after catching the above via a real preview run — see below for the final SHA/URL) —
-    Vercel preview `https://quotation-system-646jahb4o-vistra-indias-projects.vercel.app` (dpl_HuP19NHV
-    QguxSuL8ev8b85mzreft) went READY; build log's route list confirms
-    `ƒ /api/v1/orgs/[orgSlug]/partitions/[id]` is present (not a stale/incomplete build); `/api/health`
-    200s with `database: "connected"`. `PLAYWRIGHT_BASE_URL=<preview> npx playwright test
-    tests/e2e/stage18.spec.ts` → **11/11 passed** (10 pre-existing + the new MINOR-7 test) after the
-    fixture-expectation fix above; before that fix it was 10 passed / 1 failed, confirming the fixture
-    fix (not a masking of a real regression) was the correct call.
+    `tests/e2e/**` warnings as every prior piece.
+  - **Push 1** (`c0d0e46`, the IMPORTANT/MINOR fixes): preview
+    `https://quotation-system-646jahb4o-vistra-indias-projects.vercel.app` went READY; running
+    `stage18.spec.ts` against it caught the fixture-expectation gap above (10 passed / 1 failed) — a
+    real regression signal, not assumed away.
+  - **Push 2** (`613dfe0`, the fixture fix — final commit for this round): preview
+    `https://quotation-system-9zwav20ra-vistra-indias-projects.vercel.app`
+    (dpl inspected via `vercel inspect`, build log confirms `ƒ /api/v1/orgs/[orgSlug]/partitions/[id]`
+    present, not a stale/incomplete build) went READY; `/api/health` → 200,
+    `database: "connected"`. `PLAYWRIGHT_BASE_URL=<preview> npx playwright test
+    tests/e2e/stage18.spec.ts` → **11/11 passed** (10 pre-existing + the new MINOR-7 test).
+  - **Final commit SHA for this round: `613dfe0`.** Branch `feature/design-canvas` pushed; ready for
+    the next review pass or merge decision per the orchestrator.
