@@ -8,7 +8,7 @@ import {
   apiConflict,
   apiServerError,
 } from "@/lib/api-error";
-import { getProjectById, updateProject } from "@/lib/data/projects";
+import { getProjectById, updateProject, deleteProject } from "@/lib/data/projects";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -169,6 +169,65 @@ export async function PATCH(
   } catch (err) {
     console.error(
       "[PATCH /api/v1/orgs/[orgSlug]/projects/[projectId]] updateProject",
+      err,
+    );
+    return apiServerError();
+  }
+}
+
+// ─── DELETE /api/v1/orgs/[orgSlug]/projects/[projectId] ─────────────────────
+
+/**
+ * Delete a DRAFT project and all its children (Selections, Floors, Rooms,
+ * Partitions) in a FK-safe transaction. If this was the last project linked to
+ * an Inquiry, the Inquiry is reverted to "NEW" status in the same transaction.
+ *
+ * Auth: any authenticated org member (no specific RBAC permission required —
+ *       matches the GET/PATCH gates on this same route).
+ * Tenancy: enforced by getApiSession() and deleteProject() (org-scoped lookup).
+ *
+ * Returns 409 if the project exists but is not in DRAFT status.
+ * Returns 404 if the project does not exist or belongs to a different org.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ orgSlug: string; projectId: string }> },
+) {
+  const { orgSlug, projectId } = await params;
+
+  let session;
+  try {
+    session = await getApiSession(request, orgSlug);
+  } catch (err) {
+    if (err instanceof ApiAuthError) {
+      if (err.status === 401) return apiUnauthorized(err.message);
+      if (err.status === 403) return apiForbidden(err.message);
+      if (err.status === 404) return apiNotFound(err.message);
+    }
+    console.error(
+      "[DELETE /api/v1/orgs/[orgSlug]/projects/[projectId]]",
+      err,
+    );
+    return apiServerError();
+  }
+
+  try {
+    const result = await deleteProject(session, projectId);
+
+    if (result === null) {
+      return apiNotFound("Project not found");
+    }
+
+    if ("notDeletable" in result) {
+      return apiConflict(
+        "Project cannot be deleted: it is not in DRAFT status",
+      );
+    }
+
+    return NextResponse.json({ id: result.id });
+  } catch (err) {
+    console.error(
+      "[DELETE /api/v1/orgs/[orgSlug]/projects/[projectId]] deleteProject",
       err,
     );
     return apiServerError();
