@@ -580,3 +580,11 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   (2) no 429 retry, unlike the `signIn()` helper it replaces, so the repo's documented rate-limit flake
   fails all 7 tests via `beforeAll`. Both are small local fixes. Full report:
   `.engineering/stage-18/review-item4.md`.
+
+- **2026-09-09 · reviewer · Item 4 round 2 (review fixes @ `940d469`) — verdict: APPROVE-WITH-NITS.**
+  0 CRITICAL · 0 IMPORTANT · 2 MINOR. Both round-1 IMPORTANTs verified fixed by reading the code against
+  `lib/auth.ts` and `tests/e2e/helpers.ts` (not taken on faith); MINORs 3/4/5/6/8 closed, 7/9 consciously
+  deferred. `npx tsc --noEmit` exit 0 and `npm run lint` 0 errors / same 5 pre-existing warnings, both
+  re-run. Test file only; no product code, no weakening of any round-1-confirmed-strong test. Item 4 is
+  ready; Stage 18 can move to `engineering:test`. Full report:
+  `.engineering/stage-18/review-item4-round2.md`.
