@@ -161,3 +161,10 @@ independent and unblocks fixture cleanup for the rest; build it first.
       Page-2 button visible. Clicked → URL updated to `?pageSize=2&page=2` via client-side router.push.
       No hard reload (URL changed without navigation bar flash). PASS: startTransition wrap confirmed live.
   Temp test file `tests/e2e/batch3-ui-verify.spec.ts` removed after verification run.
+- 2026-09-10 — Reviewer (batch-3): APPROVE. 0 CRITICAL, 0 IMPORTANT, 0 MINOR.
+  Popover ref scope correct (panelRef wraps button + panel; inner clicks pass contains-check, no false closes).
+  Listener cleanup correct (early-return when closed; removeEventListener on re-run/unmount; no leak).
+  Skeleton grid-cols/gap/padding is a word-for-word match to the live page wrapper (verified at add-selection-form.tsx:257).
+  startTransition dep-array inclusion is conservative-correct; no stale-closure risk; no double-navigation.
+  Developer's -10px Save-button shift confirmed as viewport auto-scroll (out-of-flow popover), not layout push.
+  Findings returned directly in reviewer message (no separate report file). Batch 3 clean and ready to merge.
