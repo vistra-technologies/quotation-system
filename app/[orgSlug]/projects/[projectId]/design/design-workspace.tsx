@@ -9,6 +9,8 @@ import { RoomList } from "./room-list";
 import { RoomFloorPlan } from "./room-floor-plan";
 import { LayoutModePanel } from "./layout-mode-panel";
 import { NewRoomForm } from "./new-room-form";
+import { RoomNameInput } from "./room-name-input";
+import { redirectToLogin } from "./login-redirect";
 import type { FloorRow, FloorWithRooms, PartitionRow, RoomRow, SelectionRow, ViewMode } from "./types";
 
 interface DesignWorkspaceProps {
@@ -107,6 +109,10 @@ export function DesignWorkspace({
       }
       try {
         const res = await fetch(`/api/v1/orgs/${orgSlug}/partitions?roomId=${selectedRoom.id}`);
+        if (res.status === 401 || res.status === 403) {
+          redirectToLogin(orgSlug, isSubdomain);
+          return;
+        }
         const data = (res.ok ? await res.json() : { partitions: [] }) as {
           partitions: PartitionRow[];
         };
@@ -120,7 +126,7 @@ export function DesignWorkspace({
     return () => {
       cancelled = true;
     };
-  }, [orgSlug, selectedRoom]);
+  }, [orgSlug, isSubdomain, selectedRoom]);
 
   function selectFloor(floorId: string) {
     setSelectedFloorId(floorId);
@@ -149,7 +155,11 @@ export function DesignWorkspace({
 
   function handleRoomCreated(room: RoomRow) {
     setFloors((prev) =>
-      prev.map((f) => (f.id === room.floorId ? { ...f, rooms: [room, ...f.rooms] } : f)),
+      // Appended, not prepended — matches createRoom()'s server-side
+      // orderIndex = MAX + 1 and listRoomsByFloor()'s orderIndex-asc
+      // ordering (lib/data/rooms.ts), so the new room lands in the same
+      // position the list will show after a reload.
+      prev.map((f) => (f.id === room.floorId ? { ...f, rooms: [...f.rooms, room] } : f)),
     );
     setSelectedFloorId(room.floorId);
     setSelectedRoomId(room.id);
@@ -167,6 +177,16 @@ export function DesignWorkspace({
       ),
     );
     setLayoutSideSelection(null);
+  }
+
+  function handleRoomRenamed(updatedRoom: RoomRow) {
+    setFloors((prev) =>
+      prev.map((f) =>
+        f.id === updatedRoom.floorId
+          ? { ...f, rooms: f.rooms.map((r) => (r.id === updatedRoom.id ? updatedRoom : r)) }
+          : f,
+      ),
+    );
   }
 
   return (
@@ -215,9 +235,12 @@ export function DesignWorkspace({
           {viewMode === "layout" && selectedRoom ? (
             <div className="flex w-full max-w-xl flex-col gap-4" onClick={(e) => e.stopPropagation()}>
               <div className="flex flex-wrap items-center gap-2">
-                <h3 className="text-base font-extrabold text-text-heading">
-                  {selectedRoom.label}
-                </h3>
+                <RoomNameInput
+                  orgSlug={orgSlug}
+                  isSubdomain={isSubdomain}
+                  room={selectedRoom}
+                  onRenamed={handleRoomRenamed}
+                />
                 {selectedFloor && (
                   <span className="rounded-pill border border-primary-soft bg-primary-softer px-2.5 py-0.5 text-[11px] font-semibold text-primary-dark">
                     {selectedFloor.label}

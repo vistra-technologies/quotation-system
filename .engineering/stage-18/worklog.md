@@ -763,3 +763,56 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     Escape/background-deselect, unit-toggle math) are implemented per the mockup's own logic and compile/
     lint clean, but are **not yet exercised end-to-end** by anything — the reviewer or `engineering:test`
     tester should prioritize a real click-through of these once a browser is available.
+
+- **2026-09-09 · reviewer · Item 7 Piece 1 (Layout-mode design-canvas shell) — verdict: CHANGES-NEEDED.**
+  0 CRITICAL · 2 IMPORTANT · 8 MINOR, reviewed against `a67b75e`. Both of the architect's binding
+  corrections that this piece carried were traced in the code and confirmed **genuinely implemented**, not
+  just claimed: the floor plan really does render mitred quadrilaterals generic over N (no named-side
+  lookup anywhere), and `convert-side-form.tsx` really does re-read `GET /rooms?floorId=` inside `submit()`
+  and rebuild the full `sides` array from the server's copy (diffed line-by-line against the deleted
+  `convertSideAction` — identical logic, only transport differs). 401/403 handling present on all mutating
+  fetches. `npx tsc --noEmit` exit 0 and `npm run lint` 0 errors / same 5 pre-existing warnings, both
+  re-run. Tenancy unchanged (no new routes); no new automated DOM assertions. IMPORTANT 1: the unit toggle
+  lives outside `ConvertSideForm` and the width/height inputs are raw strings, so switching mm→m mid-form
+  reinterprets the typed numbers at submit — a 1000x-too-large `widthMm`/`heightMm` is persisted with no
+  range validation anywhere downstream; the mockup can't hit this because `renderAll()` rebuilds those
+  inputs on every unit change. IMPORTANT 2: the Layout-mode room-name **input** was dropped (static `<h3>`
+  instead) — named explicitly in `architect-review-item7.md`'s missed-interactions list and in
+  `plan-item7.md`'s reuse map, and orphaned by both remaining pieces; `PATCH /rooms/[id]` now has zero
+  callers app-wide as a result. MINORs: read-only partition fetches swallow 401/403, new room prepended
+  client-side but appended server-side, no default convert dimensions, `sidesCount` not pluralised, one
+  dead i18n key (`canvasPlaceholder`), unguarded `sides[sideIndex]` index, four floor-plan/left-rail
+  fidelity nits for the deferred visual QA, and a take-or-leave dedup of the two partition caches. Full
+  report: `.engineering/stage-18/review-item7-piece1.md`.
+
+- **2026-09-09 · developer · Item 7 Piece 1 — review fixes (both IMPORTANTs + MINORs 3/4/6/7).**
+  Plan: `.engineering/stage-18/plan-item7-piece1-fixes.md`.
+  - **IMPORTANT 1** (`convert-side-form.tsx`): replaced the raw width/height input strings with
+    canonical-mm state (`heightMm`/`widthMm`), plus a per-render-derived display string (`toDisplay()`)
+    and a raw-text mirror for free typing. On a unit-toggle change, the stale text mirror is cleared
+    (via the "adjust state during render" pattern, not a `useEffect`, to dodge
+    `react-hooks/set-state-in-effect`) so the display re-derives from the *same* canonical mm through the
+    new unit — a value typed as 900mm and submitted after switching to `m` now still submits 900mm, not
+    900m. Submit no longer calls `fromDisplay()` at all; it reads the canonical mm state directly.
+  - **IMPORTANT 2** (new `room-name-input.tsx`, wired into `design-workspace.tsx`): added the missing
+    Layout-mode editable room-name input (mirrors `new-room-form.tsx`'s fetch pattern). Commits on
+    blur/Enter via `PATCH /api/v1/orgs/[orgSlug]/rooms/[id]` (Item 2's rename route — first caller
+    anywhere in `app/**`), handles 401/403 via `redirectToLogin`, reverts to the server label on
+    failure/empty/unchanged input, and updates `floors` state on success (`handleRoomRenamed`, same
+    shape as the existing `handleSideConverted`) so the left-rail room list picks up the new label
+    without a reload. Escape reverts the local draft without committing.
+  - **MINOR 3**: added 401/403 → `redirectToLogin` to the two read-only partition GETs
+    (`design-workspace.tsx`'s room-partitions effect, `room-list.tsx`'s per-room fetch).
+  - **MINOR 4**: `handleRoomCreated` now appends (`[...f.rooms, room]`) instead of prepending, matching
+    `createRoom()`'s server-side `orderIndex` / `listRoomsByFloor()`'s ordering.
+  - **MINOR 6**: `design.sidesCount` in `messages/en.json` is now an ICU plural
+    (`"{count, plural, =1 {1 side} other {# sides}}"`).
+  - **MINOR 7**: removed the dead `design.canvasPlaceholder` key.
+  - Not taken (per orchestrator instruction): MINOR 8 (bounds guard), MINOR 9 (floor-plan cosmetic nits
+    — deferred to post-merge visual QA), MINOR 10 (partition-cache dedup — only if Piece 2 touches it).
+  - Verify: `npx tsc --noEmit` → exit 0. `npm run lint` → 0 errors, 5 warnings, all pre-existing and in
+    `tests/e2e/**` (identical baseline to the review). Pushed `feature/design-canvas`, polled Vercel to
+    `READY` for commit `<FILL-IN-SHA>`, `/api/health` 200 with `database: "connected"`.
+  - Files: `convert-side-form.tsx`, `design-workspace.tsx`, `room-list.tsx`, new `room-name-input.tsx`,
+    `messages/en.json`.
+  - Status: DONE.

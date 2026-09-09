@@ -41,12 +41,56 @@ export function ConvertSideForm({
   onConverted,
 }: ConvertSideFormProps) {
   const t = useTranslations("design");
-  const { unit, fromDisplay } = useUnit();
+  const { unit, toDisplay, fromDisplay } = useUnit();
   const [label, setLabel] = useState("");
-  const [heightInput, setHeightInput] = useState("");
-  const [widthInput, setWidthInput] = useState("");
+  // Canonical mm is the source of truth (never a free-floating display
+  // string) — the displayed value is derived from it via toDisplay() on
+  // every render, so switching the unit toggle mid-form re-interprets the
+  // *same* canonical number through the new unit instead of silently
+  // reinterpreting stale digits through fromDisplay() at submit time (the
+  // 900mm-typed/then-toggled-to-m/then-submitted-as-900m bug). Mirrors the
+  // mockup's renderAll() rebuilding every input from toDisplay() whenever
+  // the unit changes (design-step-poc.html:939,946,563-567).
+  const [heightMm, setHeightMm] = useState<number | null>(null);
+  const [widthMm, setWidthMm] = useState<number | null>(null);
+  // Raw text mirrors of the two fields, so the user can freely type
+  // intermediate states ("", "-", "1.") without them being clobbered by the
+  // derived-from-mm value on every keystroke. Cleared (falls back to the
+  // derived display) whenever the parsed value diverges — i.e. only used
+  // while actively typing in the *current* unit.
+  const [heightText, setHeightText] = useState("");
+  const [widthText, setWidthText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // When the unit toggle changes, the raw text mirrors go stale relative to
+  // the new unit (they were typed against the old one) — clear them so the
+  // display falls back to re-deriving from canonical mm through the new
+  // unit's toDisplay(). Canonical mm itself is untouched, so no precision is
+  // lost and nothing is silently reinterpreted. Done during render (React's
+  // "adjusting state when a prop/derived value changes" pattern) rather
+  // than in a useEffect, to avoid the extra render pass + set-state-in-effect
+  // lint rule.
+  const [prevUnit, setPrevUnit] = useState(unit);
+  if (prevUnit !== unit) {
+    setPrevUnit(unit);
+    setHeightText("");
+    setWidthText("");
+  }
+
+  const heightDisplay = heightText !== "" ? heightText : heightMm !== null ? String(toDisplay(heightMm)) : "";
+  const widthDisplay = widthText !== "" ? widthText : widthMm !== null ? String(toDisplay(widthMm)) : "";
+
+  function handleHeightChange(text: string) {
+    setHeightText(text);
+    const parsed = Number(text);
+    setHeightMm(text !== "" && !isNaN(parsed) ? fromDisplay(parsed) : null);
+  }
+  function handleWidthChange(text: string) {
+    setWidthText(text);
+    const parsed = Number(text);
+    setWidthMm(text !== "" && !isNaN(parsed) ? fromDisplay(parsed) : null);
+  }
 
   async function submit() {
     const trimmedLabel = label.trim();
@@ -54,18 +98,16 @@ export function ConvertSideForm({
       setError("Label is required.");
       return;
     }
-    const heightValue = Number(heightInput);
-    const widthValue = Number(widthInput);
-    if (!heightInput || isNaN(heightValue) || heightValue <= 0) {
+    if (heightMm === null || heightMm <= 0) {
       setError("Height must be a positive number.");
       return;
     }
-    if (!widthInput || isNaN(widthValue) || widthValue <= 0) {
+    if (widthMm === null || widthMm <= 0) {
       setError("Width must be a positive number.");
       return;
     }
-    const heightMm = Math.round(fromDisplay(heightValue));
-    const widthMm = Math.round(fromDisplay(widthValue));
+    const finalHeightMm = Math.round(heightMm);
+    const finalWidthMm = Math.round(widthMm);
 
     setSubmitting(true);
     setError(null);
@@ -105,8 +147,8 @@ export function ConvertSideForm({
             kind: "PARTITION" as const,
             turnDegrees: side.turnDegrees,
             label: trimmedLabel,
-            heightMm,
-            widthMm,
+            heightMm: finalHeightMm,
+            widthMm: finalWidthMm,
           };
         }
         if (side.kind === "PARTITION") {
@@ -181,8 +223,8 @@ export function ConvertSideForm({
             <input
               type="number"
               step="any"
-              value={widthInput}
-              onChange={(e) => setWidthInput(e.target.value)}
+              value={widthDisplay}
+              onChange={(e) => handleWidthChange(e.target.value)}
               className="rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs text-text-body focus:border-primary focus:outline-none"
             />
           </label>
@@ -193,8 +235,8 @@ export function ConvertSideForm({
             <input
               type="number"
               step="any"
-              value={heightInput}
-              onChange={(e) => setHeightInput(e.target.value)}
+              value={heightDisplay}
+              onChange={(e) => handleHeightChange(e.target.value)}
               className="rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs text-text-body focus:border-primary focus:outline-none"
             />
           </label>

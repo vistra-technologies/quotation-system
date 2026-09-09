@@ -300,7 +300,6 @@
   },
   "design": {
     "pageTitle": "Wall Design",
-    "canvasPlaceholder": "Wall Design Canvas — coming in Stage 9",
     "selectionsTitle": "Saved Components",
     "wallsTitle": "Rooms",
     "noWalls": "No floors added yet.",
@@ -316,7 +315,7 @@
     "newRoom": "+ Add Room",
     "createRoom": "Create Room",
     "cancel": "Cancel",
-    "sidesCount": "{count} sides",
+    "sidesCount": "{count, plural, =1 {1 side} other {# sides}}",
     "convertToPartition": "Convert to Partition",
     "loadingPartition": "Loading…",
     "continueButton": "Continue",

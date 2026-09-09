@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { NewRoomForm } from "./new-room-form";
 import { PartitionPreview } from "./partition-preview";
+import { redirectToLogin } from "./login-redirect";
 import type { PartitionRow, RoomRow } from "./types";
 
 interface RoomListProps {
@@ -67,7 +68,13 @@ export function RoomList({
       if (fullyCovered) continue;
 
       fetch(`/api/v1/orgs/${orgSlug}/partitions?roomId=${room.id}`)
-        .then((res) => (res.ok ? res.json() : { partitions: [] }))
+        .then((res) => {
+          if (res.status === 401 || res.status === 403) {
+            redirectToLogin(orgSlug, isSubdomain);
+            return { partitions: [] };
+          }
+          return res.ok ? res.json() : { partitions: [] };
+        })
         .then((data: { partitions: PartitionRow[] }) => {
           setPartitionsByRoom((prev) => ({ ...prev, [room.id]: data.partitions }));
         })
@@ -76,7 +83,7 @@ export function RoomList({
         });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rooms is a fresh prop each render; re-running per room/partitionsByRoom change is what we want.
-  }, [rooms, expandedRoomIds, orgSlug]);
+  }, [rooms, expandedRoomIds, orgSlug, isSubdomain]);
 
   function toggleRoom(room: RoomRow) {
     setExpandedRoomIds((prev) => {
