@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@/app/generated/prisma/client";
 import type { SessionData } from "@/lib/session";
 import { createPartitionInTx } from "@/lib/data/partitions";
+import type { PartitionDesign } from "@/lib/data/partitions";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -436,6 +438,28 @@ export async function replaceSides(
             heightMm: incoming.heightMm,
             widthMm: incoming.widthMm,
             organizationId: session.organizationId,
+          });
+          // Seed one full-width panel on conversion — mirrors
+          // design-step-poc.html's "Convert to Partition" behavior
+          // (single panel spanning the entered width). Without this,
+          // Configure mode opens empty and the first "+ Add Panel"
+          // (fixed-default width) would silently shrink the partition's
+          // widthMm below what the user just entered (review-item7-piece2
+          // IMPORTANT 1).
+          const seedDesign: PartitionDesign = {
+            panels: [
+              {
+                id: crypto.randomUUID(),
+                type: "glass",
+                widthMm: incoming.widthMm,
+                heightMm: incoming.heightMm,
+                selectionId: null,
+              },
+            ],
+          };
+          await tx.partition.update({
+            where: { id: partition.id },
+            data: { design: seedDesign as unknown as Prisma.InputJsonValue },
           });
           finalSides.push({
             id: crypto.randomUUID(),

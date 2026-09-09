@@ -964,3 +964,51 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
     login issue as every prior piece (worked around in the test harness, not a product bug this piece
     introduced or can fix); the interactive Configure-mode click paths need a real browser pass at
     `engineering:test`.
+
+- **2026-09-09 · reviewer · Item 7 Piece 2 (Configure mode + `partitions/[id]`) — CHANGES-NEEDED.**
+  Reviewed `4a0b48f..ff571e4` against `plan-item7.md`, `architect-review-item7.md` (all 7 binding items
+  verified implemented in code, not from the summary), `review-item7-piece1-round2.md`'s canonical-mm
+  pattern (not re-introduced), the mockup's Configure-mode JS, and `04-data-model.md`. `tsc`/`lint`
+  claims re-run and true (0 errors, same 5 pre-existing test warnings). **0 CRITICAL · 3 IMPORTANT ·
+  7 MINOR** — all three IMPORTANTs are `design`-document content invariants (no seed panel on convert →
+  first Add Panel silently shrinks the wall; add/split discards the wall's glass `selectionId`;
+  `panels[].heightMm`/`door.outerFrame.w` drift from the partition's own dimensions). Full report:
+  `.engineering/stage-18/review-item7-piece2.md`.
+
+- **2026-09-09 · developer · Item 7 Piece 2 review-fix round.** Fixed all 3 IMPORTANTs from
+  `review-item7-piece2.md` (round-1 binding corrections untouched, confirmed already correct by the
+  reviewer):
+  - **IMPORTANT 1** (`lib/data/rooms.ts` convert-side transaction): plain→partition convert now seeds
+    `design.panels` with exactly one panel spanning the side's full `widthMm`/`heightMm`
+    (`tx.partition.update` right after `createPartitionInTx`, inside the same transaction), matching the
+    mockup's seed-on-convert behavior instead of leaving Configure mode empty.
+  - **IMPORTANT 2** (`configure-mode.tsx` `addPanel`/`splitSelectedPanel`): both now inherit
+    `selectionId` instead of hardcoding `null` — split carries the split panel's own `selectionId` onto
+    both halves; add inherits the wall's common glass (`freshPanels.every(...)` check) or `null` only if
+    panels disagree. Keeps `saved-components-rail.tsx`'s `isGlassActive` (`panels.every(p =>
+    p.selectionId === id)`) correct after either op.
+  - **IMPORTANT 3** (`lib/data/partitions.ts` `updatePartition`): whenever `patch.design.panels` is
+    written, panels are now normalized server-side — `heightMm` forced to `patch.heightMm ?? existing
+    .heightMm`, `door.outerFrame.w` forced to the panel's own `widthMm` — mirroring how `widthMm` is
+    already derived rather than trusted from the client (binding correction 3's pattern, extended to the
+    two fields the review found still drifting).
+  Also took both MINORs flagged as cheap:
+  - **MINOR 4**: `saved-components-rail.tsx` now has its own `run()` wrapper (mirrors `ConfigureMode`'s
+    pattern) — busy state disables the three sections during a mutation (blocks overlapping
+    read-modify-write races) and a failed mutation now surfaces an error line instead of silently no-op'ing.
+  - **MINOR 7 (both halves)**: added
+    `"PATCH /partitions/[id] design: server-side merge preserves measurements/stops on a panels-only write"`
+    to `tests/e2e/stage18.spec.ts` — seeds `stops`+`measurements` alongside panels, then a panels-only
+    PATCH (no `stops`/`measurements` key at all) and asserts both survive the merge (the invariant
+    `updatePartition`'s spread-then-overwrite-only-present-keys logic provides but had no test); same
+    test also asserts a client-supplied `widthMm` in the body is ignored (not even parsed) — locks in
+    binding correction 4 against a future regression. Suite is 10 tests → **11** after this addition (net
+    +1, MINOR 7a/7b combined into one test since they share the same fixture).
+  - Did not take MINOR 5 (door-height slider keyboard commit), 6 (server-side `design` shape guards for
+    empty panels/type-door consistency/duplicate ids), 8 (mockup dimension minimums), 9 (left-rail
+    partition preview swatch), or 10 (docs-repo `by-page.sql` commit, batched by the orchestrator per
+    established posture) — out of scope for this review-fix pass, left for the orchestrator/human to
+    schedule.
+  - Verify: `npx tsc --noEmit` → exit 0, no output. `npm run lint` → 0 errors, same 5 pre-existing
+    `tests/e2e/**` warnings as every prior piece. Pushed and E2E re-run against the fresh preview —
+    see the next entry for the deployment/E2E result and final commit SHA.

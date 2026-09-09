@@ -1068,6 +1068,80 @@ test("PATCH /partitions/[id] design: legitimate round-trip persists panels/doors
   expect(afterRemove.widthMm).toBe(700);
 });
 
+test("PATCH /partitions/[id] design: server-side merge preserves measurements/stops on a panels-only write", async () => {
+  const panelId = "panel-merge";
+
+  // First write: establish measurements + stops alongside panels.
+  const seedRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+    {
+      data: {
+        design: {
+          panels: [
+            { id: panelId, type: "glass", widthMm: 700, heightMm: 2400, selectionId: glassSelectionId },
+          ],
+          stops: { top: profileSelectionId },
+          measurements: { note: "seeded-by-e2e" },
+        },
+      },
+    },
+  );
+  expect(seedRes.status()).toBe(200);
+
+  // Second write: panels only — no `stops`/`measurements` key at all in the
+  // patch body. lib/data/partitions.ts's updatePartition() merges onto the
+  // stored design and only overwrites keys present in the patch; this locks
+  // that in against a regression to a naive "replace the whole document"
+  // write (review-item7-piece2 MINOR 7a — previously untested).
+  const panelsOnlyRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+    {
+      data: {
+        design: {
+          panels: [
+            { id: panelId, type: "glass", widthMm: 500, heightMm: 2400, selectionId: glassSelectionId },
+          ],
+        },
+      },
+    },
+  );
+  expect(panelsOnlyRes.status()).toBe(200);
+  const { partition: merged } = (await panelsOnlyRes.json()) as {
+    partition: {
+      widthMm: number;
+      design: {
+        panels: { id: string; widthMm: number }[];
+        stops?: Record<string, string>;
+        measurements?: { note?: string };
+      };
+    };
+  };
+  expect(merged.widthMm).toBe(500);
+  expect(merged.design.panels).toEqual([expect.objectContaining({ id: panelId, widthMm: 500 })]);
+  expect(merged.design.stops?.top).toBe(profileSelectionId);
+  expect(merged.design.measurements?.note).toBe("seeded-by-e2e");
+
+  // A client-supplied `widthMm` in the request body is not even parsed —
+  // the server derives it from panels regardless of what's sent
+  // (review-item7-piece2 MINOR 7b).
+  const spoofRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
+    {
+      data: {
+        widthMm: 999999,
+        design: {
+          panels: [
+            { id: panelId, type: "glass", widthMm: 500, heightMm: 2400, selectionId: glassSelectionId },
+          ],
+        },
+      },
+    },
+  );
+  expect(spoofRes.status()).toBe(200);
+  const { partition: spoofed } = (await spoofRes.json()) as { partition: { widthMm: number } };
+  expect(spoofed.widthMm).toBe(500);
+});
+
 // ---------------------------------------------------------------------------
 // 6. Cascade correctness: deleting a room removes its partitions.
 //

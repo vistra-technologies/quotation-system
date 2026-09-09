@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { MIN_DOOR_HEIGHT_MM, DEFAULT_DOOR_HEIGHT_RATIO } from "./configure-constants";
 import type {
@@ -42,6 +43,24 @@ export function SavedComponentsRail({
 }: SavedComponentsRailProps) {
   const t = useTranslations("design");
 
+  // Same busy/error surface ConfigureMode's run() gives its own mutations
+  // (configure-mode.tsx:85-92) — without it, a 400 (cross-tenant reference)
+  // or a network error on assignGlass/toggleDoor/assignProfile produced no
+  // feedback at all, and nothing guarded against a rapid double-click firing
+  // two overlapping read-modify-write cycles (review-item7-piece2 MINOR 4).
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(build: (fresh: PartitionRow) => PartitionPatch): Promise<MutateResult> {
+    if (busy) return { ok: false, error: "Busy — please wait." };
+    setBusy(true);
+    setError(null);
+    const result = await mutate(build);
+    if (!result.ok) setError(result.error);
+    setBusy(false);
+    return result;
+  }
+
   const glassSelections = selections.filter((s) => s.componentType.code === "GLASS");
   const doorSelections = selections.filter((s) => s.componentType.code === "DOOR");
   const profileSelections = selections.filter((s) => s.componentType.code === "PROFILE_STOP");
@@ -67,7 +86,7 @@ export function SavedComponentsRail({
   }
 
   function assignGlass(componentId: string) {
-    void mutate((fresh) => {
+    void run((fresh) => {
       const freshPanels = fresh.design?.panels ?? [];
       const nextPanels = freshPanels.map((p) => ({ ...p, selectionId: componentId }));
       return { design: { panels: nextPanels } };
@@ -77,7 +96,7 @@ export function SavedComponentsRail({
   function toggleDoor(componentId: string) {
     if (selection?.type !== "panel") return;
     const panelId = selection.panelId;
-    void mutate((fresh) => {
+    void run((fresh) => {
       const freshPanels = fresh.design?.panels ?? [];
       const nextPanels = freshPanels.map((p): DesignPanel => {
         if (p.id !== panelId) return p;
@@ -106,7 +125,7 @@ export function SavedComponentsRail({
   function assignProfile(componentId: string) {
     if (selection?.type !== "edge") return;
     const side = selection.side;
-    void mutate((fresh) => {
+    void run((fresh) => {
       const stops = { ...(fresh.design?.stops ?? {}), [side]: componentId };
       return { design: { stops } };
     });
@@ -118,6 +137,7 @@ export function SavedComponentsRail({
         {t("selectionsTitle")}
       </h2>
       <p className="mb-3 text-[11px] text-text-muted">{t("savedComponentsFrom")}</p>
+      {error && <p className="mb-2 text-xs text-red-700 dark:text-red-400">{error}</p>}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {glassSelections.length > 0 && (
@@ -125,7 +145,7 @@ export function SavedComponentsRail({
             title={t("sectionPartitions")}
             note={t("appliesEveryPanel")}
             comps={glassSelections}
-            enabled
+            enabled={!busy}
             isActive={isGlassActive}
             onClick={assignGlass}
           />
@@ -134,7 +154,7 @@ export function SavedComponentsRail({
           <ComponentSection
             title={t("sectionDoors")}
             comps={doorSelections}
-            enabled={doorEnabled}
+            enabled={doorEnabled && !busy}
             isActive={isDoorActive}
             onClick={toggleDoor}
           />
@@ -143,7 +163,7 @@ export function SavedComponentsRail({
           <ComponentSection
             title={t("sectionProfiles")}
             comps={profileSelections}
-            enabled={profileEnabled}
+            enabled={profileEnabled && !busy}
             isActive={isProfileActive}
             onClick={assignProfile}
           />

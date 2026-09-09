@@ -278,6 +278,25 @@ export async function updatePartition(
     // item7.md binding correction 4).
     if (patch.design.panels !== undefined) {
       data.widthMm = nextDesign.panels!.reduce((sum, p) => sum + p.widthMm, 0);
+
+      // Normalize panels[].heightMm and door.outerFrame.w to the
+      // partition's own current dimensions rather than trusting whatever
+      // the client sent — the same class of drift correction 3 already
+      // applies to widthMm. A height edit, width rescale, or split can
+      // otherwise leave stale values with no visible symptom today, but
+      // garbage input for the future BOQ engine (review-item7-piece2
+      // IMPORTANT 3).
+      const effectiveHeightMm = patch.heightMm ?? existing.heightMm;
+      nextDesign.panels = nextDesign.panels!.map((p) => {
+        const normalized: DesignPanel = { ...p, heightMm: effectiveHeightMm };
+        if (normalized.door) {
+          normalized.door = {
+            ...normalized.door,
+            outerFrame: { w: normalized.widthMm, h: normalized.door.outerFrame?.h ?? effectiveHeightMm },
+          };
+        }
+        return normalized;
+      });
     }
 
     data.design = nextDesign as unknown as Prisma.InputJsonValue;

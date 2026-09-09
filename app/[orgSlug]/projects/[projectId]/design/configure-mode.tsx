@@ -162,12 +162,21 @@ export function ConfigureMode({
   function addPanel() {
     void run((fresh) => {
       const freshPanels = fresh.design?.panels ?? [];
+      // Inherit the wall's common glass assignment (if every existing panel
+      // shares one) so adding a panel doesn't silently leave it "unglazed"
+      // relative to the rest of the wall — the Saved-Components rail's
+      // isGlassActive check depends on every panel sharing the same
+      // selectionId (review-item7-piece2 IMPORTANT 2).
+      const commonSelectionId =
+        freshPanels.length > 0 && freshPanels.every((p) => p.selectionId === freshPanels[0].selectionId)
+          ? freshPanels[0].selectionId
+          : null;
       const newPanel: DesignPanel = {
         id: crypto.randomUUID(),
         type: "glass",
         widthMm: DEFAULT_PANEL_WIDTH_MM,
         heightMm: fresh.heightMm,
-        selectionId: null,
+        selectionId: commonSelectionId,
       };
       return { design: { panels: [...freshPanels, newPanel] } };
     });
@@ -203,8 +212,11 @@ export function ConfigureMode({
       nextPanels.splice(
         idx,
         1,
-        { id: firstHalfId, type: "glass", widthMm: halfA, heightMm: panel.heightMm, selectionId: null },
-        { id: secondHalfId, type: "glass", widthMm: halfB, heightMm: panel.heightMm, selectionId: null },
+        // Both halves inherit the split panel's own glass assignment — a
+        // split must not silently drop glass the panel already had
+        // (review-item7-piece2 IMPORTANT 2).
+        { id: firstHalfId, type: "glass", widthMm: halfA, heightMm: panel.heightMm, selectionId: panel.selectionId },
+        { id: secondHalfId, type: "glass", widthMm: halfB, heightMm: panel.heightMm, selectionId: panel.selectionId },
       );
       return { design: { panels: nextPanels } };
     }).then((result) => {
