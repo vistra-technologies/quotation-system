@@ -667,3 +667,77 @@ _(to be filled in once the developer's plan proposes a breakdown — see stage d
   `release/stage-18`/`staging` and reachable at `test.easeetool.com` (subdomain routing, `BETTER_AUTH_URL`
   bug doesn't block login there). No devops fix requested this stage. Proceeding to Step 4 (dev↔reviewer
   loop), Piece 1 (Layout-mode shell + floor-plan) first.
+
+- **2026-09-09 — Item 7 Piece 1: Layout-mode shell (developer agent)**: on `feature/design-canvas`.
+  Own plan: `.engineering/stage-18/plan-item7-piece1.md`. No schema/route changes — Piece 2 owns the new
+  `partitions/[id]` route.
+  - **New**: `design/types.ts` (shared `RoomSide`/`RoomRow`/`FloorRow`/`FloorWithRooms`/`PartitionRow`/
+    `SelectionRow`/`ViewMode` types — `ViewMode` includes `'configure'` now so Piece 2 can extend
+    `design-workspace.tsx` without a signature change); `design/login-redirect.ts` (client-side 401/403 ->
+    login redirect, built from an `isSubdomain` boolean the server computes via `detectIsSubdomain()` and
+    forwards as a prop — same pattern `project-wizard-breadcrumb.tsx` already uses, since `orgHref()`/
+    `detectIsSubdomain()` read `next/headers()` and can't run client-side, per architect-review-item7.md
+    binding requirement 4); `design/unit-context.tsx` + `unit-toggle.tsx` (presentation-only `UnitProvider`/
+    `useUnit()`, canonical mm, mirrors the mockup's `toDisplay`/`fromDisplay`/`formatLen`; mounted in the
+    Design page's own header row, not the shared wizard breadcrumb — see plan's "what can't be exactly the
+    mockup"); `design/floor-bar.tsx` (`<select>` + inline "+ Floor" form, client `fetch()` to
+    `POST /floors`); `design/room-list.tsx` (replaces `design-left-rail.tsx` — collapsible room groups
+    scoped to the selected floor, chevron, generic "N sides" count, "+ Add Room" inline form; only lists
+    already-*converted* partitions in the expanded body, matching the mockup's own split — plain-side
+    conversion now happens via the floor-plan diagram, not a per-side list button); `design/
+    partition-preview.tsx` (small non-interactive to-scale swatch — a flat-colour rectangle sized to the
+    partition's width:height aspect ratio; explicitly a stub per the task's own carve-out, since real
+    panel/door rendering needs Configure mode's canvas primitives, not fetched this piece);
+    `design/room-floor-plan.tsx` (generic SVG `RoomFloorPlan` — N vertices from `sides.length`/array index
+    only, **never** a named top/left/right/bottom lookup: N=4 uses the drawing square's own 4 corners,
+    N!=4 uses a regular N-gon inscribed in a circle; each side is a **mitred quadrilateral** — outer edge =
+    vertex-to-vertex span, inner edge = line-intersection of the two adjacent inward-offset edges (or a
+    straight perpendicular inset at an open run's endpoint) — per architect-review-item7.md's binding
+    fidelity correction, not the plan's original plain `<line>`; diagonal-stripe `<pattern>` fill for
+    `is-partition` sides; one computed floating tooltip instead of 4 CSS rules; click-to-select,
+    background-click-to-deselect, hover, selected/dimmed, legend); `design/layout-mode-panel.tsx`
+    (right-rail content for a selected side — `ConvertSideForm` for a PLAIN side, or a summary +
+    inert/disabled "Configure Partition ->" button for a PARTITION side, per the task's explicit
+    Piece-1 carve-out); `design/design-workspace.tsx` (the new single client state owner —
+    `selectedFloorId`/`selectedRoomId`/`viewMode`/`layoutSideSelection`/`activePartitionId` (wired, unused
+    until Piece 2), mounts `UnitProvider`, owns the 3-column grid, Escape-to-clear-selection (global
+    keydown listener) and background-click-to-deselect (per architect-review-item7.md missed-interactions
+    list) — `viewMode` only ever reaches `'empty' | 'layout'` this piece).
+  - **Rewritten** (plan-item7.md flag 6, approved conditionally): `convert-side-form.tsx` and
+    `new-room-form.tsx` — client `fetch()` instead of `useActionState` + `redirect()`, no more page nav per
+    mutation. **`convert-side-form.tsx` re-reads `GET /rooms?floorId=` fresh immediately before building
+    the `sides` PATCH payload** (never trusts a stale prop/cache) — the exact binding condition
+    architect-review-item7.md attached to flag 6, ported verbatim from the now-removed
+    `convertSideAction`'s own "never trust the client for array state" posture. Both forms redirect to
+    login via `login-redirect.ts` on a 401/403 response (binding requirement 4) instead of silently
+    swallowing it. `page.tsx` — stays the Server Component data-fetching entry point (floors + rooms +
+    selections via `internalFetch`, unchanged sources) plus `detectIsSubdomain()`, now hands off to
+    `<DesignWorkspace>` instead of rendering the 3-column layout inline; still reads `?openRoom=` once on
+    initial load (set by `add-wall/actions.ts`'s unchanged server-side redirect, a genuine top-level entry
+    point) as `design-workspace.tsx`'s `initialOpenRoomId` prop.
+  - **Removed**: `design-left-rail.tsx` (superseded), `design/actions.ts` (`createRoomAction`/
+    `convertSideAction` — confirmed via grep nothing else called them; `add-wall/actions.ts` is a separate
+    file, untouched, per the plan).
+  - **i18n**: extended the existing `design` namespace in `messages/en.json` (unit toggle wasn't a new
+    string — no per-unit strings needed since it's just "mm"/"in"/"m"). Removed 6 keys that became fully
+    unused after the rewrite (`addAnotherWall`, `unitMm`, `unitFeet`, `submitAddWall`, `wallDisplay`,
+    `untitledSide` — confirmed via grep across `app/**` before removing); added ~20 new keys (floor-plan
+    legend/tooltip text, convert/summary panel titles, empty-state copy, `roomsSummary`/`selectionsAvailable`
+    ICU plurals). `fieldFloor`/`fieldRoom`/`continueButton` kept — still used by the untouched
+    `add-wall-form.tsx`.
+  - **Flag 3 (right-rail grouping by `componentType.code`) is NOT implemented this piece** — the
+    Saved-Components rail itself is Configure-mode UI (Piece 2); `selections` is fetched server-side and
+    threaded down to `design-workspace.tsx` as before, but Piece 1's right rail only ever shows the
+    layout-mode side panel or a plain "N saved components" count hint (`selectionsAvailable`), never a
+    grouped list — flagging so Piece 2 doesn't mistake this for "already done."
+  - **Verify**: `npm run lint` — 0 errors (same 5 pre-existing unrelated `tests/e2e/**` warnings; one new
+    `react-hooks/set-state-in-effect` surfaced and was fixed the same way Item 3 fixed its equivalent —
+    wrapped the reset branches in an async function inside the effect rather than calling `setState`
+    directly in the effect body). `npx tsc --noEmit` — 0 errors.
+  - **Push + Vercel**: not yet done as of this entry — pushing next and will poll to `READY` for the exact
+    commit SHA, confirm `/api/health` 200 and the build log route list is unchanged (no new routes this
+    piece), before returning status.
+  - **Manual visual QA**: per GATE A's decision above, deferred to `test.easeetool.com` post-merge — no
+    browser tool was available in this session (consistent with Items 3/4's precedent). Stating this
+    plainly rather than approximating with curl, since "looks like the mockup" cannot be verified that way.
+  - No BLOCKED items.

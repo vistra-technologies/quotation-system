@@ -1,62 +1,90 @@
 "use client";
 
-import { useActionState } from "react";
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
-import { createRoomAction, type CreateRoomState } from "./actions";
+import { redirectToLogin } from "./login-redirect";
+import type { RoomRow } from "./types";
 
 interface NewRoomFormProps {
   orgSlug: string;
-  projectId: string;
+  isSubdomain: boolean;
   floorId: string;
   onCancel: () => void;
+  /** Called with the created room (default 4-side PLAIN rectangle) on success. */
+  onCreated: (room: RoomRow) => void;
 }
 
-const initialState: CreateRoomState = { error: null };
-
 /**
- * Inline "New Room" form (Stage 18 scope item 4-2) — appears under a floor's
- * room list in DesignLeftRail. Calls createRoomAction, which POSTs
- * /api/v1/orgs/[orgSlug]/rooms (defaults to a 4-side PLAIN rectangle,
- * lib/data/rooms.ts createRoom()) and redirects back to the design page with
- * the new room auto-expanded.
+ * Inline "New Room" form — mirrors design-step-poc.html's inline
+ * add-room form (no `window.prompt()`). Client `fetch()` instead of
+ * `useActionState` + `redirect()` (plan-item7.md flag 6 / architect
+ * conditional approval): view/selection state stays purely client-side, no
+ * page nav, so the newly created room appears instantly.
  */
 export function NewRoomForm({
   orgSlug,
-  projectId,
+  isSubdomain,
   floorId,
   onCancel,
+  onCreated,
 }: NewRoomFormProps) {
   const t = useTranslations("design");
-  const [state, formAction, isPending] = useActionState(
-    createRoomAction,
-    initialState,
-  );
+  const [label, setLabel] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit() {
+    const trimmed = label.trim();
+    if (!trimmed) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/v1/orgs/${orgSlug}/rooms`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ floorId, label: trimmed }),
+      });
+      if (res.status === 401 || res.status === 403) {
+        redirectToLogin(orgSlug, isSubdomain);
+        return;
+      }
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(body.error ?? "Failed to create room — please try again.");
+        return;
+      }
+      const { room } = (await res.json()) as { room: RoomRow };
+      onCreated(room);
+    } catch {
+      setError("Network error — please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
-    <div className="mt-1 rounded-sm border border-dashed border-border bg-bg-white p-3">
-      <LoadingOverlay visible={isPending} />
-      {state.error && (
-        <p className="mb-2 text-xs text-red-700 dark:text-red-400">
-          {state.error}
-        </p>
-      )}
-      <form action={formAction} className="flex flex-col gap-2">
-        <input type="hidden" name="orgSlug" value={orgSlug} />
-        <input type="hidden" name="projectId" value={projectId} />
-        <input type="hidden" name="floorId" value={floorId} />
+    <div className="relative mt-1 rounded-sm border border-dashed border-border bg-bg-white p-3">
+      <LoadingOverlay visible={submitting} />
+      {error && <p className="mb-2 text-xs text-red-700 dark:text-red-400">{error}</p>}
+      <div className="flex flex-col gap-2">
         <input
-          name="label"
           type="text"
-          required
           autoFocus
+          value={label}
+          onChange={(e) => setLabel(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void submit();
+            else if (e.key === "Escape") onCancel();
+          }}
           placeholder={t("fieldRoomPlaceholder")}
           className="rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs text-text-body placeholder:text-text-placeholder focus:border-primary focus:outline-none"
         />
         <div className="flex gap-2">
           <button
-            type="submit"
-            disabled={isPending}
+            type="button"
+            onClick={() => void submit()}
+            disabled={submitting}
             className="flex-1 rounded-sm bg-primary px-2.5 py-1.5 text-xs font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
           >
             {t("createRoom")}
@@ -69,7 +97,7 @@ export function NewRoomForm({
             {t("cancel")}
           </button>
         </div>
-      </form>
+      </div>
     </div>
   );
 }
