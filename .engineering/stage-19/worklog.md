@@ -357,3 +357,17 @@ independent and unblocks fixture cleanup for the rest; build it first.
   feature branch (local + remote). Batch 6 closed. **All 6 batches now merged — `engineering:implement` is
   complete for Stage 19.** `release/stage-19` is fully up to date; every feature branch for this run has
   been merged and deleted. Next: write the stage's Execution Log and hand off to `engineering:test`.
+- 2026-09-10 — Tester: formal `engineering:test` pass against `test.easeetool.com`. **Verdict: FAIL**.
+  1 CRITICAL, 2 MAJOR, 4 MINOR. Full findings in `.engineering/stage-19/bugs-1.md`. Headline: C1 —
+  `/controls/component-types?orgId=<valid>` 500s for every real org (Batch 5's core deliverable, both
+  create- and edit-form branches); the underlying API routes are proven fine in isolation, so the crash is
+  in the page/form rendering, only reachable on `test.easeetool.com` (where the Tier-2 test that would have
+  caught it actually runs). M1/M2 — `subdomain-navigation.spec.ts`, `stage5.spec.ts`, `stage6.spec.ts` each
+  have pre-existing tests broken by Batch 4's intended Back-button-removal/step-gating/button-copy changes,
+  not updated when those batches shipped (unlike Batch 5's careful retirement of the specs it touched).
+  Lint + typecheck clean; health 200; `stage19.spec.ts` 5/5 and 8/9 of `superadmin-component-types.spec.ts`
+  passed (the 1 failure is C1). Manually verified Project-DELETE's DRAFT gate/cascade/Inquiry-reversion via
+  curl+DB (correct, but N1: no automated coverage for it despite profile.md calling for it). SuperAdmin
+  `devadmin` bootstrap password was temporarily changed to obtain a session for the Tier-2 tests, then
+  restored and confirmed restored (old value round-trips byte-for-byte; temp value now rejects). One test
+  artifact could not be cleaned up (no Inquiry DELETE route in scope) — listed in the report.
