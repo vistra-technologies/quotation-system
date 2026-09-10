@@ -2,16 +2,39 @@
 
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
-import { LoadingOverlay } from "@/components/loading-overlay";
 import { SelectField } from "@/components/select-field";
 import { updateSuperAdminComponentType } from "./actions";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // ─── Inner status helpers ─────────────────────────────────────────────────────
 
+/**
+ * Deliberately does NOT use the shared @/components/loading-overlay — that
+ * component calls next-intl's useTranslations() and requires a
+ * NextIntlClientProvider ancestor. The /controls console has no such
+ * provider, so using it here throws on mount and crashes to
+ * app/global-error.tsx (same failure mode as the Stage 16 post-deploy bug,
+ * 2026-09-02 — see app/controls/(authenticated)/roles/permission-toggle-button.tsx
+ * for the original fix this mirrors; Stage 19 test-fix batch 1 fixes the
+ * reintroduction of it here).
+ */
 function PendingOverlay() {
   const { pending } = useFormStatus();
-  return <LoadingOverlay visible={pending} />;
+  if (!pending) return null;
+
+  return (
+    <div
+      role="status"
+      aria-label="Loading"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/50"
+    >
+      <div
+        aria-hidden="true"
+        className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white"
+      />
+      <p className="mt-3 text-sm font-medium text-white">Loading…</p>
+    </div>
+  );
 }
 
 function SubmitButton({ label, disabled: extraDisabled }: { label: string; disabled?: boolean }) {

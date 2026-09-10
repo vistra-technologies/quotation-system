@@ -205,7 +205,7 @@ test("Selection round-trip: create project → add selection → selection appea
   // not the project list. Wait for the UUID-shaped project detail URL.
   await Promise.all([
     page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}$"), { timeout: 15_000 }),
-    page.getByRole("button", { name: /configure/i }).click(),
+    page.getByRole("button", { name: /create/i }).click(),
   ]);
 
   // Wait for the page to fully settle after the Next.js App Router processes the
@@ -289,7 +289,7 @@ test("Selection tenancy: direct access to a different org's project returns 404 
   // Extract the projectId from the resulting URL directly.
   await Promise.all([
     page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}$"), { timeout: 15_000 }),
-    page.getByRole("button", { name: /configure/i }).click(),
+    page.getByRole("button", { name: /create/i }).click(),
   ]);
 
   // Get the projectId from the current URL (format: /acme-glass/projects/{uuid})

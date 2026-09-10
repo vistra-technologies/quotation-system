@@ -254,17 +254,13 @@ test("projects: list row link + back-link navigate with clean subdomain URLs", a
     page.getByRole("heading", { name: /Project Details/i }),
   ).toBeVisible({ timeout: 10_000 });
 
-  // "Back to Projects" back link — the Bug 1 regression guard for this page.
-  // Both the top-of-page link and the card footer link point at /projects.
-  const backLink = page.getByRole("link", { name: /Back to Projects/i }).first();
-  await expect(backLink).toBeVisible({ timeout: 5_000 });
-  const backHref = await backLink.getAttribute("href");
-  expect(
-    backHref,
-    `Back link href must be "/projects", got: "${backHref}"`,
-  ).toBe("/projects");
-  await backLink.click();
-  await page.waitForURL(`${BASE}/projects`, { timeout: 15_000 });
+  // NOTE (Stage 19 Batch 4 / test-fix batch 1): the "Back to Projects" link
+  // (both the top-of-page link and the card footer link) was deliberately
+  // removed from every wizard step, including the project-details page —
+  // this was the Bug-1 regression guard for a link that no longer exists.
+  // Navigate back via the URL bar instead, to keep this test's remaining
+  // "clean subdomain URL" coverage of the projects list page intact.
+  await page.goto(`${BASE}/projects`);
   assertCleanSubdomainUrl(page.url(), "/projects");
   await expect(page.getByRole("heading", { name: /Projects/i })).toBeVisible({
     timeout: 10_000,
@@ -390,6 +386,55 @@ test("project wizard: all 5 breadcrumb steps navigate with clean subdomain URLs"
   expect(createRes.status()).toBe(201);
   const { project } = (await createRes.json()) as { project: { id: string } };
   const pid = project.id;
+
+  // Stage 19 Batch 4 introduced sequential step-gating: Design locks until the
+  // project has ≥1 Selection, and Summary/Quotation lock until it has ≥1
+  // Partition. Locked steps render as <span aria-disabled> rather than <a>, so
+  // a fresh project only has 2 real links (Project Details, Configuration) in
+  // the breadcrumb — seed a Selection + Partition first (same shape as
+  // stage19.spec.ts's "project with Selections and Partitions" test) so all 5
+  // steps are unlocked <a> tags, matching this test's own intent (exercising
+  // clean-URL navigation across all 5 steps, not the gating itself — that's
+  // covered separately in stage19.spec.ts).
+  const ctRes = await page.request.get(`${BASE}/api/v1/orgs/vistra/component-types`);
+  expect(ctRes.status()).toBe(200);
+  const { componentTypes } = (await ctRes.json()) as { componentTypes: { id: string }[] };
+  expect(componentTypes.length).toBeGreaterThan(0);
+
+  const selRes = await page.request.post(`${BASE}/api/v1/orgs/vistra/selections`, {
+    data: {
+      projectId: pid,
+      componentTypeId: componentTypes[0].id,
+      label: "Wizard breadcrumb selection",
+      config: {},
+      orderIndex: 0,
+    },
+  });
+  expect(selRes.status()).toBe(201);
+
+  const floorRes = await page.request.post(`${BASE}/api/v1/orgs/vistra/floors`, {
+    data: { projectId: pid, label: "Wizard breadcrumb floor" },
+  });
+  expect(floorRes.status()).toBe(201);
+  const { floor: { id: floorId } } = (await floorRes.json()) as { floor: { id: string } };
+
+  const roomRes = await page.request.post(`${BASE}/api/v1/orgs/vistra/rooms`, {
+    data: { floorId, label: "Wizard breadcrumb room" },
+  });
+  expect(roomRes.status()).toBe(201);
+  const { room: { id: roomId } } = (await roomRes.json()) as { room: { id: string } };
+
+  // isClosed: false — a single-side open run bypasses the ≥3-sides validation
+  // that applies only to closed rooms (Stage 18 §2).
+  const sidesRes = await page.request.patch(`${BASE}/api/v1/orgs/vistra/rooms/${roomId}/sides`, {
+    data: {
+      isClosed: false,
+      sides: [
+        { kind: "PARTITION", turnDegrees: 90, label: "Wizard breadcrumb wall", heightMm: 2400, widthMm: 1200 },
+      ],
+    },
+  });
+  expect(sidesRes.status()).toBe(200);
 
   // Navigate to project detail (Step 1 — Project Details).
   await page.goto(`${BASE}/projects/${pid}`);
