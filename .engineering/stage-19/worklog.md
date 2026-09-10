@@ -12,7 +12,7 @@
 | 2 | Shared `SelectField` + radio→dropdown fix | new `components/select-field.tsx` + 14 consumer files, `lib/component-catalog-seed.ts`, `create-component-form.tsx` | **done** — merged to `release/stage-19` @ `5805a8c` |
 | 3 | Configuration-page UX (popover + loading fixes) | `add-selection-form.tsx`, `configuration/loading.tsx`, `list-page-controls.tsx` | **done** — merged to `release/stage-19` @ `90fc545` |
 | 4 | Wizard fixes (copy, Back button, step-gating) | `project-wizard-breadcrumb.tsx`, `layout.tsx`, `_project-fetch.ts` | **done** — merged to `release/stage-19` @ `765abde` |
-| 5 | SuperAdmin Component-Type relocation | new `app/api/v1/superadmin/component-types/**`, `/controls` UI, retiring old `/admin/components` route + its E2E specs | **done** — pushed to `feature/superadmin-component-types` @ `f9b19cf` |
+| 5 | SuperAdmin Component-Type relocation | new `app/api/v1/superadmin/component-types/**`, `/controls` UI, retiring old `/admin/components` route + its E2E specs | **done** — merged to `release/stage-19` @ `bfd8c3f` |
 | 6 | Remaining loading/placeholder sweep | Inquiry/Orders screen spot-check | pending |
 
 Items 2-3 likely share `add-selection-form.tsx` — sequence, don't parallelize those two. Item 1 is
@@ -328,3 +328,11 @@ independent and unblocks fixture cleanup for the rest; build it first.
   caller-supplied orgId; [typeId] GET verifies typeId+orgId compound membership → 404 on mismatch;
   tenancy E2E test (#6) confirmed passing against preview. Auth guard on all 5 new routes.
   Batch 5 is clean and ready to merge.
+- 2026-09-10 — Conductor: merged `feature/superadmin-component-types` into `release/stage-19` (@ `bfd8c3f`),
+  deleted the feature branch (local + remote). Batch 5 closed (APPROVE-WITH-NITS, 2 MINOR, both
+  non-blocking). All 3 GATE-A design questions resolved by the human before build: old /admin/components
+  deleted outright, old org-scoped write API routes kept, SuperAdminAuditLog added on mutations (overriding
+  the plan's own no-audit-log lean). Tenancy verified via real E2E run with real bootstrap credentials
+  against a live preview; devadmin's password (temporarily changed to obtain those credentials) was
+  confirmed restored to its original value before merge. Starting Batch 6 (remaining loading/placeholder
+  sweep — Inquiry/Orders screens) next, the final and smallest item in this stage.
