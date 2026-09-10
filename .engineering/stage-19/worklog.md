@@ -357,3 +357,104 @@ independent and unblocks fixture cleanup for the rest; build it first.
   feature branch (local + remote). Batch 6 closed. **All 6 batches now merged — `engineering:implement` is
   complete for Stage 19.** `release/stage-19` is fully up to date; every feature branch for this run has
   been merged and deleted. Next: write the stage's Execution Log and hand off to `engineering:test`.
+- 2026-09-10 — Tester: formal `engineering:test` pass against `test.easeetool.com`. **Verdict: FAIL**.
+  1 CRITICAL, 2 MAJOR, 4 MINOR. Full findings in `.engineering/stage-19/bugs-1.md`. Headline: C1 —
+  `/controls/component-types?orgId=<valid>` 500s for every real org (Batch 5's core deliverable, both
+  create- and edit-form branches); the underlying API routes are proven fine in isolation, so the crash is
+  in the page/form rendering, only reachable on `test.easeetool.com` (where the Tier-2 test that would have
+  caught it actually runs). M1/M2 — `subdomain-navigation.spec.ts`, `stage5.spec.ts`, `stage6.spec.ts` each
+  have pre-existing tests broken by Batch 4's intended Back-button-removal/step-gating/button-copy changes,
+  not updated when those batches shipped (unlike Batch 5's careful retirement of the specs it touched).
+  Lint + typecheck clean; health 200; `stage19.spec.ts` 5/5 and 8/9 of `superadmin-component-types.spec.ts`
+  passed (the 1 failure is C1). Manually verified Project-DELETE's DRAFT gate/cascade/Inquiry-reversion via
+  curl+DB (correct, but N1: no automated coverage for it despite profile.md calling for it). SuperAdmin
+  `devadmin` bootstrap password was temporarily changed to obtain a session for the Tier-2 tests, then
+  restored and confirmed restored (old value round-trips byte-for-byte; temp value now rejects). One test
+  artifact could not be cleaned up (no Inquiry DELETE route in scope) — listed in the report.
+- 2026-09-10 — Developer (test-fix batch 1): DONE. Branch `feature/stage19-test-fixes-1` (reused, cut off
+  `release/stage-19` as given — not re-cut). Plan at `.engineering/stage-19/plan-testfix-1.md`. Commit
+  `6255699`.
+  **C1 root cause (found via static read, no Vercel log access needed — see plan for full trail):**
+  `create-component-form.tsx`/`edit-component-form.tsx` (both new in Batch 5) imported the shared
+  `@/components/loading-overlay`, which calls next-intl's `useTranslations("common")` — but `/controls`
+  has no `NextIntlClientProvider` anywhere in its tree (confirmed via `app/layout.tsx` and
+  `app/controls/(authenticated)/layout.tsx`, both provider-free — `/controls` is deliberately translation-
+  free). Calling `useTranslations` with no provider throws on render (both the create branch, no `typeId`,
+  and the edit branch, since both forms shared the same broken `PendingOverlay`), crashing to
+  `global-error.tsx` — the observed 500. This exact bug already happened once before and was fixed:
+  `roles/permission-toggle-button.tsx` has a comment dated 2026-09-02 documenting the identical failure
+  mode verbatim ("Stage 16 post-deploy bug"). Batch 5 didn't know about the precedent and reintroduced it.
+  Ruled out data as the cause via a temporary read-only script against the dev Neon branch (272 acme-glass
+  `ComponentType` rows, 8 categories — no missing category refs, no non-array `fieldsSchema`; script
+  deleted after use, no data touched).
+  **Fix:** both form files now use an inline, i18n-free `PendingOverlay` (same markup as
+  `permission-toggle-button.tsx`), removing the `LoadingOverlay` import.
+  **Correction to the bug report's own instructions:** `proxy.ts` (lines 161-172, comment dated
+  2026-09-02) already carves out `/controls/**` on *any* non-`*.easeetool.com` host, including per-branch
+  preview URLs — added specifically to unblock pre-merge `/controls` verification, before Stage 19 even
+  started. `superadmin-component-types.spec.ts`'s own header comment claiming Tier-2 tests "only work on
+  test.easeetool.com" is stale. Verified C1's fix directly against my own feature-branch preview via curl
+  with a real SuperAdmin session (both branches 200, real page content, no error boundary) — not just
+  `test.easeetool.com`.
+  **M1** (`subdomain-navigation.spec.ts`): removed the now-nonexistent "Back to Projects" assertion;
+  seeded a Selection+Partition before asserting all 5 breadcrumb links are present (locked steps render as
+  disabled spans on a fresh project). **M2** (`stage5.spec.ts`, `stage6.spec.ts`): updated the
+  project-creation submit-button locator `/configure/i` → `/create/i` (3 occurrences across both files —
+  one more than the report's 2 named line numbers, all the same button).
+  **N1**: added DRAFT-cascade + Inquiry-reversion coverage to `stage19.spec.ts`. Did **not** automate the
+  "non-DRAFT project → 409" gate — there is currently no product-level way to move a Project out of DRAFT
+  through the public API (no route ever sets any other status; the BOQ/quotation/order pipeline that would
+  do this isn't built yet). Automating it would require a first-ever direct-DB dependency in `tests/e2e/`
+  purely to reach an unreachable-by-the-app state — judged disproportionate for this discretionary item;
+  left as an in-file comment for whoever adds real status transitions later.
+  **N3**: `helpers.ts`'s `fillCreateFormRequiredFields()` now fills `mainContractorName`.
+  **Static:** `npm run lint` (0 errors, 5 pre-existing warnings) + `npx tsc --noEmit` (clean).
+  **Deploy:** pushed, polled `npx vercel ls` until READY (`quotation-system-a8m4gcogu-…vercel.app`,
+  since `npx vercel inspect` errored on a corrupted npx cache — used `vercel ls` instead). `/api/health`
+  200 connected.
+  **Verification (real runs, all against live deployments — SuperAdmin `devadmin` password temporarily
+  changed to obtain a session, confirmed restored twice: DB hash byte-for-byte match + temp password now
+  rejects with 401):**
+  - C1: curl-verified both branches 200 with real page content on my own branch preview (see above).
+  - `superadmin-component-types.spec.ts` against my branch preview: 8/8 Tier-1 passed; the 2 Tier-2 tests
+    still skip (unrelated to my fix — the spec's own `isOnStaging` gate, which I did not touch, since
+    fixing the gate itself wasn't part of the signed-off scope) — covered by the curl check instead.
+  - `stage19.spec.ts` against my branch preview: 6/6 passed on the clean run (hit the pre-documented N4
+    cold-start flake once on attempt 1 — reran, all 6 green including the new N1 test — matches the
+    tester's own "did not reproduce" note).
+  - `subdomain-navigation.spec.ts` against `test.easeetool.com` (hardcoded host in that file regardless of
+    `PLAYWRIGHT_BASE_URL`): **12/12 passed** — M1 confirmed.
+  - `stage5.spec.ts` against `test.easeetool.com` (form-based `signIn` helper is documented-broken on
+    ad-hoc `*.vercel.app` previews per `stage18.spec.ts`'s own comment — not something this batch could
+    fix or needed to): **4/4 passed** — M2 confirmed for this file.
+  - `stage6.spec.ts` against `test.easeetool.com`: 10/14 passed, then the "Selection round-trip" test
+    (the one M2 targeted) got **past** the button-click (proving the fix works) and failed later at an
+    unrelated locator, `select#sel-type` — no longer present on the Configuration page (its component-type
+    picker was restructured at some earlier point, not by this batch or by anything in scope). This is a
+    real, separate, pre-existing gap, **not fixed here** (out of signed-off scope) — flagging for the
+    human/orchestrator.
+  - `stage7.spec.ts` against `test.easeetool.com` (touched `helpers.ts`): 14/24 ran to a real result;
+    N3 confirmed — the inquiry-creation test named in the bug report now **passes**. One unrelated failure
+    at line ~436 (`Direct Project create` test) has the *same* `/configure/i` locator bug M2 targeted, but
+    in a file that wasn't part of the signed-off M2 scope (bug report only named stage5/stage6) — **not
+    fixed here**, flagging instead of silently expanding scope. (Also found the same pattern at
+    `stage13.spec.ts` — same call.)
+  **Concerns for the reviewer/human (DONE_WITH_CONCERNS, not full DONE):**
+  1. `stage7.spec.ts:436` and `stage13.spec.ts` (4 occurrences) have the identical `/configure/i` →
+     `/create/i` regression M2 covered for stage5/stage6, but weren't in the signed-off scope — recommend
+     a follow-up batch to fix all remaining occurrences in one pass.
+  2. `stage6.spec.ts`'s "Selection round-trip" test has an unrelated, real break (`select#sel-type` no
+     longer exists on the Configuration page) — pre-existing, not caused by this batch, but blocks that
+     test file from being green.
+  3. Both are mechanical test-locator fixes with no product-code risk, same shape as M1/M2 — low risk to
+     pick up whenever convenient.
+- 2026-09-10 — Reviewer (test-fix batch 1, `feature/stage19-test-fixes-1` @ `6255699`): **APPROVE-WITH-NITS**.
+  0 CRITICAL, 2 IMPORTANT (both out-of-scope follow-ups, not defects in this diff), 3 MINOR. Full report:
+  `.engineering/stage-19/review-testfix-1.md`. Verified locally: `npx tsc --noEmit` clean, `npm run lint`
+  0 errors / 5 pre-existing warnings — matches the developer's claims. C1/M1/M2/N1/N3 all verified against
+  source (precedent match, gating/back-link premises, locator over-match check, helper call-site sweep,
+  DAL read for assertion strength). Scope discipline confirmed: the 7 remaining `/configure/i` sites and
+  `stage6`'s `select#sel-type` break are genuinely untouched, no partial fix. Caveats for the human: the
+  committed suite is not green until those 7 sites are fixed, and `superadmin-component-types.spec.ts`'s
+  `isOnStaging` Tier-2 gate still hides `/controls` page regressions on branch previews — the same blind
+  spot that let C1 reach the formal test pass.
