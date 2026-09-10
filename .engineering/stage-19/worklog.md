@@ -516,3 +516,14 @@ independent and unblocks fixture cleanup for the rest; build it first.
 - 2026-09-10 — Reviewer (test-fix batch 2, `feature/stage19-test-fixes-2` @ `e9ef62a`): **APPROVE-WITH-NITS**.
   0 CRITICAL, 0 IMPORTANT, 2 MINOR. Both open IMPORTANT findings from `review-testfix-1.md` confirmed
   closed. Report: `.engineering/stage-19/review-testfix-2.md`.
+- 2026-09-10 — Tester (re-test pass, `staging` @ `fc35ea4`): formal `engineering:test` re-run against
+  `test.easeetool.com` following both test-fix batches. **Verdict: PASS**. 0 CRITICAL, 0 MAJOR, 0 MINOR (new).
+  Full findings in `.engineering/stage-19/bugs-2.md`. C1 confirmed genuinely fixed (200 + real content, both
+  create/edit branches, all 4 real orgs) with tenancy spot-checked intact (cross-org typeId falls back to
+  list-only, no leak). M1 (subdomain-navigation.spec.ts 12/12), M2 (stage5 4/4, stage6 10/14 with only the
+  known pre-existing select#sel-type break), Tier-2 gating fix (superadmin-component-types.spec.ts 10/10),
+  N1/N3 (stage19.spec.ts 6/6, stage7.spec.ts 24/24) all confirmed. stage13.spec.ts's two pre-existing timing
+  flakes reconfirmed present (not new); isolated re-runs (22/22 excluding the 2 flakes; 4/4 "Project edit:")
+  confirm no new regressions. Build clean (route list includes /controls/component-types), lint/typecheck
+  clean, health 200. devadmin verified on normal seeded password before and after, no mutation needed this
+  round. No test data created this pass; repo clean.
