@@ -433,7 +433,7 @@ test("Direct Project create (no Inquiry) still works correctly after Stage 7", a
   // not the project list. Wait for the UUID-shaped project detail URL.
   await Promise.all([
     page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}$"), { timeout: 20_000 }),
-    page.getByRole("button", { name: /configure/i }).click(),
+    page.getByRole("button", { name: /create/i }).click(),
   ]);
 
   // Project name and project number must appear on the Project Details page (Step 1).
@@ -520,7 +520,7 @@ test("Project create redirect uses replace: browser history grows by 1, not 2", 
   // RedirectType.replace is used, so /new is replaced by /projects/{uuid} in history.
   await Promise.all([
     page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}$"), { timeout: 20_000 }),
-    page.getByRole("button", { name: /configure/i }).click(),
+    page.getByRole("button", { name: /create/i }).click(),
   ]);
 
   const historyAfter = await page.evaluate(() => window.history.length);
@@ -649,7 +649,7 @@ test("Project trust boundary: forged externalCompanyId in form body is ignored f
   // Stage 9: createProject now redirects to the new project's detail page (Step 1).
   await Promise.all([
     page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}$"), { timeout: 20_000 }),
-    page.getByRole("button", { name: /configure/i }).click(),
+    page.getByRole("button", { name: /create/i }).click(),
   ]);
 
   // Project must be created successfully (not blocked by INVALID_EXTERNAL_COMPANY).

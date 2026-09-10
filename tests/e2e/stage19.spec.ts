@@ -387,3 +387,114 @@ test("step-gating: project with Selections and Partitions — all wizard pages r
     orgUrlPattern(ACME, `/projects/${projectId}/quotation`),
   );
 });
+
+// ---------------------------------------------------------------------------
+// 6. Project-DELETE: cascade correctness + Inquiry reversion
+//   (Stage 19 test-fix batch 1 — N1: profile.md's "Testing posture" names these
+//   as invariants to automate; previously only manually verified by the tester
+//   via curl+DB, per bugs-1.md. API-level only, no DOM assertions — wireframe-
+//   stage rule.)
+//
+//   NOT automated here: the "non-DRAFT project -> 409" gate. There is
+//   currently no product-level way to move a Project out of DRAFT status
+//   through the public API (the BOQ/quotation/order pipeline that would do
+//   this isn't built yet — every project-creation path in the app only ever
+//   sets status: "DRAFT", confirmed via grep across lib/data/). The tester's
+//   manual verification of the 409 path (bugs-1.md N1) relied on direct DB
+//   access to force a non-DRAFT row. Automating that would mean adding a
+//   first-ever direct Prisma/DB dependency into tests/e2e/ (no existing spec
+//   does this) purely to construct a state the app itself cannot reach yet —
+//   judged out of proportion for this discretionary item. Revisit once a
+//   real status transition exists (e.g. Quotation issuance).
+// ---------------------------------------------------------------------------
+
+test("project-delete: DRAFT project cascade-deletes and reverts its source Inquiry to NEW", async () => {
+  // Create an Inquiry, then convert it to a project (DRAFT, linked via inquiryId).
+  const inqRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/inquiries`),
+    { data: { name: `Stage19 DeleteCascade Inquiry ${RUN}`, currency: "AED" } },
+  );
+  expect(inqRes.status()).toBe(201);
+  const { inquiry: { id: inquiryId } } = (await inqRes.json()) as {
+    inquiry: { id: string };
+  };
+
+  const convertRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/inquiries/${inquiryId}/convert`),
+  );
+  expect(convertRes.status()).toBe(201);
+  const { project: { id: projectId } } = (await convertRes.json()) as {
+    project: { id: string };
+  };
+
+  // Add a Selection and a Floor so the cascade has real children to remove.
+  const ctRes = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/component-types`),
+  );
+  expect(ctRes.status()).toBe(200);
+  const { componentTypes } = (await ctRes.json()) as {
+    componentTypes: { id: string }[];
+  };
+  expect(componentTypes.length).toBeGreaterThan(0);
+
+  const selRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/selections`),
+    {
+      data: {
+        projectId,
+        componentTypeId: componentTypes[0].id,
+        label: `Sel DeleteCascade ${RUN}`,
+        config: {},
+        orderIndex: 0,
+      },
+    },
+  );
+  expect(selRes.status()).toBe(201);
+
+  const floorRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/floors`),
+    { data: { projectId, label: `Floor DeleteCascade ${RUN}` } },
+  );
+  expect(floorRes.status()).toBe(201);
+
+  // Delete the (still-DRAFT) project.
+  const deleteRes = await acmePage.request.delete(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/projects/${projectId}`),
+  );
+  expect(deleteRes.status()).toBe(200);
+
+  // Project itself is gone.
+  const getProjectRes = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/projects/${projectId}`),
+  );
+  expect(getProjectRes.status()).toBe(404);
+
+  // Its Selections and Floors are gone (cascade).
+  const selectionsAfterRes = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/selections?projectId=${projectId}`),
+  );
+  expect(selectionsAfterRes.status()).toBe(200);
+  const { selections: selectionsAfter } = (await selectionsAfterRes.json()) as {
+    selections: unknown[];
+  };
+  expect(selectionsAfter).toEqual([]);
+
+  const floorsAfterRes = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/floors?projectId=${projectId}`),
+  );
+  expect(floorsAfterRes.status()).toBe(200);
+  const { floors: floorsAfter } = (await floorsAfterRes.json()) as {
+    floors: unknown[];
+  };
+  expect(floorsAfter).toEqual([]);
+
+  // The source Inquiry reverted CONVERTED → NEW.
+  const inquiryAfterRes = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/inquiries/${inquiryId}`),
+  );
+  expect(inquiryAfterRes.status()).toBe(200);
+  const { inquiry: inquiryAfter } = (await inquiryAfterRes.json()) as {
+    inquiry: { status: string };
+  };
+  expect(inquiryAfter.status).toBe("NEW");
+});
