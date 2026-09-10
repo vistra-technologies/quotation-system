@@ -570,3 +570,13 @@ independent and unblocks fixture cleanup for the rest; build it first.
   nav progress bar would be a new feature, not part of this fix. Merging `release/stage-19` into `staging`
   next to redeploy to `test.easeetool.com`, then re-running the tester before returning to the deploy gate.
 - 2026-09-10 — Tester (re-test pass, bugs-3 fix verification, `staging` @ `15cfd15`): formal re-test of `bugs-3.md` (M1–M5, N1–N3) against `test.easeetool.com`. **Verdict: PASS**. 0 CRITICAL, 0 MAJOR, 1 MINOR (new). Full findings in `.engineering/stage-19/bugs-4.md`. M1 confirmed fixed via live API tests (401 without auth, 409 for GLASS/in-use, 404 for nonexistent, 200 for unused type). M2/N1 confirmed via source (key={selectedType.id} on EditComponentForm). M3 confirmed via live API (projectLocation and submissionDate present in list response). M4/M5 confirmed as design-decision items (not code defects) per developer/reviewer diagnosis — escalated to human. N2 confirmed non-bug (Cloisons has zero ExternalCompany records). N3 confirmed (placeholder + hint in create-component-form). Regression: superadmin-component-types 10/10, subdomain-navigation 12/12, stage5 4/4, stage6 14/18 (1 known pre-existing break), stage7 24/24, stage13 Project-edit 4/4. One MINOR finding: stage19.spec.ts test 3 (step-gating fresh project) consistently fails on cold Lambda (3/3 runs, rotation between /design and /summary per run — pre-documented N4 cold-start flake, redirect logic confirmed correct in source). devadmin on normal Seed1234! password — no mutation. 3 orphaned step-gating test projects (acme-glass) cleaned up via DELETE route before returning; repo clean.
+- 2026-09-10 — Conductor: **Stage 19 closed. GATE D signed off (PASS). Human's explicit call: close as an
+  intermediate stage — do NOT deploy to `master`/production this time.** `stage-19.md`'s Execution Log
+  updated with the full `engineering:test` history (3 passes: FAIL→fix→fix→PASS, then a human video/live
+  walkthrough found 8 more issues→fix→PASS) and a new "Closing this stage" section documenting the
+  no-deploy decision. `development-cycles/README.md`'s stage row + a new "Standing exception" note under
+  "How a stage ships" both updated. **Consequence recorded for the next stage:** Stage 20 must cut
+  `release/stage-20` from `staging` (currently @ Stage 19's code), not `master` (still at Stage 18,
+  `0396d2a`) — the normal "cut from master" rule is suspended until a future production deploy catches
+  `master` up. `engineering:deploy` was not run this stage. `release/stage-19` and `staging` are both fully
+  up to date and in sync; no further action pending here.
