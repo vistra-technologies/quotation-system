@@ -527,3 +527,12 @@ independent and unblocks fixture cleanup for the rest; build it first.
   confirm no new regressions. Build clean (route list includes /controls/component-types), lint/typecheck
   clean, health 200. devadmin verified on normal seeded password before and after, no mutation needed this
   round. No test data created this pass; repo clean.
+- 2026-09-10 — Conductor: human sent a fresh 4:24 walkthrough video (`Stage 19 bugs.mp4`, own manual pass
+  on `test.easeetool.com` AFTER the clean PASS above) flagging 6 new issues, reviewed via transcript +
+  frame capture. Written up as `.engineering/stage-19/bugs-3.md`: M1 (no delete on SuperAdmin Component
+  Types), M2 (edit form doesn't reset between rows — visually confirmed via frame mismatch at t=01:42),
+  M3 (Projects list missing Submission Date/Location that the detail page has), N1 (field-schema dropdown
+  option may show stale value, possibly same root cause as M2), N2 (New-Project Company dropdown shows
+  only "None" — needs DB check before treating as a bug, not an assumed fix), N3 (optional/skippable code-
+  field UX note). Human signed off and chose to fix before deploy. Branched
+  `feature/stage19-video-bugfixes-1` off `release/stage-19`. Starting dev↔reviewer loop next.
