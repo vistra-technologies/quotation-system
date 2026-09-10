@@ -11,7 +11,7 @@ interface SidebarProps {
    * window.location.hostname read and the resulting SSR/hydration mismatch. */
   isSubdomain: boolean;
   canManageUsers: boolean;
-  canManageFeatures: boolean;
+  // NOTE (Stage 19 Batch 5): canManageFeatures removed — Component Types moved to /controls.
 }
 
 /**
@@ -25,8 +25,8 @@ interface SidebarProps {
  * Admin links are shown via a CSS-only hover flyout (Tailwind `group` /
  * `group-hover`) — no additional React state required.
  *
- * Receives `canManageUsers` and `canManageFeatures` from the parent Server
- * Component (layout.tsx) which has already fetched admin permissions.
+ * Receives `canManageUsers` from the parent Server Component (layout.tsx)
+ * which has already fetched admin permissions.
  *
  * Stage 10 — Task 1.3: initial extraction. The hardcoded "Vistra" brand string
  * in layout.tsx is removed here; the EaseeTool logo mark lives in the
@@ -37,7 +37,6 @@ export function Sidebar({
   orgSlug,
   isSubdomain,
   canManageUsers,
-  canManageFeatures,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
@@ -59,7 +58,9 @@ export function Sidebar({
   const isActive = (section: string): boolean =>
     sectionPath === section || sectionPath.startsWith(`${section}/`);
 
-  const showAdmin = canManageUsers || canManageFeatures;
+  // NOTE (Stage 19 Batch 5): canManageFeatures no longer gates any sidebar item —
+  // Component Types management moved to /controls/component-types (SuperAdmin only).
+  const showAdmin = canManageUsers;
 
   // Shared nav-item class builder — active state applies Sage Ease primary green.
   const navItemClass = (section: string): string => {
@@ -332,14 +333,11 @@ export function Sidebar({
                 </>
               )}
 
-              {canManageFeatures && (
-                <Link
-                  href={href("/admin/components")}
-                  className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
-                >
-                  Component Types
-                </Link>
-              )}
+              {/* NOTE (Stage 19 Batch 5): Component Types flyout link removed.
+               * Component Type management moved to the SuperAdmin console at
+               * /controls/component-types. The MANAGE_FEATURES permission is no
+               * longer required by org users to access component types.
+               */}
             </div>
           </div>
         </div>

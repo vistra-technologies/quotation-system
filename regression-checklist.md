@@ -62,7 +62,7 @@ Automated: `tests/e2e/pricing-stage3.spec.ts` (serial mode, 90 s timeout per tes
 
 ## Stage 4 — Admin section (users, roles, permissions)
 21. **MANAGE_USERS gating:** a role without MANAGE_USERS navigating to `/{orgSlug}/admin/users` → redirect to dashboard.
-22. **MANAGE_FEATURES gating (Stage 16 Batch F — superseded):** `/{orgSlug}/admin/roles` is deleted; it returns 404, not a redirect. The MANAGE_FEATURES RBAC gate remains active on `/{orgSlug}/admin/components` (Component Types), which is the only remaining org-admin route gated by that permission. The roles/permissions admin console is now at `/controls/roles` (SuperAdmin only).
+22. **MANAGE_FEATURES gating (Stage 19 Batch 5 — superseded):** `/{orgSlug}/admin/roles` is deleted (Stage 16 Batch F) and `/{orgSlug}/admin/components` is now also deleted (Stage 19 Batch 5). Both return 404. The MANAGE_FEATURES permission no longer gates any org-admin route. Component Type management has moved to `/controls/component-types` (SuperAdmin only). The roles/permissions admin console is at `/controls/roles` (SuperAdmin only).
 23. **Cross-org user list isolation:** org A's admin cannot see org B's users by any URL manipulation.
 24. **Create-user + login round-trip:** admin creates a user with username/role/password → new user can log in immediately.
 25. **Password-reset round-trip:** admin sets a new password for a user → old password stops working; new password works.
@@ -74,7 +74,8 @@ Automated: `tests/e2e/pricing-stage3.spec.ts` (serial mode, 90 s timeout per tes
 ## Stage 5 — DAL + ComponentType + Project
 30. **DAL lint rule:** a file under `app/` importing `@/lib/prisma` directly fails `npm run lint`.
 31. **ComponentType tenancy:** org A's session cannot read org B's ComponentTypes.
-32. **ComponentType RBAC:** a role without MANAGE_FEATURES receives a 403/redirect on all `/admin/components` routes and actions.
+32. **ComponentType RBAC (Stage 19 Batch 5 — location updated):** The `/admin/components` route is deleted; it returns 404. Component Type management is now at `/controls/component-types` (SuperAdmin console only). An unauthenticated or non-SuperAdmin user navigating to `/controls/component-types` is redirected to `/controls/login`.
+    Automated: `superadmin-component-types.spec.ts` — "auth gate" tests.
 33. **ComponentType field schema round-trip:** add a field, save, reload — field still present in the editor.
 34. **Inert-caveat visible:** every ComponentType and field (there is no core/non-core distinction) shows the inert-until-wired notice in the admin UI, exactly once per page.
 35. **Project tenancy:** org A's session cannot read org B's Projects.
@@ -176,17 +177,21 @@ All checks: verify via the Vercel preview URL for the merged `release/stage-11` 
 
 ### Batch 7 — Component Types admin cluster
 
-64. **Component Types list page — Sage Ease restyle:** `/{orgSlug}/admin/components` renders with
-    Sage Ease heading, card wrapper, count badge, code chip (monospace), category chip (icon + label),
-    fields badge (pill), status pill (green = Active, muted = Inactive), and Edit button. No
-    interactive search/filter (not in the original RSC — was a JS-only mockup feature).
-65. **Create Component Type page — Sage Ease restyle:** `/{orgSlug}/admin/components/new` renders
-    with Sage Ease back link, heading, inert-caveat notice (status-pending amber tokens), form card.
-    All form fields (Code, Name, Category, Field Schema) use Sage Ease token classes. Form / JSON
-    toggle visually matches the design; field reordering (↑↓) and option builder still function.
-66. **Edit Component Type page — Sage Ease restyle:** `/{orgSlug}/admin/components/[id]` renders
-    with Sage Ease back link, heading + code monospace subtitle, inert-caveat, form card. Active
-    checkbox, JSON view/edit toggle, all field-row controls (move, remove, required) still function.
+64. **Component Types list page — Sage Ease restyle (Stage 19 Batch 5 — location updated):**
+    `/controls/component-types?orgId=xxx` renders with Sage Ease heading, card wrapper, code chip
+    (monospace), category name, fields badge (pill), status pill (green = Active, muted = Inactive),
+    and Edit link. Org picker (SelectField) at top. Verify: navigate to
+    `/controls/component-types`, select acme-glass org, confirm GLASS/DOOR/PROFILE_STOP visible.
+65. **Create Component Type page — Sage Ease restyle (Stage 19 Batch 5 — location updated):**
+    `/controls/component-types?orgId=xxx` (no typeId) renders create form below the type list.
+    Inert-caveat notice (status-pending amber tokens), form card with Code/Name/Category/Field Schema
+    fields. Form / JSON toggle and field reordering still function. The old `/admin/components/new`
+    returns 404.
+66. **Edit Component Type page — Sage Ease restyle (Stage 19 Batch 5 — location updated):**
+    `/controls/component-types?orgId=xxx&typeId=yyy` renders edit form with code monospace subtitle,
+    inert-caveat, form card. Active checkbox, JSON view/edit toggle, all field-row controls (move,
+    remove, required) still function. "← Back to list" link returns to `?orgId=xxx`. The old
+    `/admin/components/[id]` returns 404.
     Stage 7 field-schema round-trip (item 33) must still pass.
 
 ### Batch 8 — Admin: Users + External Companies
@@ -394,9 +399,10 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      "Permissions" sidebar flyout link is deleted and its automated test removed. The old
      `/admin/permissions` route returns 404.
 
-105. **Admin flyout — Component Types → admin/components (clean URL):** Hovering Admin, clicking
-     Component Types navigates to `/admin/components` with no slug prefix.
-     Automated: `subdomain-navigation.spec.ts` — "flyout: Component Types".
+105. **Admin flyout — Component Types (Stage 19 Batch 5 — superseded):** The Admin sidebar flyout
+     no longer contains a Component Types entry. The route `/admin/components` is deleted and returns
+     404. The flyout test has been removed from `subdomain-navigation.spec.ts`. Component Types are
+     now managed via the SuperAdmin console at `/controls/component-types`.
 
 ### B. List → detail → back-link flows
 
@@ -412,10 +418,12 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      is deleted. The automated test in `subdomain-navigation.spec.ts` was removed in Batch F. The 404
      behaviour is verified by `superadmin-roles.spec.ts` tests 11–12.
 
-109. **Admin Component Types list→detail→back:** "Edit Component Type" link href starts with
-     `/admin/components/` (no slug), click navigates to edit page, "← Back to Component Types"
-     back-link href = `/admin/components`, click returns.
-     Automated: `subdomain-navigation.spec.ts` — "admin component types: Edit link + back-link".
+109. **Component Types list→detail→back (Stage 19 Batch 5 — location updated):**
+     At `/controls/component-types?orgId=xxx`, the "Edit" link navigates to
+     `?orgId=xxx&typeId=yyy`. The "← Back to list" link returns to `?orgId=xxx`.
+     The old `subdomain-navigation.spec.ts` test is retired (route deleted).
+     Automated: `superadmin-component-types.spec.ts` — "controls component types: navigate to edit"
+     (Tier 2 — runs on test.easeetool.com).
 
 110. **Pricing list→detail→back:** "Edit Prices" link href starts with `/pricing/` (no slug), click
      navigates to pricing detail, "← Back to Pricing" back-link href = `/pricing`, click returns.
