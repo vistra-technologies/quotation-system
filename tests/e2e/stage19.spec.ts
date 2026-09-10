@@ -350,10 +350,13 @@ test("step-gating: project with Selections and Partitions — all wizard pages r
   };
 
   // Convert one side to PARTITION — this creates a Partition record in the DB.
+  // isClosed: false because a single-side open run bypasses the ≥3-sides
+  // validation that applies only to closed rooms (Stage 18 §2).
   const sidesRes = await acmePage.request.patch(
     apiUrl(ACME, `/api/v1/orgs/${ACME}/rooms/${roomId}/sides`),
     {
       data: {
+        isClosed: false,
         sides: [
           {
             kind: "PARTITION",
