@@ -20,6 +20,10 @@ interface ProjectListItem {
   createdAt: string;
   updatedAt: string;
   destinationCountry: string;
+  /** Project location as entered by the user (e.g. "Dubai, UAE"). Shown in Location column. */
+  projectLocation: string | null;
+  /** Submission date in ISO string form. Shown in Submission Date column. */
+  submissionDate: string | null;
   externalCompany: { id: string; name: string } | null;
   createdBy: { id: string; name: string; username: string };
 }
@@ -69,9 +73,9 @@ function statusBadge(status: string) {
  * reduced margins, date-range filter, search, My/All toggle with RBAC visibility
  * rules, external-company filter for internal users, pagination, and updated column schema.
  *
- * Column schema: Project Name, Client Name / Company, Location, Status,
- * Value ("—" — no value field in current schema), Created On,
- * Submission Date ("—" — no submittedAt field in current schema).
+ * Column schema: Project Name, Client Name / Company, Location (projectLocation),
+ * Status, Value ("—" — no value field in current schema), Created On,
+ * Submission Date (submissionDate — added Stage 14; previously rendered as "—" in error).
  *
  * "Client Name" column header shown to external users; "Company" shown to internal
  * users (Admin / Company Member). Discriminator: me.externalCompanyId === null.
@@ -265,9 +269,11 @@ export default async function ProjectsPage({
                         <span className="text-text-placeholder">—</span>
                       )}
                     </td>
-                    {/* Location (destinationCountry) */}
+                    {/* Location — projectLocation as entered by user (e.g. "Dubai, UAE").
+                        Note: destinationCountry (derived from company.country) is a different
+                        field. Stage 12 comment had this wrong — fixed bugs-3.md M3. */}
                     <td className="px-3 py-[11px] text-[13px] text-text-body">
-                      {project.destinationCountry || (
+                      {project.projectLocation || (
                         <span className="text-text-placeholder">—</span>
                       )}
                     </td>
@@ -283,9 +289,15 @@ export default async function ProjectsPage({
                     <td className="px-3 py-[11px] text-[13px] text-text-muted">
                       {new Date(project.createdAt).toLocaleDateString()}
                     </td>
-                    {/* Submission Date — no submittedAt field in current schema (Stage 12 Batch 7d gap D2) */}
-                    <td className="px-3 py-[11px] text-[13px] text-text-placeholder">
-                      —
+                    {/* Submission Date — submissionDate field added Stage 14; was incorrectly
+                        hardcoded as "—" in Stage 12 comment (gap D2 was already closed).
+                        Fixed bugs-3.md M3. */}
+                    <td className="px-3 py-[11px] text-[13px] text-text-muted">
+                      {project.submissionDate ? (
+                        new Date(project.submissionDate).toLocaleDateString()
+                      ) : (
+                        <span className="text-text-placeholder">—</span>
+                      )}
                     </td>
                     {/* Created By — PL1/L2: username shown, full name on hover via title */}
                     <td
