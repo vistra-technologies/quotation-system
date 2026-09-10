@@ -171,3 +171,70 @@ independent and unblocks fixture cleanup for the rest; build it first.
 - 2026-09-10 — Conductor: merged `feature/configuration-page-ux` into `release/stage-19` (@ `90fc545`),
   deleted the feature branch (local + remote). Batch 3 closed (APPROVE, 0 findings). Starting Batch 4
   (wizard fixes: button copy, Back-button removal, sequential step-gating) next.
+- 2026-09-10 — Developer (batch-4 plan): wrote `.engineering/stage-19/plan-batch4.md`. One minor
+  deviation flagged: stage doc says "layout redirects" for deep-linked locked URLs, but App Router
+  layouts don't receive the current sub-path via params, so per-page redirect in each step's `page.tsx`
+  is used instead (functionally identical, React.cache() means zero extra round-trips). 10 files to
+  touch (7 in app, messages/en.json, by-page.sql in docs). Stage 13 edit-existing case confirmed
+  needs no special-casing — counts are naturally >0 for real data. Ready to build.
+- 2026-09-10 — Developer (batch-4 implement): DONE. Commits 5b5e2a3 + 1c65a14 (+ c53463f retry empty).
+  Files changed (quotation-system):
+    - `messages/en.json` — submitConfigure "Configure" → "Create"
+    - `lib/data/projects.ts` — getProjectById extended with Promise.all: findFirst + selection.count +
+      partition.count; returns { ...project, selectionCount, partitionCount }
+    - `app/[orgSlug]/projects/[projectId]/_project-fetch.ts` — selectionCount/partitionCount added to
+      ProjectDetail interface
+    - `app/[orgSlug]/projects/[projectId]/layout.tsx` — Back-to-Projects block removed; Link + base
+      imports removed; selectionCount + partitionCount forwarded to ProjectWizardBreadcrumb
+    - `app/[orgSlug]/projects/[projectId]/project-wizard-breadcrumb.tsx` — new props + locked[] array;
+      locked steps render as <span aria-disabled="true"> instead of <Link>
+    - `app/[orgSlug]/projects/[projectId]/page.tsx` — Back-to-Projects card footer link removed
+      (PLAN-MISS: plan said layout.tsx was the only location; project detail page also had one)
+    - `app/[orgSlug]/projects/[projectId]/design/page.tsx` — redirect if selectionCount === 0
+    - `app/[orgSlug]/projects/[projectId]/summary/page.tsx` — fetchProjectDetail added; redirect if
+      partitionCount === 0
+    - `app/[orgSlug]/projects/[projectId]/quotation/page.tsx` — fetchProjectDetail added; redirect if
+      partitionCount === 0
+  DEVIATIONS: (1) Plan gated Configuration on selectionCount === 0 and added a server-side redirect —
+  this creates a deadlock (Configuration is WHERE you add Selections; Project Details has a "Next:
+  Configuration →" button that would loop). Fixed: Configuration is always unlocked; Design gates on
+  selectionCount === 0. (2) "Back to Projects" also existed in page.tsx footer (plan missed it); removed.
+  Docs repo (commit a3598fb): `design-docs/sql-queries/by-page.sql` — two step-gating count queries.
+  Static: `npm run lint` (0 errors, 5 pre-existing warnings) + `npx tsc --noEmit` (clean).
+  Vercel preview `quotation-system-mh966aa98-vistra-indias-projects.vercel.app` → READY; health 200 connected.
+  Playwright (8 tests against preview, all passed, 16.7s): button copy "Create" ✓; no Back-to-Projects ✓;
+  fresh project breadcrumb (Design/Summary/Quotation locked, Configuration accessible) ✓; /design redirect ✓;
+  /summary redirect ✓; /quotation redirect ✓; /configuration accessible ✓; existing project renders ✓.
+  Stage 19 E2E regression: 2/2 passed.
+- 2026-09-10 — Reviewer (batch-4): CHANGES-NEEDED. 0 CRITICAL, 1 IMPORTANT, 2 MINOR.
+  Findings returned directly in reviewer message. Required fix: commit the step-gating redirect tests to
+  `tests/e2e/stage19.spec.ts` — profile.md explicitly names these as behavior-level invariants to automate;
+  the 8 preview-verified scenarios are the right scope. Minors: (1) stale JSDoc comment on breadcrumb props
+  says Configuration locks on selectionCount===0 but implementation correctly has locked[1]=false; (2)
+  partition.count in Promise.all runs without an explicit organizationId filter (relying on FK traversal
+  instead) — no data leak (result discarded on !project) but inconsistent with selection.count's explicit
+  org scope. Functional logic, tenancy, locked[] mapping, redirect targets, Stage 13 case, and
+  messages/en.json all confirmed correct.
+- 2026-09-10 — Developer (batch-4 review fix): DONE. All three findings addressed.
+  Files changed (quotation-system, commits b16a82a + 6ddc2af):
+    - `tests/e2e/stage19.spec.ts` — added 3 navigation-level step-gating tests (fresh project: /configuration
+      accessible, /design /summary /quotation redirect; after adding Selection: /design reachable; project with
+      Selection+Partition: all 3 steps reachable). Also added `orgUrl`/`orgUrlPattern` to the helpers import.
+      isClosed:false added to single-PARTITION side PATCH in test 5 to bypass ≥3-sides closed-room validation.
+    - `app/[orgSlug]/projects/[projectId]/project-wizard-breadcrumb.tsx` — corrected JSDoc on selectionCount/
+      partitionCount props (Configuration is always unlocked, not gated on selectionCount).
+    - `lib/data/projects.ts` — added `project: { organizationId: session.organizationId }` to partition.count
+      where clause for defense-in-depth, consistent with selection.count's explicit org scope.
+  Static: `npm run lint` (exit 0) + `npx tsc --noEmit` (clean).
+  Vercel preview: `quotation-system-git-feature-wiza-7f4c6b-vistra-indias-projects.vercel.app` → READY;
+  `/api/health` 200 `database: connected`.
+  E2E: `PLAYWRIGHT_BASE_URL=...feature-wiza-7f4c6b... npx playwright test tests/e2e/stage19.spec.ts`
+  → 5 passed (22.3s). (One transient fluke on an intermediate build; stable on rerun and final build.)
+- 2026-09-10 — Reviewer (batch-4, round 2): APPROVE. 0 CRITICAL, 0 IMPORTANT, 0 MINOR.
+  All 3 round-1 findings confirmed resolved. E2E tests use page.goto() (follows redirects) + final-URL
+  assertions (toMatch / not.toMatch via orgUrlPattern) — not DOM assertions, not tautological. isClosed:false
+  in test 3c is correct API usage for a 1-side open run; it bypasses the closed-polygon ≥3-sides guard by
+  design (not a workaround). JSDoc now accurately describes locked[1]=false for Configuration. partition.count
+  org filter added via project:{organizationId} traversal — consistent with selection.count, correct
+  defense-in-depth. Previously-approved items (locked[] mapping, redirects, Back-to-Projects removal,
+  message key) spot-checked intact. Batch 4 clean and ready to merge.

@@ -177,15 +177,11 @@ export default async function ProjectDetailPage({
           </div>
         </div>
 
-        {/* Footer: actions — moved inside Card 3 per D16 / mockup */}
+        {/* Footer: actions — moved inside Card 3 per D16 / mockup.
+            "Back to Projects" removed Stage 19 Batch 4 (item 14) — the wizard
+            breadcrumb is the navigation surface; a card-footer back link is
+            redundant and inconsistent with the other 4 wizard steps. */}
         <div className="flex items-center justify-end gap-3 border-t border-border px-6 py-4">
-          <Link
-            href={`${base}/projects`}
-            className="inline-flex items-center rounded-sm border border-border bg-bg-white px-5 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
-          >
-            Back to Projects
-          </Link>
-
           {/* Edit link — only shown while the project is still DRAFT */}
           {project.status === "DRAFT" && (
             <Link

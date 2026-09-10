@@ -15,7 +15,7 @@
  */
 
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
-import { apiUrl, isSubdomain } from "./helpers";
+import { apiUrl, isSubdomain, orgUrl, orgUrlPattern } from "./helpers";
 import { toAuthEmail } from "@/lib/auth-utils";
 
 test.describe.configure({ mode: "serial" });
@@ -199,4 +199,191 @@ test("cross-tenant 403 on floor-delete and project-delete when orgSlug does not 
     apiUrl(NORDIC, `/api/v1/orgs/${NORDIC}/projects/${fakeId}`),
   );
   expect(projectCrossRes.status()).toBe(403);
+});
+
+// ---------------------------------------------------------------------------
+// 3–5. Step-gating (Stage 19 Batch 4)
+//
+// Navigation-level tests: page.goto() follows any redirect; final page.url()
+// is compared with orgUrlPattern() to distinguish "landed on expected page"
+// (accessible) from "landed elsewhere" (redirected away).
+//
+// No DOM assertions — wireframe-stage rule. Behavior being locked in:
+//   - Configuration is always accessible (it is WHERE Selections are added).
+//   - Design is locked until ≥1 Selection exists on the project.
+//   - Summary and Quotation are locked until ≥1 Partition exists on the project.
+// ---------------------------------------------------------------------------
+
+test("step-gating: fresh project — /configuration accessible, /design /summary /quotation redirect", async () => {
+  // Create a fresh project with no Selections or Partitions.
+  const projRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/projects`),
+    { data: { name: `Stage19 StepGate Fresh ${RUN}`, currency: "AED" } },
+  );
+  expect(projRes.status()).toBe(201);
+  const { project: { id: freshProjectId } } = (await projRes.json()) as {
+    project: { id: string };
+  };
+
+  // Configuration — always unlocked; navigating to it must NOT redirect.
+  await acmePage.goto(orgUrl(ACME, `/projects/${freshProjectId}/configuration`));
+  expect(acmePage.url()).toMatch(
+    orgUrlPattern(ACME, `/projects/${freshProjectId}/configuration`),
+  );
+
+  // Design — must redirect away when selectionCount === 0.
+  await acmePage.goto(orgUrl(ACME, `/projects/${freshProjectId}/design`));
+  expect(acmePage.url()).not.toMatch(
+    orgUrlPattern(ACME, `/projects/${freshProjectId}/design`),
+  );
+
+  // Summary — must redirect away when partitionCount === 0.
+  await acmePage.goto(orgUrl(ACME, `/projects/${freshProjectId}/summary`));
+  expect(acmePage.url()).not.toMatch(
+    orgUrlPattern(ACME, `/projects/${freshProjectId}/summary`),
+  );
+
+  // Quotation — must redirect away when partitionCount === 0.
+  await acmePage.goto(orgUrl(ACME, `/projects/${freshProjectId}/quotation`));
+  expect(acmePage.url()).not.toMatch(
+    orgUrlPattern(ACME, `/projects/${freshProjectId}/quotation`),
+  );
+});
+
+test("step-gating: after adding a Selection — /design becomes reachable", async () => {
+  // Create a fresh project.
+  const projRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/projects`),
+    { data: { name: `Stage19 StepGate WithSel ${RUN}`, currency: "AED" } },
+  );
+  expect(projRes.status()).toBe(201);
+  const { project: { id: projectId } } = (await projRes.json()) as {
+    project: { id: string };
+  };
+
+  // Look up a ComponentType to attach the Selection to.
+  const ctRes = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/component-types`),
+  );
+  expect(ctRes.status()).toBe(200);
+  const { componentTypes } = (await ctRes.json()) as {
+    componentTypes: { id: string }[];
+  };
+  expect(componentTypes.length).toBeGreaterThan(0);
+
+  // Add one Selection.
+  const selRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/selections`),
+    {
+      data: {
+        projectId,
+        componentTypeId: componentTypes[0].id,
+        label: `Sel ${RUN}`,
+        config: {},
+        orderIndex: 0,
+      },
+    },
+  );
+  expect(selRes.status()).toBe(201);
+
+  // /design must now be reachable (selectionCount ≥ 1).
+  await acmePage.goto(orgUrl(ACME, `/projects/${projectId}/design`));
+  expect(acmePage.url()).toMatch(
+    orgUrlPattern(ACME, `/projects/${projectId}/design`),
+  );
+});
+
+test("step-gating: project with Selections and Partitions — all wizard pages reachable", async () => {
+  // Create a project.
+  const projRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/projects`),
+    { data: { name: `Stage19 StepGate Full ${RUN}`, currency: "AED" } },
+  );
+  expect(projRes.status()).toBe(201);
+  const { project: { id: projectId } } = (await projRes.json()) as {
+    project: { id: string };
+  };
+
+  // Look up a ComponentType for the Selection.
+  const ctRes = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/component-types`),
+  );
+  expect(ctRes.status()).toBe(200);
+  const { componentTypes } = (await ctRes.json()) as {
+    componentTypes: { id: string }[];
+  };
+  expect(componentTypes.length).toBeGreaterThan(0);
+
+  // Add a Selection.
+  const selRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/selections`),
+    {
+      data: {
+        projectId,
+        componentTypeId: componentTypes[0].id,
+        label: `Sel Full ${RUN}`,
+        config: {},
+        orderIndex: 0,
+      },
+    },
+  );
+  expect(selRes.status()).toBe(201);
+
+  // Add a Floor.
+  const floorRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/floors`),
+    { data: { projectId, label: `Floor Full ${RUN}` } },
+  );
+  expect(floorRes.status()).toBe(201);
+  const { floor: { id: floorId } } = (await floorRes.json()) as {
+    floor: { id: string };
+  };
+
+  // Add a Room inside the Floor.
+  const roomRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/rooms`),
+    { data: { floorId, label: `Room Full ${RUN}` } },
+  );
+  expect(roomRes.status()).toBe(201);
+  const { room: { id: roomId } } = (await roomRes.json()) as {
+    room: { id: string };
+  };
+
+  // Convert one side to PARTITION — this creates a Partition record in the DB.
+  // isClosed: false because a single-side open run bypasses the ≥3-sides
+  // validation that applies only to closed rooms (Stage 18 §2).
+  const sidesRes = await acmePage.request.patch(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/rooms/${roomId}/sides`),
+    {
+      data: {
+        isClosed: false,
+        sides: [
+          {
+            kind: "PARTITION",
+            turnDegrees: 90,
+            label: `Wall Full ${RUN}`,
+            heightMm: 2400,
+            widthMm: 1200,
+          },
+        ],
+      },
+    },
+  );
+  expect(sidesRes.status()).toBe(200);
+
+  // All three previously-locked pages must now be reachable (no redirect).
+  await acmePage.goto(orgUrl(ACME, `/projects/${projectId}/design`));
+  expect(acmePage.url()).toMatch(
+    orgUrlPattern(ACME, `/projects/${projectId}/design`),
+  );
+
+  await acmePage.goto(orgUrl(ACME, `/projects/${projectId}/summary`));
+  expect(acmePage.url()).toMatch(
+    orgUrlPattern(ACME, `/projects/${projectId}/summary`),
+  );
+
+  await acmePage.goto(orgUrl(ACME, `/projects/${projectId}/quotation`));
+  expect(acmePage.url()).toMatch(
+    orgUrlPattern(ACME, `/projects/${projectId}/quotation`),
+  );
 });

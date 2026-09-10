@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { orgHref } from "@/lib/orgHref";
+import { fetchProjectDetail } from "../_project-fetch";
 
-// Always render live — reads headers via orgHref.
+// Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
 
 /**
@@ -13,6 +15,10 @@ export const dynamic = "force-dynamic";
  * Stage 11 (Batch 6): outer chrome restyled to Sage Ease tokens (page
  * heading, card wrapper, empty-state placeholder, card-footer navigation).
  * No mockup exists yet — generic form-page pattern used. No logic changes.
+ *
+ * Stage 19 Batch 4: added step-gating — redirects to Project Details if the
+ * project has 0 Partitions (nothing to quote yet). fetchProjectDetail is
+ * React.cache()-shared with the layout — zero extra round-trips.
  */
 export default async function QuotationPage({
   params,
@@ -21,6 +27,19 @@ export default async function QuotationPage({
 }) {
   const { orgSlug, projectId } = await params;
   const base = await orgHref(orgSlug, "");
+
+  const { status, project } = await fetchProjectDetail(orgSlug, projectId);
+
+  if (status === 401 || status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!project) notFound();
+
+  // Step-gating: Quotation requires ≥1 Partition to have content to price.
+  if (project.partitionCount === 0) {
+    redirect(await orgHref(orgSlug, `/projects/${projectId}`));
+  }
   const t = await getTranslations("wizard");
 
   return (
