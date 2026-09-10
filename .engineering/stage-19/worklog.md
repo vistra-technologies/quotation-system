@@ -336,3 +336,20 @@ independent and unblocks fixture cleanup for the rest; build it first.
   against a live preview; devadmin's password (temporarily changed to obtain those credentials) was
   confirmed restored to its original value before merge. Starting Batch 6 (remaining loading/placeholder
   sweep — Inquiry/Orders screens) next, the final and smallest item in this stage.
+- 2026-09-10 — Developer (batch-6 sweep): DONE — confirmed clean, no gap found. No code changes made.
+  Files checked (no edits):
+    - `app/[orgSlug]/inquiries/loading.tsx` — current (Stage 12, toolbar + pagination skeleton); not stale.
+    - `app/[orgSlug]/inquiries/[inquiryId]/loading.tsx` — present and functional (back link + heading + action buttons).
+    - `app/[orgSlug]/inquiries/new/create-inquiry-form.tsx` — confirmed has LoadingOverlay.
+    - `app/[orgSlug]/inquiries/[inquiryId]/edit/edit-inquiry-form.tsx` — confirmed has LoadingOverlay.
+    - `app/[orgSlug]/inquiries/[inquiryId]/start-project-button.tsx` — confirmed has LoadingOverlay.
+    - `app/[orgSlug]/inquiries/page.tsx` and `app/[orgSlug]/inquiries/[inquiryId]/page.tsx` — pure Server Components,
+      no client-side mutations, no LoadingOverlay needed or missing.
+    - `app/[orgSlug]/orders/loading.tsx` — current (Stage 12, 7-column skeleton matching live page); not stale.
+    - `app/[orgSlug]/orders/page.tsx` — pure Server Component, read-only list, no mutations (pipeline not built
+      yet, page always renders empty state). No client forms exist → no LoadingOverlay gap possible.
+  Conclusion: the video's "missing overlay on Inquiry/Orders" was a misdiagnosis — both route-level loading.tsx
+  skeletons exist and are current; all interactive client components in the inquiry flow already have LoadingOverlay;
+  Orders has no interactive client components. The two real gaps (Configuration stale skeleton + pagination
+  useTransition) were fixed in Batch 3. Batch 6 closes without any code change required.
+  No push/preview step needed (no code changed).
