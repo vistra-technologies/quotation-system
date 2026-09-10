@@ -562,3 +562,10 @@ independent and unblocks fixture cleanup for the rest; build it first.
   0 CRITICAL, 0 IMPORTANT, 3 MINOR. Full report: `.engineering/stage-19/review-videofix-1.md`.
   MINOR-1: TOCTOU between selection.count and componentType.delete — race returns 500 (not 409) if FK fires, but data integrity preserved by DB constraint. MINOR-2: `deleteSuperAdminComponentType` server action in actions.ts is dead code (_delete-button.tsx uses fetch directly). MINOR-3: ConfirmDialog message warns about data loss that the 409 in-use guard makes impossible.
   All M1–M5/N1–N3 claims verified: M1 tenancy/guard/audit-log correct; M2 key={selectedType.id} is the correct React remount idiom; M3 fields confirmed in schema and returned by listProjectsPaginated (no restrictive select); M4 zero native <select> in configuration/ confirmed — developer's DONE_WITH_CONCERNS valid (OS-native dropdown appearance, not a code defect — escalate to human); M5 skeletons structurally consistent with configuration/loading.tsx (same design tokens, animate-pulse); N2 DB query result (empty array) is a reasonable basis for no-fix; N3 placeholder already present in release/stage-19 (confirmed by grep).
+- 2026-09-10 — Conductor: merged `feature/stage19-video-bugfixes-1` into `release/stage-19` (@ `ea79d9e`),
+  deleted the feature branch (local + remote). Video-bugfix batch closed (APPROVE-WITH-NITS, 3 MINOR, all
+  developer discretion — no blockers). M4/M5 remain open design-decision flags for the human (not code
+  defects): M4 is likely OS-native `<select>` dropdown-list rendering (no fix without a custom dropdown
+  component); M5's added skeletons may render too briefly to notice on a fast deploy — a persistent global
+  nav progress bar would be a new feature, not part of this fix. Merging `release/stage-19` into `staging`
+  next to redeploy to `test.easeetool.com`, then re-running the tester before returning to the deploy gate.
