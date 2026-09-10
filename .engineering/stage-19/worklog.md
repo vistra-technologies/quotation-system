@@ -13,7 +13,7 @@
 | 3 | Configuration-page UX (popover + loading fixes) | `add-selection-form.tsx`, `configuration/loading.tsx`, `list-page-controls.tsx` | **done** — merged to `release/stage-19` @ `90fc545` |
 | 4 | Wizard fixes (copy, Back button, step-gating) | `project-wizard-breadcrumb.tsx`, `layout.tsx`, `_project-fetch.ts` | **done** — merged to `release/stage-19` @ `765abde` |
 | 5 | SuperAdmin Component-Type relocation | new `app/api/v1/superadmin/component-types/**`, `/controls` UI, retiring old `/admin/components` route + its E2E specs | **done** — merged to `release/stage-19` @ `bfd8c3f` |
-| 6 | Remaining loading/placeholder sweep | Inquiry/Orders screen spot-check | pending |
+| 6 | Remaining loading/placeholder sweep | Inquiry/Orders screen spot-check | **done** — merged to `release/stage-19` @ `74f1260` (confirmation pass, no code change) |
 
 Items 2-3 likely share `add-selection-form.tsx` — sequence, don't parallelize those two. Item 1 is
 independent and unblocks fixture cleanup for the rest; build it first.
@@ -353,3 +353,7 @@ independent and unblocks fixture cleanup for the rest; build it first.
   Orders has no interactive client components. The two real gaps (Configuration stale skeleton + pagination
   useTransition) were fixed in Batch 3. Batch 6 closes without any code change required.
   No push/preview step needed (no code changed).
+- 2026-09-10 — Conductor: merged `feature/loading-sweep` into `release/stage-19` (@ `74f1260`), deleted the
+  feature branch (local + remote). Batch 6 closed. **All 6 batches now merged — `engineering:implement` is
+  complete for Stage 19.** `release/stage-19` is fully up to date; every feature branch for this run has
+  been merged and deleted. Next: write the stage's Execution Log and hand off to `engineering:test`.
