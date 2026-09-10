@@ -513,3 +513,6 @@ independent and unblocks fixture cleanup for the rest; build it first.
   round or last. Not fixed here (same call as test-fix-1's stage6 `select#sel-type` flag — out of
   signed-off scope, mechanical/timing, no product-code risk) — flagging for a follow-up look at whether
   those waits need longer timeouts or a more robust condition given the environment's timing envelope.
+- 2026-09-10 — Reviewer (test-fix batch 2, `feature/stage19-test-fixes-2` @ `e9ef62a`): **APPROVE-WITH-NITS**.
+  0 CRITICAL, 0 IMPORTANT, 2 MINOR. Both open IMPORTANT findings from `review-testfix-1.md` confirmed
+  closed. Report: `.engineering/stage-19/review-testfix-2.md`.
