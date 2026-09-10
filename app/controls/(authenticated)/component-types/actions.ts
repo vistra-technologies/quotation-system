@@ -144,3 +144,38 @@ export async function updateSuperAdminComponentType(formData: FormData): Promise
     RedirectType.replace,
   );
 }
+
+/**
+ * Delete a ComponentType via the SuperAdmin API route.
+ * Reads orgId and typeId from FormData.
+ * On success: revalidates the controls page and redirects back to ?orgId=xxx.
+ * On 401: redirects to /controls/login.
+ * On 409 (type is in use): throws an error with a human-readable message.
+ *
+ * Stage 19 bugs-3 M1 — delete affordance for SuperAdmin Component Types.
+ */
+export async function deleteSuperAdminComponentType(formData: FormData): Promise<void> {
+  const orgId = (formData.get("orgId") as string | null)?.trim();
+  const typeId = formData.get("typeId") as string | null;
+
+  if (!orgId) throw new Error("orgId is required");
+  if (!typeId) throw new Error("typeId is required");
+
+  const res = await internalFetch(
+    `/api/v1/superadmin/component-types/${encodeURIComponent(typeId)}?orgId=${encodeURIComponent(orgId)}`,
+    { method: "DELETE" },
+  );
+
+  if (res.status === 401) redirect("/controls/login");
+
+  if (!res.ok) {
+    const body = (await res.json()) as { error?: string };
+    throw new Error(body.error ?? "Failed to delete component type");
+  }
+
+  revalidatePath("/controls/component-types");
+  redirect(
+    `/controls/component-types?orgId=${encodeURIComponent(orgId)}`,
+    RedirectType.replace,
+  );
+}

@@ -212,6 +212,40 @@ export async function updateComponentTypeForOrg(
   return { ...row, fieldsSchema: parseFieldsSchema(row.fieldsSchema) };
 }
 
+/**
+ * Delete a ComponentType, verifying it belongs to the given org first.
+ * Returns { deleted: true } on success.
+ * Returns { notFound: true } if the type doesn't exist or belongs to a different org.
+ * Returns { inUse: true, selectionCount: number } if the type has existing Selections
+ * (FK RESTRICT — cannot delete; caller returns 409).
+ *
+ * superadmin-only — intentionally cross-org
+ */
+export async function deleteComponentTypeForOrg(
+  orgId: string,
+  typeId: string,
+): Promise<
+  | { deleted: true }
+  | { notFound: true }
+  | { inUse: true; selectionCount: number }
+> {
+  // superadmin-only — intentionally cross-org
+  const existing = await prisma.componentType.findFirst({
+    where: { id: typeId, organizationId: orgId },
+    select: { id: true },
+  });
+  if (!existing) return { notFound: true };
+
+  // Guard: cannot delete a type that is referenced by existing Selections.
+  const selectionCount = await prisma.selection.count({
+    where: { componentTypeId: typeId, organizationId: orgId },
+  });
+  if (selectionCount > 0) return { inUse: true, selectionCount };
+
+  await prisma.componentType.delete({ where: { id: typeId } });
+  return { deleted: true };
+}
+
 // ─── Audit log ────────────────────────────────────────────────────────────────
 
 /**

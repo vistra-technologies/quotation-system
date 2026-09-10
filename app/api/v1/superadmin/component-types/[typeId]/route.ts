@@ -4,11 +4,13 @@ import {
   apiBadRequest,
   apiUnauthorized,
   apiNotFound,
+  apiConflict,
   apiServerError,
 } from "@/lib/api-error";
 import {
   getComponentTypeForOrg,
   updateComponentTypeForOrg,
+  deleteComponentTypeForOrg,
   createComponentTypeAuditLog,
 } from "@/lib/data/superadmin/component-types";
 import { getOrgById } from "@/lib/data/superadmin/orgs";
@@ -148,4 +150,71 @@ export async function PATCH(
   });
 
   return NextResponse.json({ componentType });
+}
+
+// ─── DELETE /api/v1/superadmin/component-types/[typeId] ──────────────────────
+//
+// Hard-deletes a ComponentType, verified to belong to the given org.
+// Writes one SuperAdminAuditLog row with action "componentType.delete" on success.
+//
+// Auth: valid SuperAdmin session (qs-sa-token cookie).
+// Query: ?orgId=<organizationId>
+//
+// Returns 200 with { ok: true } on success.
+// Returns 400 on missing orgId.
+// Returns 401 when not authenticated as SuperAdmin.
+// Returns 404 if the org or componentType does not exist.
+// Returns 409 if the componentType is referenced by existing Selections (cannot delete).
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ typeId: string }> },
+): Promise<NextResponse> {
+  let sa;
+  try {
+    sa = await requireSuperAdminFromRequest(request);
+  } catch (err) {
+    if (err instanceof SuperAdminUnauthorizedError) {
+      return apiUnauthorized("SuperAdmin authentication required");
+    }
+    console.error("[DELETE /api/v1/superadmin/component-types/[typeId]] auth error", err);
+    return apiServerError();
+  }
+
+  const { typeId } = await params;
+  const { searchParams } = new URL(request.url);
+  const orgId = searchParams.get("orgId")?.trim();
+
+  if (!orgId) {
+    return apiBadRequest("orgId query parameter is required");
+  }
+
+  // Verify the org exists.
+  const org = await getOrgById(orgId);
+  if (!org) {
+    return apiNotFound("Organization not found");
+  }
+
+  let result;
+  try {
+    result = await deleteComponentTypeForOrg(orgId, typeId);
+  } catch (err) {
+    console.error("[DELETE /api/v1/superadmin/component-types/[typeId]] deleteComponentTypeForOrg", err);
+    return apiServerError();
+  }
+
+  if ("notFound" in result) return apiNotFound("ComponentType not found");
+  if ("inUse" in result) {
+    return apiConflict(
+      `Cannot delete: this component type is used by ${result.selectionCount} selection${result.selectionCount !== 1 ? "s" : ""}. Remove those selections first.`,
+    );
+  }
+
+  // Write audit log after the mutation committed.
+  await createComponentTypeAuditLog(sa.superAdminId, typeId, "componentType.delete", {
+    orgId,
+    orgName: org.name,
+  });
+
+  return NextResponse.json({ ok: true });
 }
