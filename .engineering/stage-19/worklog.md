@@ -212,6 +212,9 @@ independent and unblocks fixture cleanup for the rest; build it first.
   the 8 preview-verified scenarios are the right scope. Minors: (1) stale JSDoc comment on breadcrumb props
   says Configuration locks on selectionCount===0 but implementation correctly has locked[1]=false; (2)
   partition.count in Promise.all runs without an explicit organizationId filter (relying on FK traversal
+  instead) — no data leak (result discarded on !project) but inconsistent with selection.count's explicit
+  org scope. Functional logic, tenancy, locked[] mapping, redirect targets, Stage 13 case, and
+  messages/en.json all confirmed correct.
 - 2026-09-10 — Developer (batch-4 review fix): DONE. All three findings addressed.
   Files changed (quotation-system, commits b16a82a + 6ddc2af):
     - `tests/e2e/stage19.spec.ts` — added 3 navigation-level step-gating tests (fresh project: /configuration
@@ -227,6 +230,11 @@ independent and unblocks fixture cleanup for the rest; build it first.
   `/api/health` 200 `database: connected`.
   E2E: `PLAYWRIGHT_BASE_URL=...feature-wiza-7f4c6b... npx playwright test tests/e2e/stage19.spec.ts`
   → 5 passed (22.3s). (One transient fluke on an intermediate build; stable on rerun and final build.)
-  instead) — no data leak (result discarded on !project) but inconsistent with selection.count's explicit
-  org scope. Functional logic, tenancy, locked[] mapping, redirect targets, Stage 13 case, and
-  messages/en.json all confirmed correct.
+- 2026-09-10 — Reviewer (batch-4, round 2): APPROVE. 0 CRITICAL, 0 IMPORTANT, 0 MINOR.
+  All 3 round-1 findings confirmed resolved. E2E tests use page.goto() (follows redirects) + final-URL
+  assertions (toMatch / not.toMatch via orgUrlPattern) — not DOM assertions, not tautological. isClosed:false
+  in test 3c is correct API usage for a 1-side open run; it bypasses the closed-polygon ≥3-sides guard by
+  design (not a workaround). JSDoc now accurately describes locked[1]=false for Configuration. partition.count
+  org filter added via project:{organizationId} traversal — consistent with selection.count, correct
+  defense-in-depth. Previously-approved items (locked[] mapping, redirects, Back-to-Projects removal,
+  message key) spot-checked intact. Batch 4 clean and ready to merge.
