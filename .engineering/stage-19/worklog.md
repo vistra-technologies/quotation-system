@@ -448,3 +448,13 @@ independent and unblocks fixture cleanup for the rest; build it first.
      test file from being green.
   3. Both are mechanical test-locator fixes with no product-code risk, same shape as M1/M2 — low risk to
      pick up whenever convenient.
+- 2026-09-10 — Reviewer (test-fix batch 1, `feature/stage19-test-fixes-1` @ `6255699`): **APPROVE-WITH-NITS**.
+  0 CRITICAL, 2 IMPORTANT (both out-of-scope follow-ups, not defects in this diff), 3 MINOR. Full report:
+  `.engineering/stage-19/review-testfix-1.md`. Verified locally: `npx tsc --noEmit` clean, `npm run lint`
+  0 errors / 5 pre-existing warnings — matches the developer's claims. C1/M1/M2/N1/N3 all verified against
+  source (precedent match, gating/back-link premises, locator over-match check, helper call-site sweep,
+  DAL read for assertion strength). Scope discipline confirmed: the 7 remaining `/configure/i` sites and
+  `stage6`'s `select#sel-type` break are genuinely untouched, no partial fix. Caveats for the human: the
+  committed suite is not green until those 7 sites are fixed, and `superadmin-component-types.spec.ts`'s
+  `isOnStaging` Tier-2 gate still hides `/controls` page regressions on branch previews — the same blind
+  spot that let C1 reach the formal test pass.
