@@ -206,3 +206,27 @@ independent and unblocks fixture cleanup for the rest; build it first.
   fresh project breadcrumb (Design/Summary/Quotation locked, Configuration accessible) ✓; /design redirect ✓;
   /summary redirect ✓; /quotation redirect ✓; /configuration accessible ✓; existing project renders ✓.
   Stage 19 E2E regression: 2/2 passed.
+- 2026-09-10 — Reviewer (batch-4): CHANGES-NEEDED. 0 CRITICAL, 1 IMPORTANT, 2 MINOR.
+  Findings returned directly in reviewer message. Required fix: commit the step-gating redirect tests to
+  `tests/e2e/stage19.spec.ts` — profile.md explicitly names these as behavior-level invariants to automate;
+  the 8 preview-verified scenarios are the right scope. Minors: (1) stale JSDoc comment on breadcrumb props
+  says Configuration locks on selectionCount===0 but implementation correctly has locked[1]=false; (2)
+  partition.count in Promise.all runs without an explicit organizationId filter (relying on FK traversal
+- 2026-09-10 — Developer (batch-4 review fix): DONE. All three findings addressed.
+  Files changed (quotation-system, commits b16a82a + 6ddc2af):
+    - `tests/e2e/stage19.spec.ts` — added 3 navigation-level step-gating tests (fresh project: /configuration
+      accessible, /design /summary /quotation redirect; after adding Selection: /design reachable; project with
+      Selection+Partition: all 3 steps reachable). Also added `orgUrl`/`orgUrlPattern` to the helpers import.
+      isClosed:false added to single-PARTITION side PATCH in test 5 to bypass ≥3-sides closed-room validation.
+    - `app/[orgSlug]/projects/[projectId]/project-wizard-breadcrumb.tsx` — corrected JSDoc on selectionCount/
+      partitionCount props (Configuration is always unlocked, not gated on selectionCount).
+    - `lib/data/projects.ts` — added `project: { organizationId: session.organizationId }` to partition.count
+      where clause for defense-in-depth, consistent with selection.count's explicit org scope.
+  Static: `npm run lint` (exit 0) + `npx tsc --noEmit` (clean).
+  Vercel preview: `quotation-system-git-feature-wiza-7f4c6b-vistra-indias-projects.vercel.app` → READY;
+  `/api/health` 200 `database: connected`.
+  E2E: `PLAYWRIGHT_BASE_URL=...feature-wiza-7f4c6b... npx playwright test tests/e2e/stage19.spec.ts`
+  → 5 passed (22.3s). (One transient fluke on an intermediate build; stable on rerun and final build.)
+  instead) — no data leak (result discarded on !project) but inconsistent with selection.count's explicit
+  org scope. Functional logic, tenancy, locked[] mapping, redirect targets, Stage 13 case, and
+  messages/en.json all confirmed correct.
