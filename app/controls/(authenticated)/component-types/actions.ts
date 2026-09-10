@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
-import { orgHref } from "@/lib/orgHref";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
@@ -11,14 +10,12 @@ import type { FieldEntry } from "@/lib/types/field-entry";
 /**
  * Parse the serialised fieldsSchema JSON string from FormData.
  * Returns an empty array if the raw value is absent or not valid JSON.
- * Throws a descriptive Error if a radio/dropdown field has no options — this propagates
- * to the page-level error boundary, matching the !code / !name / !category guards above.
+ * Throws a descriptive Error if a radio/dropdown field has no options — this
+ * propagates to the page-level error boundary, same as the org-scoped actions.ts.
  */
 function parseFieldsSchema(raw: string | null): FieldEntry[] {
   if (!raw) return [];
 
-  // Isolate JSON.parse errors from validation errors so that a validation throw
-  // can escape and propagate to the caller (instead of being swallowed by the catch).
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -63,31 +60,31 @@ function parseFieldsSchema(raw: string | null): FieldEntry[] {
 // ─── Server actions ───────────────────────────────────────────────────────────
 
 /**
- * Create a new ComponentType scoped to the session org.
- * Gate: MANAGE_FEATURES (enforced by POST /api/v1/orgs/[orgSlug]/component-types).
- * On success, revalidates the list and redirects to the new type's edit page.
+ * Create a new ComponentType via the SuperAdmin API route.
+ * Reads orgId, code, name, categoryId, fieldsSchema from FormData.
+ * On success: revalidates the controls page and redirects to ?orgId=xxx&typeId=newId.
+ * On 401: redirects to /controls/login.
  *
- * Stage 12 Batch 6: thin marshaler — FormData → internalFetch → redirect or throw.
+ * Stage 19 Batch 5 — SuperAdmin ComponentType management relocated to /controls.
  */
-export async function createComponentType(formData: FormData): Promise<void> {
-  const orgSlug = formData.get("orgSlug") as string | null;
-
+export async function createSuperAdminComponentType(formData: FormData): Promise<void> {
+  const orgId = (formData.get("orgId") as string | null)?.trim();
   const code = (formData.get("code") as string | null)?.trim().toUpperCase();
   const name = (formData.get("name") as string | null)?.trim();
   const categoryId = ((formData.get("categoryId") as string | null) ?? "").trim();
   const fieldsSchema = parseFieldsSchema(formData.get("fieldsSchema") as string | null);
 
+  if (!orgId) throw new Error("orgId is required");
   if (!code) throw new Error("Code is required");
   if (!name) throw new Error("Name is required");
   if (!categoryId) throw new Error("Category is required");
-  if (!orgSlug) throw new Error("Missing orgSlug");
 
-  const res = await internalFetch(`/api/v1/orgs/${orgSlug}/component-types`, {
+  const res = await internalFetch("/api/v1/superadmin/component-types", {
     method: "POST",
-    body: JSON.stringify({ code, name, categoryId, fieldsSchema }),
+    body: JSON.stringify({ orgId, code, name, categoryId, fieldsSchema }),
   });
 
-  if (res.status === 401) redirect(await orgHref(orgSlug, "/login"));
+  if (res.status === 401) redirect("/controls/login");
 
   if (!res.ok) {
     const body = (await res.json()) as { error?: string };
@@ -96,22 +93,27 @@ export async function createComponentType(formData: FormData): Promise<void> {
 
   const { componentType } = (await res.json()) as { componentType: { id: string } };
 
-  revalidatePath(`/${orgSlug}/admin/components`);
-  redirect(`/${orgSlug}/admin/components/${componentType.id}`, RedirectType.replace);
+  revalidatePath("/controls/component-types");
+  redirect(
+    `/controls/component-types?orgId=${encodeURIComponent(orgId)}&typeId=${encodeURIComponent(componentType.id)}`,
+    RedirectType.replace,
+  );
 }
 
 /**
- * Update an existing ComponentType's name, fieldsSchema, and active flag.
- * Gate: MANAGE_FEATURES (enforced by PATCH /api/v1/orgs/[orgSlug]/component-types/[typeId]).
+ * Update an existing ComponentType via the SuperAdmin API route.
+ * Reads orgId, typeId, name, categoryId, fieldsSchema, active from FormData.
+ * On success: revalidates the controls page and redirects back to ?orgId=xxx.
+ * On 401: redirects to /controls/login.
  *
- * Stage 12 Batch 6: thin marshaler — FormData → internalFetch → redirect or throw.
+ * Stage 19 Batch 5 — SuperAdmin ComponentType management relocated to /controls.
  */
-export async function updateComponentType(formData: FormData): Promise<void> {
-  const orgSlug = formData.get("orgSlug") as string | null;
+export async function updateSuperAdminComponentType(formData: FormData): Promise<void> {
+  const orgId = (formData.get("orgId") as string | null)?.trim();
   const typeId = formData.get("typeId") as string | null;
 
+  if (!orgId) throw new Error("orgId is required");
   if (!typeId) throw new Error("typeId is required");
-  if (!orgSlug) throw new Error("Missing orgSlug");
 
   const name = (formData.get("name") as string | null)?.trim();
   const categoryId = ((formData.get("categoryId") as string | null) ?? "").trim();
@@ -122,21 +124,23 @@ export async function updateComponentType(formData: FormData): Promise<void> {
   if (!categoryId) throw new Error("Category is required");
 
   const res = await internalFetch(
-    `/api/v1/orgs/${orgSlug}/component-types/${typeId}`,
+    `/api/v1/superadmin/component-types/${encodeURIComponent(typeId)}`,
     {
       method: "PATCH",
-      body: JSON.stringify({ name, categoryId, fieldsSchema, active }),
+      body: JSON.stringify({ orgId, name, categoryId, fieldsSchema, active }),
     },
   );
 
-  if (res.status === 401) redirect(await orgHref(orgSlug, "/login"));
+  if (res.status === 401) redirect("/controls/login");
 
   if (!res.ok) {
     const body = (await res.json()) as { error?: string };
     throw new Error(body.error ?? "Failed to update component type");
   }
 
-  revalidatePath(`/${orgSlug}/admin/components`);
-  revalidatePath(`/${orgSlug}/admin/components/${typeId}`);
-  redirect(await orgHref(orgSlug ?? "", `/admin/components/${typeId}`), RedirectType.replace);
+  revalidatePath("/controls/component-types");
+  redirect(
+    `/controls/component-types?orgId=${encodeURIComponent(orgId)}`,
+    RedirectType.replace,
+  );
 }

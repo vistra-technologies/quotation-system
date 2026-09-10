@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { LoadingOverlay } from "@/components/loading-overlay";
-import { updateComponentType } from "../actions";
+import { SelectField } from "@/components/select-field";
+import { createSuperAdminComponentType } from "./actions";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // ─── Inner status helpers ─────────────────────────────────────────────────────
@@ -28,7 +29,7 @@ function SubmitButton({ label, disabled: extraDisabled }: { label: string; disab
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-const FIELD_TYPES: FieldEntry["type"][] = ["field", "radio", "dropdown", "checkbox"];
+const FIELD_TYPES: FieldEntry["type"][] = ["field", "dropdown", "checkbox"];
 
 // ─── Move helper ──────────────────────────────────────────────────────────────
 
@@ -217,17 +218,17 @@ function FieldRow({
           <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
             {labels.typeLabel}
           </label>
-          <select
+          <SelectField
             value={entry.type}
             onChange={(e) => {
               const newType = e.target.value as FieldEntry["type"];
               const updated: FieldEntry = { ...entry, type: newType };
-              // Seed options when switching to a type that requires them
-              if ((newType === "radio" || newType === "dropdown") && !updated.options) {
+              // Seed options when switching to dropdown type
+              if (newType === "dropdown" && !updated.options) {
                 updated.options = [];
               }
-              // Clear options when switching away from option-requiring types
-              if (newType !== "radio" && newType !== "dropdown") {
+              // Clear options when switching away from dropdown
+              if (newType !== "dropdown") {
                 delete updated.options;
               }
               onChange(updated);
@@ -239,7 +240,7 @@ function FieldRow({
                 {typeLabels[t]}
               </option>
             ))}
-          </select>
+          </SelectField>
         </div>
         {/* Move and remove buttons */}
         <div className="flex items-end gap-1 self-end">
@@ -287,7 +288,7 @@ function FieldRow({
         </div>
       )}
 
-      {/* Row 3: hint, required, core */}
+      {/* Row 3: hint, required */}
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex min-w-[12rem] flex-1 flex-col gap-0.5">
           <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
@@ -397,20 +398,8 @@ function SectionEditor({
 
 // ─── JSON mode helpers ────────────────────────────────────────────────────────
 
-/**
- * Thrown by validateJsonText when JSON.parse itself fails (syntax error).
- * Distinguishable from shape-validation errors in the catch block.
- */
 class JsonParseError extends Error {}
 
-/**
- * Client-side strict validation that mirrors the write-path parseFieldsSchema in actions.ts.
- * Runs when the user switches from JSON mode back to Form mode — gives immediate, specific
- * feedback without a round-trip.
- *
- * Throws JsonParseError on bad JSON, plain Error on valid-JSON-but-wrong-shape.
- * Returns a correctly-typed FieldEntry[] on success.
- */
 function validateJsonText(text: string): FieldEntry[] {
   let parsed: unknown;
   try {
@@ -456,18 +445,16 @@ function validateJsonText(text: string): FieldEntry[] {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-interface EditComponentFormProps {
-  orgSlug: string;
-  typeId: string;
-  initialName: string;
-  initialCategoryId: string;
-  initialActive: boolean;
-  initialFields: FieldEntry[];
+interface CreateComponentFormProps {
+  /** Organization ID (SuperAdmin context — explicit, not from session). */
+  orgId: string;
   categories: { id: string; name: string }[];
   labels: {
+    fieldCodeLabel: string;
+    fieldCodeHint: string;
     fieldNameLabel: string;
     fieldCategoryLabel: string;
-    fieldStatusLabel: string;
+    fieldCategoryPlaceholder: string;
     fieldsSchemaLabel: string;
     sectionBasic: string;
     sectionAdvanced: string;
@@ -486,8 +473,8 @@ interface EditComponentFormProps {
     fieldRequiredLabel: string;
     moveUp: string;
     moveDown: string;
+    fieldStatusLabel: string;
     submitLabel: string;
-    fieldCategoryPlaceholder: string;
     modeForm: string;
     modeJson: string;
     jsonErrorBadJson: string;
@@ -496,28 +483,15 @@ interface EditComponentFormProps {
 }
 
 /**
- * Edit-ComponentType form (Client Component).
+ * Create-ComponentType form (Client Component) — SuperAdmin console version.
  *
- * Pre-populated with the existing field schema from the server.
- * Fields are stored in a flat array; the UI splits them into Basic / Advanced
- * sections by the `basic` boolean on each entry.
- * Serialises the fields array to JSON in a hidden input before submission.
- *
- * Stage 11 Batch 7: restyled to Sage Ease tokens. All logic (JSON toggle,
- * field reordering, active toggle, validation) is unchanged.
+ * Moved from app/[orgSlug]/admin/components/new/create-component-form.tsx to
+ * app/controls/(authenticated)/component-types/ in Stage 19 Batch 5.
+ * Key difference: takes `orgId` instead of `orgSlug`; submits to
+ * `createSuperAdminComponentType` (SuperAdmin API) instead of the org-scoped action.
  */
-export function EditComponentForm({
-  orgSlug,
-  typeId,
-  initialName,
-  initialCategoryId,
-  initialActive,
-  initialFields,
-  categories,
-  labels,
-}: EditComponentFormProps) {
-  const [fields, setFields] = useState<FieldEntry[]>(initialFields);
-  const [active, setActive] = useState(initialActive);
+export function CreateComponentForm({ orgId, categories, labels }: CreateComponentFormProps) {
+  const [fields, setFields] = useState<FieldEntry[]>([]);
   const [mode, setMode] = useState<"form" | "json">("form");
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
@@ -569,14 +543,33 @@ export function EditComponentForm({
     "rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary-soft focus:border-primary-soft";
 
   return (
-    <form action={updateComponentType} className="flex flex-col gap-5">
+    <form action={createSuperAdminComponentType} className="flex flex-col gap-5">
       <PendingOverlay />
 
-      <input type="hidden" name="orgSlug" value={orgSlug} />
-      <input type="hidden" name="typeId" value={typeId} />
-      <input type="hidden" name="active" value={String(active)} />
+      {/* orgId identifies the org (SuperAdmin context — not from session). */}
+      <input type="hidden" name="orgId" value={orgId} />
       {/* Serialised field list — React keeps this in sync with state */}
       <input type="hidden" name="fieldsSchema" value={JSON.stringify(fields)} />
+
+      {/* Code */}
+      <div className="flex flex-col gap-1">
+        <label
+          htmlFor="code"
+          className="text-[10px] font-bold uppercase tracking-wide text-text-muted"
+        >
+          {labels.fieldCodeLabel}
+        </label>
+        <input
+          id="code"
+          name="code"
+          type="text"
+          required
+          autoComplete="off"
+          placeholder="e.g. WALL_TYPE"
+          className={inputBase}
+        />
+        <p className="text-xs text-text-placeholder">{labels.fieldCodeHint}</p>
+      </div>
 
       {/* Name */}
       <div className="flex flex-col gap-1">
@@ -591,8 +584,8 @@ export function EditComponentForm({
           name="name"
           type="text"
           required
-          defaultValue={initialName}
           autoComplete="off"
+          placeholder="e.g. Wall Type"
           className={inputBase}
         />
       </div>
@@ -605,39 +598,20 @@ export function EditComponentForm({
         >
           {labels.fieldCategoryLabel}
         </label>
-        <select
+        <SelectField
           id="categoryId"
           name="categoryId"
           required
-          defaultValue={initialCategoryId}
+          defaultValue=""
           className={inputBase}
+          placeholder={labels.fieldCategoryPlaceholder}
         >
-          <option value="" disabled>
-            {labels.fieldCategoryPlaceholder}
-          </option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
-        </select>
-      </div>
-
-      {/* Active toggle */}
-      <div className="flex items-center gap-2.5">
-        <input
-          id="activeToggle"
-          type="checkbox"
-          checked={active}
-          onChange={(e) => setActive(e.target.checked)}
-          className="h-4 w-4 rounded border-border accent-primary"
-        />
-        <label
-          htmlFor="activeToggle"
-          className="text-sm font-bold text-text-body"
-        >
-          {labels.fieldStatusLabel}
-        </label>
+        </SelectField>
       </div>
 
       {/* Field list editor — Basic / Advanced sections, with Form / JSON toggle */}
@@ -646,7 +620,6 @@ export function EditComponentForm({
           <span className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
             {labels.fieldsSchemaLabel}
           </span>
-          {/* Form / JSON view toggle — behavior untouched */}
           <div className="flex text-xs font-bold">
             <button
               type="button"

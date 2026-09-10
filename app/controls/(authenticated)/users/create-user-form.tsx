@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { addUser, type AddUserState } from "./actions";
+import { SelectField } from "@/components/select-field";
 
 /**
  * Loading overlay, deliberately NOT the shared @/components/loading-overlay —
@@ -131,7 +132,7 @@ export function CreateUserForm({ orgId, roles, externalCompanies }: CreateUserFo
           <label htmlFor="sa-roleId" className={labelCls}>
             Role
           </label>
-          <select
+          <SelectField
             id="sa-roleId"
             name="roleId"
             required
@@ -144,7 +145,7 @@ export function CreateUserForm({ orgId, roles, externalCompanies }: CreateUserFo
                 {r.name}
               </option>
             ))}
-          </select>
+          </SelectField>
         </div>
 
         {/* Password */}
@@ -199,7 +200,7 @@ export function CreateUserForm({ orgId, roles, externalCompanies }: CreateUserFo
               ? "External Company (required for this role)"
               : "External Company"}
           </label>
-          <select
+          <SelectField
             id="sa-externalCompanyId"
             name="externalCompanyId"
             required={companyRequired}
@@ -211,7 +212,7 @@ export function CreateUserForm({ orgId, roles, externalCompanies }: CreateUserFo
                 {ec.name}
               </option>
             ))}
-          </select>
+          </SelectField>
           {companyRequired && (
             <p className="text-xs text-status-failed-text">
               This role requires an external company.

@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { orgHref } from "@/lib/orgHref";
+import { fetchProjectDetail } from "../_project-fetch";
 
-// Always render live — reads headers via orgHref.
+// Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
 
 /**
@@ -14,6 +16,10 @@ export const dynamic = "force-dynamic";
  * Stage 11 (Batch 6): outer chrome restyled to Sage Ease tokens to match
  * summary-page-2026-07-23-v1.html — page heading, card wrapper, empty-state
  * placeholder, and card-footer navigation. No logic or data changes.
+ *
+ * Stage 19 Batch 4: added step-gating — redirects to Project Details if the
+ * project has 0 Partitions (nothing to summarise yet). fetchProjectDetail is
+ * React.cache()-shared with the layout — zero extra round-trips.
  */
 export default async function SummaryPage({
   params,
@@ -22,6 +28,19 @@ export default async function SummaryPage({
 }) {
   const { orgSlug, projectId } = await params;
   const base = await orgHref(orgSlug, "");
+
+  const { status, project } = await fetchProjectDetail(orgSlug, projectId);
+
+  if (status === 401 || status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!project) notFound();
+
+  // Step-gating: Summary requires ≥1 Partition to have content to display.
+  if (project.partitionCount === 0) {
+    redirect(await orgHref(orgSlug, `/projects/${projectId}`));
+  }
   const t = await getTranslations("wizard");
 
   return (

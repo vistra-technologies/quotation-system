@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { SelectField } from "@/components/select-field";
 import { ComponentIcon } from "@/lib/component-icons";
 import {
   createSelection,
@@ -143,6 +144,19 @@ export function AddSelectionForm({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [editingSelectionId, setEditingSelectionId] = useState<string | null>(null);
   const [clientError, setClientError] = useState<string | null>(null);
+
+  // ── Advanced-panel click-outside handler ────────────────────────────────────
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showAdvanced) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setShowAdvanced(false);
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
+  }, [showAdvanced]);
 
   const selectedType = componentTypes.find((ct) => ct.id === selectedTypeId) ?? null;
 
@@ -352,10 +366,11 @@ export function AddSelectionForm({
               </div>
             )}
 
-            {/* Configure button (5d — full-width, soft/secondary treatment) */}
-            {/* Only rendered when advanced fields exist. */}
+            {/* Configure button + anchored popover (5d — full-width, soft/secondary treatment) */}
+            {/* Only rendered when advanced fields exist. Popover is absolute-positioned so   */}
+            {/* it doesn't push the Save button or right-column saved list down.              */}
             {selectedType && advancedFields.length > 0 && (
-              <>
+              <div ref={panelRef} className="relative">
                 <button
                   type="button"
                   onClick={() => setShowAdvanced((prev) => !prev)}
@@ -365,7 +380,7 @@ export function AddSelectionForm({
                 </button>
 
                 {showAdvanced && (
-                  <div className="flex flex-col gap-4 rounded-sm border border-border bg-bg-page p-4">
+                  <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 flex flex-col gap-4 rounded-md border border-border bg-bg-white p-4 shadow-[0_16px_34px_-12px_rgba(27,40,30,0.28)]">
                     <p className="text-xs font-bold uppercase tracking-wider text-text-placeholder">
                       {t("advancedFields")}
                     </p>
@@ -393,7 +408,7 @@ export function AddSelectionForm({
                     )}
                   </div>
                 )}
-              </>
+              </div>
             )}
 
             {/* Submit button (5d — full-width primary, stacked below Configure) */}
@@ -557,40 +572,19 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
         />
       )}
 
-      {field.type === "radio" && (
-        <div className="flex flex-col gap-2">
-          {field.options!.map((opt) => (
-            <label
-              key={opt}
-              className="flex cursor-pointer items-center gap-2 text-sm text-text-body"
-            >
-              <input
-                type="radio"
-                name={`field-radio-${field.key}`}
-                value={opt}
-                checked={(value as string) === opt}
-                onChange={() => onChange(opt)}
-                className="accent-primary"
-              />
-              {opt}
-            </label>
-          ))}
-        </div>
-      )}
-
-      {field.type === "dropdown" && (
-        <select
+      {(field.type === "dropdown" || field.type === "radio") && (
+        <SelectField
           value={(value as string) ?? ""}
           onChange={(e) => onChange(e.target.value)}
           className={inputClass}
+          placeholder="Select..."
         >
-          <option value="">— Select —</option>
           {field.options!.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
             </option>
           ))}
-        </select>
+        </SelectField>
       )}
 
       {field.type === "checkbox" && (

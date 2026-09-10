@@ -58,7 +58,8 @@ export default async function OrgSlugLayout({
   };
 
   const canManageUsers = me.adminPermissions.includes("MANAGE_USERS");
-  const canManageFeatures = me.adminPermissions.includes("MANAGE_FEATURES");
+  // NOTE (Stage 19 Batch 5): canManageFeatures no longer passed to Sidebar —
+  // Component Types management moved to /controls/component-types (SuperAdmin only).
 
   return (
     <div className="flex h-screen bg-bg-page">
@@ -67,7 +68,6 @@ export default async function OrgSlugLayout({
         orgSlug={orgSlug}
         isSubdomain={isSubdomain}
         canManageUsers={canManageUsers}
-        canManageFeatures={canManageFeatures}
       />
 
       {/* Right column: top bar + page content */}

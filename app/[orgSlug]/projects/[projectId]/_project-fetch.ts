@@ -30,6 +30,9 @@ export interface ProjectDetail {
   createdByUserId: string;
   externalCompany: { id: string; name: string; country: "INDIA" | "UAE" } | null;
   createdBy: { id: string; username: string };
+  /** Step-gating counts, added Stage 19 Batch 4. */
+  selectionCount: number;
+  partitionCount: number;
   // Stage 14 Batch C — extended intake fields (all nullable)
   submissionDate: string | null;
   projectDeadline: string | null;

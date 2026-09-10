@@ -207,20 +207,9 @@ test("sidebar admin flyout: Pricing link → /pricing (clean URL)", async () => 
 // NOTE (Stage 16 Batch F): Roles and Permissions flyout link tests removed.
 // Those sidebar links are gone — roles/permissions admin moved to /controls/roles.
 
-test("sidebar admin flyout: Component Types link → admin/components (clean URL)", async () => {
-  const page = await ctx.newPage();
-  await page.goto(DASHBOARD);
-  await page.getByRole("button", { name: "Admin" }).hover();
-  const ctLink = page.getByRole("link", { name: "Component Types" });
-  await expect(ctLink).toBeVisible({ timeout: 5_000 });
-  await ctLink.click();
-  await page.waitForURL(`${BASE}/admin/components`, { timeout: 15_000 });
-  assertCleanSubdomainUrl(page.url(), "/admin/components");
-  await expect(
-    page.getByRole("heading", { name: /Component Types/i }),
-  ).toBeVisible({ timeout: 10_000 });
-  await page.close();
-});
+// NOTE (Stage 19 Batch 5): Component Types flyout link test removed.
+// The sidebar flyout no longer contains a Component Types entry — management moved
+// to /controls/component-types (SuperAdmin console).
 
 // ---------------------------------------------------------------------------
 // B. List → detail → back-link flows
@@ -333,46 +322,11 @@ test("admin users: Actions link + back-link navigate with clean subdomain URLs",
 // NOTE (Stage 16 Batch F): "admin roles: Role Permissions link + back-link" test removed.
 // The org-admin roles route is gone — roles/permissions admin moved to /controls/roles.
 
-test("admin component types: Edit link + back-link navigate with clean subdomain URLs", async () => {
-  const page = await ctx.newPage();
-
-  await page.goto(`${BASE}/admin/components`);
-  await expect(
-    page.getByRole("heading", { name: /Component Types/i }),
-  ).toBeVisible({ timeout: 15_000 });
-
-  // "Edit Component Type" is the link text for component type rows (t("editPageTitle")).
-  // 3 types are seeded (GLASS, DOOR, PROFILE_STOP); use the first.
-  const editLink = page.getByRole("link", { name: /Edit Component Type/i }).first();
-  await expect(editLink).toBeVisible({ timeout: 10_000 });
-  const href = await editLink.getAttribute("href");
-  expect(
-    href,
-    `Component type link must not contain /vistra/ prefix`,
-  ).not.toMatch(/^\/vistra\//);
-  expect(href).toMatch(/^\/admin\/components\//);
-
-  await editLink.click();
-  await page.waitForURL(/vistra\.test\.easeetool\.com\/admin\/components\/[^/]+$/, {
-    timeout: 15_000,
-  });
-  assertCleanSubdomainUrl(page.url(), "/admin/components/");
-  await expect(page.locator("h1")).toBeVisible({ timeout: 10_000 });
-
-  // Back link: "← Back to Component Types"
-  const backLink = page.getByRole("link", { name: /Back to Component Types/i });
-  await expect(backLink).toBeVisible({ timeout: 5_000 });
-  const backHref = await backLink.getAttribute("href");
-  expect(
-    backHref,
-    `Back link href must be "/admin/components", got: "${backHref}"`,
-  ).toBe("/admin/components");
-  await backLink.click();
-  await page.waitForURL(`${BASE}/admin/components`, { timeout: 15_000 });
-  assertCleanSubdomainUrl(page.url(), "/admin/components");
-
-  await page.close();
-});
+// NOTE (Stage 19 Batch 5): "admin component types: Edit link + back-link" test replaced.
+// The old /admin/components route is deleted. Component Type management moved to
+// /controls/component-types (SuperAdmin console). The new test verifies the
+// SuperAdmin navigation at /controls/component-types (covered by
+// superadmin-component-types.spec.ts — "controls component types: navigate to edit").
 
 test("pricing: Edit Prices link + back-link navigate with clean subdomain URLs", async () => {
   const page = await ctx.newPage();
@@ -559,13 +513,8 @@ test("new-entry-point buttons across all list pages navigate to clean subdomain 
     `${BASE}/admin/external-companies/new`,
   );
 
-  // + Create Type (admin components list — button text is t("createType") = "Create Type")
-  await checkNewButton(
-    `${BASE}/admin/components`,
-    /Component Types/i,
-    /Create Type/i,
-    `${BASE}/admin/components/new`,
-  );
+  // NOTE (Stage 19 Batch 5): /admin/components create-button check removed.
+  // The route is deleted — Component Types management moved to /controls/component-types.
 
   await page.close();
 });

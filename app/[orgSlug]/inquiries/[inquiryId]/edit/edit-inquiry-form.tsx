@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { SelectField } from "@/components/select-field";
 import { formatBudget, stripGroupingSeparators } from "@/lib/format-currency";
 import { updateInquiry, type UpdateInquiryState } from "../../actions";
 
@@ -223,19 +224,19 @@ export function EditInquiryForm({
                   {t("fieldCurrency")}{" "}
                   <span className="text-status-failed-text font-normal">*</span>
                 </label>
-                <select
+                <SelectField
                   id="currency"
                   name="currency"
                   required
                   value={selectedCurrency}
                   onChange={(e) => setSelectedCurrency(e.target.value)}
                   className={selectCls}
+                  placeholder="Select currency..."
                 >
-                  <option value="" disabled>Select currency…</option>
                   <option value="INR">INR</option>
                   <option value="AED">AED</option>
                   <option value="USD">USD</option>
-                </select>
+                </SelectField>
               </div>
 
               {/* Row 4 left — Submission Date * (C7) */}
