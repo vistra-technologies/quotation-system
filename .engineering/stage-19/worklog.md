@@ -11,7 +11,7 @@
 | 1 | Floor/Project DELETE routes | `lib/data/floors.ts`, `lib/data/projects.ts`, `lib/data/inquiries.ts`, `app/api/v1/orgs/[orgSlug]/floors/[id]/route.ts` (new), `app/api/v1/orgs/[orgSlug]/projects/[projectId]/route.ts`, `tests/e2e/stage19.spec.ts` (new) | **done** — merged to `release/stage-19` @ `b989add` |
 | 2 | Shared `SelectField` + radio→dropdown fix | new `components/select-field.tsx` + 14 consumer files, `lib/component-catalog-seed.ts`, `create-component-form.tsx` | **done** — merged to `release/stage-19` @ `5805a8c` |
 | 3 | Configuration-page UX (popover + loading fixes) | `add-selection-form.tsx`, `configuration/loading.tsx`, `list-page-controls.tsx` | **done** — merged to `release/stage-19` @ `90fc545` |
-| 4 | Wizard fixes (copy, Back button, step-gating) | `project-wizard-breadcrumb.tsx`, `layout.tsx`, `_project-fetch.ts` | pending |
+| 4 | Wizard fixes (copy, Back button, step-gating) | `project-wizard-breadcrumb.tsx`, `layout.tsx`, `_project-fetch.ts` | **done** — merged to `release/stage-19` @ `765abde` |
 | 5 | SuperAdmin Component-Type relocation | new `app/api/v1/superadmin/component-types/**`, `/controls` UI, retiring old `/admin/components` route + its E2E specs | pending |
 | 6 | Remaining loading/placeholder sweep | Inquiry/Orders screen spot-check | pending |
 
@@ -238,3 +238,9 @@ independent and unblocks fixture cleanup for the rest; build it first.
   org filter added via project:{organizationId} traversal — consistent with selection.count, correct
   defense-in-depth. Previously-approved items (locked[] mapping, redirects, Back-to-Projects removal,
   message key) spot-checked intact. Batch 4 clean and ready to merge.
+- 2026-09-10 — Conductor: merged `feature/wizard-fixes` into `release/stage-19` (@ `765abde`), deleted the
+  feature branch (local + remote). Batch 4 closed (CHANGES-NEEDED -> APPROVE after one round). Human
+  approved the Configuration-always-open gating correction; `stage-19.md` updated to reflect it. Starting
+  Batch 5 (SuperAdmin Component-Type relocation into /controls) next — the largest remaining item, real
+  E2E blast radius (stage5/6/7.spec.ts, subdomain-navigation.spec.ts, regression-checklist.md all
+  reference the old /admin/components location).
