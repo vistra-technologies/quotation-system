@@ -1,19 +1,18 @@
 /**
- * Stage 6 — External Company, ComponentType overhaul, Selection regression spec.
+ * Stage 6 — External Company, Selection regression spec.
  *
  * Covers behavioral DoD items:
  *   - External Company RBAC: non-MANAGE_USERS role refused (list + new pages)
  *   - External Company CRUD round-trip: create → appears in list → appears in user-create dropdown
  *   - External Company tenancy: org A's admin only sees org A's companies
- *   - ComponentType RBAC: non-MANAGE_FEATURES role refused (re-verify against overhauled form)
- *   - ComponentType category round-trip: category persists across save/reload
- *   - ComponentType radio field round-trip: radio field with options persists
- *   - ComponentType empty-options guard: radio/dropdown with no options produces error (not silent drop)
  *   - Selection RBAC/auth: unauthenticated → redirected; any authenticated user can access
  *   - Selection CRUD round-trip: add component → dynamic form renders → config saved → appears in list
  *   - Selection tenancy: cross-org project page is blocked by session guard
  *
  * Invariants only — no DOM structure / styling assertions (wireframe-stage rule).
+ *
+ * NOTE (Stage 19 Batch 5): ComponentType tests removed — relocated to superadmin-component-types.spec.ts.
+ * Component Type management moved to /controls/component-types (SuperAdmin console).
  */
 
 import { test, expect } from "@playwright/test";
@@ -159,195 +158,6 @@ test("Admin nav shows External Companies link for MANAGE_USERS role", async ({ p
   await expect(page.getByRole("link", { name: /external companies/i }).first()).toBeVisible({
     timeout: 15_000,
   });
-});
-
-// ---------------------------------------------------------------------------
-// ComponentType — RBAC re-verification against overhauled form
-// ---------------------------------------------------------------------------
-
-test("ComponentType RBAC (re-verify): distributor redirected from /admin/components with overhauled form", async ({
-  page,
-}) => {
-  await signIn(page, "distributor");
-  await page.goto(orgUrl("acme-glass", "/admin/components"), { waitUntil: "commit" });
-  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
-});
-
-test("ComponentType RBAC (re-verify): member redirected from /admin/components/new with overhauled form", async ({
-  page,
-}) => {
-  await signIn(page, "member");
-  await page.goto(orgUrl("acme-glass", "/admin/components/new"), { waitUntil: "commit" });
-  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
-});
-
-// ---------------------------------------------------------------------------
-// ComponentType — category round-trip
-// ---------------------------------------------------------------------------
-
-test("ComponentType category round-trip: selected category persists after save and reload", async ({
-  page,
-}) => {
-  const code = `E2E_CAT_${Date.now()}`;
-  const name = `E2E Category Test ${code}`;
-  const category = "Glass Partitions";
-
-  await signIn(page, "admin");
-
-  // Create, selecting the seeded category from the dropdown (category is a fixed FK, not free text)
-  await page.goto(orgUrl("acme-glass", "/admin/components/new"));
-  await page.locator("input[name='code']").fill(code);
-  await page.locator("input[name='name']").fill(name);
-  await page.locator("select[name='categoryId']").selectOption({ label: category });
-
-  await Promise.all([
-    page.waitForURL(
-      (url) => orgUrlPattern("acme-glass", "/admin/components/[0-9a-f-]{36}").test(url.toString()),
-      { timeout: 30_000 },
-    ),
-    page.getByRole("button", { name: /create component type/i }).click(),
-  ]);
-
-  const editUrl = page.url();
-
-  // Hard-reload the edit page to force a fresh server render
-  await page.goto(editUrl);
-  await page.reload();
-
-  // Category dropdown must show the saved selection
-  const categorySelect = page.locator("select[name='categoryId']");
-  await expect(categorySelect).toBeVisible({ timeout: 15_000 });
-  await expect(categorySelect.locator("option:checked")).toHaveText(category);
-});
-
-// ---------------------------------------------------------------------------
-// ComponentType — radio field type round-trip (Stage 6 overhaul)
-// ---------------------------------------------------------------------------
-
-test("ComponentType radio field round-trip: radio field with options persists after save/reload", async ({
-  page,
-}) => {
-  const code = `E2E_RADIO_${Date.now()}`;
-  const name = `E2E Radio Test ${code}`;
-  const fieldKey = `option_field_${Date.now()}`;
-  const fieldLabel = "E2E Option Field";
-  const optionValue = "Option Alpha";
-
-  await signIn(page, "admin");
-
-  // Create the ComponentType first
-  await page.goto(orgUrl("acme-glass", "/admin/components/new"));
-  await page.locator("input[name='code']").fill(code);
-  await page.locator("input[name='name']").fill(name);
-  await page.locator("select[name='categoryId']").selectOption({ label: "Glass Partitions" });
-
-  await Promise.all([
-    page.waitForURL(
-      (url) => orgUrlPattern("acme-glass", "/admin/components/[0-9a-f-]{36}").test(url.toString()),
-      { timeout: 30_000 },
-    ),
-    page.getByRole("button", { name: /create component type/i }).click(),
-  ]);
-
-  const editUrl = page.url();
-
-  // Add a Basic field and change its type to radio
-  // The first "+ Add Field" button is the Basic section's
-  await page.getByRole("button", { name: /\+ add field/i }).first().click();
-
-  const keyInput = page.locator("input[placeholder='field_1']");
-  await expect(keyInput).toBeVisible({ timeout: 10_000 });
-  await keyInput.fill(fieldKey);
-  await page.locator("input[placeholder='Display label']").fill(fieldLabel);
-
-  // Change type to radio — the categoryId select is index 0, the field-type select is index 1
-  const typeSelect = page.locator("select").nth(1);
-  await typeSelect.selectOption("radio");
-
-  // Add an option
-  const optionInput = page.locator("input[placeholder='Option text…']");
-  await expect(optionInput).toBeVisible({ timeout: 5_000 });
-  await optionInput.fill(optionValue);
-  await page.getByRole("button", { name: /^add$/i }).first().click();
-
-  // Verify option chip appeared
-  await expect(page.getByText(optionValue)).toBeVisible({ timeout: 5_000 });
-
-  // Save
-  await Promise.all([
-    page.waitForResponse(
-      (res) => res.request().method() === "POST" && res.url().includes("/admin/components"),
-      { timeout: 20_000 },
-    ),
-    page.getByRole("button", { name: /save changes/i }).click(),
-  ]);
-
-  // Hard-reload to force fresh server render
-  await page.goto(orgUrl("acme-glass", "/admin/components"));
-  await page.goto(editUrl);
-  await page.reload();
-
-  // Field key must still be present (proves JSONB round-trip)
-  await expect(page.locator(`input[value='${fieldKey}']`)).toBeVisible({ timeout: 15_000 });
-  // Option value must appear in the option chips
-  await expect(page.getByText(optionValue)).toBeVisible({ timeout: 10_000 });
-});
-
-// ---------------------------------------------------------------------------
-// ComponentType — empty options guard (known bug fix verification)
-// ---------------------------------------------------------------------------
-
-test("ComponentType empty-options guard: radio field with no options produces error, not silent drop", async ({
-  page,
-}) => {
-  const code = `E2E_EMPTYOPT_${Date.now()}`;
-  const name = `E2E Empty Options ${code}`;
-  const fieldKey = `radio_no_opts_${Date.now()}`;
-  const fieldLabel = "Radio No Options";
-
-  await signIn(page, "admin");
-  await page.goto(orgUrl("acme-glass", "/admin/components/new"));
-  await page.locator("input[name='code']").fill(code);
-  await page.locator("input[name='name']").fill(name);
-  await page.locator("select[name='categoryId']").selectOption({ label: "Glass Partitions" });
-
-  // Add a basic field
-  await page.getByRole("button", { name: /\+ add field/i }).first().click();
-  const keyInput = page.locator("input[placeholder='field_1']");
-  await expect(keyInput).toBeVisible({ timeout: 10_000 });
-  await keyInput.fill(fieldKey);
-  await page.locator("input[placeholder='Display label']").fill(fieldLabel);
-
-  // Change type to radio but do NOT add any options — the categoryId select is index 0
-  const typeSelect = page.locator("select").nth(1);
-  await typeSelect.selectOption("radio");
-
-  // Try to create — should NOT silently succeed and redirect to the edit page
-  // Instead it should produce an error (either error boundary page or inline error)
-  await page.getByRole("button", { name: /create component type/i }).click();
-
-  // Wait briefly — if it redirects to a UUID URL, the field was silently saved (the bug)
-  await page.waitForTimeout(3_000);
-
-  // The page must NOT have redirected to a component edit page (UUID route)
-  // If it did, the radio field must at minimum not be silently dropped from the DB
-  const currentUrl = page.url();
-  const redirectedToEdit = /\/acme-glass\/admin\/components\/[0-9a-f-]{36}/.test(currentUrl);
-
-  if (redirectedToEdit) {
-    // BUG: the submit succeeded silently — the radio field may have been dropped.
-    // Hard-reload and check whether the radio field actually persisted.
-    await page.reload();
-    const fieldKeyInput = page.locator(`input[value='${fieldKey}']`);
-    const fieldExists = (await fieldKeyInput.count()) > 0;
-    // If the field is NOT there, the old silent-drop bug has regressed.
-    expect(fieldExists, "Radio field with empty options was silently dropped — bug regressed").toBe(
-      true,
-    );
-    // If the field IS there but has empty options, that's also bad — but we can't easily check in UI.
-  }
-  // If still on the /new page or error page, the fix is working correctly.
-  // Either way, we should NOT see a clean redirect with the field missing.
 });
 
 // ---------------------------------------------------------------------------
