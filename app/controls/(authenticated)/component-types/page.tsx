@@ -3,6 +3,7 @@ import { internalFetch } from "@/lib/internal-fetch";
 import { OrgPicker } from "../roles/org-picker";
 import { CreateComponentForm } from "./create-component-form";
 import { EditComponentForm } from "./edit-component-form";
+import { DeleteComponentTypeButton } from "./_delete-button";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // Always render live — reads the SuperAdminSession table (via guard layout) and live DB.
@@ -272,12 +273,20 @@ export default async function ComponentTypesPage({
                             )}
                           </td>
                           <td className="px-5 py-4 text-right">
-                            <Link
-                              href={`/controls/component-types?orgId=${encodeURIComponent(orgId)}&typeId=${encodeURIComponent(ct.id)}`}
-                              className="text-sm font-semibold text-primary hover:text-primary-dark"
-                            >
-                              {isSelected ? "Editing" : "Edit"}
-                            </Link>
+                            <div className="flex items-center justify-end gap-4">
+                              <Link
+                                href={`/controls/component-types?orgId=${encodeURIComponent(orgId)}&typeId=${encodeURIComponent(ct.id)}`}
+                                className="text-sm font-semibold text-primary hover:text-primary-dark"
+                              >
+                                {isSelected ? "Editing" : "Edit"}
+                              </Link>
+                              <DeleteComponentTypeButton
+                                orgId={orgId}
+                                typeId={ct.id}
+                                typeCode={ct.code}
+                                typeName={ct.name}
+                              />
+                            </div>
                           </td>
                         </tr>
                       );
@@ -311,7 +320,12 @@ export default async function ComponentTypesPage({
                 </Link>
               </div>
               <div className="mt-4 rounded-md border border-border bg-bg-card px-5 py-5 shadow-card">
+                {/* key={selectedType.id} forces React to unmount+remount the form when a
+                    different type is selected while an edit is already open (M2 fix — bugs-3.md).
+                    Without this, useState in EditComponentForm retains stale values from the
+                    previous edit target (the "Editing" indicator moves but the form doesn't reset). */}
                 <EditComponentForm
+                  key={selectedType.id}
                   orgId={orgId}
                   typeId={selectedType.id}
                   initialName={selectedType.name}
