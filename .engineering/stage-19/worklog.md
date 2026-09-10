@@ -458,3 +458,61 @@ independent and unblocks fixture cleanup for the rest; build it first.
   committed suite is not green until those 7 sites are fixed, and `superadmin-component-types.spec.ts`'s
   `isOnStaging` Tier-2 gate still hides `/controls` page regressions on branch previews — the same blind
   spot that let C1 reach the formal test pass.
+- 2026-09-10 — Developer (test-fix batch 2): DONE_WITH_CONCERNS. Branch `feature/stage19-test-fixes-2`
+  (reused as given, cut off `release/stage-19` including test-fix-1 @ `9056a42` — not re-cut). Plan at
+  `.engineering/stage-19/plan-testfix-2.md`. Commit `e9ef62a`. Closes both open findings from the
+  `review-testfix-1.md` reviewer.
+  **Item 1** (`/configure/i` → `/create/i`): fixed all 7 remaining occurrences —
+  `tests/e2e/stage7.spec.ts:436,523,652` (3) and `tests/e2e/stage13.spec.ts:595,626,696,747` (4).
+  Post-fix grep of `tests/e2e/` for `configure/i` returns 0 hits anywhere in the suite.
+  **Item 2** (Tier-2 gating): read `proxy.ts` in full. `/controls` resolves correctly on the exact apex
+  hosts (`easeetool.com`, `www.easeetool.com`, `test.easeetool.com`) and on the catch-all `else` branch
+  (any host not ending in `.easeetool.com`/`.test.easeetool.com` — covers ad-hoc Vercel previews and
+  `localhost`); it does NOT resolve correctly on `{orgSlug}.easeetool.com`/`{orgSlug}.test.easeetool.com`
+  org subdomains — but `tests/e2e/helpers.ts`'s own `orgUrl()`/`isSubdomain` commentary confirms
+  `PLAYWRIGHT_BASE_URL` is always set to an apex-level host in this suite, never an org subdomain, so
+  that broken case is never reachable through it. Replaced the hardcoded
+  `APEX_CONTROLS_CT = "https://test.easeetool.com/controls/component-types"` and `isOnStaging` string
+  check with a `CONTROLS_BASE_URL`/`CONTROLS_HOSTNAME` pair derived from `PLAYWRIGHT_BASE_URL` (same
+  fallback as `helpers.ts`), removed both `test.skip(!isOnStaging)` gates on Tests 7/8, and fixed Test 8's
+  hardcoded `domain: "test.easeetool.com"` cookie attribute to use `CONTROLS_HOSTNAME` (`secure` now also
+  derived from the URL scheme, so it still works over `http://localhost`). Updated the file's header
+  comment and the Tier-2 section comment to describe the new behavior.
+  **Static:** `npm run lint` (0 errors, 5 pre-existing warnings) + `npx tsc --noEmit` (clean).
+  **Deploy:** pushed, polled `npx vercel ls --scope=vistra-indias-projects` until READY
+  (`quotation-system-b4nvf04g0-vistra-indias-projects.vercel.app`). `npx vercel inspect` errored on the
+  same corrupted-npx-cache issue test-fix-1 hit; attempted a cache clear but it's locked by another
+  process on this machine — substituted direct functional route checks instead of reading the build log's
+  route list: `/api/health` → 200 connected; `/controls/component-types` unauthenticated → 307 (proxy
+  carve-out confirmed live on this exact preview).
+  **Verification (real runs against live deployments):**
+  - `superadmin-component-types.spec.ts` against my own branch preview (not staging):
+    `PLAYWRIGHT_BASE_URL=https://quotation-system-b4nvf04g0-...vercel.app TEST_SA_USERNAME=devadmin
+    TEST_SA_PASSWORD=Seed1234! npx playwright test` → **10/10 passed**, including Tests 7 and 8 (Tier 2)
+    which previously skipped everywhere except staging — now execute and pass on an ad-hoc per-branch
+    preview, confirming the gating fix works exactly where it's supposed to. Used the still-seeded
+    `devadmin`/`Seed1234!` bootstrap credential directly (curl-verified working first) — confirms test-fix-1's
+    temporary password change was correctly restored; no credential mutation needed this round.
+  - `stage7.spec.ts` against `test.easeetool.com` (this file's `signIn` helper is form-based, documented
+    broken on ad-hoc `*.vercel.app` preview hosts per `stage18.spec.ts`'s own comment — same constraint
+    test-fix-1 hit for stage5/stage6, same reason to target staging here): **24/24 passed**, no cascade
+    issue.
+  - `stage13.spec.ts` against `test.easeetool.com`: two full-suite serial runs each hit a **different**,
+    genuinely pre-existing timing flake unrelated to this fix — run 1 failed at "ExternalCompany: delete
+    removes the company from the list" (a stuck `role=status` processing overlay, 30s timeout), run 2 got
+    further (past that test) but failed at "Inquiry edit: Edit link NOT visible on a DISMISSED inquiry" (a
+    Dismiss-button disabled-state race, 15s timeout) — both before reaching my 4 changed tests, and serial
+    mode means each cascade-skips everything after it. Neither failure touches `/configure/i`, project
+    creation, or anything this batch changed. Isolated the actual target with
+    `--grep "Project edit:"` (the 4 tests containing the fixed locators, lines 579-783) against the same
+    `test.easeetool.com` target: **4/4 passed** (56.4s) — `/create/i` confirmed working for all 4 fixed
+    occurrences.
+  **Concern for the reviewer/human:** `stage13.spec.ts`'s full serial run is not reliably green on
+  `test.easeetool.com` — two different pre-existing timing-sensitive assertions (overlay-dismiss and
+  button-disabled-state waits) flaked on two separate attempts, unrelated to any change in scope this
+  round or last. Not fixed here (same call as test-fix-1's stage6 `select#sel-type` flag — out of
+  signed-off scope, mechanical/timing, no product-code risk) — flagging for a follow-up look at whether
+  those waits need longer timeouts or a more robust condition given the environment's timing envelope.
+- 2026-09-10 — Reviewer (test-fix batch 2, `feature/stage19-test-fixes-2` @ `e9ef62a`): **APPROVE-WITH-NITS**.
+  0 CRITICAL, 0 IMPORTANT, 2 MINOR. Both open IMPORTANT findings from `review-testfix-1.md` confirmed
+  closed. Report: `.engineering/stage-19/review-testfix-2.md`.

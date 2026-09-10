@@ -592,7 +592,7 @@ test("Project edit: Edit link is visible on a DRAFT project detail page", async 
     page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}"), {
       timeout: 20_000,
     }),
-    page.getByRole("button", { name: /configure/i }).click(),
+    page.getByRole("button", { name: /create/i }).click(),
   ]);
 
   // Should land on project detail after creation
@@ -623,7 +623,7 @@ test("Project edit: editing a DRAFT project persists changes", async ({
     page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}"), {
       timeout: 20_000,
     }),
-    page.getByRole("button", { name: /configure/i }).click(),
+    page.getByRole("button", { name: /create/i }).click(),
   ]);
 
   // The create redirect lands on the project detail page (or wizard)
@@ -693,7 +693,7 @@ test("Project edit: direct API PATCH on a non-DRAFT project returns 409", async 
     page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}"), {
       timeout: 20_000,
     }),
-    page.getByRole("button", { name: /configure/i }).click(),
+    page.getByRole("button", { name: /create/i }).click(),
   ]);
 
   const projectUrl = page.url();
@@ -744,7 +744,7 @@ test("Project edit: externalCompanyId cannot be changed via PATCH (silently igno
     page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}"), {
       timeout: 20_000,
     }),
-    page.getByRole("button", { name: /configure/i }).click(),
+    page.getByRole("button", { name: /create/i }).click(),
   ]);
 
   const projectUrl = page.url();

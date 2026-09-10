@@ -9,10 +9,17 @@
  *   tenancy isolation (SuperAdmin can only read/write types belonging to the
  *   specified org — cross-org typeId with wrong orgId returns 404).
  *
- * TIER 2 — Tests that MUST target test.easeetool.com (page navigation):
- *   Page-level navigation to /controls/** on a per-branch preview URL resolves
- *   "controls" as an org slug → 404.
- *   These tests require isOnStaging to be true.
+ * TIER 2 — Tests that navigate to /controls/** as a page:
+ *   proxy.ts (see its own header comment + the `/controls/**` carve-out branches)
+ *   serves /controls correctly on the exact apex hosts (easeetool.com,
+ *   www.easeetool.com, test.easeetool.com) AND on any other host that isn't an
+ *   {orgSlug}.easeetool.com / {orgSlug}.test.easeetool.com org subdomain — which
+ *   covers every value PLAYWRIGHT_BASE_URL is ever actually set to in this suite
+ *   (ad-hoc per-branch Vercel preview, test.easeetool.com, easeetool.com, or
+ *   localhost — see tests/e2e/helpers.ts's own isSubdomain/orgUrl commentary:
+ *   PLAYWRIGHT_BASE_URL is always an apex-level host, never an org subdomain).
+ *   So these tests build their /controls URL from PLAYWRIGHT_BASE_URL directly
+ *   and run unconditionally — no staging-only gate.
  *
  * FLAG-B3 (bootstrap creds not yet set): All tests requiring a valid SuperAdmin
  *   session skip when TEST_SA_USERNAME / TEST_SA_PASSWORD are absent.
@@ -34,11 +41,20 @@ test.setTimeout(120_000);
 
 // ── Environment probes ───────────────────────────────────────────────────────
 
-const APEX_CONTROLS_CT = "https://test.easeetool.com/controls/component-types";
-
-const isOnStaging = (process.env.PLAYWRIGHT_BASE_URL ?? "").includes(
-  "test.easeetool.com",
-);
+// /controls resolves correctly on every host PLAYWRIGHT_BASE_URL is ever set to
+// in this suite (see the file header comment + proxy.ts's carve-out branches) —
+// derive the base origin from it rather than hardcoding test.easeetool.com, so
+// Tier 2 runs against ad-hoc per-branch previews too, not just staging.
+const CONTROLS_BASE_URL = (() => {
+  try {
+    return new URL(process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000")
+      .origin;
+  } catch {
+    return "http://localhost:3000";
+  }
+})();
+const CONTROLS_HOSTNAME = new URL(CONTROLS_BASE_URL).hostname;
+const APEX_CONTROLS_CT = `${CONTROLS_BASE_URL}/controls/component-types`;
 
 const SA_USERNAME = process.env.TEST_SA_USERNAME ?? "";
 const SA_PASSWORD = process.env.TEST_SA_PASSWORD ?? "";
@@ -389,7 +405,7 @@ test("tenancy isolation: typeId from org A with org B's orgId → 404", async ({
   expect(crossRes.status()).toBe(404);
 });
 
-// ── TIER 2 TESTS (page-level, only run on test.easeetool.com) ─────────────────
+// ── TIER 2 TESTS (page-level, run against PLAYWRIGHT_BASE_URL's own origin) ───
 
 // ── Test 7: Controls page loads + org picker renders ─────────────────────────
 //
@@ -399,14 +415,6 @@ test("tenancy isolation: typeId from org A with org B's orgId → 404", async ({
 test("controls page: unauthenticated visit to /controls/component-types → redirected to /controls/login", async ({
   page,
 }) => {
-  if (!isOnStaging) {
-    test.skip(
-      true,
-      "Tier 2 test — requires test.easeetool.com (page-level /controls routing). Run against staging.",
-    );
-    return;
-  }
-
   await page.goto(APEX_CONTROLS_CT);
   await expect(page).toHaveURL(/\/controls\/login/, { timeout: 15_000 });
 });
@@ -420,14 +428,6 @@ test("controls component types: SuperAdmin can select org and navigate to edit p
   page,
   request,
 }) => {
-  if (!isOnStaging) {
-    test.skip(
-      true,
-      "Tier 2 test — requires test.easeetool.com (page-level /controls routing). Run against staging.",
-    );
-    return;
-  }
-
   if (!hasBootstrapCreds) {
     test.skip(true, "TEST_SA_USERNAME / TEST_SA_PASSWORD not set");
     return;
@@ -439,9 +439,9 @@ test("controls component types: SuperAdmin can select org and navigate to edit p
     {
       name: "qs-sa-token",
       value: saToken,
-      domain: "test.easeetool.com",
+      domain: CONTROLS_HOSTNAME,
       path: "/",
-      secure: true,
+      secure: CONTROLS_BASE_URL.startsWith("https://"),
       httpOnly: true,
       sameSite: "Lax",
     },
