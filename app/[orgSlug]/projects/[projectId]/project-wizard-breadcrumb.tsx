@@ -11,9 +11,10 @@ interface ProjectWizardBreadcrumbProps {
    * org subdomain (e.g. acme.easeetool.com).  Eliminates the client-side
    * window.location.hostname read and the resulting SSR/hydration mismatch. */
   isSubdomain: boolean;
-  /** Stage 19 Batch 4 — step-gating counts. Steps 1 (Configuration) and 2
-   * (Design) are locked when selectionCount === 0. Steps 3 (Summary) and
-   * 4 (Quotation) are locked when partitionCount === 0. */
+  /** Stage 19 Batch 4 — step-gating counts. Configuration (step 1) is always
+   * unlocked — it is where Selections are added, so it cannot gate on
+   * selectionCount. Design (step 2) is locked when selectionCount === 0.
+   * Summary (step 3) and Quotation (step 4) are locked when partitionCount === 0. */
   selectionCount: number;
   partitionCount: number;
 }

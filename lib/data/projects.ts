@@ -182,7 +182,7 @@ export async function getProjectById(session: SessionData, projectId: string) {
       where: { projectId, organizationId: session.organizationId },
     }),
     prisma.partition.count({
-      where: { room: { floor: { projectId } } },
+      where: { room: { floor: { projectId, project: { organizationId: session.organizationId } } } },
     }),
   ]);
 
