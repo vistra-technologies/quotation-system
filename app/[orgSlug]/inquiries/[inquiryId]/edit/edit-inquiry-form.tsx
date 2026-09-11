@@ -97,10 +97,12 @@ export function EditInquiryForm({
     return f === "—" ? "" : f;
   });
 
-  // C5: format on blur using current currency selection.
-  function handleBudgetBlur() {
+  // C5: reformat the budget field using the given currency (defaults to the
+  // currently selected one). Called on blur (decision 7) and immediately when
+  // currency changes (B2 fix, Stage 20 — safe for a cross-field change event).
+  function reformatBudget(currency: string = selectedCurrency) {
     const raw = stripGroupingSeparators(budgetValue.trim());
-    const formatted = formatBudget(raw, selectedCurrency);
+    const formatted = formatBudget(raw, currency);
     setBudgetValue(formatted === "—" ? "" : formatted);
   }
 
@@ -213,7 +215,7 @@ export function EditInquiryForm({
                   pattern="[\d,\.]*"
                   value={budgetValue}
                   onChange={(e) => setBudgetValue(e.target.value)}
-                  onBlur={handleBudgetBlur}
+                  onBlur={() => reformatBudget()}
                   className={inputCls}
                 />
               </div>
@@ -232,15 +234,7 @@ export function EditInquiryForm({
                   onChange={(e) => {
                     const newCurrency = e.target.value;
                     setSelectedCurrency(newCurrency);
-                    // B2 (Stage 20): reformat the budget field immediately when
-                    // currency changes — don't wait for blur/focus (decision 7
-                    // was about keystroke-level caret management, not currency
-                    // field changes, which are safe to reformat immediately).
-                    if (budgetValue.trim()) {
-                      const raw = stripGroupingSeparators(budgetValue.trim());
-                      const formatted = formatBudget(raw, newCurrency);
-                      setBudgetValue(formatted === "—" ? "" : formatted);
-                    }
+                    reformatBudget(newCurrency);
                   }}
                   className={selectCls}
                   placeholder="Select currency..."

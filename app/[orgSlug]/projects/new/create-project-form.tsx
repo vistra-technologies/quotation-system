@@ -67,10 +67,13 @@ export function CreateProjectForm({
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   })();
 
-  // C5: format the budget field on blur using current selected currency.
-  function handleBudgetBlur() {
+  // C5: reformat the budget field using the given currency (defaults to the
+  // currently selected one). Called on blur (decision 7) and immediately when
+  // currency changes — via currency select or company auto-switch (B2 fix,
+  // Stage 20 — safe for cross-field change events, unlike per-keystroke edits).
+  function reformatBudget(currency: string = selectedCurrency) {
     const raw = stripGroupingSeparators(budgetValue.trim());
-    const formatted = formatBudget(raw, selectedCurrency);
+    const formatted = formatBudget(raw, currency);
     setBudgetValue(formatted === "—" ? "" : formatted);
   }
 
@@ -150,7 +153,10 @@ export function CreateProjectForm({
                       setSelectedCompanyId(id);
                       const co = externalCompanies.find((c) => c.id === id);
                       // C6: update currency default when company selection changes.
-                      setSelectedCurrency(co?.defaultCurrency ?? "INR");
+                      const newCurrency = co?.defaultCurrency ?? "INR";
+                      setSelectedCurrency(newCurrency);
+                      // B2 (Stage 20): also reformat the budget with the new currency.
+                      reformatBudget(newCurrency);
                     }}
                     noneLabel={t("fieldExternalCompanyNone")}
                     ariaLabel={t("fieldExternalCompany")}
@@ -206,7 +212,7 @@ export function CreateProjectForm({
                   pattern="[\d,\.]*"
                   value={budgetValue}
                   onChange={(e) => setBudgetValue(e.target.value)}
-                  onBlur={handleBudgetBlur}
+                  onBlur={() => reformatBudget()}
                   className={inputCls}
                 />
               </div>
@@ -222,7 +228,11 @@ export function CreateProjectForm({
                   name="currency"
                   required
                   value={selectedCurrency}
-                  onChange={(e) => setSelectedCurrency(e.target.value)}
+                  onChange={(e) => {
+                    const newCurrency = e.target.value;
+                    setSelectedCurrency(newCurrency);
+                    reformatBudget(newCurrency);
+                  }}
                   className={selectCls}
                   placeholder="Select currency..."
                 >

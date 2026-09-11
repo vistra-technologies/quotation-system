@@ -75,10 +75,12 @@ export function CreateInquiryForm({
     "rounded-sm border border-border bg-bg-white px-3 py-2.5 text-sm text-text-heading focus:outline-none focus:ring-2 focus:ring-primary/40";
   const labelCls = "text-[10px] font-bold uppercase tracking-wider text-text-muted";
 
-  // C5: format the budget field on blur using current selected currency.
-  function handleBudgetBlur() {
+  // C5: reformat the budget field using the given currency (defaults to the
+  // currently selected one). Called on blur (decision 7) and immediately when
+  // currency changes (B2 fix, Stage 20 — safe for a cross-field change event).
+  function reformatBudget(currency: string = selectedCurrency) {
     const raw = stripGroupingSeparators(budgetValue.trim());
-    const formatted = formatBudget(raw, selectedCurrency);
+    const formatted = formatBudget(raw, currency);
     setBudgetValue(formatted === "—" ? "" : formatted);
   }
 
@@ -206,7 +208,7 @@ export function CreateInquiryForm({
                   pattern="[\d,\.]*"
                   value={budgetValue}
                   onChange={(e) => setBudgetValue(e.target.value)}
-                  onBlur={handleBudgetBlur}
+                  onBlur={() => reformatBudget()}
                   className={inputCls}
                 />
               </div>
@@ -225,15 +227,7 @@ export function CreateInquiryForm({
                   onChange={(e) => {
                     const newCurrency = e.target.value;
                     setSelectedCurrency(newCurrency);
-                    // B2 (Stage 20): reformat the budget field immediately when
-                    // currency changes — don't wait for blur/focus (decision 7
-                    // was about keystroke-level caret management, not currency
-                    // field changes, which are safe to reformat immediately).
-                    if (budgetValue.trim()) {
-                      const raw = stripGroupingSeparators(budgetValue.trim());
-                      const formatted = formatBudget(raw, newCurrency);
-                      setBudgetValue(formatted === "—" ? "" : formatted);
-                    }
+                    reformatBudget(newCurrency);
                   }}
                   className={selectCls}
                   placeholder="Select currency..."
