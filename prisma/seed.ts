@@ -313,11 +313,13 @@ async function main() {
       // Stage 20 Batch 1: upsert the starter option values into ComponentTypeOrgConfig.
       // The migration backfill already created these rows for existing orgs, but the
       // seed is idempotent and must also handle fresh installs.
+      // update: {} — create-only semantics. fieldOptionsConfig is org-owned data; re-running
+      // the seed must never clobber values an org admin has configured via the Catalog screen.
       const fieldOptionsConfig = configByCode.get(ct.code);
       if (fieldOptionsConfig) {
         await prisma.componentTypeOrgConfig.upsert({
           where: { componentTypeId: ct.id },
-          update: { fieldOptionsConfig: fieldOptionsConfig as object },
+          update: {}, // intentionally empty — never overwrite org-authored values on reseed
           create: {
             organizationId: org.id,
             componentTypeId: ct.id,

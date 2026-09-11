@@ -413,7 +413,17 @@ export async function deleteOrganization(
       // 9a. ComponentTypeOrgConfig — references ComponentType (FK RESTRICT); must precede it.
       //     Stage 20 Batch 1: new table — easy to forget in cascade deletes, so called out
       //     explicitly here. See design-docs/04-data-model.md — ComponentTypeOrgConfig.
-      await tx.componentTypeOrgConfig.deleteMany({ where: { organizationId: orgId } });
+      //     Belt-and-braces filter (matches this file's convention from step 3's comment):
+      //     catches any row where organizationId matches OR where the parent ComponentType
+      //     belongs to this org, guarding against mismatched rows from a hypothetical bug.
+      await tx.componentTypeOrgConfig.deleteMany({
+        where: {
+          OR: [
+            { organizationId: orgId },
+            { componentType: { organizationId: orgId } },
+          ],
+        },
+      });
 
       // 9b. ComponentType — references ComponentCategory (Selection already gone)
       await tx.componentType.deleteMany({ where: { organizationId: orgId } });
