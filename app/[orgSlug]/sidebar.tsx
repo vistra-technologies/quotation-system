@@ -11,7 +11,13 @@ interface SidebarProps {
    * window.location.hostname read and the resulting SSR/hydration mismatch. */
   isSubdomain: boolean;
   canManageUsers: boolean;
-  // NOTE (Stage 19 Batch 5): canManageFeatures removed — Component Types moved to /controls.
+  /**
+   * Stage 20 Batch 3: reintroduced — gates the "Catalog" flyout link (org-admin value-list
+   * editor for ComponentType dropdown/radio fields). Component Type shape/CRUD itself is still
+   * SuperAdmin-only at /controls/component-types (Stage 19 Batch 5); this permission now also
+   * covers the separate, narrower "fill in values" screen.
+   */
+  canManageFeatures: boolean;
 }
 
 /**
@@ -37,6 +43,7 @@ export function Sidebar({
   orgSlug,
   isSubdomain,
   canManageUsers,
+  canManageFeatures,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
@@ -58,9 +65,9 @@ export function Sidebar({
   const isActive = (section: string): boolean =>
     sectionPath === section || sectionPath.startsWith(`${section}/`);
 
-  // NOTE (Stage 19 Batch 5): canManageFeatures no longer gates any sidebar item —
-  // Component Types management moved to /controls/component-types (SuperAdmin only).
-  const showAdmin = canManageUsers;
+  // Stage 20 Batch 3: showAdmin now also opens for canManageFeatures-only roles, since the
+  // flyout gained the Catalog link (gated on MANAGE_FEATURES, independent of MANAGE_USERS).
+  const showAdmin = canManageUsers || canManageFeatures;
 
   // Shared nav-item class builder — active state applies Sage Ease primary green.
   const navItemClass = (section: string): string => {
@@ -333,11 +340,19 @@ export function Sidebar({
                 </>
               )}
 
-              {/* NOTE (Stage 19 Batch 5): Component Types flyout link removed.
-               * Component Type management moved to the SuperAdmin console at
-               * /controls/component-types. The MANAGE_FEATURES permission is no
-               * longer required by org users to access component types.
-               */}
+              {/* NOTE (Stage 19 Batch 5): Component Type CRUD flyout link removed.
+               * Component Type shape/CRUD moved to the SuperAdmin console at
+               * /controls/component-types.
+               * Stage 20 Batch 3: "Catalog" reintroduces a MANAGE_FEATURES-gated org
+               * screen — narrower than the old link (values only, not shape/CRUD). */}
+              {canManageFeatures && (
+                <Link
+                  href={href("/admin/field-values")}
+                  className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
+                >
+                  Catalog
+                </Link>
+              )}
             </div>
           </div>
         </div>
