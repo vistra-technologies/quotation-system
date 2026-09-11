@@ -22,6 +22,24 @@ import type { FieldEntry as _FieldEntry } from "@/lib/types/field-entry";
  */
 export type FieldEntry = _FieldEntry;
 
+/**
+ * Shape of a single field's entry in ComponentTypeOrgConfig.fieldOptionsConfig.
+ * Stage 20 Batch 1.
+ *
+ * A flat field (no dependsOn in fieldsSchema) → { options: string[] }
+ * A dependent field (has dependsOn) → { valueMap: Record<parentValue, string[]> }
+ */
+export type FieldOptionsEntry =
+  | { options: string[] }
+  | { valueMap: Record<string, string[]> };
+
+/**
+ * Parsed fieldOptionsConfig map — keyed by fieldKey.
+ * Returned alongside fieldsSchema wherever ComponentTypeOrgConfig is included.
+ * Stage 20 Batch 1.
+ */
+export type FieldOptionsConfig = Record<string, FieldOptionsEntry>;
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /** Parse the stored JSONB to a typed FieldEntry array (defensive). */
@@ -54,9 +72,41 @@ function parseFieldsSchema(raw: unknown): FieldEntry[] {
       if (obj.hint) {
         entry.hint = String(obj.hint);
       }
+      // Stage 20: pass through dependsOn if present (SuperAdmin-authored wiring).
+      if (obj.dependsOn && typeof obj.dependsOn === "string") {
+        entry.dependsOn = obj.dependsOn;
+      }
       return entry;
     })
     .filter((x): x is FieldEntry => x !== null);
+}
+
+/**
+ * Parse the stored JSONB fieldOptionsConfig into a typed FieldOptionsConfig map.
+ * Defensive: unknown shapes are dropped; only entries with an `options` array or
+ * a `valueMap` object are preserved.
+ * Stage 20 Batch 1.
+ */
+function parseFieldOptionsConfig(raw: unknown): FieldOptionsConfig {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const obj = raw as Record<string, unknown>;
+  const result: FieldOptionsConfig = {};
+  for (const [key, entry] of Object.entries(obj)) {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const e = entry as Record<string, unknown>;
+    if (Array.isArray(e.options)) {
+      result[key] = { options: (e.options as unknown[]).map(String).filter(Boolean) };
+    } else if (e.valueMap && typeof e.valueMap === "object" && !Array.isArray(e.valueMap)) {
+      const valueMap: Record<string, string[]> = {};
+      for (const [parentVal, vals] of Object.entries(e.valueMap as Record<string, unknown>)) {
+        if (Array.isArray(vals)) {
+          valueMap[parentVal] = (vals as unknown[]).map(String).filter(Boolean);
+        }
+      }
+      result[key] = { valueMap };
+    }
+  }
+  return result;
 }
 
 // ─── Read functions ───────────────────────────────────────────────────────────
@@ -90,6 +140,56 @@ export async function getComponentTypeById(session: SessionData, id: string) {
   });
   if (!row) return null;
   return { ...row, fieldsSchema: parseFieldsSchema(row.fieldsSchema) };
+}
+
+/**
+ * List all ComponentTypes for the session org with their org-level field option config.
+ * Stage 20 Batch 1 — the DAL entry point for Batches 3/4 consumers (Catalog screen,
+ * configurator gating). The orgConfig field is null when no config row exists yet.
+ *
+ * Each returned item has:
+ *   fieldsSchema     — typed FieldEntry[] (includes dependsOn when set by SuperAdmin)
+ *   fieldOptionsConfig — typed FieldOptionsConfig | null (null = not configured yet)
+ */
+export async function listComponentTypesWithConfig(session: SessionData) {
+  const rows = await prisma.componentType.findMany({
+    where: { organizationId: session.organizationId },
+    orderBy: { code: "asc" },
+    include: {
+      category: true,
+      orgConfig: true,
+    },
+  });
+  return rows.map((r) => ({
+    ...r,
+    fieldsSchema: parseFieldsSchema(r.fieldsSchema),
+    fieldOptionsConfig: r.orgConfig
+      ? parseFieldOptionsConfig(r.orgConfig.fieldOptionsConfig)
+      : null,
+  }));
+}
+
+/**
+ * Get a single ComponentType by id with its org-level field option config.
+ * Stage 20 Batch 1.
+ * Returns null if not found or if it belongs to a different org (tenancy guard).
+ */
+export async function getComponentTypeByIdWithConfig(session: SessionData, id: string) {
+  const row = await prisma.componentType.findFirst({
+    where: { id, organizationId: session.organizationId },
+    include: {
+      category: true,
+      orgConfig: true,
+    },
+  });
+  if (!row) return null;
+  return {
+    ...row,
+    fieldsSchema: parseFieldsSchema(row.fieldsSchema),
+    fieldOptionsConfig: row.orgConfig
+      ? parseFieldOptionsConfig(row.orgConfig.fieldOptionsConfig)
+      : null,
+  };
 }
 
 // ─── Mutations ────────────────────────────────────────────────────────────────

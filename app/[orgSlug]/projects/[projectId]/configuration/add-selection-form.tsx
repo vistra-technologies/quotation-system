@@ -24,6 +24,8 @@ interface FieldEntry {
   hint?: string;
   required: boolean;
   basic: boolean;
+  // Stage 20: SuperAdmin-authored wiring (key of an earlier field this field depends on).
+  dependsOn?: string;
 }
 
 interface ComponentTypeOption {

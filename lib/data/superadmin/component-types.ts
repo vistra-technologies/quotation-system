@@ -71,6 +71,10 @@ function parseFieldsSchema(raw: unknown): FieldEntry[] {
       if (obj.hint) {
         entry.hint = String(obj.hint);
       }
+      // Stage 20: pass through dependsOn if present (SuperAdmin-authored wiring).
+      if (obj.dependsOn && typeof obj.dependsOn === "string") {
+        entry.dependsOn = obj.dependsOn;
+      }
       return entry;
     })
     .filter((x): x is FieldEntry => x !== null);
@@ -242,7 +246,13 @@ export async function deleteComponentTypeForOrg(
   });
   if (selectionCount > 0) return { inUse: true, selectionCount };
 
-  await prisma.componentType.delete({ where: { id: typeId } });
+  // Stage 20 Batch 1: ComponentTypeOrgConfig carries an ON DELETE RESTRICT FK to ComponentType.
+  // Delete the config row first (if any), then the type — same pattern as deleteOrganization's
+  // FK-safe cascade in lib/data/superadmin/orgs.ts.
+  await prisma.$transaction(async (tx) => {
+    await tx.componentTypeOrgConfig.deleteMany({ where: { componentTypeId: typeId } });
+    await tx.componentType.delete({ where: { id: typeId } });
+  });
   return { deleted: true };
 }
 
