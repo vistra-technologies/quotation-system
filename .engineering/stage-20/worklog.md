@@ -13,7 +13,7 @@
 | B1 | Schema + migration + DAL (ComponentTypeOrgConfig) | — | done (merged `a50ea05`) |
 | B2 | SuperAdmin authoring (dependsOn UI + validator) | B1 | done (merged `0462bff`) |
 | B3 | Catalog org-admin screen | B1, B2 | done (merged `4c95532`) |
-| B4 | Configurator gating + cascading | B1, B3 | pending |
+| B4 | Configurator gating + cascading | B1, B3 | dev done, pending review (`217b577`) |
 | B5 | Bug sweep (B1–B5 video bugs) | — | done (merged `096f1a6`) |
 | B6 | Docs + E2E | B1–B5 | pending |
 
@@ -161,3 +161,34 @@
   faithfully reproduces the reviewer's exact live repro (Category → Glass Type → Thickness,
   untouched Save no longer wipes Thickness's `valueMap`). **Merged to `release/stage-20`.**
   Batch 3 done.
+- **2026-09-12 -- developer -- Batch 4 (Configurator gating + cascading)** @
+  `feature/b4-configurator-gating-cascading` `217b577` (+ docs `66a1a84`) -- new
+  `lib/configurator-gating.ts` (pure): `isComponentTypeFullyConfigured` (whole-type gate,
+  multi-hop-safe, decision #5), `resolveOptions` (named per the stage doc -- live cascading
+  resolution off the form's currently-selected parent value), `collectDescendants`
+  (descendant-key lookup for clearing stale values on parent change). Closed both MINORs
+  left open by review-B3: MINOR #3 -- folded `orgConfig` into `listComponentTypes`/
+  `getComponentTypeById`, deleted the dead `...WithConfig` pair, updated the field-values
+  route's 3 call sites; MINOR #4 -- Catalog admin page's 1+N fetch is now one call (list
+  route returns `fieldOptionsConfig` for free). `add-selection-form.tsx`: palette tiles
+  grey out + tooltip for any unconfigured ComponentType, configure form never opens for
+  one (edit mode of an already-saved Selection is the one documented exception -- decision
+  #5 targets the "Add Component" palette, not stranding existing data), dropdown/radio
+  fields resolve options live via `resolveOptions`, changing a field clears its
+  descendants. Added a server-side backstop: `lib/data/selections.ts` `createSelection`
+  now rejects (400) a Selection against an unconfigured ComponentType, closing the stage
+  doc's explicit "API-level, not just UI greying" test requirement. New
+  `tests/e2e/configurator-gating.spec.ts`: 14 pure-logic tests for the three gating
+  helpers (2-hop chain, verified passing locally with no server touched -- no unit-test
+  runner exists in this repo, so these are Playwright `test()`/`expect()` blocks that
+  request neither `page` nor `request`) plus 2 API-level tests (unconfigured type -> 400,
+  then configured via the Catalog PUT -> 201). `tsc`/lint clean. Docs: `by-page.sql`
+  reconciled (both `listComponentTypes`/`getComponentTypeById` query blocks now show the
+  `ComponentTypeOrgConfig` LEFT JOIN; stale WithConfig-only block replaced with a
+  pointer). Branch + docs pushed; **no Vercel MCP/CLI or browser tool available this
+  session** -- flagged in `item-B4.md` for the reviewer/tester, specifically to re-run
+  `catalog-field-values.spec.ts`/`stage18.spec.ts`/`stage19.spec.ts`/
+  `subdomain-navigation.spec.ts` against the preview (they create Selections against
+  `componentTypes[0]`, alphabetically DOOR, which Batch 1 fully backfilled -- should be
+  unaffected by the new gate but unverified live this session) and to eyeball the
+  multi-hop cascading UX manually. Status: DONE_WITH_CONCERNS.
