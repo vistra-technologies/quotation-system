@@ -13,7 +13,7 @@
 | B1 | Schema + migration + DAL (ComponentTypeOrgConfig) | — | done (merged `a50ea05`) |
 | B2 | SuperAdmin authoring (dependsOn UI + validator) | B1 | done (merged `0462bff`) |
 | B3 | Catalog org-admin screen | B1, B2 | done (merged `4c95532`) |
-| B4 | Configurator gating + cascading | B1, B3 | pending |
+| B4 | Configurator gating + cascading | B1, B3 | done (merged `ea5b7f8`) |
 | B5 | Bug sweep (B1–B5 video bugs) | — | done (merged `096f1a6`) |
 | B6 | Docs + E2E | B1–B5 | pending |
 
@@ -161,3 +161,61 @@
   faithfully reproduces the reviewer's exact live repro (Category → Glass Type → Thickness,
   untouched Save no longer wipes Thickness's `valueMap`). **Merged to `release/stage-20`.**
   Batch 3 done.
+- **2026-09-12 -- developer -- Batch 4 (Configurator gating + cascading)** @
+  `feature/b4-configurator-gating-cascading` `217b577` (+ docs `66a1a84`) -- new
+  `lib/configurator-gating.ts` (pure): `isComponentTypeFullyConfigured` (whole-type gate,
+  multi-hop-safe, decision #5), `resolveOptions` (named per the stage doc -- live cascading
+  resolution off the form's currently-selected parent value), `collectDescendants`
+  (descendant-key lookup for clearing stale values on parent change). Closed both MINORs
+  left open by review-B3: MINOR #3 -- folded `orgConfig` into `listComponentTypes`/
+  `getComponentTypeById`, deleted the dead `...WithConfig` pair, updated the field-values
+  route's 3 call sites; MINOR #4 -- Catalog admin page's 1+N fetch is now one call (list
+  route returns `fieldOptionsConfig` for free). `add-selection-form.tsx`: palette tiles
+  grey out + tooltip for any unconfigured ComponentType, configure form never opens for
+  one (edit mode of an already-saved Selection is the one documented exception -- decision
+  #5 targets the "Add Component" palette, not stranding existing data), dropdown/radio
+  fields resolve options live via `resolveOptions`, changing a field clears its
+  descendants. Added a server-side backstop: `lib/data/selections.ts` `createSelection`
+  now rejects (400) a Selection against an unconfigured ComponentType, closing the stage
+  doc's explicit "API-level, not just UI greying" test requirement. New
+  `tests/e2e/configurator-gating.spec.ts`: 14 pure-logic tests for the three gating
+  helpers (2-hop chain, verified passing locally with no server touched -- no unit-test
+  runner exists in this repo, so these are Playwright `test()`/`expect()` blocks that
+  request neither `page` nor `request`) plus 2 API-level tests (unconfigured type -> 400,
+  then configured via the Catalog PUT -> 201). `tsc`/lint clean. Docs: `by-page.sql`
+  reconciled (both `listComponentTypes`/`getComponentTypeById` query blocks now show the
+  `ComponentTypeOrgConfig` LEFT JOIN; stale WithConfig-only block replaced with a
+  pointer). Branch + docs pushed; **no Vercel MCP/CLI or browser tool available this
+  session** -- flagged in `item-B4.md` for the reviewer/tester, specifically to re-run
+  `catalog-field-values.spec.ts`/`stage18.spec.ts`/`stage19.spec.ts`/
+  `subdomain-navigation.spec.ts` against the preview (they create Selections against
+  `componentTypes[0]`, alphabetically DOOR, which Batch 1 fully backfilled -- should be
+  unaffected by the new gate but unverified live this session) and to eyeball the
+  multi-hop cascading UX manually. Status: DONE_WITH_CONCERNS.
+
+- **reviewer — Batch 4 (Configurator gating + cascading), `db631f5`: APPROVE-WITH-NITS.**
+  0 CRITICAL / 0 IMPORTANT / 3 MINOR. Report: `review-B4.md`. The regression risk the
+  developer flagged is **resolved and is not a regression** -- verified live on the preview
+  (`quotation-system-nceda3vzd`), not by re-reading the migration: DOOR is `componentTypes[0]`
+  on acme-glass *and* reads fully configured post-backfill. Ran `configurator-gating.spec.ts`
+  16/16 (including both API-level tests the developer left unrun), `catalog-field-values` +
+  `subdomain-navigation` 21/21, `stage18` 10/10, `stage19` 6/6 -- the three tests that POST a
+  Selection against `componentTypes[0]` all pass. One `stage19` step-gating failure proven
+  **pre-existing** (fails 3/3 on the Batch-3 preview, untouched code path) and logged as MINOR
+  #3 for the test phase. `isComponentTypeFullyConfigured` does **not** repeat Batch 3's
+  multi-hop bug -- it accumulates a per-field resolved-value map instead of a roots-only map;
+  independently re-implemented and run over acme-glass's 308 live types, agreeing exactly with
+  the 13 greyed tiles rendered on the Configuration page. B3 MINOR #3 (DAL convergence, zero
+  dangling `WithConfig` refs) and MINOR #4 (N+1 gone, Catalog page renders 200 with real chip
+  values) both genuinely closed. Decision #6 respected -- only value lists narrow, no field
+  visibility is conditional. Nits: E2E spec leaks a throwaway type/project per run;
+  `collectDescendants` lacks a cycle guard; the pre-existing stage19 step-gating flake.
+
+- **orchestrator** — noticed `release/stage-20`'s own build (`f3f40a0`, the Batch 3 merge)
+  errored on the shared dev Neon branch with `P1002` (advisory-lock timeout) — the known
+  transient failure documented in `profile.md`, not a real regression (B3's fix-round and B4's
+  own builds succeeded on the same code). Retriggered with an empty commit (`114e6f8`).
+  **Merged Batch 4 to `release/stage-20`.** All of Item 1 (Batches 1–4) and Item 2 (Batch 5)
+  are now done. Remaining: **Batch 6 (docs + E2E reconciliation)**, plus routing the
+  pre-existing stage19 step-gating flake to the human/`engineering:test` — not this stage's
+  bug to fix, but worth flagging before sign-off.
