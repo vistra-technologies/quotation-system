@@ -73,3 +73,28 @@
   generated client). Branch pushed; **no Vercel MCP/CLI tool available this session** to poll the
   preview or run the pushed Playwright tests against it — flagged as a concern in `item-B2.md` for
   the reviewer/tester to verify on the preview directly. Status: DONE_WITH_CONCERNS.
+- **2026-09-12 — reviewer — Batch 2 review** @ `feature/b2-superadmin-dependson-authoring` `64fe1e4` —
+  verdict **CHANGES-NEEDED**: 0 CRITICAL, 1 IMPORTANT, 4 MINOR. Ran the spec against the batch's own
+  Vercel preview (`quotation-system-p7h7dnxqv`): **13/13 passed in 29.4s**, including all 5
+  new/rewritten options-rejection + dependsOn tests; `tsc`/`lint` re-verified clean. Validator logic
+  is correct (earlier-only, choice-type-only both ends, self/forward/cycle impossible — probed live),
+  wired and firing on **both** POST and PATCH, and JSON-mode routes through it so paste can't bypass.
+  The two rewritten E2E tests are a legitimate inversion, not a weakened test (old Test 5 asserted
+  `[201,400,500]` — vacuous). IMPORTANT: deleting/retyping/renaming a parent field leaves a stale,
+  UI-invisible `dependsOn` on its children → save throws to the page error boundary and loses the
+  edit (reorder was guarded, these three paths weren't). MINORs: `[null]` entry → 500 not 400;
+  no duplicate-key check (`findIndex` first-match, matters for Batch 3's `fieldOptionsConfig` keying);
+  orphaned `fieldOptions`/`addOption` i18n keys; no PATCH-path E2E (verified by hand instead).
+  Details: `.engineering/stage-20/review-B2.md`.
+- **2026-09-12 — developer — Batch 2 review fix round** @
+  `feature/b2-superadmin-dependson-authoring` — IMPORTANT #1 fixed via the reviewer's "cleaner" option:
+  new `clearDependentsOf(fields, key)` helper in `lib/validate-fields-schema.ts`, wired into a new
+  `handleRemove`/`handleFieldChange` pair in **both** create/edit forms' `SectionEditor` — clears a
+  child's `dependsOn` when its parent row is removed, retyped away from dropdown/radio, or renamed.
+  MINOR #2 fixed: malformed (non-object/null) `fieldsSchema` entries now return a normal 400 instead of
+  throwing. MINOR #3 fixed: duplicate `key`s across a schema are now rejected (one `Set` pass before the
+  main validation loop). MINOR #4 deferred to Batch 6 per the reviewer's own suggestion (the whole
+  `componentTypes` i18n block is pre-existing dead weight, not something to partially clean here). MINOR
+  #5 fixed (not deferred): added 2 PATCH-path E2E tests + 1 duplicate-key POST test.
+  `tsc`/`lint` clean. Pushed. No Vercel/browser tool available this session — orchestrator to verify
+  live on the next preview. Status: DONE_WITH_CONCERNS. Details: `item-B2.md` §Review fix round.

@@ -491,6 +491,120 @@ test("dependsOn pointing at a non-dropdown/radio field is rejected: POST → 400
   expect(res.status()).toBe(400);
 });
 
+// ── Test 9: PATCH validation path (review-B2 MINOR #5) ───────────────────────
+//
+// Every dependsOn/options assertion above went through POST only — PATCH is
+// the path the *edit* form actually uses, so it's the one an authoring bug
+// would hit first. Confirms the same `validateFieldsSchema` gate fires there.
+
+test("PATCH with `options` on a field is rejected: PATCH → 400", async ({ request }) => {
+  if (!hasBootstrapCreds) {
+    test.skip(true, "TEST_SA_USERNAME / TEST_SA_PASSWORD not set");
+    return;
+  }
+
+  const saToken = await loginAsSuperAdmin(request);
+  const orgId = await getAcmeGlassOrgId(request, saToken);
+  const created = await createTestComponentType(request, saToken, orgId);
+
+  const res = await request.patch(
+    `/api/v1/superadmin/component-types/${encodeURIComponent(created.id)}`,
+    {
+      headers: { Cookie: `qs-sa-token=${saToken}` },
+      data: {
+        orgId,
+        fieldsSchema: [
+          {
+            key: "e2e_dropdown",
+            label: "E2E Dropdown",
+            type: "dropdown",
+            required: false,
+            basic: true,
+            options: ["Alpha"],
+          },
+        ],
+      },
+    },
+  );
+  expect(res.status()).toBe(400);
+});
+
+test("PATCH with dependsOn → non-choice field is rejected: PATCH → 400", async ({ request }) => {
+  if (!hasBootstrapCreds) {
+    test.skip(true, "TEST_SA_USERNAME / TEST_SA_PASSWORD not set");
+    return;
+  }
+
+  const saToken = await loginAsSuperAdmin(request);
+  const orgId = await getAcmeGlassOrgId(request, saToken);
+  const created = await createTestComponentType(request, saToken, orgId);
+
+  const res = await request.patch(
+    `/api/v1/superadmin/component-types/${encodeURIComponent(created.id)}`,
+    {
+      headers: { Cookie: `qs-sa-token=${saToken}` },
+      data: {
+        orgId,
+        fieldsSchema: [
+          { key: "notes", label: "Notes", type: "field", required: false, basic: true },
+          {
+            key: "glassType",
+            label: "Glass Type",
+            type: "dropdown",
+            required: true,
+            basic: true,
+            dependsOn: "notes",
+          },
+        ],
+      },
+    },
+  );
+  expect(res.status()).toBe(400);
+});
+
+// ── Test 10: Duplicate field keys are rejected (review-B2 MINOR #3) ──────────
+//
+// Without this, the dependsOn parent lookup (`findIndex`) silently resolves
+// to the *first* matching key, which can falsely reject a valid dependsOn
+// today and would silently collide with Batch 3's `fieldOptionsConfig`
+// keying (also keyed by field key) later.
+
+test("duplicate field keys are rejected: POST → 400", async ({ request }) => {
+  if (!hasBootstrapCreds) {
+    test.skip(true, "TEST_SA_USERNAME / TEST_SA_PASSWORD not set");
+    return;
+  }
+
+  const saToken = await loginAsSuperAdmin(request);
+  const orgId = await getAcmeGlassOrgId(request, saToken);
+
+  const catsRes = await request.get(
+    `/api/v1/superadmin/component-categories?orgId=${encodeURIComponent(orgId)}`,
+    { headers: { Cookie: `qs-sa-token=${saToken}` } },
+  );
+  const catsBody = (await catsRes.json()) as { categories: { id: string }[] };
+  const categoryId = catsBody.categories[0]?.id;
+  if (!categoryId) {
+    test.skip(true, "No categories found — cannot test duplicate-key guard");
+    return;
+  }
+
+  const res = await request.post("/api/v1/superadmin/component-types", {
+    headers: { Cookie: `qs-sa-token=${saToken}` },
+    data: {
+      orgId,
+      code: `SA_E2E_DUPKEY_${Date.now()}`,
+      name: "E2E Duplicate Key Test",
+      categoryId,
+      fieldsSchema: [
+        { key: "a", label: "A (field)", type: "field", required: false, basic: true },
+        { key: "a", label: "A (dropdown)", type: "dropdown", required: false, basic: true },
+      ],
+    },
+  });
+  expect(res.status()).toBe(400);
+});
+
 // ── Test 6: Tenancy isolation ─────────────────────────────────────────────────
 //
 // SuperAdmin reads a typeId from orgA with orgB's orgId → 404.

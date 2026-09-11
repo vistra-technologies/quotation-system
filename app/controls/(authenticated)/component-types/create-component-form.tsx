@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { SelectField } from "@/components/select-field";
 import { createSuperAdminComponentType } from "./actions";
-import { validateFieldsSchema } from "@/lib/validate-fields-schema";
+import { validateFieldsSchema, clearDependentsOf } from "@/lib/validate-fields-schema";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // ─── Inner status helpers ─────────────────────────────────────────────────────
@@ -327,6 +327,38 @@ function SectionEditor({
     onFieldsChange(candidate);
   };
 
+  /**
+   * Edit a field in place, then clear `dependsOn` on any other field that
+   * pointed at this one's *original* key if this edit invalidated that link
+   * (review-B2 IMPORTANT #1): the key was renamed, or the type moved away
+   * from dropdown/radio (losing its value list). Without this, a child field
+   * is left silently pointing at a stale key — invisible in the UI until
+   * Save throws.
+   */
+  const handleFieldChange = (globalIndex: number, updated: FieldEntry) => {
+    const original = fields[globalIndex];
+    let next = fields.map((x, xi) => (xi === globalIndex ? updated : x));
+    const keyChanged = original.key !== updated.key;
+    const lostChoiceType =
+      (original.type === "dropdown" || original.type === "radio") &&
+      updated.type !== "dropdown" &&
+      updated.type !== "radio";
+    if ((keyChanged || lostChoiceType) && original.key) {
+      next = clearDependentsOf(next, original.key);
+    }
+    onFieldsChange(next);
+  };
+
+  /** Remove a field, then clear `dependsOn` on any field that depended on it. */
+  const handleRemove = (globalIndex: number) => {
+    const removedKey = fields[globalIndex].key;
+    const next = clearDependentsOf(
+      fields.filter((_, xi) => xi !== globalIndex),
+      removedKey,
+    );
+    onFieldsChange(next);
+  };
+
   const addField = () => {
     onFieldsChange([
       ...fields,
@@ -371,10 +403,8 @@ function SectionEditor({
                 .slice(0, i)
                 .filter((other) => other.type === "dropdown" || other.type === "radio")
                 .map((other) => ({ key: other.key, label: other.label }))}
-              onChange={(updated) =>
-                onFieldsChange(fields.map((x, xi) => (xi === i ? updated : x)))
-              }
-              onRemove={() => onFieldsChange(fields.filter((_, xi) => xi !== i))}
+              onChange={(updated) => handleFieldChange(i, updated)}
+              onRemove={() => handleRemove(i)}
               onMoveUp={() => attemptMove(i, "up")}
               onMoveDown={() => attemptMove(i, "down")}
               labels={fieldRowLabels}
