@@ -16,4 +16,8 @@ export type FieldEntry = {
   basic: boolean;
   options?: string[];
   hint?: string;
+  // Stage 20: SuperAdmin-authored wiring — the key of an earlier field in the same
+  // fieldsSchema array that this dropdown/radio field's value list narrows by.
+  // Only applicable to type === "dropdown" | "radio". Values live in ComponentTypeOrgConfig.
+  dependsOn?: string;
 };

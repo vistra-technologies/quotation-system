@@ -8,7 +8,11 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { DEFAULT_ROLE_DEFS } from "@/lib/org-role-defaults";
-import { COMPONENT_TYPE_DEFS, SEEDED_CATALOG_CATEGORY_NAME } from "@/lib/component-catalog-seed";
+import {
+  COMPONENT_TYPE_DEFS,
+  COMPONENT_TYPE_ORG_CONFIG_DEFS,
+  SEEDED_CATALOG_CATEGORY_NAME,
+} from "@/lib/component-catalog-seed";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -188,8 +192,13 @@ export async function createOrganizationWithDefaults(
         select: { id: true },
       });
 
+      // Build a lookup from code → fieldOptionsConfig for O(1) access below.
+      const configByCode = new Map(
+        COMPONENT_TYPE_ORG_CONFIG_DEFS.map((c) => [c.code, c.fieldOptionsConfig]),
+      );
+
       for (const def of COMPONENT_TYPE_DEFS) {
-        await tx.componentType.create({
+        const ct = await tx.componentType.create({
           data: {
             organizationId: newOrg.id,
             categoryId: category.id,
@@ -198,7 +207,20 @@ export async function createOrganizationWithDefaults(
             fieldsSchema: def.fieldsSchema,
             active: true,
           },
+          select: { id: true, code: true },
         });
+
+        // Stage 20 Batch 1: seed the starter option values into ComponentTypeOrgConfig.
+        const fieldOptionsConfig = configByCode.get(ct.code);
+        if (fieldOptionsConfig) {
+          await tx.componentTypeOrgConfig.create({
+            data: {
+              organizationId: newOrg.id,
+              componentTypeId: ct.id,
+              fieldOptionsConfig: fieldOptionsConfig as object,
+            },
+          });
+        }
       }
 
       return { org: newOrg, adminUserId: adminUser.id };
@@ -388,7 +410,12 @@ export async function deleteOrganization(
       // 8. CatalogItem
       await tx.catalogItem.deleteMany({ where: { organizationId: orgId } });
 
-      // 9. ComponentType — references ComponentCategory (Selection already gone)
+      // 9a. ComponentTypeOrgConfig — references ComponentType (FK RESTRICT); must precede it.
+      //     Stage 20 Batch 1: new table — easy to forget in cascade deletes, so called out
+      //     explicitly here. See design-docs/04-data-model.md — ComponentTypeOrgConfig.
+      await tx.componentTypeOrgConfig.deleteMany({ where: { organizationId: orgId } });
+
+      // 9b. ComponentType — references ComponentCategory (Selection already gone)
       await tx.componentType.deleteMany({ where: { organizationId: orgId } });
 
       // 10. ComponentCategory

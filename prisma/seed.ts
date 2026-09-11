@@ -4,7 +4,11 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { auth } from "@/lib/auth";
 import { toAuthEmail, toPlatformAuthEmail } from "@/lib/auth-utils";
 import { DEFAULT_ROLE_DEFS } from "@/lib/org-role-defaults";
-import { COMPONENT_TYPE_DEFS, SEEDED_CATALOG_CATEGORY_NAME } from "@/lib/component-catalog-seed";
+import {
+  COMPONENT_TYPE_DEFS,
+  COMPONENT_TYPE_ORG_CONFIG_DEFS,
+  SEEDED_CATALOG_CATEGORY_NAME,
+} from "@/lib/component-catalog-seed";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -278,10 +282,15 @@ async function main() {
       create: { organizationId: org.id, name: SEEDED_CATALOG_CATEGORY_NAME },
     });
 
+    // Build a lookup from code → fieldOptionsConfig for O(1) access below.
+    const configByCode = new Map(
+      COMPONENT_TYPE_ORG_CONFIG_DEFS.map((c) => [c.code, c.fieldOptionsConfig]),
+    );
+
     for (const def of COMPONENT_TYPE_DEFS) {
       // Upsert by organizationId + code so re-running the seed updates existing rows
       // (consistent with the upsert pattern used for all other seeded entities).
-      await prisma.componentType.upsert({
+      const ct = await prisma.componentType.upsert({
         where: {
           organizationId_code: { organizationId: org.id, code: def.code },
         },
@@ -298,7 +307,24 @@ async function main() {
           fieldsSchema: def.fieldsSchema,
           active: true,
         },
+        select: { id: true, code: true },
       });
+
+      // Stage 20 Batch 1: upsert the starter option values into ComponentTypeOrgConfig.
+      // The migration backfill already created these rows for existing orgs, but the
+      // seed is idempotent and must also handle fresh installs.
+      const fieldOptionsConfig = configByCode.get(ct.code);
+      if (fieldOptionsConfig) {
+        await prisma.componentTypeOrgConfig.upsert({
+          where: { componentTypeId: ct.id },
+          update: { fieldOptionsConfig: fieldOptionsConfig as object },
+          create: {
+            organizationId: org.id,
+            componentTypeId: ct.id,
+            fieldOptionsConfig: fieldOptionsConfig as object,
+          },
+        });
+      }
     }
   }
 

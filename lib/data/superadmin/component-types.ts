@@ -71,6 +71,10 @@ function parseFieldsSchema(raw: unknown): FieldEntry[] {
       if (obj.hint) {
         entry.hint = String(obj.hint);
       }
+      // Stage 20: pass through dependsOn if present (SuperAdmin-authored wiring).
+      if (obj.dependsOn && typeof obj.dependsOn === "string") {
+        entry.dependsOn = obj.dependsOn;
+      }
       return entry;
     })
     .filter((x): x is FieldEntry => x !== null);
