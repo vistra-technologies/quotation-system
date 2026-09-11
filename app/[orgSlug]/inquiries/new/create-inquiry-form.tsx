@@ -222,7 +222,19 @@ export function CreateInquiryForm({
                   name="currency"
                   required
                   value={selectedCurrency}
-                  onChange={(e) => setSelectedCurrency(e.target.value)}
+                  onChange={(e) => {
+                    const newCurrency = e.target.value;
+                    setSelectedCurrency(newCurrency);
+                    // B2 (Stage 20): reformat the budget field immediately when
+                    // currency changes — don't wait for blur/focus (decision 7
+                    // was about keystroke-level caret management, not currency
+                    // field changes, which are safe to reformat immediately).
+                    if (budgetValue.trim()) {
+                      const raw = stripGroupingSeparators(budgetValue.trim());
+                      const formatted = formatBudget(raw, newCurrency);
+                      setBudgetValue(formatted === "—" ? "" : formatted);
+                    }
+                  }}
                   className={selectCls}
                   placeholder="Select currency..."
                 >

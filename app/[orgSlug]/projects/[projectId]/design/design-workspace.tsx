@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { UnitProvider } from "./unit-context";
-import { UnitToggle } from "./unit-toggle";
 import { FloorBar } from "./floor-bar";
 import { RoomList } from "./room-list";
 import { RoomFloorPlan } from "./room-floor-plan";
@@ -319,10 +318,11 @@ export function DesignWorkspace({
 
   return (
     <UnitProvider>
-      <div className="flex shrink-0 items-center justify-end border-b border-border px-6 py-2">
-        <UnitToggle />
-      </div>
-
+      {/* B5 (Stage 20): unit toggle removed — product decision is mm-only.
+          UnitProvider is kept because configure-mode, convert-side-form,
+          layout-mode-panel, panel-list, room-floor-plan, and wall-canvas all
+          call useUnit(). With no toggle the unit is permanently "mm" (the
+          UnitProvider default), which is the correct behavior. */}
       <div className="flex flex-1 gap-4 overflow-hidden p-4">
         {/* Left rail — floor bar + room list */}
         <aside className="flex w-64 shrink-0 flex-col overflow-hidden rounded-md border border-border bg-bg-card p-4">
