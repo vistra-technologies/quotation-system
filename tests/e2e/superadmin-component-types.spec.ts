@@ -251,12 +251,16 @@ test("create and field schema round-trip: create type → add text field → rel
   expect(fieldKeys).toContain(fieldKey);
 });
 
-// ── Test 4: Dropdown field with options round-trip ────────────────────────────
+// ── Test 4: `options` on a dropdown field is now rejected outright ────────────
 //
-// Replaces stage6 "radio round-trip" (now uses dropdown, the equivalent for
-// "field type with options" after Stage 19 Batch 2 removed radio from the UI).
+// Stage 20 Batch 2 decision #3/#7: SuperAdmin no longer authors option values
+// at all — they moved to the org-owned ComponentTypeOrgConfig table. This
+// replaces the old "dropdown field round-trip: options persist" test (which
+// tested the exact behavior this batch inverts) with a rejection test, and is
+// the server-side backstop `validateFieldsSchema` (wired into this POST route
+// in this batch) is meant to catch for a caller bypassing the SuperAdmin form.
 
-test("dropdown field round-trip: options persist after save", async ({ request }) => {
+test("dropdown field with `options` key is rejected: POST → 400", async ({ request }) => {
   if (!hasBootstrapCreds) {
     test.skip(true, "TEST_SA_USERNAME / TEST_SA_PASSWORD not set");
     return;
@@ -265,44 +269,46 @@ test("dropdown field round-trip: options persist after save", async ({ request }
   const saToken = await loginAsSuperAdmin(request);
   const orgId = await getAcmeGlassOrgId(request, saToken);
 
-  const optionA = "Option Alpha";
-  const optionB = "Option Beta";
-  const fieldsSchema = [
-    {
-      key: "e2e_dropdown",
-      label: "E2E Dropdown",
-      type: "dropdown",
-      required: false,
-      basic: true,
-      options: [optionA, optionB],
-    },
-  ];
-
-  const created = await createTestComponentType(request, saToken, orgId, { fieldsSchema });
-
-  // Reload and verify options persisted
-  const getRes = await request.get(
-    `/api/v1/superadmin/component-types/${encodeURIComponent(created.id)}?orgId=${encodeURIComponent(orgId)}`,
+  const catsRes = await request.get(
+    `/api/v1/superadmin/component-categories?orgId=${encodeURIComponent(orgId)}`,
     { headers: { Cookie: `qs-sa-token=${saToken}` } },
   );
-  expect(getRes.status()).toBe(200);
-  const getBody = (await getRes.json()) as {
-    componentType: { fieldsSchema: { key: string; options?: string[] }[] };
-  };
-  const dropdownField = getBody.componentType.fieldsSchema.find(
-    (f) => f.key === "e2e_dropdown",
-  );
-  expect(dropdownField).toBeDefined();
-  expect(dropdownField?.options).toContain(optionA);
-  expect(dropdownField?.options).toContain(optionB);
+  const catsBody = (await catsRes.json()) as { categories: { id: string }[] };
+  const categoryId = catsBody.categories[0]?.id;
+  if (!categoryId) {
+    test.skip(true, "No categories found — cannot test options-rejection guard");
+    return;
+  }
+
+  const res = await request.post("/api/v1/superadmin/component-types", {
+    headers: { Cookie: `qs-sa-token=${saToken}` },
+    data: {
+      orgId,
+      code: `SA_E2E_OPTREJECT_${Date.now()}`,
+      name: "E2E Options Rejected Test",
+      categoryId,
+      fieldsSchema: [
+        {
+          key: "e2e_dropdown",
+          label: "E2E Dropdown",
+          type: "dropdown",
+          required: false,
+          basic: true,
+          options: ["Option Alpha", "Option Beta"],
+        },
+      ],
+    },
+  });
+  expect(res.status()).toBe(400);
 });
 
-// ── Test 5: Empty-options guard ───────────────────────────────────────────────
+// ── Test 5: Empty-`options` key is rejected too, not just non-empty ──────────
 //
-// Replaces stage6 "empty-options guard" test. Verified server-side via the API
-// (the client-side guard was a UX convenience; the server must also reject).
+// "Reject options outright" (decision #7) means presence of the key, not just
+// non-empty content — an empty array must be rejected the same as a populated
+// one, since SuperAdmin has no business setting this key at all anymore.
 
-test("empty-options guard: POST with dropdown field and empty options → 500 (server rejects)", async ({
+test("dropdown field with empty `options` array is still rejected: POST → 400", async ({
   request,
 }) => {
   if (!hasBootstrapCreds) {
@@ -313,7 +319,6 @@ test("empty-options guard: POST with dropdown field and empty options → 500 (s
   const saToken = await loginAsSuperAdmin(request);
   const orgId = await getAcmeGlassOrgId(request, saToken);
 
-  // Get a category first
   const catsRes = await request.get(
     `/api/v1/superadmin/component-categories?orgId=${encodeURIComponent(orgId)}`,
     { headers: { Cookie: `qs-sa-token=${saToken}` } },
@@ -325,19 +330,6 @@ test("empty-options guard: POST with dropdown field and empty options → 500 (s
     return;
   }
 
-  // Submit a dropdown field with empty options array — the server's parseFieldsSchema
-  // in actions.ts throws on this, but via the API route the check is in actions.ts only.
-  // The route itself forwards the fieldsSchema as-is; the empty-options guard is
-  // enforced at the server-action layer. Direct API calls bypass actions.ts and rely
-  // on the DAL's stored data. This tests what the API stores (empty options are stored)
-  // while the form-level guard is tested via the form's validateJsonText.
-  //
-  // The meaningful guard is that the client-side `validateJsonText` shows an inline
-  // error (covered by stage7.spec.ts originally; now covered by the controls page
-  // UI verify in the verification plan). The API itself stores whatever is sent.
-  //
-  // This test verifies the POST still succeeds at the API level (no server crash)
-  // even with empty options — the form layer's guard is the UX protection.
   const res = await request.post("/api/v1/superadmin/component-types", {
     headers: { Cookie: `qs-sa-token=${saToken}` },
     data: {
@@ -357,9 +349,146 @@ test("empty-options guard: POST with dropdown field and empty options → 500 (s
       ],
     },
   });
-  // The API route stores the data; it's the form actions.ts that rejects empty options.
-  // API-level: 201 (stored) — the guard runs in the server action, not the route.
-  expect([201, 400, 500]).toContain(res.status());
+  expect(res.status()).toBe(400);
+});
+
+// ── Test 6: dependsOn — valid earlier-field wiring round-trips ───────────────
+//
+// Stage 20 Batch 2 (decision #4): a dropdown/radio field may depend on any
+// earlier dropdown/radio field in the same array, not just its immediate
+// predecessor. This exercises a two-hop chain (category → glassType, skipping
+// glassType → thickness) to specifically cover "any earlier field."
+
+test("dependsOn: valid earlier-dropdown wiring round-trips through POST → GET", async ({
+  request,
+}) => {
+  if (!hasBootstrapCreds) {
+    test.skip(true, "TEST_SA_USERNAME / TEST_SA_PASSWORD not set");
+    return;
+  }
+
+  const saToken = await loginAsSuperAdmin(request);
+  const orgId = await getAcmeGlassOrgId(request, saToken);
+
+  const fieldsSchema = [
+    { key: "category", label: "Category", type: "dropdown", required: true, basic: true },
+    { key: "spacer", label: "Spacer (non-choice)", type: "field", required: false, basic: true },
+    {
+      key: "glassType",
+      label: "Glass Type",
+      type: "dropdown",
+      required: true,
+      basic: true,
+      dependsOn: "category",
+    },
+  ];
+
+  const created = await createTestComponentType(request, saToken, orgId, { fieldsSchema });
+
+  const getRes = await request.get(
+    `/api/v1/superadmin/component-types/${encodeURIComponent(created.id)}?orgId=${encodeURIComponent(orgId)}`,
+    { headers: { Cookie: `qs-sa-token=${saToken}` } },
+  );
+  expect(getRes.status()).toBe(200);
+  const getBody = (await getRes.json()) as {
+    componentType: { fieldsSchema: { key: string; dependsOn?: string }[] };
+  };
+  const glassTypeField = getBody.componentType.fieldsSchema.find(
+    (f) => f.key === "glassType",
+  );
+  expect(glassTypeField?.dependsOn).toBe("category");
+});
+
+// ── Test 7: dependsOn pointing at a later field is rejected ──────────────────
+
+test("dependsOn pointing at a later field is rejected: POST → 400", async ({ request }) => {
+  if (!hasBootstrapCreds) {
+    test.skip(true, "TEST_SA_USERNAME / TEST_SA_PASSWORD not set");
+    return;
+  }
+
+  const saToken = await loginAsSuperAdmin(request);
+  const orgId = await getAcmeGlassOrgId(request, saToken);
+
+  const catsRes = await request.get(
+    `/api/v1/superadmin/component-categories?orgId=${encodeURIComponent(orgId)}`,
+    { headers: { Cookie: `qs-sa-token=${saToken}` } },
+  );
+  const catsBody = (await catsRes.json()) as { categories: { id: string }[] };
+  const categoryId = catsBody.categories[0]?.id;
+  if (!categoryId) {
+    test.skip(true, "No categories found — cannot test dependsOn ordering guard");
+    return;
+  }
+
+  const res = await request.post("/api/v1/superadmin/component-types", {
+    headers: { Cookie: `qs-sa-token=${saToken}` },
+    data: {
+      orgId,
+      code: `SA_E2E_DEPLATER_${Date.now()}`,
+      name: "E2E dependsOn Later Field Test",
+      categoryId,
+      fieldsSchema: [
+        {
+          key: "glassType",
+          label: "Glass Type",
+          type: "dropdown",
+          required: true,
+          basic: true,
+          dependsOn: "category", // "category" doesn't exist yet at this point in the array
+        },
+        { key: "category", label: "Category", type: "dropdown", required: true, basic: true },
+      ],
+    },
+  });
+  expect(res.status()).toBe(400);
+});
+
+// ── Test 8: dependsOn pointing at a non-dropdown/radio field is rejected ─────
+
+test("dependsOn pointing at a non-dropdown/radio field is rejected: POST → 400", async ({
+  request,
+}) => {
+  if (!hasBootstrapCreds) {
+    test.skip(true, "TEST_SA_USERNAME / TEST_SA_PASSWORD not set");
+    return;
+  }
+
+  const saToken = await loginAsSuperAdmin(request);
+  const orgId = await getAcmeGlassOrgId(request, saToken);
+
+  const catsRes = await request.get(
+    `/api/v1/superadmin/component-categories?orgId=${encodeURIComponent(orgId)}`,
+    { headers: { Cookie: `qs-sa-token=${saToken}` } },
+  );
+  const catsBody = (await catsRes.json()) as { categories: { id: string }[] };
+  const categoryId = catsBody.categories[0]?.id;
+  if (!categoryId) {
+    test.skip(true, "No categories found — cannot test dependsOn type guard");
+    return;
+  }
+
+  const res = await request.post("/api/v1/superadmin/component-types", {
+    headers: { Cookie: `qs-sa-token=${saToken}` },
+    data: {
+      orgId,
+      code: `SA_E2E_DEPWRONGTYPE_${Date.now()}`,
+      name: "E2E dependsOn Wrong Target Type Test",
+      categoryId,
+      fieldsSchema: [
+        { key: "notes", label: "Notes", type: "field", required: false, basic: true },
+        {
+          key: "glassType",
+          label: "Glass Type",
+          type: "dropdown",
+          required: true,
+          basic: true,
+          dependsOn: "notes", // "notes" is type "field" — no value list to narrow
+        },
+      ],
+    },
+  });
+  expect(res.status()).toBe(400);
 });
 
 // ── Test 6: Tenancy isolation ─────────────────────────────────────────────────

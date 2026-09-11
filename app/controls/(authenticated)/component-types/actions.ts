@@ -10,8 +10,13 @@ import type { FieldEntry } from "@/lib/types/field-entry";
 /**
  * Parse the serialised fieldsSchema JSON string from FormData.
  * Returns an empty array if the raw value is absent or not valid JSON.
- * Throws a descriptive Error if a radio/dropdown field has no options — this
- * propagates to the page-level error boundary, same as the org-scoped actions.ts.
+ *
+ * Stage 20 Batch 2: no longer collects/requires `options` — SuperAdmin authors
+ * field shape and `dependsOn` wiring only; option values live in the org-owned
+ * `ComponentTypeOrgConfig` table. Passes `dependsOn` through as-is; the
+ * earlier-field + dropdown/radio-only rule is enforced server-side by the
+ * SuperAdmin API route's `validateFieldsSchema` call, whose error surfaces via
+ * the `!res.ok` branch below.
  */
 function parseFieldsSchema(raw: string | null): FieldEntry[] {
   if (!raw) return [];
@@ -25,7 +30,6 @@ function parseFieldsSchema(raw: string | null): FieldEntry[] {
 
   if (!Array.isArray(parsed)) return [];
   const validTypes = new Set(["field", "radio", "dropdown", "checkbox"]);
-  const optionRequiredTypes = new Set(["radio", "dropdown"]);
   return (parsed as unknown[])
     .map((item) => {
       if (typeof item !== "object" || item === null) return null;
@@ -38,19 +42,11 @@ function parseFieldsSchema(raw: string | null): FieldEntry[] {
         required: Boolean(obj.required),
         basic: obj.basic !== undefined ? Boolean(obj.basic) : true,
       };
-      if (optionRequiredTypes.has(type)) {
-        const opts = Array.isArray(obj.options)
-          ? (obj.options as unknown[]).map(String).filter(Boolean)
-          : [];
-        if (opts.length === 0) {
-          throw new Error(
-            `Field "${String(obj.label ?? obj.key ?? type)}": ${type} type requires at least one option.`,
-          );
-        }
-        entry.options = opts;
-      }
       if (obj.hint) {
         entry.hint = String(obj.hint);
+      }
+      if (obj.dependsOn && typeof obj.dependsOn === "string") {
+        entry.dependsOn = obj.dependsOn;
       }
       return entry;
     })

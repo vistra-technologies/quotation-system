@@ -12,6 +12,7 @@ import {
   createComponentTypeAuditLog,
 } from "@/lib/data/superadmin/component-types";
 import { getOrgById } from "@/lib/data/superadmin/orgs";
+import { validateFieldsSchema } from "@/lib/validate-fields-schema";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // Never cached.
@@ -111,6 +112,13 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (!code) return apiBadRequest("code is required");
   if (!name) return apiBadRequest("name is required");
   if (!categoryId) return apiBadRequest("categoryId is required");
+
+  // Stage 20 Batch 2: reject `options` outright (values now live in
+  // ComponentTypeOrgConfig, org-authored) and enforce the earlier-field +
+  // dropdown/radio-only rule on `dependsOn` — this is the server-side backstop
+  // for a caller bypassing the SuperAdmin form/JSON-mode validators directly.
+  const schemaCheck = validateFieldsSchema(fieldsSchema);
+  if (!schemaCheck.valid) return apiBadRequest(schemaCheck.error);
 
   // Verify the org exists.
   const org = await getOrgById(orgId);

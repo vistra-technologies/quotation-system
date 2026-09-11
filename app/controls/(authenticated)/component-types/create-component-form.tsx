@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { SelectField } from "@/components/select-field";
 import { createSuperAdminComponentType } from "./actions";
+import { validateFieldsSchema } from "@/lib/validate-fields-schema";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // ─── Inner status helpers ─────────────────────────────────────────────────────
@@ -88,77 +89,6 @@ function moveFieldInSection(
   return fields;
 }
 
-// ─── OptionsBuilder ───────────────────────────────────────────────────────────
-
-function OptionsBuilder({
-  options,
-  onChange,
-  addOptionLabel,
-}: {
-  options: string[];
-  onChange: (updated: string[]) => void;
-  addOptionLabel: string;
-}) {
-  const [draft, setDraft] = useState("");
-  const inputBase =
-    "rounded-sm border border-border bg-bg-white px-2 py-1 text-xs text-text-body focus:outline-none focus:ring-2 focus:ring-primary-soft focus:border-primary-soft";
-
-  const addOption = () => {
-    const trimmed = draft.trim();
-    if (trimmed && !options.includes(trimmed)) {
-      onChange([...options, trimmed]);
-    }
-    setDraft("");
-  };
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      {options.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {options.map((opt, oi) => (
-            <span
-              key={oi}
-              className="inline-flex items-center gap-1 rounded-pill bg-primary-softer px-2 py-0.5 text-xs text-primary-dark"
-            >
-              {opt}
-              <button
-                type="button"
-                onClick={() => onChange(options.filter((_, i) => i !== oi))}
-                className="ml-0.5 text-text-muted hover:text-status-failed-text"
-                aria-label={`Remove option ${opt}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="flex items-center gap-1">
-        <input
-          type="text"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              addOption();
-            }
-          }}
-          placeholder="Option text…"
-          className={inputBase + " flex-1"}
-        />
-        <button
-          type="button"
-          onClick={addOption}
-          className="rounded-sm border border-border px-2 py-1 text-xs font-bold text-text-body hover:border-primary-soft hover:bg-primary-softer"
-        >
-          {addOptionLabel}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ─── FieldRow ─────────────────────────────────────────────────────────────────
 
 function FieldRow({
@@ -166,6 +96,7 @@ function FieldRow({
   sectionPos,
   sectionLength,
   entry,
+  dependsOnOptions,
   onChange,
   onRemove,
   onMoveUp,
@@ -176,6 +107,8 @@ function FieldRow({
   sectionPos: number;
   sectionLength: number;
   entry: FieldEntry;
+  /** Fields earlier than this one in the full array, filtered to dropdown/radio — the eligible `dependsOn` targets. */
+  dependsOnOptions: { key: string; label: string }[];
   onChange: (updated: FieldEntry) => void;
   onRemove: () => void;
   onMoveUp: () => void;
@@ -188,8 +121,8 @@ function FieldRow({
     fieldTypeRadio: string;
     fieldTypeDropdown: string;
     fieldTypeCheckbox: string;
-    fieldOptions: string;
-    addOption: string;
+    dependsOnLabel: string;
+    dependsOnNone: string;
     fieldHint: string;
     requiredLabel: string;
     moveUp: string;
@@ -207,7 +140,7 @@ function FieldRow({
     checkbox: labels.fieldTypeCheckbox,
   };
 
-  const needsOptions = entry.type === "radio" || entry.type === "dropdown";
+  const isChoiceType = entry.type === "radio" || entry.type === "dropdown";
 
   return (
     <div className="flex flex-col gap-2 rounded-sm border border-border bg-bg-page px-3 py-2.5">
@@ -246,13 +179,10 @@ function FieldRow({
             onChange={(e) => {
               const newType = e.target.value as FieldEntry["type"];
               const updated: FieldEntry = { ...entry, type: newType };
-              // Seed options when switching to dropdown type
-              if (newType === "dropdown" && !updated.options) {
-                updated.options = [];
-              }
-              // Clear options when switching away from dropdown
-              if (newType !== "dropdown") {
-                delete updated.options;
+              // dependsOn only makes sense on dropdown/radio (a value list to narrow) —
+              // clear it when switching to a type that has none.
+              if (newType !== "dropdown" && newType !== "radio") {
+                delete updated.dependsOn;
               }
               onChange(updated);
             }}
@@ -297,17 +227,27 @@ function FieldRow({
         </div>
       </div>
 
-      {/* Row 2: options builder (radio/dropdown only) */}
-      {needsOptions && (
+      {/* Row 2: dependsOn wiring (radio/dropdown only) — values are authored by the
+          org admin on the Catalog screen, not here (Stage 20). */}
+      {isChoiceType && (
         <div className="flex flex-col gap-0.5">
           <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
-            {labels.fieldOptions}
+            {labels.dependsOnLabel}
           </label>
-          <OptionsBuilder
-            options={entry.options ?? []}
-            onChange={(opts) => onChange({ ...entry, options: opts })}
-            addOptionLabel={labels.addOption}
-          />
+          <SelectField
+            value={entry.dependsOn ?? ""}
+            onChange={(e) =>
+              onChange({ ...entry, dependsOn: e.target.value || undefined })
+            }
+            className={inputBase}
+          >
+            <option value="">{labels.dependsOnNone}</option>
+            {dependsOnOptions.map((opt) => (
+              <option key={opt.key} value={opt.key}>
+                {opt.label || opt.key}
+              </option>
+            ))}
+          </SelectField>
         </div>
       )}
 
@@ -350,6 +290,7 @@ function SectionEditor({
   isBasic,
   fields,
   onFieldsChange,
+  onMoveBlocked,
   fieldRowLabels,
   addFieldLabel,
 }: {
@@ -357,12 +298,34 @@ function SectionEditor({
   isBasic: boolean;
   fields: FieldEntry[];
   onFieldsChange: (updated: FieldEntry[]) => void;
+  /** Called with a human-readable reason when a move is blocked instead of applied. */
+  onMoveBlocked: (message: string) => void;
   fieldRowLabels: Parameters<typeof FieldRow>[0]["labels"];
   addFieldLabel: string;
 }) {
   const sectionEntries = fields
     .map((f, i) => ({ f, i }))
     .filter(({ f }) => f.basic === isBasic);
+
+  /**
+   * Reorder guard (Stage 20 Batch 2, developer's call — see item-B2-plan.md):
+   * a move is blocked, not applied, if it would put a dependent field before
+   * its own `dependsOn` target or a parent before a field that depends on it.
+   * `moveFieldInSection` swaps two array elements directly, so re-validating
+   * the whole candidate array (not just the two moved entries) is the correct
+   * check — fields with a different `basic` value sitting between the two
+   * swapped positions can also have their relative order affected.
+   */
+  const attemptMove = (globalIndex: number, direction: "up" | "down") => {
+    const candidate = moveFieldInSection(fields, globalIndex, direction);
+    if (candidate === fields) return; // already at the edge — no-op
+    const result = validateFieldsSchema(candidate);
+    if (!result.valid) {
+      onMoveBlocked(`Can't reorder — ${result.error}`);
+      return;
+    }
+    onFieldsChange(candidate);
+  };
 
   const addField = () => {
     onFieldsChange([
@@ -404,12 +367,16 @@ function SectionEditor({
               sectionPos={posInSection}
               sectionLength={sectionEntries.length}
               entry={f}
+              dependsOnOptions={fields
+                .slice(0, i)
+                .filter((other) => other.type === "dropdown" || other.type === "radio")
+                .map((other) => ({ key: other.key, label: other.label }))}
               onChange={(updated) =>
                 onFieldsChange(fields.map((x, xi) => (xi === i ? updated : x)))
               }
               onRemove={() => onFieldsChange(fields.filter((_, xi) => xi !== i))}
-              onMoveUp={() => onFieldsChange(moveFieldInSection(fields, i, "up"))}
-              onMoveDown={() => onFieldsChange(moveFieldInSection(fields, i, "down"))}
+              onMoveUp={() => attemptMove(i, "up")}
+              onMoveDown={() => attemptMove(i, "down")}
               labels={fieldRowLabels}
             />
           ))}
@@ -432,8 +399,7 @@ function validateJsonText(text: string): FieldEntry[] {
   }
   if (!Array.isArray(parsed)) throw new Error("Schema must be a JSON array.");
   const validTypes = new Set(["field", "radio", "dropdown", "checkbox"]);
-  const optionRequiredTypes = new Set(["radio", "dropdown"]);
-  return (parsed as unknown[])
+  const entries = (parsed as unknown[])
     .map((item) => {
       if (typeof item !== "object" || item === null) return null;
       const obj = item as Record<string, unknown>;
@@ -447,23 +413,28 @@ function validateJsonText(text: string): FieldEntry[] {
         required: Boolean(obj.required),
         basic: obj.basic !== undefined ? Boolean(obj.basic) : true,
       };
-      if (optionRequiredTypes.has(type)) {
-        const opts = Array.isArray(obj.options)
-          ? (obj.options as unknown[]).map(String).filter(Boolean)
-          : [];
-        if (opts.length === 0) {
-          throw new Error(
-            `Field "${String(obj.label ?? obj.key ?? type)}": ${type} type requires at least one option.`,
-          );
-        }
-        entry.options = opts;
-      }
       if (obj.hint) {
         entry.hint = String(obj.hint);
+      }
+      if (obj.dependsOn !== undefined && obj.dependsOn !== null && obj.dependsOn !== "") {
+        entry.dependsOn = String(obj.dependsOn);
+      }
+      // Stage 20: `options` is no longer accepted here at all. Carried through
+      // (rather than silently dropped) purely so validateFieldsSchema below can
+      // surface a clear rejection message — it is never returned past this point.
+      if (obj.options !== undefined) {
+        entry.options = Array.isArray(obj.options)
+          ? (obj.options as unknown[]).map(String)
+          : [];
       }
       return entry;
     })
     .filter((x): x is FieldEntry => x !== null);
+
+  const result = validateFieldsSchema(entries);
+  if (!result.valid) throw new Error(result.error);
+
+  return entries;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -490,8 +461,8 @@ interface CreateComponentFormProps {
     fieldTypeRadio: string;
     fieldTypeDropdown: string;
     fieldTypeCheckbox: string;
-    fieldOptions: string;
-    addOption: string;
+    dependsOnLabel: string;
+    dependsOnNone: string;
     fieldHint: string;
     fieldRequiredLabel: string;
     moveUp: string;
@@ -518,6 +489,7 @@ export function CreateComponentForm({ orgId, categories, labels }: CreateCompone
   const [mode, setMode] = useState<"form" | "json">("form");
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [moveWarning, setMoveWarning] = useState<string | null>(null);
 
   const switchToJson = () => {
     if (mode !== "json") {
@@ -553,13 +525,20 @@ export function CreateComponentForm({ orgId, categories, labels }: CreateCompone
     fieldTypeRadio: labels.fieldTypeRadio,
     fieldTypeDropdown: labels.fieldTypeDropdown,
     fieldTypeCheckbox: labels.fieldTypeCheckbox,
-    fieldOptions: labels.fieldOptions,
-    addOption: labels.addOption,
+    dependsOnLabel: labels.dependsOnLabel,
+    dependsOnNone: labels.dependsOnNone,
     fieldHint: labels.fieldHint,
     requiredLabel: labels.fieldRequiredLabel,
     moveUp: labels.moveUp,
     moveDown: labels.moveDown,
     removeLabel: labels.removeFieldLabel,
+  };
+
+  // Clears any stale reorder-blocked warning whenever the field list changes
+  // through any path other than a blocked move (add/remove/edit/successful move).
+  const handleFieldsChange = (updated: FieldEntry[]) => {
+    setMoveWarning(null);
+    setFields(updated);
   };
 
   const inputBase =
@@ -675,7 +654,8 @@ export function CreateComponentForm({ orgId, categories, labels }: CreateCompone
               sectionLabel={labels.sectionBasic}
               isBasic={true}
               fields={fields}
-              onFieldsChange={setFields}
+              onFieldsChange={handleFieldsChange}
+              onMoveBlocked={setMoveWarning}
               fieldRowLabels={fieldRowLabels}
               addFieldLabel={labels.addFieldLabel}
             />
@@ -683,10 +663,14 @@ export function CreateComponentForm({ orgId, categories, labels }: CreateCompone
               sectionLabel={labels.sectionAdvanced}
               isBasic={false}
               fields={fields}
-              onFieldsChange={setFields}
+              onFieldsChange={handleFieldsChange}
+              onMoveBlocked={setMoveWarning}
               fieldRowLabels={fieldRowLabels}
               addFieldLabel={labels.addFieldLabel}
             />
+            {moveWarning && (
+              <p className="text-xs text-status-failed-text">{moveWarning}</p>
+            )}
           </>
         ) : (
           <div className="flex flex-col gap-1">
