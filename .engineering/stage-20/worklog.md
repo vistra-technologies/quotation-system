@@ -219,3 +219,17 @@
   are now done. Remaining: **Batch 6 (docs + E2E reconciliation)**, plus routing the
   pre-existing stage19 step-gating flake to the human/`engineering:test` — not this stage's
   bug to fix, but worth flagging before sign-off.
+- **2026-09-12 — developer — Batch 6 (docs reconciliation)** @ `feature/b6-docs-reconciliation`
+  — docs-only, no app-code changes. Audited every `ComponentTypeOrgConfig` block in
+  `quotation-system-docs/design-docs/sql-queries/by-page.sql` against the shipped
+  `lib/data/components.ts`, `lib/data/selections.ts`, and the `field-values/route.ts` handlers —
+  found Batch 4 (`66a1a84`) had already fully reconciled it, no corrections needed. Flipped
+  `04-data-model.md`'s `ComponentTypeOrgConfig` section from 📝 Spec'd to ✅ Built and updated two
+  stale future-tense passages to past tense; confirmed the `dependsOn`-on-`fieldsSchema` prose
+  already matches the second 2026-09-11 decision. Added a 2026-09-12 changelog entry in
+  `08-decisions-and-changelog.md` summarizing Stage 20's completion (Item 1 +  the 5-item bug
+  sweep). Confirmed via grep no live reference to the deleted
+  `listComponentTypesWithConfig`/`getComponentTypeByIdWithConfig` pair survives anywhere in the
+  app (only a historical comment). Spot-checked `regression-checklist.md` #22 — reads sensibly,
+  untouched. Details: `item-B6.md`. Status: DONE. **Stage 20 implement phase complete pending
+  orchestrator merge of this batch.**
