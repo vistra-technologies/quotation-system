@@ -12,7 +12,7 @@
 |---|---|---|---|
 | B1 | Schema + migration + DAL (ComponentTypeOrgConfig) | — | done (merged `a50ea05`) |
 | B2 | SuperAdmin authoring (dependsOn UI + validator) | B1 | done (merged `0462bff`) |
-| B3 | Catalog org-admin screen | B1, B2 | pending |
+| B3 | Catalog org-admin screen | B1, B2 | done (merged `4c95532`) |
 | B4 | Configurator gating + cascading | B1, B3 | pending |
 | B5 | Bug sweep (B1–B5 video bugs) | — | done (merged `096f1a6`) |
 | B6 | Docs + E2E | B1–B5 | pending |
@@ -106,3 +106,58 @@
   "None" with no stale option, not just visually masked), clicked Save — **no crash, saved cleanly**.
   Deleted the throwaway type afterward with no error (re-exercising Batch 1's delete-cascade fix in
   passing). **Merged to `release/stage-20`.** Batch 2 done.
+- **2026-09-12 — developer — Batch 3 (Catalog org-admin screen)** @
+  `feature/b3-catalog-org-admin-screen` `c7a79b5` — new page
+  `app/[orgSlug]/admin/field-values/page.tsx` + `catalog-type-editor.tsx` (chip-style value-list
+  editor for flat fields, one row per live parent value for dependent fields with a read-only
+  "depends on X" badge), new `GET`/`PUT` API at
+  `.../component-types/[typeId]/field-values` (auth/tenancy preamble copied from the sibling
+  `component-types/[typeId]` route), new `lib/validate-field-options-config.ts` (rejects unknown
+  keys, non-choice-field keys, wrong shape for dependsOn-ness, and any explicit `dependsOn` in the
+  payload), new `setComponentTypeOrgConfig` DAL fn, new `lib/types/field-options-config.ts`
+  (extracted so org-scoped pages can use the type without violating the `lib/data/*` import ban —
+  same pattern as `lib/types/field-entry.ts`). Sidebar gained a `canManageFeatures` prop and a
+  "Catalog" flyout link independent of `canManageUsers`. Decision: kept the shared
+  `component-types` list route untouched (Batch 4's job) — Catalog page does one extra GET per
+  configurable type instead, documented in `item-B3-plan.md`. Added
+  `tests/e2e/catalog-field-values.spec.ts` (Tier-1 API tests: cross-org tenancy on GET+PUT,
+  cross-tenant 403, 403-without-MANAGE_FEATURES on both API and page, PUT validation rejections,
+  happy-path round-trip). Reconciled `regression-checklist.md` #22 and B1's forward-documented
+  `by-page.sql` entries. `tsc`/`lint` clean. Branch pushed; **no Vercel MCP/CLI or browser tool
+  available this session** to poll the preview or run the pushed spec against it — flagged in
+  `item-B3.md` for the reviewer/tester. Status: DONE_WITH_CONCERNS.
+- **2026-09-12 — reviewer — Batch 3 review** @ `feature/b3-catalog-org-admin-screen` `c7a79b5` —
+  verdict **CHANGES-NEEDED**: 1 CRITICAL / 0 IMPORTANT / 4 MINOR. Ran the new spec against the
+  batch's own preview (`quotation-system-3chx4t4kn`): **8/8 passed in 21.2s**; `tsc`/`lint`
+  re-verified clean. Tenancy, RBAC (`MANAGE_FEATURES` on GET + PUT + page) and `dependsOn`
+  immutability all confirmed **live**, including an extra hand-run bypass probe the spec doesn't
+  cover (org A's session on org A's own URL + org B's `typeId` → 404, org B's config untouched).
+  CRITICAL: the editor reads a dependent field's parent values from `flatOptions` only, so any
+  **multi-hop** chain (the design doc's own Category → Glass Type → Thickness) is unconfigurable —
+  and an untouched Save writes `{valueMap:{}}` over the deepest level's existing data. Reproduced
+  end-to-end on the preview. Details: `.engineering/stage-20/review-B3.md`.
+- **2026-09-12 — developer — Batch 3 review fix round** @
+  `feature/b3-catalog-org-admin-screen` — CRITICAL #1 fixed exactly as suggested: new
+  `liveValuesOf(key)` helper in `catalog-type-editor.tsx` resolves a dependent parent's live
+  values as the union of its own `valueMaps` branches (not just `flatOptions`), replacing both the
+  save-time prune and the two render-path lookups that previously only worked for a flat parent —
+  multi-hop chains (Category → Glass Type → Thickness) now render and save correctly. Added the
+  requested belt-and-braces guard: a save with zero resolvable live parent values carries the
+  field's entry forward from `initialFieldOptionsConfig` instead of writing `{valueMap:{}}}`, so an
+  unanticipated edge case can never silently wipe stored config. MINOR #2 also fixed (cheap,
+  reviewer left it optional): `lib/validate-field-options-config.ts` now cross-checks that every
+  `valueMap` key names one of the parent's currently-submitted values, when the parent's own entry
+  is present in the same payload. Added `tests/e2e/catalog-field-values.spec.ts` Test 7 — a fresh
+  2-hop-chain throwaway ComponentType, PUT a full chain via the API, GET it back, assert every
+  level (including the deepest, previously-wiped one) round-trips intact. MINOR #3/#4 left open
+  per the reviewer's explicit instruction (Batch 4's job); MINOR #5 (E2E leaks a throwaway type)
+  not addressed — developer's discretion, reviewer flagged it optional. `tsc`/`lint` clean. Pushed.
+  No Vercel/browser tool available this session — orchestrator to verify live on the next preview.
+  Status: DONE_WITH_CONCERNS. Details: `item-B3.md` §Review fix round.
+- **2026-09-12 — orchestrator** — verified the fix-round diff directly (both fixes match the
+  reviewer's exact suggestions, generalize correctly to N-hop chains via `Object.values(...).flat()`
+  union) and ran the full E2E suite against the fix commit's own preview
+  (`quotation-system-rbm8npxhr...`): **9/9 passed**, including the new 2-hop round-trip test that
+  faithfully reproduces the reviewer's exact live repro (Category → Glass Type → Thickness,
+  untouched Save no longer wipes Thickness's `valueMap`). **Merged to `release/stage-20`.**
+  Batch 3 done.

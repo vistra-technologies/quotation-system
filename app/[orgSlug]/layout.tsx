@@ -58,8 +58,10 @@ export default async function OrgSlugLayout({
   };
 
   const canManageUsers = me.adminPermissions.includes("MANAGE_USERS");
-  // NOTE (Stage 19 Batch 5): canManageFeatures no longer passed to Sidebar —
-  // Component Types management moved to /controls/component-types (SuperAdmin only).
+  // Stage 20 Batch 3: canManageFeatures reintroduced — gates the "Catalog" flyout link
+  // (org-admin value-list editor). Component Type shape/CRUD itself is still SuperAdmin-only
+  // at /controls/component-types (Stage 19 Batch 5); unaffected by this.
+  const canManageFeatures = me.adminPermissions.includes("MANAGE_FEATURES");
 
   return (
     <div className="flex h-screen bg-bg-page">
@@ -68,6 +70,7 @@ export default async function OrgSlugLayout({
         orgSlug={orgSlug}
         isSubdomain={isSubdomain}
         canManageUsers={canManageUsers}
+        canManageFeatures={canManageFeatures}
       />
 
       {/* Right column: top bar + page content */}

@@ -1,6 +1,11 @@
+import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
 import type { FieldEntry as _FieldEntry } from "@/lib/types/field-entry";
+import type {
+  FieldOptionsEntry as _FieldOptionsEntry,
+  FieldOptionsConfig as _FieldOptionsConfig,
+} from "@/lib/types/field-options-config";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -24,21 +29,21 @@ export type FieldEntry = _FieldEntry;
 
 /**
  * Shape of a single field's entry in ComponentTypeOrgConfig.fieldOptionsConfig.
- * Stage 20 Batch 1.
+ * Stage 20 Batch 1. Defined in lib/types/field-options-config.ts (Stage 20 Batch 3 — extracted
+ * so org-scoped app/[orgSlug]/** components can import the type without importing lib/data/*)
+ * and re-exported here for backward compatibility with app/api/** callers.
  *
  * A flat field (no dependsOn in fieldsSchema) → { options: string[] }
  * A dependent field (has dependsOn) → { valueMap: Record<parentValue, string[]> }
  */
-export type FieldOptionsEntry =
-  | { options: string[] }
-  | { valueMap: Record<string, string[]> };
+export type FieldOptionsEntry = _FieldOptionsEntry;
 
 /**
  * Parsed fieldOptionsConfig map — keyed by fieldKey.
  * Returned alongside fieldsSchema wherever ComponentTypeOrgConfig is included.
  * Stage 20 Batch 1.
  */
-export type FieldOptionsConfig = Record<string, FieldOptionsEntry>;
+export type FieldOptionsConfig = _FieldOptionsConfig;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -253,6 +258,43 @@ export async function updateComponentType(
       ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
       ...(input.fieldsSchema !== undefined ? { fieldsSchema: input.fieldsSchema } : {}),
       ...(input.active !== undefined ? { active: input.active } : {}),
+    },
+  });
+}
+
+/**
+ * Replace the whole `fieldOptionsConfig` blob for a ComponentType's org-level config row.
+ * Stage 20 Batch 3 — backs the Catalog screen's PUT.
+ *
+ * Tenancy guard: verifies the ComponentType belongs to the session org before writing (same
+ * `findFirst({ id, organizationId })` pattern as `updateComponentType`) — throws if not found or
+ * cross-org, which the route maps to 404.
+ *
+ * Upserts on `componentTypeId` (Batch 1's 1:1 unique index) — creates the config row on first
+ * save, replaces it wholesale on every subsequent save. Caller (the API route) is responsible for
+ * running the payload through `validateFieldOptionsConfig` first; this function does not
+ * re-validate against `fieldsSchema`.
+ */
+export async function setComponentTypeOrgConfig(
+  session: SessionData,
+  typeId: string,
+  fieldOptionsConfig: FieldOptionsConfig,
+) {
+  const existing = await prisma.componentType.findFirst({
+    where: { id: typeId, organizationId: session.organizationId },
+    select: { id: true },
+  });
+  if (!existing) throw new Error("ComponentType not found or access denied");
+
+  return prisma.componentTypeOrgConfig.upsert({
+    where: { componentTypeId: typeId },
+    create: {
+      organizationId: session.organizationId,
+      componentTypeId: typeId,
+      fieldOptionsConfig: fieldOptionsConfig as unknown as Prisma.InputJsonValue,
+    },
+    update: {
+      fieldOptionsConfig: fieldOptionsConfig as unknown as Prisma.InputJsonValue,
     },
   });
 }
