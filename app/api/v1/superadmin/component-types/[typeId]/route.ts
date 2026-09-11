@@ -14,6 +14,7 @@ import {
   createComponentTypeAuditLog,
 } from "@/lib/data/superadmin/component-types";
 import { getOrgById } from "@/lib/data/superadmin/orgs";
+import { validateFieldsSchema } from "@/lib/validate-fields-schema";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // Never cached.
@@ -126,6 +127,13 @@ export async function PATCH(
   if (typeof b.categoryId === "string") patch.categoryId = b.categoryId;
   if (Array.isArray(b.fieldsSchema)) patch.fieldsSchema = b.fieldsSchema as FieldEntry[];
   if (typeof b.active === "boolean") patch.active = b.active;
+
+  // Stage 20 Batch 2: same server-side backstop as the POST route — only runs
+  // when fieldsSchema is actually part of this patch.
+  if (patch.fieldsSchema !== undefined) {
+    const schemaCheck = validateFieldsSchema(patch.fieldsSchema);
+    if (!schemaCheck.valid) return apiBadRequest(schemaCheck.error);
+  }
 
   let componentType;
   try {
