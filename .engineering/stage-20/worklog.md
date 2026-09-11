@@ -192,3 +192,21 @@
   `componentTypes[0]`, alphabetically DOOR, which Batch 1 fully backfilled -- should be
   unaffected by the new gate but unverified live this session) and to eyeball the
   multi-hop cascading UX manually. Status: DONE_WITH_CONCERNS.
+
+- **reviewer — Batch 4 (Configurator gating + cascading), `db631f5`: APPROVE-WITH-NITS.**
+  0 CRITICAL / 0 IMPORTANT / 3 MINOR. Report: `review-B4.md`. The regression risk the
+  developer flagged is **resolved and is not a regression** -- verified live on the preview
+  (`quotation-system-nceda3vzd`), not by re-reading the migration: DOOR is `componentTypes[0]`
+  on acme-glass *and* reads fully configured post-backfill. Ran `configurator-gating.spec.ts`
+  16/16 (including both API-level tests the developer left unrun), `catalog-field-values` +
+  `subdomain-navigation` 21/21, `stage18` 10/10, `stage19` 6/6 -- the three tests that POST a
+  Selection against `componentTypes[0]` all pass. One `stage19` step-gating failure proven
+  **pre-existing** (fails 3/3 on the Batch-3 preview, untouched code path) and logged as MINOR
+  #3 for the test phase. `isComponentTypeFullyConfigured` does **not** repeat Batch 3's
+  multi-hop bug -- it accumulates a per-field resolved-value map instead of a roots-only map;
+  independently re-implemented and run over acme-glass's 308 live types, agreeing exactly with
+  the 13 greyed tiles rendered on the Configuration page. B3 MINOR #3 (DAL convergence, zero
+  dangling `WithConfig` refs) and MINOR #4 (N+1 gone, Catalog page renders 200 with real chip
+  values) both genuinely closed. Decision #6 respected -- only value lists narrow, no field
+  visibility is conditional. Nits: E2E spec leaks a throwaway type/project per run;
+  `collectDescendants` lacks a cycle guard; the pre-existing stage19 step-gating flake.
