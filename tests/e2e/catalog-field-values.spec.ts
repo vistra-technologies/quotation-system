@@ -94,6 +94,10 @@ let distributorPage: Page;
 
 let acmeTypeId: string;
 let acmeDropdownKey: string;
+let chainTypeId: string;
+const CATEGORY_KEY = `category${RUN}`;
+const GLASS_TYPE_KEY = `glassType${RUN}`;
+const THICKNESS_KEY = `thickness${RUN}`;
 
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(120_000);
@@ -136,6 +140,44 @@ test.beforeAll(async ({ browser }) => {
   expect(createRes.status()).toBe(201);
   const { componentType } = (await createRes.json()) as { componentType: { id: string } };
   acmeTypeId = componentType.id;
+
+  // A second throwaway type: a 2-hop dependsOn chain (Category -> Glass Type -> Thickness),
+  // mirroring the design doc's own canonical example (04-data-model.md) — backs the
+  // multi-hop round-trip test below (review-B3 CRITICAL #1).
+  const chainCreateRes = await acmePage.request.post(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/component-types`),
+    {
+      data: {
+        code: `SA_E2E_CHAIN_${RUN}`,
+        name: `Catalog Chain E2E ${RUN}`,
+        categoryId,
+        fieldsSchema: [
+          { key: CATEGORY_KEY, label: "Category", type: "dropdown", required: false, basic: true },
+          {
+            key: GLASS_TYPE_KEY,
+            label: "Glass Type",
+            type: "dropdown",
+            required: false,
+            basic: true,
+            dependsOn: CATEGORY_KEY,
+          },
+          {
+            key: THICKNESS_KEY,
+            label: "Thickness",
+            type: "dropdown",
+            required: false,
+            basic: true,
+            dependsOn: GLASS_TYPE_KEY,
+          },
+        ],
+      },
+    },
+  );
+  expect(chainCreateRes.status()).toBe(201);
+  const { componentType: chainType } = (await chainCreateRes.json()) as {
+    componentType: { id: string };
+  };
+  chainTypeId = chainType.id;
 });
 
 test.afterAll(async () => {
@@ -281,4 +323,57 @@ test("PUT with a valid flat options list round-trips through GET", async () => {
     componentType: { fieldOptionsConfig: Record<string, { options?: string[] }> };
   };
   expect(componentType.fieldOptionsConfig[acmeDropdownKey]?.options).toEqual(["Red", "Blue"]);
+});
+
+// ---------------------------------------------------------------------------
+// 7. Multi-hop chain round-trip (review-B3 CRITICAL #1 regression coverage).
+//    A 2-hop dependsOn chain (Category -> Glass Type -> Thickness, the design
+//    doc's own canonical example) must round-trip intact through PUT -> GET —
+//    this is API-level coverage for the bug the editor UI previously had
+//    (silently wiping the deepest level's data whose parent was itself
+//    dependent). The API/DAL layer was never the bug, but this closes the gap
+//    the original spec had no coverage of, per the reviewer's request.
+// ---------------------------------------------------------------------------
+
+test("PUT with a 2-hop dependsOn chain round-trips intact through GET", async () => {
+  const fieldOptionsConfig = {
+    [CATEGORY_KEY]: { options: ["Single", "Glazed"] },
+    [GLASS_TYPE_KEY]: {
+      valueMap: { Single: ["Clear", "Tinted"], Glazed: ["Low-E"] },
+    },
+    [THICKNESS_KEY]: {
+      valueMap: { Clear: ["6mm", "8mm"], "Low-E": ["10mm"] },
+    },
+  };
+
+  const putRes = await acmePage.request.put(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/component-types/${chainTypeId}/field-values`),
+    { data: { fieldOptionsConfig } },
+  );
+  expect(putRes.status()).toBe(200);
+
+  const getRes = await acmePage.request.get(
+    apiUrl(ACME, `/api/v1/orgs/${ACME}/component-types/${chainTypeId}/field-values`),
+  );
+  expect(getRes.status()).toBe(200);
+  const { componentType } = (await getRes.json()) as {
+    componentType: {
+      fieldOptionsConfig: Record<
+        string,
+        { options?: string[]; valueMap?: Record<string, string[]> }
+      >;
+    };
+  };
+
+  expect(componentType.fieldOptionsConfig[CATEGORY_KEY]?.options).toEqual(["Single", "Glazed"]);
+  expect(componentType.fieldOptionsConfig[GLASS_TYPE_KEY]?.valueMap).toEqual({
+    Single: ["Clear", "Tinted"],
+    Glazed: ["Low-E"],
+  });
+  // The deepest level — this is exactly the data the editor bug silently wiped.
+  expect(componentType.fieldOptionsConfig[THICKNESS_KEY]?.valueMap?.Clear).toEqual([
+    "6mm",
+    "8mm",
+  ]);
+  expect(componentType.fieldOptionsConfig[THICKNESS_KEY]?.valueMap?.["Low-E"]).toEqual(["10mm"]);
 });

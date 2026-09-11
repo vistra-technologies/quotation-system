@@ -67,6 +67,21 @@ export function CatalogTypeEditor({
     (f) => f.type === "dropdown" || f.type === "radio",
   );
 
+  /**
+   * The full set of values `key`'s field can currently produce, read live from in-progress
+   * client state — not just the last-saved config. Handles multi-hop chains (review-B3
+   * CRITICAL #1): if `key` is itself a dependent field, its own live value set is the union of
+   * every branch's currently-entered values (each branch is keyed by *its* parent's value, per
+   * the design doc's example, so the union across branches is the complete set this field can
+   * produce for the next hop down).
+   */
+  function liveValuesOf(key: string): string[] {
+    const f = byKey.get(key);
+    if (!f) return [];
+    if (!f.dependsOn) return flatOptions[key] ?? [];
+    return [...new Set(Object.values(valueMaps[key] ?? {}).flat())];
+  }
+
   function draftKey(fieldKey: string, row?: string) {
     return row !== undefined ? `${fieldKey}::${row}` : fieldKey;
   }
@@ -127,10 +142,20 @@ export function CatalogTypeEditor({
 
     for (const f of choiceFields) {
       if (f.dependsOn) {
-        // Prune to only the parent's *currently live* option values — a row for a
-        // parent value that no longer exists is dropped, not carried as dead data
-        // (see item-B3-plan.md decision #3).
-        const liveParentValues = flatOptions[f.dependsOn] ?? [];
+        // Prune to only the parent's *currently live* option values (works for a multi-hop
+        // parent too, via liveValuesOf — review-B3 CRITICAL #1) — a row for a parent value that
+        // no longer exists is dropped, not carried as dead data (see item-B3-plan.md decision #3).
+        const liveParentValues = liveValuesOf(f.dependsOn);
+        if (liveParentValues.length === 0) {
+          // Belt-and-braces (review-B3 CRITICAL #1): the parent's live values could not be
+          // resolved (e.g. a rendering/state edge case this fix doesn't anticipate) — never
+          // let an untouched Save silently wipe already-stored config the screen couldn't
+          // display. Carry the last-saved entry forward unchanged instead of writing `{}`.
+          const existing = initialFieldOptionsConfig[f.key];
+          fieldOptionsConfig[f.key] =
+            existing && "valueMap" in existing ? { valueMap: existing.valueMap } : { valueMap: {} };
+          continue;
+        }
         const rows = valueMaps[f.key] ?? {};
         const pruned: Record<string, string[]> = {};
         for (const parentVal of liveParentValues) {
@@ -236,12 +261,12 @@ export function CatalogTypeEditor({
                 </div>
               ) : (
                 <div className="mt-2 flex flex-col gap-3">
-                  {(flatOptions[f.dependsOn as string] ?? []).length === 0 ? (
+                  {liveValuesOf(f.dependsOn as string).length === 0 ? (
                     <p className="text-sm text-text-muted">
                       Configure &quot;{parent?.label ?? f.dependsOn}&quot; first — no parent values yet.
                     </p>
                   ) : (
-                    (flatOptions[f.dependsOn as string] ?? []).map((parentVal) => (
+                    liveValuesOf(f.dependsOn as string).map((parentVal) => (
                       <div key={parentVal} className="rounded-sm bg-bg-page p-3">
                         <p className="text-xs font-bold uppercase tracking-wide text-text-muted">
                           {parent?.label ?? f.dependsOn}: {parentVal}

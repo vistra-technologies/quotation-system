@@ -21,6 +21,9 @@ import type { FieldOptionsConfig, FieldOptionsEntry } from "@/lib/types/field-op
  *      against a hand-rolled payload — defense in depth, not a UI affordance.
  *   5. All values must be strings; empty strings are dropped (same leniency as
  *      `parseFieldOptionsConfig` in `lib/data/components.ts`).
+ *   6. A dependent field's `valueMap` keys must each name one of its parent field's currently
+ *      submitted values (checked only when the parent's own entry is present in the same
+ *      payload — review-B3 MINOR #2).
  *
  * Deliberately pure (no `prisma`/`next` imports) — imported server-side only for now (the PUT
  * route), but kept dependency-free in case a future client-side pre-check wants it too, same
@@ -109,6 +112,33 @@ export function validateFieldOptionsConfig(
     }
 
     parsed[key] = parsedEntry;
+  }
+
+  // review-B3 MINOR #2: cross-check that every valueMap key actually names one of the parent
+  // field's currently-submitted values — the design doc's "one value-list per parent value"
+  // otherwise isn't enforced (any string key would be silently accepted). Only checked when the
+  // parent's own entry is present in this same payload (a whole-blob PUT always includes it in
+  // practice — the editor submits every choice field together); a payload that omits the parent
+  // entirely skips this check rather than rejecting on incomplete information.
+  for (const [key, entry] of Object.entries(parsed)) {
+    if (!("valueMap" in entry)) continue;
+    const field = byKey.get(key);
+    const parentKey = field?.dependsOn;
+    if (!parentKey) continue;
+    const parentEntry = parsed[parentKey];
+    if (!parentEntry) continue;
+    const allowedParentValues =
+      "options" in parentEntry
+        ? parentEntry.options
+        : [...new Set(Object.values(parentEntry.valueMap).flat())];
+    for (const parentVal of Object.keys(entry.valueMap)) {
+      if (!allowedParentValues.includes(parentVal)) {
+        return {
+          valid: false,
+          error: `Field "${key}": valueMap key "${parentVal}" is not one of "${parentKey}"'s currently configured values.`,
+        };
+      }
+    }
   }
 
   return { valid: true, parsed };
