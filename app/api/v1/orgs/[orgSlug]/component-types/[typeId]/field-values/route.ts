@@ -9,7 +9,7 @@ import {
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import {
-  getComponentTypeByIdWithConfig,
+  getComponentTypeById,
   setComponentTypeOrgConfig,
 } from "@/lib/data/components";
 import { validateFieldOptionsConfig } from "@/lib/validate-field-options-config";
@@ -26,7 +26,7 @@ export const dynamic = "force-dynamic";
  * Auth: authenticated org member with MANAGE_FEATURES permission — same gate as the sibling
  * `/component-types/[typeId]` admin-detail route (decision #2 in stage-20.md).
  * Tenancy: enforced by getApiSession() (403 on cross-org) and
- *          getComponentTypeByIdWithConfig() filtering on session.organizationId — cross-org
+ *          getComponentTypeById() filtering on session.organizationId — cross-org
  *          typeId returns null here, surfaced as 404.
  */
 export async function GET(
@@ -63,14 +63,14 @@ export async function GET(
   }
 
   try {
-    const componentType = await getComponentTypeByIdWithConfig(session, typeId);
+    const componentType = await getComponentTypeById(session, typeId);
     if (!componentType) {
       return apiNotFound("Component type not found");
     }
     return NextResponse.json({ componentType });
   } catch (err) {
     console.error(
-      "[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values] getComponentTypeByIdWithConfig",
+      "[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values] getComponentTypeById",
       err,
     );
     return apiServerError();
@@ -145,7 +145,7 @@ export async function PUT(
 
   // Load the ComponentType's current fieldsSchema (tenancy-scoped) to validate against —
   // also doubles as the existence/tenancy check the PUT needs before writing.
-  const componentType = await getComponentTypeByIdWithConfig(session, typeId);
+  const componentType = await getComponentTypeById(session, typeId);
   if (!componentType) {
     return apiNotFound("Component type not found");
   }
@@ -160,7 +160,7 @@ export async function PUT(
 
   try {
     await setComponentTypeOrgConfig(session, typeId, result.parsed);
-    const updated = await getComponentTypeByIdWithConfig(session, typeId);
+    const updated = await getComponentTypeById(session, typeId);
     return NextResponse.json({ componentType: updated });
   } catch (err) {
     if (err instanceof Error && err.message.includes("access denied")) {

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import { fetchProjectDetail } from "../_project-fetch";
 import { AddSelectionForm } from "./add-selection-form";
 
@@ -45,6 +46,9 @@ interface ComponentTypeRow {
   active: boolean;
   category: { id: string; name: string };
   fieldsSchema: FieldEntry[];
+  // Stage 20 Batch 4: org-level dropdown/radio value config, folded into the list route's
+  // response. null = the org hasn't configured any field on this type yet.
+  fieldOptionsConfig: FieldOptionsConfig | null;
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────

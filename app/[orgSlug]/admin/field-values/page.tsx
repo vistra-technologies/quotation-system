@@ -15,6 +15,9 @@ interface ComponentTypeRow {
   code: string;
   name: string;
   fieldsSchema: FieldEntry[];
+  // Stage 20 Batch 4: the list route now returns this for free (folded into
+  // lib/data/components.ts listComponentTypes) — see the fetch below, no more per-type round trip.
+  fieldOptionsConfig: FieldOptionsConfig | null;
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -31,10 +34,11 @@ interface ComponentTypeRow {
  * on the parent `/admin/*` layout) — same page-level pattern as
  * `app/[orgSlug]/admin/external-companies/page.tsx`'s MANAGE_USERS check.
  *
- * Fetches the type roster from the existing (unmodified) component-types list route, then one
- * field-values GET per type that has at least one dropdown/radio field — see item-B3-plan.md for
- * why this batch doesn't fold config into the shared list route (that's Batch 4's job, scoped to
- * wherever the Configurator loads types).
+ * Fetches the type roster from the component-types list route, which as of Stage 20 Batch 4
+ * returns `fieldOptionsConfig` alongside `fieldsSchema` for every type in one call (folded into
+ * `lib/data/components.ts` `listComponentTypes` — see review-B3 MINOR #3/#4). Batch 3 originally
+ * did one extra `.../field-values` GET per configurable type (N+1, observed N=34 on acme-glass);
+ * that round-trip is gone now that the list response already carries the config.
  */
 export default async function FieldValuesPage({
   params,
@@ -68,23 +72,10 @@ export default async function FieldValuesPage({
     ct.fieldsSchema.some((f) => f.type === "dropdown" || f.type === "radio"),
   );
 
-  const withConfig = await Promise.all(
-    configurableTypes.map(async (ct) => {
-      const res = await internalFetch(
-        `/api/v1/orgs/${orgSlug}/component-types/${ct.id}/field-values`,
-      );
-      if (!res.ok) {
-        return { ...ct, fieldOptionsConfig: {} as FieldOptionsConfig };
-      }
-      const body = (await res.json()) as {
-        componentType: { fieldOptionsConfig: FieldOptionsConfig | null };
-      };
-      return {
-        ...ct,
-        fieldOptionsConfig: body.componentType.fieldOptionsConfig ?? {},
-      };
-    }),
-  );
+  const withConfig = configurableTypes.map((ct) => ({
+    ...ct,
+    fieldOptionsConfig: ct.fieldOptionsConfig ?? ({} as FieldOptionsConfig),
+  }));
 
   return (
     <div>

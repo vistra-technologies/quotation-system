@@ -5,6 +5,12 @@ import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { SelectField } from "@/components/select-field";
 import { ComponentIcon } from "@/lib/component-icons";
+import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
+import {
+  isComponentTypeFullyConfigured,
+  resolveOptions,
+  collectDescendants,
+} from "@/lib/configurator-gating";
 import {
   createSelection,
   updateSelection,
@@ -35,6 +41,9 @@ interface ComponentTypeOption {
   category: { id: string; name: string };
   fieldsSchema: FieldEntry[];
   active: boolean;
+  // Stage 20 Batch 4: org-level dropdown/radio value config, folded into the list route.
+  // null = the org hasn't configured any field on this type yet — treated as fully unconfigured.
+  fieldOptionsConfig: FieldOptionsConfig | null;
 }
 
 interface SelectionRow {
@@ -137,9 +146,16 @@ export function AddSelectionForm({
 
   const isPending = isCreatePending || isUpdatePending;
 
+  // ── Configurator gating (Stage 20 Batch 4, decision #5) ─────────────────────
+  // Whole-ComponentType gate: a type is selectable only if every dropdown/radio field on it
+  // (root or dependent) has its org-level values fully filled in. The per-field form is never
+  // partially shown for a type that fails this check.
+  const isFullyConfigured = (ct: ComponentTypeOption) =>
+    isComponentTypeFullyConfigured(ct.fieldsSchema, ct.fieldOptionsConfig);
+
   // ── Form state ─────────────────────────────────────────────────────────────
   const [selectedTypeId, setSelectedTypeId] = useState(
-    componentTypes[0]?.id ?? "",
+    componentTypes.find(isFullyConfigured)?.id ?? "",
   );
   const [fieldValues, setFieldValues] = useState<Record<string, string | boolean>>({});
   const [label, setLabel] = useState("");
@@ -161,6 +177,12 @@ export function AddSelectionForm({
   }, [showAdvanced]);
 
   const selectedType = componentTypes.find((ct) => ct.id === selectedTypeId) ?? null;
+  const selectedTypeConfigured = selectedType ? isFullyConfigured(selectedType) : false;
+  // The per-field form is only ever shown for a fully-configured type — except in edit mode,
+  // where a Selection created before the type became unconfigured must still be reachable
+  // (decision #5 is about the "Add Component" palette, not stranding already-saved data).
+  const canShowForm =
+    selectedType !== null && (editingSelectionId !== null || selectedTypeConfigured);
 
   const basicFields = selectedType?.fieldsSchema.filter((f) => f.basic) ?? [];
   const advancedFields = selectedType?.fieldsSchema.filter((f) => !f.basic) ?? [];
@@ -172,6 +194,10 @@ export function AddSelectionForm({
   const handleTypeChange = (typeId: string) => {
     // Sidebar is locked in edit mode.
     if (editingSelectionId !== null) return;
+    // Defense in depth — the palette tile is already disabled for an unconfigured type, but
+    // guard the handler too (decision #5: the per-field form must never open for one).
+    const ct = componentTypes.find((c) => c.id === typeId);
+    if (!ct || !isFullyConfigured(ct)) return;
     setSelectedTypeId(typeId);
     setFieldValues({});
     setShowAdvanced(false);
@@ -179,7 +205,29 @@ export function AddSelectionForm({
   };
 
   const updateField = (key: string, value: string | boolean) => {
-    setFieldValues((prev) => ({ ...prev, [key]: value }));
+    setFieldValues((prev) => {
+      const next = { ...prev, [key]: value };
+      // Stage 20 Batch 4: changing a field's value invalidates any already-selected descendant
+      // (a dependent field's valueMap is keyed by its parent's value) — clear them so no stale
+      // value survives into Selection.config.
+      if (selectedType) {
+        for (const descendantKey of collectDescendants(selectedType.fieldsSchema, key)) {
+          delete next[descendantKey];
+        }
+      }
+      return next;
+    });
+  };
+
+  // Stage 20 Batch 4 — resolves a dropdown/radio field's live option list based on the currently
+  // selected type's org config and whatever the user has picked for its parent (if any) so far.
+  const optionsFor = (field: FieldEntry): string[] =>
+    resolveOptions(field, fieldValues, selectedType?.fieldOptionsConfig ?? null);
+  const parentLabelFor = (field: FieldEntry): string | undefined => {
+    if (!field.dependsOn) return undefined;
+    return (
+      selectedType?.fieldsSchema.find((f) => f.key === field.dependsOn)?.label ?? field.dependsOn
+    );
   };
 
   const handleEditSelection = (sel: SelectionRow) => {
@@ -208,7 +256,7 @@ export function AddSelectionForm({
 
   const handleCancelEdit = () => {
     setEditingSelectionId(null);
-    setSelectedTypeId(componentTypes[0]?.id ?? "");
+    setSelectedTypeId(componentTypes.find(isFullyConfigured)?.id ?? "");
     setLabel("");
     setFieldValues({});
     setShowAdvanced(false);
@@ -267,24 +315,38 @@ export function AddSelectionForm({
             {componentTypes.map((ct) => {
               const isSelected = ct.id === selectedTypeId;
               const isLocked = editingSelectionId !== null && !isSelected;
+              // Stage 20 Batch 4, decision #5 — a type with any unconfigured dropdown/radio
+              // field (root or dependent) is unselectable, whole-type, with a warning tooltip.
+              const isUnconfigured = !isFullyConfigured(ct);
+              const isDisabled = isLocked || isUnconfigured;
               return (
                 <button
                   key={ct.id}
                   type="button"
                   onClick={() => handleTypeChange(ct.id)}
-                  disabled={isLocked}
+                  disabled={isDisabled}
                   aria-pressed={isSelected}
+                  title={
+                    isUnconfigured
+                      ? "Category not fully configured — contact your admin"
+                      : undefined
+                  }
                   className={[
                     "flex w-full flex-col items-center gap-2 rounded-md border py-[22px] px-3 text-sm font-bold transition-colors",
                     isSelected
                       ? "border-primary bg-primary text-text-on-primary"
-                      : isLocked
-                        ? "cursor-default border-border bg-bg-card text-text-muted opacity-50"
+                      : isDisabled
+                        ? "cursor-not-allowed border-border bg-bg-card text-text-muted opacity-50"
                         : "border-border bg-bg-card text-text-body hover:border-primary/40 hover:bg-primary-softer hover:text-text-heading",
                   ].join(" ")}
                 >
                   <ComponentIcon code={ct.code} />
                   <span>{ct.name}</span>
+                  {isUnconfigured && (
+                    <span className="text-[10px] font-normal normal-case text-text-muted">
+                      Not fully configured
+                    </span>
+                  )}
                 </button>
               );
             })}
@@ -293,6 +355,16 @@ export function AddSelectionForm({
 
         {/* ── Center: Add / Edit form ──────────────────────────────────────── */}
         <div>
+          {/* Stage 20 Batch 4, decision #5 — the per-field configure form is never opened for a
+              type that isn't fully configured; a plain notice takes its place instead. */}
+          {!canShowForm ? (
+            <div className="rounded-md border border-dashed border-border px-4 py-10 text-center">
+              <p className="text-sm text-text-muted">
+                Select a fully configured component from the list on the left to get started.
+              </p>
+            </div>
+          ) : (
+          <>
           {selectedType && (
             <h2 className="mb-5 text-lg font-extrabold text-text-heading">
               {editingSelectionId !== null
@@ -353,6 +425,8 @@ export function AddSelectionForm({
                           field={field}
                           value={fieldValues[field.key]}
                           onChange={(val) => updateField(field.key, val)}
+                          options={optionsFor(field)}
+                          parentLabel={parentLabelFor(field)}
                         />
                       ))}
                     </div>
@@ -362,6 +436,8 @@ export function AddSelectionForm({
                       field={row[0]}
                       value={fieldValues[row[0].key]}
                       onChange={(val) => updateField(row[0].key, val)}
+                      options={optionsFor(row[0])}
+                      parentLabel={parentLabelFor(row[0])}
                     />
                   ),
                 )}
@@ -396,6 +472,8 @@ export function AddSelectionForm({
                               field={field}
                               value={fieldValues[field.key]}
                               onChange={(val) => updateField(field.key, val)}
+                              options={optionsFor(field)}
+                              parentLabel={parentLabelFor(field)}
                             />
                           ))}
                         </div>
@@ -405,6 +483,8 @@ export function AddSelectionForm({
                           field={row[0]}
                           value={fieldValues[row[0].key]}
                           onChange={(val) => updateField(row[0].key, val)}
+                          options={optionsFor(row[0])}
+                          parentLabel={parentLabelFor(row[0])}
                         />
                       ),
                     )}
@@ -434,6 +514,8 @@ export function AddSelectionForm({
               )}
             </div>
           </form>
+          </>
+          )}
         </div>
 
         {/* ── Right: Saved Components list (5d — icon chip + name + type + chevron) ── */}
@@ -527,22 +609,27 @@ interface FieldInputProps {
   field: FieldEntry;
   value: string | boolean | undefined;
   onChange: (val: string | boolean) => void;
+  // Stage 20 Batch 4: the field's *currently resolvable* option list — from `resolveOptions`,
+  // already accounting for dependsOn + the parent's currently-selected value. Replaces the old
+  // `field.options` read (fieldsSchema no longer carries option values since Batch 1).
+  options: string[];
+  // Label of the field this one depends on, if any — used for the "select X first" notice.
+  parentLabel?: string;
 }
 
-function FieldInput({ field, value, onChange }: FieldInputProps) {
+function FieldInput({ field, value, onChange, options, parentLabel }: FieldInputProps) {
   const inputClass =
     "w-full rounded-sm border border-border bg-bg-white px-3.5 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/30";
   const labelClass = "text-xs font-bold uppercase tracking-wider text-text-muted";
 
   const displayLabel = field.label || field.key;
 
-  // Guard: radio and dropdown fields with empty options are rendered as a notice
-  // rather than crashing. This matches the lenient-read behavior of DAL parseFieldsSchema
-  // (which allows options: [] on corrupt DB rows) — Area 3 defensive rendering per review.
-  if (
-    (field.type === "radio" || field.type === "dropdown") &&
-    (!field.options || field.options.length === 0)
-  ) {
+  // Guard: radio and dropdown fields with no resolvable options render as a notice rather than
+  // crashing. Under Batch 4's gating this should only be reachable in edit mode against a
+  // Selection whose type has since become unconfigured (the "Add Component" palette otherwise
+  // never opens the form for one) — still handled defensively rather than assumed unreachable.
+  if ((field.type === "radio" || field.type === "dropdown") && options.length === 0) {
+    const needsParentSelection = Boolean(field.dependsOn);
     return (
       <div className="flex flex-col gap-1">
         <span className={labelClass}>
@@ -550,7 +637,9 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
           {field.required && <span className="ml-1 text-red-500">*</span>}
         </span>
         <p className="text-xs italic text-text-placeholder">
-          Options not configured for this field.
+          {needsParentSelection
+            ? `Select "${parentLabel ?? field.dependsOn}" first.`
+            : "Options not configured for this field."}
         </p>
       </div>
     );
@@ -581,7 +670,7 @@ function FieldInput({ field, value, onChange }: FieldInputProps) {
           className={inputClass}
           placeholder="Select..."
         >
-          {field.options!.map((opt) => (
+          {options.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
             </option>

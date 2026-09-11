@@ -124,76 +124,47 @@ export async function listComponentCategories(session: SessionData) {
   });
 }
 
-/** List all ComponentTypes for the session org, A→Z by code. */
+/**
+ * List all ComponentTypes for the session org, A→Z by code, with their org-level field option
+ * config (Stage 20 Batch 1 introduced the join, Batch 4 folded it into this function directly —
+ * see review-B3 MINOR #3: this used to be a separate `listComponentTypesWithConfig` pair that
+ * never got a caller other than the Catalog screen, which now also reads this function's result).
+ *
+ * `fieldOptionsConfig` is null when no ComponentTypeOrgConfig row exists yet for that type (i.e.
+ * the org hasn't configured any of its dropdown/radio fields).
+ */
 export async function listComponentTypes(session: SessionData) {
   const rows = await prisma.componentType.findMany({
     where: { organizationId: session.organizationId },
     orderBy: { code: "asc" },
-    include: { category: true },
+    include: { category: true, orgConfig: true },
   });
-  return rows.map((r) => ({ ...r, fieldsSchema: parseFieldsSchema(r.fieldsSchema) }));
+  return rows.map((r) => {
+    const { orgConfig, ...rest } = r;
+    return {
+      ...rest,
+      fieldsSchema: parseFieldsSchema(rest.fieldsSchema),
+      fieldOptionsConfig: orgConfig ? parseFieldOptionsConfig(orgConfig.fieldOptionsConfig) : null,
+    };
+  });
 }
 
 /**
- * Get a single ComponentType by id, scoped to the session org (tenancy guard).
+ * Get a single ComponentType by id, scoped to the session org (tenancy guard), with its
+ * org-level field option config (Stage 20 Batch 4 — folded in, see `listComponentTypes` above).
  * Returns null if not found or if it belongs to a different org.
  */
 export async function getComponentTypeById(session: SessionData, id: string) {
   const row = await prisma.componentType.findFirst({
     where: { id, organizationId: session.organizationId },
-    include: { category: true },
+    include: { category: true, orgConfig: true },
   });
   if (!row) return null;
-  return { ...row, fieldsSchema: parseFieldsSchema(row.fieldsSchema) };
-}
-
-/**
- * List all ComponentTypes for the session org with their org-level field option config.
- * Stage 20 Batch 1 — the DAL entry point for Batches 3/4 consumers (Catalog screen,
- * configurator gating). The orgConfig field is null when no config row exists yet.
- *
- * Each returned item has:
- *   fieldsSchema     — typed FieldEntry[] (includes dependsOn when set by SuperAdmin)
- *   fieldOptionsConfig — typed FieldOptionsConfig | null (null = not configured yet)
- */
-export async function listComponentTypesWithConfig(session: SessionData) {
-  const rows = await prisma.componentType.findMany({
-    where: { organizationId: session.organizationId },
-    orderBy: { code: "asc" },
-    include: {
-      category: true,
-      orgConfig: true,
-    },
-  });
-  return rows.map((r) => ({
-    ...r,
-    fieldsSchema: parseFieldsSchema(r.fieldsSchema),
-    fieldOptionsConfig: r.orgConfig
-      ? parseFieldOptionsConfig(r.orgConfig.fieldOptionsConfig)
-      : null,
-  }));
-}
-
-/**
- * Get a single ComponentType by id with its org-level field option config.
- * Stage 20 Batch 1.
- * Returns null if not found or if it belongs to a different org (tenancy guard).
- */
-export async function getComponentTypeByIdWithConfig(session: SessionData, id: string) {
-  const row = await prisma.componentType.findFirst({
-    where: { id, organizationId: session.organizationId },
-    include: {
-      category: true,
-      orgConfig: true,
-    },
-  });
-  if (!row) return null;
+  const { orgConfig, ...rest } = row;
   return {
-    ...row,
-    fieldsSchema: parseFieldsSchema(row.fieldsSchema),
-    fieldOptionsConfig: row.orgConfig
-      ? parseFieldOptionsConfig(row.orgConfig.fieldOptionsConfig)
-      : null,
+    ...rest,
+    fieldsSchema: parseFieldsSchema(rest.fieldsSchema),
+    fieldOptionsConfig: orgConfig ? parseFieldOptionsConfig(orgConfig.fieldOptionsConfig) : null,
   };
 }
 

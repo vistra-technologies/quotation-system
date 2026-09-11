@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
+import { getComponentTypeById } from "@/lib/data/components";
+import { isComponentTypeFullyConfigured } from "@/lib/configurator-gating";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -55,7 +57,12 @@ export async function listSelections(session: SessionData, projectId: string) {
  *  - Cross-tenant projectId: verifies the project belongs to the session's org.
  *  - Cross-tenant componentTypeId: verifies the type belongs to the session's org.
  *
- * Throws on any tenancy violation.
+ * Configuredness guard (Stage 20 Batch 4, decision #5): a Selection cannot be created against a
+ * ComponentType that isn't fully configured (every dropdown/radio field — root or dependent —
+ * has its values filled in). The "Add Component" palette already greys out an unconfigured type
+ * client-side, but this is the server-side backstop for a client that bypasses that UI gate.
+ *
+ * Throws on any tenancy violation or on the configuredness guard.
  */
 export async function createSelection(
   session: SessionData,
@@ -68,12 +75,14 @@ export async function createSelection(
   });
   if (!project) throw new Error("Project not found or access denied.");
 
-  // Tenancy guard — verify componentType belongs to session's org.
-  const componentType = await prisma.componentType.findFirst({
-    where: { id: input.componentTypeId, organizationId: session.organizationId },
-    select: { id: true },
-  });
+  // Tenancy guard — verify componentType belongs to session's org. Reuses the DAL's
+  // fieldsSchema + fieldOptionsConfig read (Batch 4 folded the org-config join into this
+  // function) rather than a bare findFirst, so the configuredness guard below is free.
+  const componentType = await getComponentTypeById(session, input.componentTypeId);
   if (!componentType) throw new Error("Component type not found or access denied.");
+  if (!isComponentTypeFullyConfigured(componentType.fieldsSchema, componentType.fieldOptionsConfig)) {
+    throw new Error("Component type is not fully configured — contact your admin.");
+  }
 
   return prisma.selection.create({
     data: {
