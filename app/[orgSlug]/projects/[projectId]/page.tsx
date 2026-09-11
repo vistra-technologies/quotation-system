@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { orgHref } from "@/lib/orgHref";
+import { formatBudget } from "@/lib/format-currency";
 import { fetchProjectDetail } from "./_project-fetch";
 
 // Always render live — reads session cookie and DB.
@@ -61,6 +62,13 @@ export default async function ProjectDetailPage({
       ? `JOB-${project.companyProjectNumber}`
       : `#${project.projectNumber}`;
 
+  // B1 (Stage 20): format projectBudget with currency-aware comma grouping.
+  // Raw DB value is a plain numeric string (e.g. "600000") — apply the same
+  // formatBudget() helper used by the Inquiry detail page and forms.
+  const formattedBudget = project.projectBudget
+    ? formatBudget(project.projectBudget, project.currency)
+    : null;
+
   // Format the linked inquiry's display number identically to how the inquiry
   // detail page formats it (app/[orgSlug]/inquiries/[inquiryId]/page.tsx).
   // Null when the project was not converted from an inquiry (renders "—" in ReadOnlyField).
@@ -110,7 +118,7 @@ export default async function ProjectDetailPage({
             <ReadOnlyField label={tProjects("colNumber")} value={projectLabel} />
             <ReadOnlyField label="Inquiry No." value={formattedInquiryNumber} />
             <ReadOnlyField label={tProjects("fieldName")} value={project.name} />
-            <ReadOnlyField label={tProjects("fieldProjectBudget")} value={project.projectBudget} />
+            <ReadOnlyField label={tProjects("fieldProjectBudget")} value={formattedBudget} />
             <ReadOnlyField label={tProjects("fieldCurrency")} value={project.currency} />
             <ReadOnlyField label={tProjects("fieldProjectLocation")} value={project.projectLocation} />
             <ReadOnlyField label={tProjects("fieldSubmissionDate")} value={formatDate(project.submissionDate)} />
