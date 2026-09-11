@@ -11,7 +11,7 @@
 | ID | Name | Depends on | Status |
 |---|---|---|---|
 | B1 | Schema + migration + DAL (ComponentTypeOrgConfig) | — | done (merged `a50ea05`) |
-| B2 | SuperAdmin authoring (dependsOn UI + validator) | B1 | pending |
+| B2 | SuperAdmin authoring (dependsOn UI + validator) | B1 | done (merged `0462bff`) |
 | B3 | Catalog org-admin screen | B1, B2 | pending |
 | B4 | Configurator gating + cascading | B1, B3 | pending |
 | B5 | Bug sweep (B1–B5 video bugs) | — | done (merged `096f1a6`) |
@@ -98,3 +98,11 @@
   #5 fixed (not deferred): added 2 PATCH-path E2E tests + 1 duplicate-key POST test.
   `tsc`/`lint` clean. Pushed. No Vercel/browser tool available this session — orchestrator to verify
   live on the next preview. Status: DONE_WITH_CONCERNS. Details: `item-B2.md` §Review fix round.
+- **2026-09-12 — orchestrator** — verified the fix-round diff directly (matches reviewer's exact
+  suggestions) and ran the full E2E suite against the fix commit's own preview
+  (`quotation-system-4fmyle2fb...`): **16/16 passed**. Additionally reproduced IMPORTANT #1's exact
+  repro live via Playwright: created a throwaway type with dropdown `category` → dropdown `glassType`
+  depending on it, removed the `category` row (confirmed `glassType`'s "Depends on" immediately showed
+  "None" with no stale option, not just visually masked), clicked Save — **no crash, saved cleanly**.
+  Deleted the throwaway type afterward with no error (re-exercising Batch 1's delete-cascade fix in
+  passing). **Merged to `release/stage-20`.** Batch 2 done.
