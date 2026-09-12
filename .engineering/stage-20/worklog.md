@@ -545,3 +545,17 @@ clean. Status: **DONE_WITH_CONCERNS** — the assigned locator fix is verified w
 the two newly-surfaced stale assertions are pre-existing, unrelated, and belong to a separate
 test-content fix-round (recommend folding into whatever follow-up already tracks Stage 17's known
 MINOR, plus a new one for the B1 budget-format sentinel).
+
+---
+
+## tester — final confirmation pass (Batch 7 + whole-build sanity) @ `staging` `3fe3060` (= `test.easeetool.com`) — 2026-09-12
+
+**PASS** — 0 CRITICAL / 0 MAJOR/IMPORTANT / 2 MINOR (both pre-existing/environmental: no standing
+SuperAdmin test credentials for this sandbox, and long-flagged E2E debris accumulation on `acme-glass`,
+now measured at 314 ComponentType rows). Batch 7's reserved-code lock, 409-on-collision, and
+sortOrder-driven propagation to the org-facing palette confirmed via live RBAC/propagation/DB-integrity
+checks run this pass plus the developer's and reviewer's already-reproduced live transcripts (nothing
+contradicts them). Final sanity: lint/tsc clean, health 200/connected, `stage14.spec.ts` 11/13 (2 known
+pre-existing stale assertions), `select-field-options`/`superadmin-component-types`/
+`catalog-field-values`/`configurator-gating` all green. Full detail: `bugs-3.md`. Stage 20 (all batches)
+ready for `engineering:deploy`.
