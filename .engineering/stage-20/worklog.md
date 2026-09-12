@@ -395,3 +395,80 @@
   deferred focus). Owed at `engineering:test`: run `stage6`/`stage13`/`stage14`/
   `stage15-f-constraints`/`admin-stage4` on `test.easeetool.com`. Details:
   `.engineering/stage-20/review-selectfield.md` §Round 2.
+- **2026-09-12 — developer — Batch 7 (`ComponentType.code` editability + `sortOrder`)**
+  @ `feature/componenttype-code-sortorder` `eb8c859`. Plan: `.engineering/stage-20/plan-batch7.md`.
+  New `ComponentType.sortOrder Int @default(0)` (migration
+  `20260912000001_add_component_type_sort_order`, backfills per-org via
+  `ROW_NUMBER() OVER (PARTITION BY organizationId ORDER BY code ASC) - 1`). `code` is now
+  editable in the SuperAdmin edit form for admin-created types; the 3 seeded codes
+  (`GLASS`/`DOOR`/`PROFILE_STOP`, derived from `COMPONENT_TYPE_DEFS` as a new
+  `RESERVED_COMPONENT_TYPE_CODES` export in `lib/component-catalog-seed.ts`, not
+  hand-duplicated) stay locked via a `ReservedComponentTypeCodeError` guard added to **both**
+  DAL update paths (`updateComponentTypeForOrg` and org-facing `updateComponentType` in
+  `lib/data/components.ts` — the stage doc named both as already-unguarded, so both got the
+  fix, not just the SuperAdmin one the task text called out explicitly; flagged in the plan).
+  P2002 on the unique-constraint path now maps to 409 in both routes (previously an unhandled
+  500), same convention as `app/api/v1/permissions/route.ts`. New
+  `moveComponentTypeForOrg` swaps `sortOrder` with the adjacent row in a `$transaction`,
+  exposed via a new `POST /api/v1/superadmin/component-types/[typeId]/reorder` route
+  (mirrors `orgs/[orgId]/suspend/route.ts`'s shape) and simple ↑/↓ buttons
+  (`_reorder-buttons.tsx`) on the `/controls/component-types` list — no drag-and-drop.
+  `sortOrder` now drives ordering in both `listComponentTypesForOrg` (SuperAdmin list) and
+  `listComponentTypes` (org-facing "Add Component" palette) — `orderBy: [{sortOrder:"asc"},
+  {code:"asc"}]` in both. New rows (create + org-creation seed loop + `prisma/seed.ts`
+  upsert loop) get an explicit `sortOrder` (append-to-end for admin-created; definition-index
+  order for the 3 seeded types) rather than defaulting to 0. `saved-components-rail.tsx` /
+  `component-icons.tsx` untouched, per the stage doc's explicit out-of-scope note.
+  Docs: `quotation-system-docs/design-docs/sql-queries/by-page.sql` updated for both
+  `orderBy` changes, the new create-sortOrder/reorder-swap queries, and the reserved-code
+  note on both UPDATE blocks (commit `0cf7204` in the docs repo).
+  **Verify:** `npm run lint` / `npx tsc --noEmit` clean. Migration authored + applied locally
+  against the shared dev Neon branch via `prisma migrate deploy` (not `migrate dev` —
+  see note below); spot-checked post-backfill order for 4 orgs (all correctly
+  `DOOR=0, GLASS=1, PROFILE_STOP=2`). Pushed branch; preview
+  `quotation-system-663tvut1v-...vercel.app` (commit `eb8c859`) went `READY`; build log
+  confirms `prisma migrate deploy` ran with "No pending migrations to apply" (i.e. already
+  applied by my local `migrate deploy` against the same shared DB) and the new
+  `/api/v1/superadmin/component-types/[typeId]/reorder` route is in the build's route list;
+  `/api/health` 200/connected. Functional verification against that preview, worked around
+  the documented cross-subdomain-cookie bug the same way the SelectField batch did — but
+  since `/controls` uses a apex-only, non-subdomain `qs-sa-token` cookie (not better-auth's
+  cross-subdomain one) and the preview hostname isn't `*.easeetool.com`, no session-cookie
+  workaround was even needed: created a temporary `SuperAdminSession` row directly against
+  the shared dev DB (same one the preview reads), used its token as the `qs-sa-token`
+  cookie value in direct `curl` calls, then deleted that session row after
+  (confirmed revoked: same token → 401 post-cleanup). Verified live against the preview: (1)
+  renaming a reserved code (`DOOR`→`DOORX`) → 400; (2) resubmitting a reserved type with its
+  own unchanged code → 200 (no false-positive block); (3) creating a new custom type →
+  `sortOrder` correctly appended (3, after the 3 seeded 0/1/2); (4) renaming that custom
+  type to a free code → 200; (5) renaming it again to collide with `GLASS` → 409 "code
+  already in use in this org"; (6) `POST .../reorder` swapping `GLASS`(1) with `DOOR`(0) →
+  swap persisted and reflected in a re-fetch of the list. Also called the real
+  `listComponentTypes(session)` DAL function directly (not just its route) against the
+  post-swap DB state to confirm the org-facing palette function returns the identical
+  order — same code shows in both. Cleaned up afterward: deleted the test
+  `WALLTYPE_TEST2` type, reordered `GLASS`/`DOOR` back to their original 0/1 positions, and
+  deleted the temporary SuperAdminSession row (confirmed via a 401 re-check with the same
+  token) — org `vistra`'s component-type data ends the session identical to how it started.
+  **Note on `npx prisma migrate dev`**: it refused to run non-interactively, reporting an
+  older migration (`20260811192114_add_company_country_currency`) as "modified after it was
+  applied" and demanding a full dev-DB reset — almost certainly a CRLF checksum mismatch on
+  this Windows checkout (git warned about CRLF-normalizing the very files I just wrote), not
+  a real drift (`prisma migrate status` reports "up to date"). Did **not** reset the shared
+  dev DB. Instead hand-authored the migration folder (matching every prior migration's
+  style) and applied it with `npx prisma migrate deploy`, which applies pending migrations
+  without the strict dev-workflow checksum diff — confirmed clean via `migrate status`
+  afterward and via the Vercel build log picking it up as already-applied. Flagging for
+  whoever hits this next: `migrate dev` may not work as advertised on this Windows checkout
+  against the shared dev branch; `migrate deploy` + hand-written SQL is the working fallback.
+  Status: **DONE**.
+
+---
+
+## reviewer — Batch 7 (`feature/componenttype-code-sortorder`, `eb8c859`) — 2026-09-12
+
+**Verdict: APPROVE-WITH-NITS.** 0 CRITICAL / 0 IMPORTANT / 4 MINOR. Lint + `tsc --noEmit` clean
+locally; flagged deviation (reserved-code guard on the org-facing DAL path too) reviewed and
+approved as a no-op safety net — no client PATCHes that route today. Migration backfill, swap
+edge cases, tenancy/RBAC, `orderBy` coverage across all three `findMany` sites, and the
+`by-page.sql` reconciliation all verified clean. Findings: `.engineering/stage-20/review-batch7.md`.
