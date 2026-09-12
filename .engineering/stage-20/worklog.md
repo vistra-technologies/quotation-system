@@ -233,3 +233,15 @@
   app (only a historical comment). Spot-checked `regression-checklist.md` #22 — reads sensibly,
   untouched. Details: `item-B6.md`. Status: DONE. **Stage 20 implement phase complete pending
   orchestrator merge of this batch.**
+- **2026-09-12 — tester — engineering:test pass 1** @ `staging` `2dde49e` (= `test.easeetool.com`) —
+  **PASS**: 0 CRITICAL / 0 IMPORTANT / 3 MINOR. tsc + lint clean; health 200/connected; full
+  `catalog-field-values.spec.ts` (9/9) + `configurator-gating.spec.ts` (16/16) green live; migration
+  backfill + tenancy verified directly against the dev Neon branch (0 leaked `options`, 0 cross-org
+  `ComponentTypeOrgConfig` rows); multi-hop Category→GlassType→Thickness chain manually verified on the
+  real `cloisons` demo org (Catalog editor + Configurator cascading both correct); all 5 bug-sweep items
+  (B1–B5) manually confirmed fixed. Pre-existing Stage-19 `step-gating: fresh project` flake re-confirmed
+  present and unrelated to Stage 20. MINORs: SuperAdmin-authenticated Tier-1 tests skipped (no
+  `TEST_SA_USERNAME`/`PASSWORD` this session, credential-reset workaround correctly blocked by sandbox);
+  one throwaway Selection ("Test Door 1") left on `cloisons`/"Building 2" with no delete route available
+  to remove it; large-scale E2E debris accumulation flagged for a future cleanup pass. Full detail:
+  `bugs-1.md`.
