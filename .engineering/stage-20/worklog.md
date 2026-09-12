@@ -329,3 +329,57 @@
   merged to `release/stage-20`/`staging`, `test.easeetool.com` should not have this problem (its
   `BETTER_AUTH_URL` already matches its own host) — recommend the reviewer or `engineering:test`
   pass re-run the plan's checklist there.
+- **2026-09-12 — reviewer — `SelectField` custom-listbox rewrite** @ `feature/custom-select-listbox`
+  `12de5f2` — verdict **CHANGES-NEEDED**: 1 CRITICAL / 1 IMPORTANT / 5 MINOR. `tsc`/`lint` re-verified
+  clean; new pure-logic spec 5/5 and wireframe-rule-compliant; the plan's riskiest bet (native
+  `required` through an `sr-only` select) **empirically settled as working** via a standalone static
+  HTML + Chromium probe (no app/server/DB involved). CRITICAL is a path the developer's isolation
+  trace could not have surfaced. Details: `.engineering/stage-20/review-selectfield.md`.
+- **2026-09-12 — developer — `SelectField` fix round** @ `feature/custom-select-listbox` `84dcd49`.
+  Addressed the review (`review-selectfield.md`):
+  - **CRITICAL fixed**: hidden `<select>`'s `onChange={() => {}}` → `onChange={(e) =>
+    handleSelect(e.target.value)}`. It was write-only (React's controlled-input restore snapped
+    any externally-set DOM value back), breaking Playwright `selectOption()`/autofill/AT writes.
+  - **IMPORTANT fixed**: popup gets `max-h-64 overflow-y-auto`; a new `useEffect` scrolls the
+    active option into view on keyboard nav (`scrollIntoView({block:"nearest"})`).
+  - **MINOR #1 fixed** (all ~9 call sites, not just 1): split `STANDARD_TRIGGER_CLS` into a new
+    `TRIGGER_LAYOUT_CLS` ("flex w-full items-center justify-between gap-2") that's always present
+    on the trigger's `className`, plus the cosmetic default/override — exactly the reviewer's
+    suggested one-liner. Chevron/label now stay right-aligned regardless of a caller's override.
+  - **MINOR fixed** (wrapper swallows layout): container div is `relative w-full` instead of bare
+    `relative`; `floor-bar.tsx` moves `min-w-0 flex-1` off `SelectField`'s `className` onto a new
+    wrapping `<div>` (that sizing must apply to the actual flex item in the bar's row, not the
+    nested trigger button).
+  - **MINOR fixed** (popup stays open on Tab-away): added an `onBlur` handler on the container
+    that closes the popup unless focus moved to something still inside it.
+  - **MINOR fixed** (aria-hidden-but-focusable): hidden select's new `onInvalid` handler focuses
+    `triggerRef` so native validation failure visibly lands somewhere.
+  - **MINOR deferred** (htmlFor → invisible select): left open per the reviewer's own hedge —
+    moving `id` to the trigger button touches `getByLabel()` associations in several existing E2E
+    specs and warrants a dedicated pass, not a quick edit alongside this round.
+  `npm run lint` / `npx tsc --noEmit`: clean. `select-field-options.spec.ts`: 5/5.
+  **Regression-spec verification**: pushed and polled the branch's new preview
+  (`quotation-system-oj3oal31r-...`, `READY`, health 200/connected). Tried the reviewer-named
+  specs (`stage13.spec.ts`) directly first — **confirmed they do NOT work around the documented
+  `AGENTS.md` cross-subdomain-cookie bug** (same `signIn()` helper, same failure: sign-in 200,
+  every post-login nav bounces back to `/login`; reproduced live, not assumed). Rather than
+  stopping there, worked around the *infra* bug myself (not the app bug) for verification
+  purposes only: signed in via a direct `POST /api/auth/sign-in/email` call and re-injected the
+  returned session cookie as a host-only cookie scoped to the preview's actual hostname (bypassing
+  the broken `Domain=.easeetool.com` attribute), via a throwaway, never-committed Playwright
+  script. With a working session, drove the **exact mechanism the CRITICAL finding was about** —
+  `page.locator("select[name=...]").selectOption(...)` on `external-companies/new`'s `type`/
+  `country`/`defaultCurrency` fields (the same call shape as the 20 flagged regression-spec
+  lines) — and confirmed live: the visible trigger buttons update immediately
+  ("Architectural Firm" / "UAE" / "USD — US Dollar", screenshotted), the form submits, and the
+  created record persists with those exact values. Also confirmed the popup's `max-h`/scroll fix
+  live (bounding-box height ≤ 260px on a real options list). Cleaned up the one throwaway
+  ExternalCompany record this created on the shared dev Neon branch afterward (confirmed removed
+  via the same delete flow `stage13.spec.ts` uses) — no other shared state touched. Deleted all
+  throwaway spec files before finishing; nothing added to the committed test suite beyond the
+  original `select-field-options.spec.ts`.
+  Status: **DONE**. The infra cookie bug remains open and unrelated to this change (per AGENTS.md,
+  needs a dedicated per-request `crossSubDomainCookies` fix); recommend `engineering:test` run the
+  actual named specs (`stage6`/`stage13`/`stage14`/`stage15-f-constraints`/`admin-stage4`) once
+  merged to `release/stage-20`/`staging`, where `test.easeetool.com`'s `BETTER_AUTH_URL` matches
+  its own host and this workaround shouldn't be needed.
