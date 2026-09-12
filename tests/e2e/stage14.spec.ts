@@ -46,7 +46,7 @@ async function selectCompany(
   page: import("@playwright/test").Page,
   companyName: string,
 ): Promise<void> {
-  const trigger = page.locator('button[aria-haspopup="listbox"]');
+  const trigger = page.locator("#externalCompanyId");
   await expect(trigger).toBeVisible({ timeout: 10_000 });
   await trigger.click();
   const option = page.locator('[role="option"]').filter({ hasText: companyName }).first();
@@ -90,7 +90,7 @@ test("hydration: inquiry create form mounts without i18n errors", async ({ page 
   await expect(page.locator("input[name='name']")).toBeVisible({ timeout: 10_000 });
   await expect(page.locator("select[name='currency']")).toBeVisible({ timeout: 5_000 });
   await expect(page.locator("input[name='endClientGstNumber']")).toBeVisible({ timeout: 5_000 });
-  await expect(page.locator('button[aria-haspopup="listbox"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[aria-controls="currency-listbox"]')).toBeVisible({ timeout: 5_000 });
   await page.waitForTimeout(2_000);
 
   const intlErrors = errors.filter((e) => /intl|MISSING|translation|hydrat/i.test(e));
@@ -108,7 +108,7 @@ test("hydration: project create form mounts without i18n errors", async ({ page 
   await expect(page.locator("input[name='name']")).toBeVisible({ timeout: 10_000 });
   await expect(page.locator("select[name='currency']")).toBeVisible({ timeout: 5_000 });
   await expect(page.locator("input[name='endClientGstNumber']")).toBeVisible({ timeout: 5_000 });
-  await expect(page.locator('button[aria-haspopup="listbox"]')).toBeVisible({ timeout: 5_000 });
+  await expect(page.locator('[aria-controls="currency-listbox"]')).toBeVisible({ timeout: 5_000 });
   await page.waitForTimeout(2_000);
 
   const intlErrors = errors.filter((e) => /intl|MISSING|translation|hydrat/i.test(e));
