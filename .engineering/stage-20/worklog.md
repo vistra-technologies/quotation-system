@@ -245,3 +245,40 @@
   one throwaway Selection ("Test Door 1") left on `cloisons`/"Building 2" with no delete route available
   to remove it; large-scale E2E debris accumulation flagged for a future cleanup pass. Full detail:
   `bugs-1.md`.
+- **2026-09-12 — developer — plan for `SelectField` custom-listbox rewrite**
+  @ `feature/custom-select-listbox` (planning only, no code yet). Read
+  `components/select-field.tsx` and `components/list-page-controls.tsx` (reference pattern),
+  plus `components/company-dropdown.tsx` (existing prior art for the same "hidden form-carrier
+  + styled popover" shape). Surveyed all 15 `SelectField` call sites via grep — about a third
+  are genuinely uncontrolled (`defaultValue`/no `onChange`) relying on native form submission,
+  which is why the plan keeps a real, visually-hidden `<select>` in sync (native `required`
+  validation + `formData.get(name)` keep working untouched) alongside the new styled
+  trigger+listbox, and keeps `children` as raw `<option>` elements (parsed internally) rather
+  than asking every call site to switch to an `options` array. Full plan incl. decisions
+  flagged for GATE A and the call-site table: `.engineering/stage-20/plan-selectfield.md`.
+  Status: DONE (plan only — implementation not started).
+- **2026-09-12 — developer — `SelectField` custom-listbox implementation**
+  @ `feature/custom-select-listbox`. Rewrote `components/select-field.tsx` in place exactly per
+  `plan-selectfield.md`: hidden native `<select>` (visually hidden via Tailwind's `sr-only`, not
+  `display:none` — stays a real, validatable, `formData`-visible form control) kept in sync with a
+  new styled `role="combobox"` trigger button + `role="listbox"` popup (visuals/interaction copied
+  verbatim from `list-page-controls.tsx`'s date-range filter and `company-dropdown.tsx`'s
+  click-outside pattern); hybrid controlled/uncontrolled value handling (`isControlled = value
+  !== undefined`, else internal `useState` seeded from `defaultValue`/first non-disabled option);
+  keyboard nav (ArrowUp/ArrowDown/Enter/Space/Escape via `aria-activedescendant` + `activeIndex`);
+  new exported `getOptionsFromChildren` helper (`React.Children.forEach` + `isValidElement`,
+  skips non-`<option>` children defensively). Re-ran `grep -rn "SelectField"` post-rewrite: still
+  exactly 14 call sites + the component itself (15 total, matching the plan's survey) — no call
+  site needed edits. One live deviation from the sketch: added `role="combobox"` +
+  `aria-controls` on the trigger (not in the original sketch) because plain `role="button"` +
+  `aria-activedescendant` fails `jsx-a11y/role-supports-aria-props` — combobox is the correct ARIA
+  role for this exact widget shape and doesn't change any call site or visual behavior. No test
+  convention existed for component-level unit tests, but Batch 4's `configurator-gating.spec.ts`
+  set a same-stage precedent (pure `test()`/`expect()` blocks needing neither `page` nor
+  `request`, run locally with a non-localhost `PLAYWRIGHT_BASE_URL` to skip the config's
+  local-dev `webServer` auto-start) — followed it: new
+  `tests/e2e/select-field-options.spec.ts`, 5 pure-logic tests for `getOptionsFromChildren`
+  (plain list, disabled/title passthrough, missing-value defaults to `""` not `"undefined"`,
+  non-`<option>` children skipped, empty/undefined children). `npm run lint` and
+  `npx tsc --noEmit` both clean (0 errors; only pre-existing unrelated test-file warnings).
+  Pushed; verification against the branch's own Vercel preview covered separately below.
