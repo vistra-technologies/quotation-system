@@ -282,3 +282,50 @@
   non-`<option>` children skipped, empty/undefined children). `npm run lint` and
   `npx tsc --noEmit` both clean (0 errors; only pre-existing unrelated test-file warnings).
   Pushed; verification against the branch's own Vercel preview covered separately below.
+- **2026-09-12 — developer — preview verification for `SelectField` rewrite** @
+  `feature/custom-select-listbox` `12de5f2`. Polled the branch's own ad-hoc Vercel preview
+  (`quotation-system-i26mio4he-...vercel.app`, `dpl_HBFUvbfukcy73MriWLyCJcSm4JtN`) via `vercel ls`/
+  `vercel inspect` (no Vercel MCP tool available this session — used the authenticated `vercel`
+  CLI instead, read-only inspection/logs only, no deploy). `READY` in ~2 min; build log's route
+  list confirms every affected route present and compiled (`external-companies/new`,
+  `projects/new`, `[projectId]/configuration`, `[projectId]/design`, `admin/users/new`,
+  `controls/component-types`, etc.) — not a stale/partial build. `/api/health` → 200
+  `{"database":"connected"}`.
+  **Browser/keyboard verification blocked by the pre-existing, already-documented
+  `AGENTS.md` cross-subdomain-cookie bug**, not by this change: signing in on this ad-hoc preview
+  returns a 200 sign-in response but the session cookie's `Domain` doesn't match the preview's
+  `*.vercel.app` host (Preview env's shared `BETTER_AUTH_URL` contains `easeetool.com`), so every
+  post-login navigation bounces back to `/login` — reproduced exactly per `AGENTS.md`'s own
+  described symptom (confirmed via a throwaway, unpushed `signIn()`-based Playwright script,
+  deleted afterward — never committed). This is the same recurring infra issue logged in Stage 2/
+  10/13/15's rounds; not something to re-fix here (out of this task's scope; the real fix needs a
+  per-request dynamic-baseURL change to `lib/auth.ts`, per `AGENTS.md`'s own next-steps note).
+  **What I verified instead**, given that constraint:
+  - `npm run lint` / `npx tsc --noEmit`: clean.
+  - `tests/e2e/select-field-options.spec.ts`: 5/5 passing (pure `getOptionsFromChildren` logic).
+  - Build log route list + `/api/health`: confirms a complete, non-stale deployment.
+  - Code-level trace of every checklist item against the new source (not a substitute for a live
+    click, called out explicitly, not silently assumed): required+uncontrolled
+    (`create-external-company-form.tsx`'s `type`/`country`/`defaultCurrency`, no `defaultValue`) —
+    internal state seeds to the first non-disabled option exactly like a bare native `<select>`
+    does, so `required` was already never user-visibly tripped pre-rewrite either (no regression);
+    required+controlled (`create-project-form.tsx`'s `currency`, `value`+`onChange`, `placeholder`
+    set but `selectedCurrency` state never empty) — same conclusion; keyboard handlers
+    (ArrowUp/Down/Enter/Space/Escape) reviewed against the `activeIndex`/`openAt`/`moveActive`
+    logic — Escape restores focus to the trigger without calling `handleSelect`; `disabled` is
+    plumbed to both the hidden `<select>` and the trigger `<button disabled>` (with
+    `disabled:opacity-50 disabled:cursor-not-allowed` in `STANDARD_TRIGGER_CLS`) but **no current
+    call site actually passes `disabled`** to `SelectField` (confirmed via the same grep sweep),
+    so there is no live page to click-test this on regardless of the cookie bug — reviewed in code
+    only. One real visual risk flagged, not verified live: `create-project-form.tsx`'s
+    `selectCls` override (used for the `currency` field) has no `flex`/`justify-between`, so the
+    label+chevron may not lay out identically to the old plain `<select>` — cosmetic only, and per
+    CLAUDE.md §5 (wireframe-stage, manual/visual not automated) this is exactly the kind of thing
+    that needs a human or a working authenticated preview to eyeball, not a regression I can
+    confirm or rule out from code alone.
+  Status: **DONE_WITH_CONCERNS** — implementation, static checks, and the one behavior-level unit
+  test are solid and verified; full authenticated browser click-through (the plan's Verification
+  section) could not be completed on this ad-hoc preview due to the pre-existing cookie bug. Once
+  merged to `release/stage-20`/`staging`, `test.easeetool.com` should not have this problem (its
+  `BETTER_AUTH_URL` already matches its own host) — recommend the reviewer or `engineering:test`
+  pass re-run the plan's checklist there.
