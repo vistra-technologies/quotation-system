@@ -35,8 +35,15 @@ import React, { useEffect, useId, useRef, useState } from "react";
  * compact UI control, or field-editor rows that use a smaller inputBase).
  */
 
+// Structural layout classes the trigger always needs (flex row, label + chevron
+// justified apart) — kept separate from the cosmetic default so a caller's
+// `className` override replaces only the look, never the layout (review finding:
+// an override used to drop `flex items-center justify-between gap-2` entirely,
+// misaligning the chevron at ~9 call sites).
+const TRIGGER_LAYOUT_CLS = "flex w-full items-center justify-between gap-2";
+
 const STANDARD_TRIGGER_CLS =
-  "flex w-full items-center justify-between gap-2 rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)] disabled:cursor-not-allowed disabled:opacity-50";
+  "rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:border-primary focus:outline-none focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)] disabled:cursor-not-allowed disabled:opacity-50";
 
 interface SelectFieldOption {
   value: string;
@@ -132,6 +139,23 @@ export function SelectField({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  // Close on Tab-away — a native <select> closes its popup on blur; without this
+  // the custom listbox stays open, floating over whatever field comes next.
+  const handleBlur = (e: React.FocusEvent<HTMLDivElement>) => {
+    if (!containerRef.current?.contains(e.relatedTarget as Node)) {
+      setOpen(false);
+    }
+  };
+
+  // Keep the highlighted option scrolled into view during keyboard nav — the
+  // popup now scrolls (max-h + overflow-y-auto) instead of growing unbounded.
+  useEffect(() => {
+    if (!open || activeIndex === null) return;
+    document
+      .getElementById(`${resolvedId}-option-${activeIndex}`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [open, activeIndex, resolvedId]);
+
   const handleSelect = (v: string) => {
     if (!isControlled) setInternalValue(v);
     onChange?.({ target: { value: v } } as unknown as React.ChangeEvent<HTMLSelectElement>);
@@ -196,14 +220,15 @@ export function SelectField({
   const triggerLabel = selectedOption?.label ?? placeholder ?? "";
 
   return (
-    <div ref={containerRef} className="relative">
+    <div ref={containerRef} className="relative w-full" onBlur={handleBlur}>
       {/* Real, visually-hidden select — drives native form participation
           (required validation, formData.get(name) on submit) unchanged. */}
       <select
         id={resolvedId}
         name={name}
         value={currentValue}
-        onChange={() => {}}
+        onChange={(e) => handleSelect(e.target.value)}
+        onInvalid={() => triggerRef.current?.focus()}
         disabled={disabled}
         required={required}
         tabIndex={-1}
@@ -232,7 +257,7 @@ export function SelectField({
         title={title}
         onClick={() => (open ? setOpen(false) : openAt(null))}
         onKeyDown={handleTriggerKeyDown}
-        className={className ?? STANDARD_TRIGGER_CLS}
+        className={[TRIGGER_LAYOUT_CLS, className ?? STANDARD_TRIGGER_CLS].join(" ")}
       >
         <span className="truncate">{triggerLabel}</span>
         <svg
@@ -255,7 +280,7 @@ export function SelectField({
         <div
           id={`${resolvedId}-listbox`}
           role="listbox"
-          className="absolute left-0 top-[calc(100%+6px)] z-20 min-w-[160px] rounded-md border border-border bg-bg-white p-[7px] shadow-[0_16px_34px_-12px_rgba(27,40,30,0.28)]"
+          className="absolute left-0 top-[calc(100%+6px)] z-20 max-h-64 min-w-[160px] overflow-y-auto rounded-md border border-border bg-bg-white p-[7px] shadow-[0_16px_34px_-12px_rgba(27,40,30,0.28)]"
         >
           {options.map((opt, i) => (
             <button
