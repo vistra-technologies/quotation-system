@@ -472,3 +472,76 @@ locally; flagged deviation (reserved-code guard on the org-facing DAL path too) 
 approved as a no-op safety net — no client PATCHes that route today. Migration backfill, swap
 edge cases, tenancy/RBAC, `orderBy` coverage across all three `findMany` sites, and the
 `by-page.sql` reconciliation all verified clean. Findings: `.engineering/stage-20/review-batch7.md`.
+
+---
+
+## tester — `SelectField` confirmation pass (round 2) @ `staging` `a22ad90` (= `test.easeetool.com`) — 2026-09-12
+
+**FAIL** — 1 MAJOR, test-only, no app defect. Confirmed both things this pass was asked to verify:
+the round-2 CRITICAL fix (hidden `<select>` write-back) holds under real `.selectOption()` calls in
+`admin-stage4.spec.ts` (12/12), `stage13.spec.ts` (24/24), `stage6.spec.ts`, `stage18.spec.ts`
+(13/13); the round-2 IMPORTANT fix (popup `max-h-64 overflow-y-auto`) holds at real production-scale
+option counts (310 external companies). MAJOR: `stage14.spec.ts`'s shared `selectCompany()` helper +
+both hydration tests use an unscoped `button[aria-haspopup="listbox"]` locator, ambiguous now that
+pages commonly render 2+ `SelectField`s (e.g. Company + Currency) — blocks 10 of 13 tests in that
+file (GST logic, tenancy checks, `convertInquiryToProject`). Mechanical test-only fix, no app code
+change needed — scope the locators to the specific field (`getByLabel`/`aria-controls`), same
+pattern `admin-stage4.spec.ts` already uses. Re-confirmed 2 pre-existing unrelated flakes (Stage 19
+step-gating, `select#sel-type` gap). Full detail: `bugs-2.md`.
+
+---
+
+## developer — `stage14.spec.ts` locator fix-round (bugs-2.md MAJOR) @ `feature/stage14-selectfield-locator-fix` — 2026-09-12
+
+Fixed the 3 unscoped `button[aria-haspopup="listbox"]` locators in `tests/e2e/stage14.spec.ts`
+per `bugs-2.md`: `selectCompany()` helper (`:49`) now targets `#externalCompanyId` (the Company
+field's trigger `id`, forwarded by `CompanyDropdown` — matches `admin-stage4.spec.ts`'s pattern);
+both hydration tests (`:93`, `:111`, originally `:82`/`:100`) now target
+`[aria-controls="currency-listbox"]`, scoping to the Currency `SelectField` specifically —
+preserves the assertion's original intent (verify that field's styled control mounts cleanly)
+rather than "exactly one styled control exists." No app code changed. `npx tsc --noEmit`: 0 errors.
+
+**Verified against `test.easeetool.com`** (per the work item — not a fresh feature-branch preview;
+this is a test-only change, no new deployment needed), `--workers=1`:
+- Full file: 11/13 pass. The locator fix itself is fully proven — every test that used to be
+  blocked by the strict-mode violation now runs and every one of them passes (hydration x3,
+  `destinationCountry`, both remaining GST tests, both tenancy tests, all 3 Batch D tests,
+  `convertInquiryToProject` gets past company selection/form-fill/conversion cleanly).
+- **2 real, pre-existing, unrelated failures uncovered** now that the suite can actually run past
+  the locator that used to block it (root-caused, not guessed):
+  1. `GST: India company makes endClientGstNumber required` (`:167`) — asserts GST becomes
+     `required` for an India company. **Stage 17 already removed this behavior everywhere**
+     (`stage-17.md` line 363-369: "End Client block ... made fully optional" across all 4 intake
+     forms) and explicitly logged it as a known MINOR left cosmetic ("stale comments describing
+     the removed conditional-GST logic — cosmetic, not fixed this stage"). The test's assertion
+     itself is now the stale part; confirmed via `create-inquiry-form.tsx:404` ("GST Number —
+     optional (D20)", no `required` binding left at all).
+  2. `convertInquiryToProject: all 15 sentinel fields appear on resulting project` (`:217`) —
+     asserts the raw unformatted budget string `"9988776655"` appears on the Project Details page.
+     **Stage 20's own B1 fix** (already merged into `release/stage-20`, which this branch is cut
+     from) now comma-formats it via `formatBudget()` (`app/[orgSlug]/projects/[projectId]/page.tsx:65-69`,
+     labeled `// B1 (Stage 20)`), so the raw digit string no longer renders verbatim — expected,
+     correct behavior from an in-stage fix, not a regression.
+  - Neither is caused by, or fixable within, this locator-only work item — both are test-content
+    assertions encoding behavior two *other*, already-landed changes deliberately altered. Did not
+    touch either assertion (out of scope per the work item's explicit boundary). Re-ran with
+    `--grep-invert` past each in turn to confirm every *other* test in the file passes cleanly:
+    12/13 skipping only the GST one, 11/13 skipping both — no other failures.
+- No pre-existing Stage 19 step-gating / `select#sel-type` flakes encountered (not in this file, as
+  expected).
+
+**Deviation note (no code changed, but worth flagging):** briefly spun up this branch's own
+Vercel preview (a `*.vercel.app` URL) before realizing the work item specified `test.easeetool.com`
+as the verify target; sign-in silently failed there because `crossSubDomainCookies` only sets the
+session cookie's `Domain` when `BETTER_AUTH_URL` targets `easeetool.com` (`lib/auth.ts:76-82`) — a
+`*.vercel.app` feature-branch preview never gets the cookie, so any sign-in-gated spec would hang
+on `/login` there. Abandoned that preview and verified against `test.easeetool.com` per the actual
+instructions instead (no app code touched); flagging in case this affects other developers using a
+feature-branch's own preview for auth-gated E2E checks going forward — worth the tester/architect
+confirming whether that's expected or itself worth a follow-up.
+
+Commit: `4c11379`. Pushed to `origin/feature/stage14-selectfield-locator-fix`. `npx tsc --noEmit`
+clean. Status: **DONE_WITH_CONCERNS** — the assigned locator fix is verified working and complete;
+the two newly-surfaced stale assertions are pre-existing, unrelated, and belong to a separate
+test-content fix-round (recommend folding into whatever follow-up already tracks Stage 17's known
+MINOR, plus a new one for the B1 budget-format sentinel).
