@@ -111,6 +111,9 @@ export async function updateSuperAdminComponentType(formData: FormData): Promise
   if (!orgId) throw new Error("orgId is required");
   if (!typeId) throw new Error("typeId is required");
 
+  // `code` is absent from FormData when the form disabled the input (reserved codes,
+  // Stage 20 Batch 7) — omit it from the patch entirely rather than sending an empty string.
+  const code = (formData.get("code") as string | null)?.trim().toUpperCase() || undefined;
   const name = (formData.get("name") as string | null)?.trim();
   const categoryId = ((formData.get("categoryId") as string | null) ?? "").trim();
   const fieldsSchema = parseFieldsSchema(formData.get("fieldsSchema") as string | null);
@@ -123,7 +126,7 @@ export async function updateSuperAdminComponentType(formData: FormData): Promise
     `/api/v1/superadmin/component-types/${encodeURIComponent(typeId)}`,
     {
       method: "PATCH",
-      body: JSON.stringify({ orgId, name, categoryId, fieldsSchema, active }),
+      body: JSON.stringify({ orgId, ...(code ? { code } : {}), name, categoryId, fieldsSchema, active }),
     },
   );
 

@@ -5,6 +5,7 @@ import {
   apiForbidden,
   apiNotFound,
   apiBadRequest,
+  apiConflict,
   apiServerError,
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
@@ -13,6 +14,7 @@ import {
   updateComponentType,
 } from "@/lib/data/components";
 import type { FieldEntry } from "@/lib/data/components";
+import { ReservedComponentTypeCodeError } from "@/lib/component-catalog-seed";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -157,6 +159,9 @@ export async function PATCH(
     const componentType = await updateComponentType(session, typeId, patch);
     return NextResponse.json({ componentType });
   } catch (err) {
+    if (err instanceof ReservedComponentTypeCodeError) {
+      return apiBadRequest(err.message);
+    }
     if (err instanceof Error) {
       if (
         err.message.includes("not found") ||
@@ -164,6 +169,15 @@ export async function PATCH(
       ) {
         return apiNotFound(err.message);
       }
+    }
+    // P2002 = unique constraint violation on @@unique([organizationId, code]).
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as { code: string }).code === "P2002"
+    ) {
+      return apiConflict("code already in use in this org");
     }
     console.error(
       "[PATCH /api/v1/orgs/[orgSlug]/component-types/[typeId]] updateComponentType",

@@ -15,6 +15,7 @@ import {
 } from "@/lib/data/superadmin/component-types";
 import { getOrgById } from "@/lib/data/superadmin/orgs";
 import { validateFieldsSchema } from "@/lib/validate-fields-schema";
+import { ReservedComponentTypeCodeError } from "@/lib/component-catalog-seed";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // Never cached.
@@ -139,8 +140,20 @@ export async function PATCH(
   try {
     componentType = await updateComponentTypeForOrg(orgId, typeId, patch);
   } catch (err) {
+    if (err instanceof ReservedComponentTypeCodeError) {
+      return apiBadRequest(err.message);
+    }
     if (err instanceof Error && err.message.includes("Category not found")) {
       return apiBadRequest(err.message);
+    }
+    // P2002 = unique constraint violation on @@unique([organizationId, code]).
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as { code: string }).code === "P2002"
+    ) {
+      return apiConflict("code already in use in this org");
     }
     console.error("[PATCH /api/v1/superadmin/component-types/[typeId]] updateComponentTypeForOrg", err);
     return apiServerError();

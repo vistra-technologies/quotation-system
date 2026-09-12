@@ -287,9 +287,11 @@ async function main() {
       COMPONENT_TYPE_ORG_CONFIG_DEFS.map((c) => [c.code, c.fieldOptionsConfig]),
     );
 
-    for (const def of COMPONENT_TYPE_DEFS) {
+    for (const [sortOrder, def] of COMPONENT_TYPE_DEFS.entries()) {
       // Upsert by organizationId + code so re-running the seed updates existing rows
       // (consistent with the upsert pattern used for all other seeded entities).
+      // sortOrder is create-only (like fieldOptionsConfig below) — re-running the seed must
+      // never clobber an org admin's manual reordering via the SuperAdmin console.
       const ct = await prisma.componentType.upsert({
         where: {
           organizationId_code: { organizationId: org.id, code: def.code },
@@ -306,6 +308,7 @@ async function main() {
           categoryId: glassPartitions.id,
           fieldsSchema: def.fieldsSchema,
           active: true,
+          sortOrder,
         },
         select: { id: true, code: true },
       });

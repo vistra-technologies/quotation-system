@@ -22,6 +22,15 @@
 export const SEEDED_CATALOG_CATEGORY_NAME = "Glass Partitions";
 
 /**
+ * Thrown by both DAL update paths (lib/data/superadmin/component-types.ts and
+ * lib/data/components.ts) when a `code` patch would rename one of the 3 seeded
+ * codes below. Routes catch this and map it to a 400.
+ *
+ * Stage 20 Batch 7.
+ */
+export class ReservedComponentTypeCodeError extends Error {}
+
+/**
  * Starter ComponentType field-schema definitions for every newly-created org.
  *
  * Stage 20: fieldsSchema carries shape ONLY — no options values.
@@ -189,6 +198,19 @@ export const COMPONENT_TYPE_DEFS: {
     ],
   },
 ];
+
+/**
+ * The 3 seeded codes above, derived (not hand-duplicated) for both DAL update paths to
+ * check `code` patches against. These stay locked because two display-only lookups are
+ * hard-coded to these specific literals (`saved-components-rail.tsx`'s design-canvas
+ * grouping, `component-icons.tsx`'s icon lookup) and org-creation seed-matching keys off
+ * them — see design-docs/04-data-model.md's Stage 20 addendum.
+ *
+ * Stage 20 Batch 7.
+ */
+export const RESERVED_COMPONENT_TYPE_CODES: ReadonlySet<string> = new Set(
+  COMPONENT_TYPE_DEFS.map((d) => d.code),
+);
 
 /**
  * Starter option values per ComponentType code.

@@ -197,7 +197,7 @@ export async function createOrganizationWithDefaults(
         COMPONENT_TYPE_ORG_CONFIG_DEFS.map((c) => [c.code, c.fieldOptionsConfig]),
       );
 
-      for (const def of COMPONENT_TYPE_DEFS) {
+      for (const [sortOrder, def] of COMPONENT_TYPE_DEFS.entries()) {
         const ct = await tx.componentType.create({
           data: {
             organizationId: newOrg.id,
@@ -206,6 +206,9 @@ export async function createOrganizationWithDefaults(
             name: def.name,
             fieldsSchema: def.fieldsSchema,
             active: true,
+            // Stage 20 Batch 7: seed in definition order so a fresh org's list/palette
+            // starts in the same order as COMPONENT_TYPE_DEFS.
+            sortOrder,
           },
           select: { id: true, code: true },
         });
