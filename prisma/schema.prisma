@@ -300,12 +300,13 @@ model ComponentType {
   id             String            @id @default(uuid())
   organizationId String
   organization   Organization      @relation(fields: [organizationId], references: [id])
-  code           String            // stable key, admin-defined at creation
+  code           String            // admin-editable (Stage 20); locked for the 3 seeded codes — see RESERVED_COMPONENT_TYPE_CODES
   name           String            // admin-editable display label
   categoryId     String
   category       ComponentCategory @relation(fields: [categoryId], references: [id])
   fieldsSchema   Json              // JSONB field-list editor output
   active         Boolean           @default(true)
+  sortOrder      Int               @default(0) // Stage 20: admin-reorderable; drives SuperAdmin list + org-facing palette order
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   // Stage 6 relations

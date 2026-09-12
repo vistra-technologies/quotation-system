@@ -469,12 +469,20 @@ interface EditComponentFormProps {
   /** Organization ID (SuperAdmin context — explicit, not from session). */
   orgId: string;
   typeId: string;
+  initialCode: string;
+  /** True when initialCode is one of the 3 reserved seeded codes (GLASS/DOOR/PROFILE_STOP) —
+   * locks the code input (Stage 20 Batch 7). Computed by the caller from
+   * RESERVED_COMPONENT_TYPE_CODES so the literals aren't duplicated here. */
+  isCodeLocked: boolean;
   initialName: string;
   initialCategoryId: string;
   initialActive: boolean;
   initialFields: FieldEntry[];
   categories: { id: string; name: string }[];
   labels: {
+    fieldCodeLabel: string;
+    fieldCodeHint: string;
+    fieldCodeLockedHint: string;
     fieldNameLabel: string;
     fieldCategoryLabel: string;
     fieldStatusLabel: string;
@@ -516,6 +524,8 @@ interface EditComponentFormProps {
 export function EditComponentForm({
   orgId,
   typeId,
+  initialCode,
+  isCodeLocked,
   initialName,
   initialCategoryId,
   initialActive,
@@ -593,6 +603,30 @@ export function EditComponentForm({
       <input type="hidden" name="active" value={String(active)} />
       {/* Serialised field list — React keeps this in sync with state */}
       <input type="hidden" name="fieldsSchema" value={JSON.stringify(fields)} />
+
+      {/* Code — locked for the 3 reserved seeded codes (Stage 20 Batch 7) */}
+      <div className="flex flex-col gap-1">
+        <label
+          htmlFor="code"
+          className="text-[10px] font-bold uppercase tracking-wide text-text-muted"
+        >
+          {labels.fieldCodeLabel}
+        </label>
+        <input
+          id="code"
+          name="code"
+          type="text"
+          required
+          defaultValue={initialCode}
+          disabled={isCodeLocked}
+          autoComplete="off"
+          placeholder="e.g. WALL_TYPE"
+          className={inputBase + (isCodeLocked ? " cursor-not-allowed opacity-60" : "")}
+        />
+        <p className="text-xs text-text-placeholder">
+          {isCodeLocked ? labels.fieldCodeLockedHint : labels.fieldCodeHint}
+        </p>
+      </div>
 
       {/* Name */}
       <div className="flex flex-col gap-1">

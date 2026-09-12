@@ -4,6 +4,8 @@ import { OrgPicker } from "../roles/org-picker";
 import { CreateComponentForm } from "./create-component-form";
 import { EditComponentForm } from "./edit-component-form";
 import { DeleteComponentTypeButton } from "./_delete-button";
+import { ReorderButtons } from "./_reorder-buttons";
+import { RESERVED_COMPONENT_TYPE_CODES } from "@/lib/component-catalog-seed";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // Always render live — reads the SuperAdminSession table (via guard layout) and live DB.
@@ -35,6 +37,7 @@ interface ComponentTypeRow {
   categoryId: string;
   category: { id: string; name: string };
   fieldsSchema: FieldEntry[];
+  sortOrder: number;
 }
 
 // ─── Label constants ───────────────────────────────────────────────────────────
@@ -74,6 +77,9 @@ const FORM_LABELS = {
     jsonErrorBadShape: "Invalid schema:",
   },
   edit: {
+    fieldCodeLabel: "Code",
+    fieldCodeHint: "Uppercase letters and underscores, e.g. WALL_TYPE. Saved as-is.",
+    fieldCodeLockedHint: "This is one of the 3 seeded codes and cannot be renamed.",
     fieldNameLabel: "Name",
     fieldCategoryLabel: "Category",
     fieldCategoryPlaceholder: "Select category",
@@ -181,6 +187,10 @@ export default async function ComponentTypesPage({
     ? componentTypes.find((t) => t.id === typeId) ?? null
     : null;
 
+  // Captured as a plain const so the .map() callback below (a nested closure) narrows
+  // cleanly — `componentTypes` itself is a `let`, which TS won't narrow across closures.
+  const componentTypeCount = componentTypes?.length ?? 0;
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -218,6 +228,9 @@ export default async function ComponentTypesPage({
                   <thead>
                     <tr className="border-b border-border">
                       <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
+                        Order
+                      </th>
+                      <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
                         Code
                       </th>
                       <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
@@ -238,13 +251,21 @@ export default async function ComponentTypesPage({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
-                    {componentTypes.map((ct) => {
+                    {componentTypes.map((ct, index) => {
                       const isSelected = ct.id === typeId;
                       return (
                         <tr
                           key={ct.id}
                           className={isSelected ? "bg-primary-softer/30" : "hover:bg-primary-softer/20"}
                         >
+                          <td className="px-5 py-4">
+                            <ReorderButtons
+                              orgId={orgId}
+                              typeId={ct.id}
+                              canMoveUp={index > 0}
+                              canMoveDown={index < componentTypeCount - 1}
+                            />
+                          </td>
                           <td className="px-5 py-4">
                             <span className="rounded-sm bg-bg-subtle px-1.5 py-0.5 font-mono text-xs font-semibold text-text-heading">
                               {ct.code}
@@ -328,6 +349,8 @@ export default async function ComponentTypesPage({
                   key={selectedType.id}
                   orgId={orgId}
                   typeId={selectedType.id}
+                  initialCode={selectedType.code}
+                  isCodeLocked={RESERVED_COMPONENT_TYPE_CODES.has(selectedType.code)}
                   initialName={selectedType.name}
                   initialCategoryId={selectedType.categoryId}
                   initialActive={selectedType.active}

@@ -6,6 +6,10 @@ import type {
   FieldOptionsEntry as _FieldOptionsEntry,
   FieldOptionsConfig as _FieldOptionsConfig,
 } from "@/lib/types/field-options-config";
+import {
+  RESERVED_COMPONENT_TYPE_CODES,
+  ReservedComponentTypeCodeError,
+} from "@/lib/component-catalog-seed";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -125,10 +129,13 @@ export async function listComponentCategories(session: SessionData) {
 }
 
 /**
- * List all ComponentTypes for the session org, A→Z by code, with their org-level field option
- * config (Stage 20 Batch 1 introduced the join, Batch 4 folded it into this function directly —
- * see review-B3 MINOR #3: this used to be a separate `listComponentTypesWithConfig` pair that
- * never got a caller other than the Catalog screen, which now also reads this function's result).
+ * List all ComponentTypes for the session org, in admin-reorderable `sortOrder` order (code
+ * A→Z as the tiebreak — Stage 20 Batch 7 replaces the previous `code`-only sort, decoupling
+ * the "Add Component" palette order from the now-editable `code` string), with their
+ * org-level field option config (Stage 20 Batch 1 introduced the join, Batch 4 folded it into
+ * this function directly — see review-B3 MINOR #3: this used to be a separate
+ * `listComponentTypesWithConfig` pair that never got a caller other than the Catalog screen,
+ * which now also reads this function's result).
  *
  * `fieldOptionsConfig` is null when no ComponentTypeOrgConfig row exists yet for that type (i.e.
  * the org hasn't configured any of its dropdown/radio fields).
@@ -136,7 +143,7 @@ export async function listComponentCategories(session: SessionData) {
 export async function listComponentTypes(session: SessionData) {
   const rows = await prisma.componentType.findMany({
     where: { organizationId: session.organizationId },
-    orderBy: { code: "asc" },
+    orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
     include: { category: true, orgConfig: true },
   });
   return rows.map((r) => {
@@ -190,6 +197,15 @@ async function assertCategoryInOrg(session: SessionData, categoryId: string) {
 /** Create a new ComponentType scoped to the session org. */
 export async function createComponentType(session: SessionData, input: ComponentTypeInput) {
   await assertCategoryInOrg(session, input.categoryId);
+
+  // Stage 20 Batch 7: new rows append to the end of the org's reorderable list rather
+  // than defaulting to sortOrder 0.
+  const maxSortOrder = await prisma.componentType.aggregate({
+    where: { organizationId: session.organizationId },
+    _max: { sortOrder: true },
+  });
+  const sortOrder = (maxSortOrder._max.sortOrder ?? -1) + 1;
+
   return prisma.componentType.create({
     data: {
       organizationId: session.organizationId,
@@ -198,6 +214,7 @@ export async function createComponentType(session: SessionData, input: Component
       categoryId: input.categoryId,
       fieldsSchema: input.fieldsSchema,
       active: input.active ?? true,
+      sortOrder,
     },
   });
 }
@@ -211,12 +228,24 @@ export async function updateComponentType(
   id: string,
   input: Partial<ComponentTypeInput>,
 ) {
-  // Tenancy guard — verify the record belongs to the session's org.
+  // Tenancy guard — verify the record belongs to the session's org. Also fetch `code` so
+  // a code-rename attempt on one of the 3 seeded/reserved codes can be rejected below
+  // (Stage 20 Batch 7).
   const existing = await prisma.componentType.findFirst({
     where: { id, organizationId: session.organizationId },
-    select: { id: true },
+    select: { id: true, code: true },
   });
   if (!existing) throw new Error("ComponentType not found or access denied");
+
+  if (input.code !== undefined) {
+    const normalizedCode = input.code.toUpperCase().trim();
+    if (RESERVED_COMPONENT_TYPE_CODES.has(existing.code) && normalizedCode !== existing.code) {
+      throw new ReservedComponentTypeCodeError(
+        `Cannot change the code of a reserved component type (${existing.code}).`,
+      );
+    }
+  }
+
   if (input.categoryId !== undefined) {
     await assertCategoryInOrg(session, input.categoryId);
   }
