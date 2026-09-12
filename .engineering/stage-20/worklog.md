@@ -383,3 +383,15 @@
   actual named specs (`stage6`/`stage13`/`stage14`/`stage15-f-constraints`/`admin-stage4`) once
   merged to `release/stage-20`/`staging`, where `test.easeetool.com`'s `BETTER_AUTH_URL` matches
   its own host and this workaround shouldn't be needed.
+- **2026-09-12 — reviewer — `SelectField` fix round re-review** @ `feature/custom-select-listbox`
+  `84dcd49` — verdict **APPROVE-WITH-NITS**: 0 CRITICAL / 0 IMPORTANT / 4 MINOR (all optional).
+  CRITICAL closed and traced both directions with no update loop or stale closure; IMPORTANT
+  (`max-h-64`/`overflow-y-auto` + `scrollIntoView`) sound; `TRIGGER_LAYOUT_CLS` fixes the chevron
+  layout structurally at every call site incl. future ones; floor-bar wrapper move correct; Tab-away
+  `onBlur` idiom correct. `tsc`/`lint` clean, spec 5/5, diff confined to 4 files (no stray auth edits
+  from the cookie workaround). The `htmlFor` deferral is correct — moving the id would break the very
+  `getByLabel().selectOption()` path the CRITICAL fix just restored. Nits incl. an empirical finding
+  that the new `onInvalid` trigger-focus is a Chromium no-op (harmless; must not be "fixed" with a
+  deferred focus). Owed at `engineering:test`: run `stage6`/`stage13`/`stage14`/
+  `stage15-f-constraints`/`admin-stage4` on `test.easeetool.com`. Details:
+  `.engineering/stage-20/review-selectfield.md` §Round 2.
