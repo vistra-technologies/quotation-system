@@ -245,3 +245,153 @@
   one throwaway Selection ("Test Door 1") left on `cloisons`/"Building 2" with no delete route available
   to remove it; large-scale E2E debris accumulation flagged for a future cleanup pass. Full detail:
   `bugs-1.md`.
+- **2026-09-12 — developer — plan for `SelectField` custom-listbox rewrite**
+  @ `feature/custom-select-listbox` (planning only, no code yet). Read
+  `components/select-field.tsx` and `components/list-page-controls.tsx` (reference pattern),
+  plus `components/company-dropdown.tsx` (existing prior art for the same "hidden form-carrier
+  + styled popover" shape). Surveyed all 15 `SelectField` call sites via grep — about a third
+  are genuinely uncontrolled (`defaultValue`/no `onChange`) relying on native form submission,
+  which is why the plan keeps a real, visually-hidden `<select>` in sync (native `required`
+  validation + `formData.get(name)` keep working untouched) alongside the new styled
+  trigger+listbox, and keeps `children` as raw `<option>` elements (parsed internally) rather
+  than asking every call site to switch to an `options` array. Full plan incl. decisions
+  flagged for GATE A and the call-site table: `.engineering/stage-20/plan-selectfield.md`.
+  Status: DONE (plan only — implementation not started).
+- **2026-09-12 — developer — `SelectField` custom-listbox implementation**
+  @ `feature/custom-select-listbox`. Rewrote `components/select-field.tsx` in place exactly per
+  `plan-selectfield.md`: hidden native `<select>` (visually hidden via Tailwind's `sr-only`, not
+  `display:none` — stays a real, validatable, `formData`-visible form control) kept in sync with a
+  new styled `role="combobox"` trigger button + `role="listbox"` popup (visuals/interaction copied
+  verbatim from `list-page-controls.tsx`'s date-range filter and `company-dropdown.tsx`'s
+  click-outside pattern); hybrid controlled/uncontrolled value handling (`isControlled = value
+  !== undefined`, else internal `useState` seeded from `defaultValue`/first non-disabled option);
+  keyboard nav (ArrowUp/ArrowDown/Enter/Space/Escape via `aria-activedescendant` + `activeIndex`);
+  new exported `getOptionsFromChildren` helper (`React.Children.forEach` + `isValidElement`,
+  skips non-`<option>` children defensively). Re-ran `grep -rn "SelectField"` post-rewrite: still
+  exactly 14 call sites + the component itself (15 total, matching the plan's survey) — no call
+  site needed edits. One live deviation from the sketch: added `role="combobox"` +
+  `aria-controls` on the trigger (not in the original sketch) because plain `role="button"` +
+  `aria-activedescendant` fails `jsx-a11y/role-supports-aria-props` — combobox is the correct ARIA
+  role for this exact widget shape and doesn't change any call site or visual behavior. No test
+  convention existed for component-level unit tests, but Batch 4's `configurator-gating.spec.ts`
+  set a same-stage precedent (pure `test()`/`expect()` blocks needing neither `page` nor
+  `request`, run locally with a non-localhost `PLAYWRIGHT_BASE_URL` to skip the config's
+  local-dev `webServer` auto-start) — followed it: new
+  `tests/e2e/select-field-options.spec.ts`, 5 pure-logic tests for `getOptionsFromChildren`
+  (plain list, disabled/title passthrough, missing-value defaults to `""` not `"undefined"`,
+  non-`<option>` children skipped, empty/undefined children). `npm run lint` and
+  `npx tsc --noEmit` both clean (0 errors; only pre-existing unrelated test-file warnings).
+  Pushed; verification against the branch's own Vercel preview covered separately below.
+- **2026-09-12 — developer — preview verification for `SelectField` rewrite** @
+  `feature/custom-select-listbox` `12de5f2`. Polled the branch's own ad-hoc Vercel preview
+  (`quotation-system-i26mio4he-...vercel.app`, `dpl_HBFUvbfukcy73MriWLyCJcSm4JtN`) via `vercel ls`/
+  `vercel inspect` (no Vercel MCP tool available this session — used the authenticated `vercel`
+  CLI instead, read-only inspection/logs only, no deploy). `READY` in ~2 min; build log's route
+  list confirms every affected route present and compiled (`external-companies/new`,
+  `projects/new`, `[projectId]/configuration`, `[projectId]/design`, `admin/users/new`,
+  `controls/component-types`, etc.) — not a stale/partial build. `/api/health` → 200
+  `{"database":"connected"}`.
+  **Browser/keyboard verification blocked by the pre-existing, already-documented
+  `AGENTS.md` cross-subdomain-cookie bug**, not by this change: signing in on this ad-hoc preview
+  returns a 200 sign-in response but the session cookie's `Domain` doesn't match the preview's
+  `*.vercel.app` host (Preview env's shared `BETTER_AUTH_URL` contains `easeetool.com`), so every
+  post-login navigation bounces back to `/login` — reproduced exactly per `AGENTS.md`'s own
+  described symptom (confirmed via a throwaway, unpushed `signIn()`-based Playwright script,
+  deleted afterward — never committed). This is the same recurring infra issue logged in Stage 2/
+  10/13/15's rounds; not something to re-fix here (out of this task's scope; the real fix needs a
+  per-request dynamic-baseURL change to `lib/auth.ts`, per `AGENTS.md`'s own next-steps note).
+  **What I verified instead**, given that constraint:
+  - `npm run lint` / `npx tsc --noEmit`: clean.
+  - `tests/e2e/select-field-options.spec.ts`: 5/5 passing (pure `getOptionsFromChildren` logic).
+  - Build log route list + `/api/health`: confirms a complete, non-stale deployment.
+  - Code-level trace of every checklist item against the new source (not a substitute for a live
+    click, called out explicitly, not silently assumed): required+uncontrolled
+    (`create-external-company-form.tsx`'s `type`/`country`/`defaultCurrency`, no `defaultValue`) —
+    internal state seeds to the first non-disabled option exactly like a bare native `<select>`
+    does, so `required` was already never user-visibly tripped pre-rewrite either (no regression);
+    required+controlled (`create-project-form.tsx`'s `currency`, `value`+`onChange`, `placeholder`
+    set but `selectedCurrency` state never empty) — same conclusion; keyboard handlers
+    (ArrowUp/Down/Enter/Space/Escape) reviewed against the `activeIndex`/`openAt`/`moveActive`
+    logic — Escape restores focus to the trigger without calling `handleSelect`; `disabled` is
+    plumbed to both the hidden `<select>` and the trigger `<button disabled>` (with
+    `disabled:opacity-50 disabled:cursor-not-allowed` in `STANDARD_TRIGGER_CLS`) but **no current
+    call site actually passes `disabled`** to `SelectField` (confirmed via the same grep sweep),
+    so there is no live page to click-test this on regardless of the cookie bug — reviewed in code
+    only. One real visual risk flagged, not verified live: `create-project-form.tsx`'s
+    `selectCls` override (used for the `currency` field) has no `flex`/`justify-between`, so the
+    label+chevron may not lay out identically to the old plain `<select>` — cosmetic only, and per
+    CLAUDE.md §5 (wireframe-stage, manual/visual not automated) this is exactly the kind of thing
+    that needs a human or a working authenticated preview to eyeball, not a regression I can
+    confirm or rule out from code alone.
+  Status: **DONE_WITH_CONCERNS** — implementation, static checks, and the one behavior-level unit
+  test are solid and verified; full authenticated browser click-through (the plan's Verification
+  section) could not be completed on this ad-hoc preview due to the pre-existing cookie bug. Once
+  merged to `release/stage-20`/`staging`, `test.easeetool.com` should not have this problem (its
+  `BETTER_AUTH_URL` already matches its own host) — recommend the reviewer or `engineering:test`
+  pass re-run the plan's checklist there.
+- **2026-09-12 — reviewer — `SelectField` custom-listbox rewrite** @ `feature/custom-select-listbox`
+  `12de5f2` — verdict **CHANGES-NEEDED**: 1 CRITICAL / 1 IMPORTANT / 5 MINOR. `tsc`/`lint` re-verified
+  clean; new pure-logic spec 5/5 and wireframe-rule-compliant; the plan's riskiest bet (native
+  `required` through an `sr-only` select) **empirically settled as working** via a standalone static
+  HTML + Chromium probe (no app/server/DB involved). CRITICAL is a path the developer's isolation
+  trace could not have surfaced. Details: `.engineering/stage-20/review-selectfield.md`.
+- **2026-09-12 — developer — `SelectField` fix round** @ `feature/custom-select-listbox` `84dcd49`.
+  Addressed the review (`review-selectfield.md`):
+  - **CRITICAL fixed**: hidden `<select>`'s `onChange={() => {}}` → `onChange={(e) =>
+    handleSelect(e.target.value)}`. It was write-only (React's controlled-input restore snapped
+    any externally-set DOM value back), breaking Playwright `selectOption()`/autofill/AT writes.
+  - **IMPORTANT fixed**: popup gets `max-h-64 overflow-y-auto`; a new `useEffect` scrolls the
+    active option into view on keyboard nav (`scrollIntoView({block:"nearest"})`).
+  - **MINOR #1 fixed** (all ~9 call sites, not just 1): split `STANDARD_TRIGGER_CLS` into a new
+    `TRIGGER_LAYOUT_CLS` ("flex w-full items-center justify-between gap-2") that's always present
+    on the trigger's `className`, plus the cosmetic default/override — exactly the reviewer's
+    suggested one-liner. Chevron/label now stay right-aligned regardless of a caller's override.
+  - **MINOR fixed** (wrapper swallows layout): container div is `relative w-full` instead of bare
+    `relative`; `floor-bar.tsx` moves `min-w-0 flex-1` off `SelectField`'s `className` onto a new
+    wrapping `<div>` (that sizing must apply to the actual flex item in the bar's row, not the
+    nested trigger button).
+  - **MINOR fixed** (popup stays open on Tab-away): added an `onBlur` handler on the container
+    that closes the popup unless focus moved to something still inside it.
+  - **MINOR fixed** (aria-hidden-but-focusable): hidden select's new `onInvalid` handler focuses
+    `triggerRef` so native validation failure visibly lands somewhere.
+  - **MINOR deferred** (htmlFor → invisible select): left open per the reviewer's own hedge —
+    moving `id` to the trigger button touches `getByLabel()` associations in several existing E2E
+    specs and warrants a dedicated pass, not a quick edit alongside this round.
+  `npm run lint` / `npx tsc --noEmit`: clean. `select-field-options.spec.ts`: 5/5.
+  **Regression-spec verification**: pushed and polled the branch's new preview
+  (`quotation-system-oj3oal31r-...`, `READY`, health 200/connected). Tried the reviewer-named
+  specs (`stage13.spec.ts`) directly first — **confirmed they do NOT work around the documented
+  `AGENTS.md` cross-subdomain-cookie bug** (same `signIn()` helper, same failure: sign-in 200,
+  every post-login nav bounces back to `/login`; reproduced live, not assumed). Rather than
+  stopping there, worked around the *infra* bug myself (not the app bug) for verification
+  purposes only: signed in via a direct `POST /api/auth/sign-in/email` call and re-injected the
+  returned session cookie as a host-only cookie scoped to the preview's actual hostname (bypassing
+  the broken `Domain=.easeetool.com` attribute), via a throwaway, never-committed Playwright
+  script. With a working session, drove the **exact mechanism the CRITICAL finding was about** —
+  `page.locator("select[name=...]").selectOption(...)` on `external-companies/new`'s `type`/
+  `country`/`defaultCurrency` fields (the same call shape as the 20 flagged regression-spec
+  lines) — and confirmed live: the visible trigger buttons update immediately
+  ("Architectural Firm" / "UAE" / "USD — US Dollar", screenshotted), the form submits, and the
+  created record persists with those exact values. Also confirmed the popup's `max-h`/scroll fix
+  live (bounding-box height ≤ 260px on a real options list). Cleaned up the one throwaway
+  ExternalCompany record this created on the shared dev Neon branch afterward (confirmed removed
+  via the same delete flow `stage13.spec.ts` uses) — no other shared state touched. Deleted all
+  throwaway spec files before finishing; nothing added to the committed test suite beyond the
+  original `select-field-options.spec.ts`.
+  Status: **DONE**. The infra cookie bug remains open and unrelated to this change (per AGENTS.md,
+  needs a dedicated per-request `crossSubDomainCookies` fix); recommend `engineering:test` run the
+  actual named specs (`stage6`/`stage13`/`stage14`/`stage15-f-constraints`/`admin-stage4`) once
+  merged to `release/stage-20`/`staging`, where `test.easeetool.com`'s `BETTER_AUTH_URL` matches
+  its own host and this workaround shouldn't be needed.
+- **2026-09-12 — reviewer — `SelectField` fix round re-review** @ `feature/custom-select-listbox`
+  `84dcd49` — verdict **APPROVE-WITH-NITS**: 0 CRITICAL / 0 IMPORTANT / 4 MINOR (all optional).
+  CRITICAL closed and traced both directions with no update loop or stale closure; IMPORTANT
+  (`max-h-64`/`overflow-y-auto` + `scrollIntoView`) sound; `TRIGGER_LAYOUT_CLS` fixes the chevron
+  layout structurally at every call site incl. future ones; floor-bar wrapper move correct; Tab-away
+  `onBlur` idiom correct. `tsc`/`lint` clean, spec 5/5, diff confined to 4 files (no stray auth edits
+  from the cookie workaround). The `htmlFor` deferral is correct — moving the id would break the very
+  `getByLabel().selectOption()` path the CRITICAL fix just restored. Nits incl. an empirical finding
+  that the new `onInvalid` trigger-focus is a Chromium no-op (harmless; must not be "fixed" with a
+  deferred focus). Owed at `engineering:test`: run `stage6`/`stage13`/`stage14`/
+  `stage15-f-constraints`/`admin-stage4` on `test.easeetool.com`. Details:
+  `.engineering/stage-20/review-selectfield.md` §Round 2.
