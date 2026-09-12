@@ -2,15 +2,40 @@
 
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
-import { LoadingOverlay } from "@/components/loading-overlay";
-import { createComponentType } from "../actions";
+import { SelectField } from "@/components/select-field";
+import { createSuperAdminComponentType } from "./actions";
+import { validateFieldsSchema, clearDependentsOf } from "@/lib/validate-fields-schema";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // ─── Inner status helpers ─────────────────────────────────────────────────────
 
+/**
+ * Deliberately does NOT use the shared @/components/loading-overlay — that
+ * component calls next-intl's useTranslations() and requires a
+ * NextIntlClientProvider ancestor. The /controls console has no such
+ * provider, so using it here throws on mount and crashes to
+ * app/global-error.tsx (same failure mode as the Stage 16 post-deploy bug,
+ * 2026-09-02 — see app/controls/(authenticated)/roles/permission-toggle-button.tsx
+ * for the original fix this mirrors; Stage 19 test-fix batch 1 fixes the
+ * reintroduction of it here).
+ */
 function PendingOverlay() {
   const { pending } = useFormStatus();
-  return <LoadingOverlay visible={pending} />;
+  if (!pending) return null;
+
+  return (
+    <div
+      role="status"
+      aria-label="Loading"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/50"
+    >
+      <div
+        aria-hidden="true"
+        className="h-10 w-10 animate-spin rounded-full border-4 border-white/20 border-t-white"
+      />
+      <p className="mt-3 text-sm font-medium text-white">Loading…</p>
+    </div>
+  );
 }
 
 function SubmitButton({ label, disabled: extraDisabled }: { label: string; disabled?: boolean }) {
@@ -28,7 +53,7 @@ function SubmitButton({ label, disabled: extraDisabled }: { label: string; disab
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-const FIELD_TYPES: FieldEntry["type"][] = ["field", "radio", "dropdown", "checkbox"];
+const FIELD_TYPES: FieldEntry["type"][] = ["field", "dropdown", "checkbox"];
 
 // ─── Move helper ──────────────────────────────────────────────────────────────
 
@@ -64,77 +89,6 @@ function moveFieldInSection(
   return fields;
 }
 
-// ─── OptionsBuilder ───────────────────────────────────────────────────────────
-
-function OptionsBuilder({
-  options,
-  onChange,
-  addOptionLabel,
-}: {
-  options: string[];
-  onChange: (updated: string[]) => void;
-  addOptionLabel: string;
-}) {
-  const [draft, setDraft] = useState("");
-  const inputBase =
-    "rounded-sm border border-border bg-bg-white px-2 py-1 text-xs text-text-body focus:outline-none focus:ring-2 focus:ring-primary-soft focus:border-primary-soft";
-
-  const addOption = () => {
-    const trimmed = draft.trim();
-    if (trimmed && !options.includes(trimmed)) {
-      onChange([...options, trimmed]);
-    }
-    setDraft("");
-  };
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      {options.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {options.map((opt, oi) => (
-            <span
-              key={oi}
-              className="inline-flex items-center gap-1 rounded-pill bg-primary-softer px-2 py-0.5 text-xs text-primary-dark"
-            >
-              {opt}
-              <button
-                type="button"
-                onClick={() => onChange(options.filter((_, i) => i !== oi))}
-                className="ml-0.5 text-text-muted hover:text-status-failed-text"
-                aria-label={`Remove option ${opt}`}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="flex items-center gap-1">
-        <input
-          type="text"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              addOption();
-            }
-          }}
-          placeholder="Option text…"
-          className={inputBase + " flex-1"}
-        />
-        <button
-          type="button"
-          onClick={addOption}
-          className="rounded-sm border border-border px-2 py-1 text-xs font-bold text-text-body hover:border-primary-soft hover:bg-primary-softer"
-        >
-          {addOptionLabel}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 // ─── FieldRow ─────────────────────────────────────────────────────────────────
 
 function FieldRow({
@@ -142,6 +96,7 @@ function FieldRow({
   sectionPos,
   sectionLength,
   entry,
+  dependsOnOptions,
   onChange,
   onRemove,
   onMoveUp,
@@ -152,6 +107,8 @@ function FieldRow({
   sectionPos: number;
   sectionLength: number;
   entry: FieldEntry;
+  /** Fields earlier than this one in the full array, filtered to dropdown/radio — the eligible `dependsOn` targets. */
+  dependsOnOptions: { key: string; label: string }[];
   onChange: (updated: FieldEntry) => void;
   onRemove: () => void;
   onMoveUp: () => void;
@@ -164,8 +121,8 @@ function FieldRow({
     fieldTypeRadio: string;
     fieldTypeDropdown: string;
     fieldTypeCheckbox: string;
-    fieldOptions: string;
-    addOption: string;
+    dependsOnLabel: string;
+    dependsOnNone: string;
     fieldHint: string;
     requiredLabel: string;
     moveUp: string;
@@ -183,7 +140,7 @@ function FieldRow({
     checkbox: labels.fieldTypeCheckbox,
   };
 
-  const needsOptions = entry.type === "radio" || entry.type === "dropdown";
+  const isChoiceType = entry.type === "radio" || entry.type === "dropdown";
 
   return (
     <div className="flex flex-col gap-2 rounded-sm border border-border bg-bg-page px-3 py-2.5">
@@ -217,18 +174,15 @@ function FieldRow({
           <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
             {labels.typeLabel}
           </label>
-          <select
+          <SelectField
             value={entry.type}
             onChange={(e) => {
               const newType = e.target.value as FieldEntry["type"];
               const updated: FieldEntry = { ...entry, type: newType };
-              // Seed options when switching to a type that requires them
-              if ((newType === "radio" || newType === "dropdown") && !updated.options) {
-                updated.options = [];
-              }
-              // Clear options when switching away from option-requiring types
-              if (newType !== "radio" && newType !== "dropdown") {
-                delete updated.options;
+              // dependsOn only makes sense on dropdown/radio (a value list to narrow) —
+              // clear it when switching to a type that has none.
+              if (newType !== "dropdown" && newType !== "radio") {
+                delete updated.dependsOn;
               }
               onChange(updated);
             }}
@@ -239,7 +193,7 @@ function FieldRow({
                 {typeLabels[t]}
               </option>
             ))}
-          </select>
+          </SelectField>
         </div>
         {/* Move and remove buttons */}
         <div className="flex items-end gap-1 self-end">
@@ -273,21 +227,31 @@ function FieldRow({
         </div>
       </div>
 
-      {/* Row 2: options builder (radio/dropdown only) */}
-      {needsOptions && (
+      {/* Row 2: dependsOn wiring (radio/dropdown only) — values are authored by the
+          org admin on the Catalog screen, not here (Stage 20). */}
+      {isChoiceType && (
         <div className="flex flex-col gap-0.5">
           <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
-            {labels.fieldOptions}
+            {labels.dependsOnLabel}
           </label>
-          <OptionsBuilder
-            options={entry.options ?? []}
-            onChange={(opts) => onChange({ ...entry, options: opts })}
-            addOptionLabel={labels.addOption}
-          />
+          <SelectField
+            value={entry.dependsOn ?? ""}
+            onChange={(e) =>
+              onChange({ ...entry, dependsOn: e.target.value || undefined })
+            }
+            className={inputBase}
+          >
+            <option value="">{labels.dependsOnNone}</option>
+            {dependsOnOptions.map((opt) => (
+              <option key={opt.key} value={opt.key}>
+                {opt.label || opt.key}
+              </option>
+            ))}
+          </SelectField>
         </div>
       )}
 
-      {/* Row 3: hint, required, core */}
+      {/* Row 3: hint, required */}
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex min-w-[12rem] flex-1 flex-col gap-0.5">
           <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
@@ -321,15 +285,12 @@ function FieldRow({
 
 // ─── SectionEditor ────────────────────────────────────────────────────────────
 
-/**
- * Renders the field list for one section (basic or advanced).
- * Each field shows its position within the section for move-up/move-down.
- */
 function SectionEditor({
   sectionLabel,
   isBasic,
   fields,
   onFieldsChange,
+  onMoveBlocked,
   fieldRowLabels,
   addFieldLabel,
 }: {
@@ -337,13 +298,66 @@ function SectionEditor({
   isBasic: boolean;
   fields: FieldEntry[];
   onFieldsChange: (updated: FieldEntry[]) => void;
+  /** Called with a human-readable reason when a move is blocked instead of applied. */
+  onMoveBlocked: (message: string) => void;
   fieldRowLabels: Parameters<typeof FieldRow>[0]["labels"];
   addFieldLabel: string;
 }) {
-  // Extract indices of fields belonging to this section (from the flat array)
   const sectionEntries = fields
     .map((f, i) => ({ f, i }))
     .filter(({ f }) => f.basic === isBasic);
+
+  /**
+   * Reorder guard (Stage 20 Batch 2, developer's call — see item-B2-plan.md):
+   * a move is blocked, not applied, if it would put a dependent field before
+   * its own `dependsOn` target or a parent before a field that depends on it.
+   * `moveFieldInSection` swaps two array elements directly, so re-validating
+   * the whole candidate array (not just the two moved entries) is the correct
+   * check — fields with a different `basic` value sitting between the two
+   * swapped positions can also have their relative order affected.
+   */
+  const attemptMove = (globalIndex: number, direction: "up" | "down") => {
+    const candidate = moveFieldInSection(fields, globalIndex, direction);
+    if (candidate === fields) return; // already at the edge — no-op
+    const result = validateFieldsSchema(candidate);
+    if (!result.valid) {
+      onMoveBlocked(`Can't reorder — ${result.error}`);
+      return;
+    }
+    onFieldsChange(candidate);
+  };
+
+  /**
+   * Edit a field in place, then clear `dependsOn` on any other field that
+   * pointed at this one's *original* key if this edit invalidated that link
+   * (review-B2 IMPORTANT #1): the key was renamed, or the type moved away
+   * from dropdown/radio (losing its value list). Without this, a child field
+   * is left silently pointing at a stale key — invisible in the UI until
+   * Save throws.
+   */
+  const handleFieldChange = (globalIndex: number, updated: FieldEntry) => {
+    const original = fields[globalIndex];
+    let next = fields.map((x, xi) => (xi === globalIndex ? updated : x));
+    const keyChanged = original.key !== updated.key;
+    const lostChoiceType =
+      (original.type === "dropdown" || original.type === "radio") &&
+      updated.type !== "dropdown" &&
+      updated.type !== "radio";
+    if ((keyChanged || lostChoiceType) && original.key) {
+      next = clearDependentsOf(next, original.key);
+    }
+    onFieldsChange(next);
+  };
+
+  /** Remove a field, then clear `dependsOn` on any field that depended on it. */
+  const handleRemove = (globalIndex: number) => {
+    const removedKey = fields[globalIndex].key;
+    const next = clearDependentsOf(
+      fields.filter((_, xi) => xi !== globalIndex),
+      removedKey,
+    );
+    onFieldsChange(next);
+  };
 
   const addField = () => {
     onFieldsChange([
@@ -385,12 +399,14 @@ function SectionEditor({
               sectionPos={posInSection}
               sectionLength={sectionEntries.length}
               entry={f}
-              onChange={(updated) =>
-                onFieldsChange(fields.map((x, xi) => (xi === i ? updated : x)))
-              }
-              onRemove={() => onFieldsChange(fields.filter((_, xi) => xi !== i))}
-              onMoveUp={() => onFieldsChange(moveFieldInSection(fields, i, "up"))}
-              onMoveDown={() => onFieldsChange(moveFieldInSection(fields, i, "down"))}
+              dependsOnOptions={fields
+                .slice(0, i)
+                .filter((other) => other.type === "dropdown" || other.type === "radio")
+                .map((other) => ({ key: other.key, label: other.label }))}
+              onChange={(updated) => handleFieldChange(i, updated)}
+              onRemove={() => handleRemove(i)}
+              onMoveUp={() => attemptMove(i, "up")}
+              onMoveDown={() => attemptMove(i, "down")}
               labels={fieldRowLabels}
             />
           ))}
@@ -402,20 +418,8 @@ function SectionEditor({
 
 // ─── JSON mode helpers ────────────────────────────────────────────────────────
 
-/**
- * Thrown by validateJsonText when JSON.parse itself fails (syntax error).
- * Distinguishable from shape-validation errors in the catch block.
- */
 class JsonParseError extends Error {}
 
-/**
- * Client-side strict validation that mirrors the write-path parseFieldsSchema in actions.ts.
- * Runs when the user switches from JSON mode back to Form mode — gives immediate, specific
- * feedback without a round-trip.
- *
- * Throws JsonParseError on bad JSON, plain Error on valid-JSON-but-wrong-shape.
- * Returns a correctly-typed FieldEntry[] on success.
- */
 function validateJsonText(text: string): FieldEntry[] {
   let parsed: unknown;
   try {
@@ -425,8 +429,7 @@ function validateJsonText(text: string): FieldEntry[] {
   }
   if (!Array.isArray(parsed)) throw new Error("Schema must be a JSON array.");
   const validTypes = new Set(["field", "radio", "dropdown", "checkbox"]);
-  const optionRequiredTypes = new Set(["radio", "dropdown"]);
-  return (parsed as unknown[])
+  const entries = (parsed as unknown[])
     .map((item) => {
       if (typeof item !== "object" || item === null) return null;
       const obj = item as Record<string, unknown>;
@@ -440,29 +443,35 @@ function validateJsonText(text: string): FieldEntry[] {
         required: Boolean(obj.required),
         basic: obj.basic !== undefined ? Boolean(obj.basic) : true,
       };
-      if (optionRequiredTypes.has(type)) {
-        const opts = Array.isArray(obj.options)
-          ? (obj.options as unknown[]).map(String).filter(Boolean)
-          : [];
-        if (opts.length === 0) {
-          throw new Error(
-            `Field "${String(obj.label ?? obj.key ?? type)}": ${type} type requires at least one option.`,
-          );
-        }
-        entry.options = opts;
-      }
       if (obj.hint) {
         entry.hint = String(obj.hint);
+      }
+      if (obj.dependsOn !== undefined && obj.dependsOn !== null && obj.dependsOn !== "") {
+        entry.dependsOn = String(obj.dependsOn);
+      }
+      // Stage 20: `options` is no longer accepted here at all. Carried through
+      // (rather than silently dropped) purely so validateFieldsSchema below can
+      // surface a clear rejection message — it is never returned past this point.
+      if (obj.options !== undefined) {
+        entry.options = Array.isArray(obj.options)
+          ? (obj.options as unknown[]).map(String)
+          : [];
       }
       return entry;
     })
     .filter((x): x is FieldEntry => x !== null);
+
+  const result = validateFieldsSchema(entries);
+  if (!result.valid) throw new Error(result.error);
+
+  return entries;
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
 interface CreateComponentFormProps {
-  orgSlug: string;
+  /** Organization ID (SuperAdmin context — explicit, not from session). */
+  orgId: string;
   categories: { id: string; name: string }[];
   labels: {
     fieldCodeLabel: string;
@@ -482,8 +491,8 @@ interface CreateComponentFormProps {
     fieldTypeRadio: string;
     fieldTypeDropdown: string;
     fieldTypeCheckbox: string;
-    fieldOptions: string;
-    addOption: string;
+    dependsOnLabel: string;
+    dependsOnNone: string;
     fieldHint: string;
     fieldRequiredLabel: string;
     moveUp: string;
@@ -498,21 +507,19 @@ interface CreateComponentFormProps {
 }
 
 /**
- * Create-ComponentType form (Client Component).
+ * Create-ComponentType form (Client Component) — SuperAdmin console version.
  *
- * Manages the field-list editor state with useState.
- * Fields are stored in a flat array; the UI splits them into Basic / Advanced
- * sections by the `basic` boolean on each entry.
- * Serialises the fields array to JSON in a hidden input before submission.
- *
- * Stage 11 Batch 7: restyled to Sage Ease tokens. All logic (JSON toggle,
- * field reordering, validation) is unchanged.
+ * Moved from app/[orgSlug]/admin/components/new/create-component-form.tsx to
+ * app/controls/(authenticated)/component-types/ in Stage 19 Batch 5.
+ * Key difference: takes `orgId` instead of `orgSlug`; submits to
+ * `createSuperAdminComponentType` (SuperAdmin API) instead of the org-scoped action.
  */
-export function CreateComponentForm({ orgSlug, categories, labels }: CreateComponentFormProps) {
+export function CreateComponentForm({ orgId, categories, labels }: CreateComponentFormProps) {
   const [fields, setFields] = useState<FieldEntry[]>([]);
   const [mode, setMode] = useState<"form" | "json">("form");
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
+  const [moveWarning, setMoveWarning] = useState<string | null>(null);
 
   const switchToJson = () => {
     if (mode !== "json") {
@@ -548,8 +555,8 @@ export function CreateComponentForm({ orgSlug, categories, labels }: CreateCompo
     fieldTypeRadio: labels.fieldTypeRadio,
     fieldTypeDropdown: labels.fieldTypeDropdown,
     fieldTypeCheckbox: labels.fieldTypeCheckbox,
-    fieldOptions: labels.fieldOptions,
-    addOption: labels.addOption,
+    dependsOnLabel: labels.dependsOnLabel,
+    dependsOnNone: labels.dependsOnNone,
     fieldHint: labels.fieldHint,
     requiredLabel: labels.fieldRequiredLabel,
     moveUp: labels.moveUp,
@@ -557,14 +564,22 @@ export function CreateComponentForm({ orgSlug, categories, labels }: CreateCompo
     removeLabel: labels.removeFieldLabel,
   };
 
+  // Clears any stale reorder-blocked warning whenever the field list changes
+  // through any path other than a blocked move (add/remove/edit/successful move).
+  const handleFieldsChange = (updated: FieldEntry[]) => {
+    setMoveWarning(null);
+    setFields(updated);
+  };
+
   const inputBase =
     "rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary-soft focus:border-primary-soft";
 
   return (
-    <form action={createComponentType} className="flex flex-col gap-5">
+    <form action={createSuperAdminComponentType} className="flex flex-col gap-5">
       <PendingOverlay />
 
-      <input type="hidden" name="orgSlug" value={orgSlug} />
+      {/* orgId identifies the org (SuperAdmin context — not from session). */}
+      <input type="hidden" name="orgId" value={orgId} />
       {/* Serialised field list — React keeps this in sync with state */}
       <input type="hidden" name="fieldsSchema" value={JSON.stringify(fields)} />
 
@@ -615,22 +630,20 @@ export function CreateComponentForm({ orgSlug, categories, labels }: CreateCompo
         >
           {labels.fieldCategoryLabel}
         </label>
-        <select
+        <SelectField
           id="categoryId"
           name="categoryId"
           required
           defaultValue=""
           className={inputBase}
+          placeholder={labels.fieldCategoryPlaceholder}
         >
-          <option value="" disabled>
-            {labels.fieldCategoryPlaceholder}
-          </option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
             </option>
           ))}
-        </select>
+        </SelectField>
       </div>
 
       {/* Field list editor — Basic / Advanced sections, with Form / JSON toggle */}
@@ -639,7 +652,6 @@ export function CreateComponentForm({ orgSlug, categories, labels }: CreateCompo
           <span className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
             {labels.fieldsSchemaLabel}
           </span>
-          {/* Form / JSON view toggle */}
           <div className="flex text-xs font-bold">
             <button
               type="button"
@@ -672,7 +684,8 @@ export function CreateComponentForm({ orgSlug, categories, labels }: CreateCompo
               sectionLabel={labels.sectionBasic}
               isBasic={true}
               fields={fields}
-              onFieldsChange={setFields}
+              onFieldsChange={handleFieldsChange}
+              onMoveBlocked={setMoveWarning}
               fieldRowLabels={fieldRowLabels}
               addFieldLabel={labels.addFieldLabel}
             />
@@ -680,10 +693,14 @@ export function CreateComponentForm({ orgSlug, categories, labels }: CreateCompo
               sectionLabel={labels.sectionAdvanced}
               isBasic={false}
               fields={fields}
-              onFieldsChange={setFields}
+              onFieldsChange={handleFieldsChange}
+              onMoveBlocked={setMoveWarning}
               fieldRowLabels={fieldRowLabels}
               addFieldLabel={labels.addFieldLabel}
             />
+            {moveWarning && (
+              <p className="text-xs text-status-failed-text">{moveWarning}</p>
+            )}
           </>
         ) : (
           <div className="flex flex-col gap-1">

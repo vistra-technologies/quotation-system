@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { redirectToLogin } from "./login-redirect";
+import { SelectField } from "@/components/select-field";
 import type { FloorRow } from "./types";
 
 interface FloorBarProps {
@@ -111,18 +112,25 @@ export function FloorBar({
 
   return (
     <div className="mb-4 flex items-center gap-2">
-      <select
-        value={selectedFloorId ?? ""}
-        onChange={(e) => onSelectFloor(e.target.value)}
-        title={selectedFloor?.label ?? ""}
-        className="min-w-0 flex-1 truncate rounded-sm border border-border bg-bg-white px-2 py-1.5 text-xs font-bold text-text-heading focus:border-primary focus:outline-none"
-      >
-        {floors.map((f) => (
-          <option key={f.id} value={f.id} title={f.label}>
-            {f.label}
-          </option>
-        ))}
-      </select>
+      {/* min-w-0/flex-1 live on this wrapper, not on SelectField's className — the
+          trigger now renders inside SelectField's own wrapping <div>, so sizing
+          classes meant for the flex row must target that wrapper, not the button
+          (review finding: the old className landed the flex-sizing on the button,
+          whose own parent wasn't the flex container). */}
+      <div className="min-w-0 flex-1">
+        <SelectField
+          value={selectedFloorId ?? ""}
+          onChange={(e) => onSelectFloor(e.target.value)}
+          title={selectedFloor?.label ?? ""}
+          className="w-full truncate rounded-sm border border-border bg-bg-white px-2 py-1.5 text-xs font-bold text-text-heading focus:border-primary focus:outline-none"
+        >
+          {floors.map((f) => (
+            <option key={f.id} value={f.id} title={f.label}>
+              {f.label}
+            </option>
+          ))}
+        </SelectField>
+      </div>
       <button
         type="button"
         onClick={() => {

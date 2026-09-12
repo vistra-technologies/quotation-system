@@ -10,19 +10,37 @@
  * data from drifting apart.
  *
  * Stage 17 item 5b.
+ *
+ * Stage 20 Batch 1: split field *shape* from field *values*.
+ *   - fieldsSchema now carries shape only (key/label/type/required/basic/hint + dependsOn wiring).
+ *     options arrays are gone — they live in COMPONENT_TYPE_ORG_CONFIG_DEFS below.
+ *   - COMPONENT_TYPE_ORG_CONFIG_DEFS is a new export: the starter option values per ComponentType
+ *     code, written into a ComponentTypeOrgConfig row at org-creation time (and upserted by seed).
  */
 
 /** The ComponentCategory name created alongside these types. */
 export const SEEDED_CATALOG_CATEGORY_NAME = "Glass Partitions";
 
 /**
- * Starter ComponentType definitions for every newly-created org.
+ * Thrown by both DAL update paths (lib/data/superadmin/component-types.ts and
+ * lib/data/components.ts) when a `code` patch would rename one of the 3 seeded
+ * codes below. Routes catch this and map it to a 400.
  *
- * fieldsSchema uses the Stage 6 FieldEntry shape:
- *   type: "field" | "radio" | "dropdown" | "checkbox"
- *   options: required for radio / dropdown
- *   hint: optional helper text shown below the input
- *   basic: true = Basic section, false = Advanced section (shown behind Configure button)
+ * Stage 20 Batch 7.
+ */
+export class ReservedComponentTypeCodeError extends Error {}
+
+/**
+ * Starter ComponentType field-schema definitions for every newly-created org.
+ *
+ * Stage 20: fieldsSchema carries shape ONLY — no options values.
+ * Options values live in COMPONENT_TYPE_ORG_CONFIG_DEFS.
+ *
+ * fieldsSchema uses the Stage 6 FieldEntry shape (extended Stage 20):
+ *   type:      "field" | "radio" | "dropdown" | "checkbox"
+ *   dependsOn: (Stage 20) key of an earlier dropdown/radio field this one depends on
+ *   hint:      optional helper text shown below the input
+ *   basic:     true = Basic section, false = Advanced section (shown behind Configure button)
  */
 export const COMPONENT_TYPE_DEFS: {
   code: string;
@@ -31,7 +49,7 @@ export const COMPONENT_TYPE_DEFS: {
     key: string;
     label: string;
     type: string;
-    options?: string[];
+    dependsOn?: string;
     hint?: string;
     required: boolean;
     basic: boolean;
@@ -53,8 +71,7 @@ export const COMPONENT_TYPE_DEFS: {
       {
         key: "glassType",
         label: "Glass Type",
-        type: "radio",
-        options: ["Clear", "Frosted", "Tinted"],
+        type: "dropdown",
         required: true,
         basic: true,
       },
@@ -62,7 +79,6 @@ export const COMPONENT_TYPE_DEFS: {
         key: "finish",
         label: "Finish",
         type: "dropdown",
-        options: ["Polished", "Satin", "Matt"],
         required: false,
         basic: true,
       },
@@ -99,7 +115,6 @@ export const COMPONENT_TYPE_DEFS: {
         // lets doorType pair with the adjacent "width" field entry, matching the mockup.
         // See design-docs/08-decisions-and-changelog.md 2026-09-03 decision #3.
         type: "dropdown",
-        options: ["Single Swing", "Double Swing", "Sliding"],
         required: true,
         basic: true,
       },
@@ -115,7 +130,6 @@ export const COMPONENT_TYPE_DEFS: {
         key: "glassVariant",
         label: "Glass Variant",
         type: "dropdown",
-        options: ["Standard", "Fire-Rated"],
         required: false,
         basic: true,
       },
@@ -124,7 +138,6 @@ export const COMPONENT_TYPE_DEFS: {
         key: "handedness",
         label: "Handedness",
         type: "dropdown",
-        options: ["Left", "Right", "Reversible"],
         required: false,
         basic: false,
       },
@@ -155,7 +168,6 @@ export const COMPONENT_TYPE_DEFS: {
         key: "material",
         label: "Material",
         type: "dropdown",
-        options: ["Aluminium", "Steel", "Stainless Steel"],
         required: true,
         basic: true,
       },
@@ -184,5 +196,61 @@ export const COMPONENT_TYPE_DEFS: {
         basic: false,
       },
     ],
+  },
+];
+
+/**
+ * The 3 seeded codes above, derived (not hand-duplicated) for both DAL update paths to
+ * check `code` patches against. These stay locked because two display-only lookups are
+ * hard-coded to these specific literals (`saved-components-rail.tsx`'s design-canvas
+ * grouping, `component-icons.tsx`'s icon lookup) and org-creation seed-matching keys off
+ * them — see design-docs/04-data-model.md's Stage 20 addendum.
+ *
+ * Stage 20 Batch 7.
+ */
+export const RESERVED_COMPONENT_TYPE_CODES: ReadonlySet<string> = new Set(
+  COMPONENT_TYPE_DEFS.map((d) => d.code),
+);
+
+/**
+ * Starter option values per ComponentType code.
+ *
+ * Stage 20 Batch 1: these values were previously inline in COMPONENT_TYPE_DEFS as
+ * `options` arrays. They now live here and are written into ComponentTypeOrgConfig at
+ * org-creation time (and upserted by prisma/seed.ts for existing orgs).
+ *
+ * Shape: fieldOptionsConfig matches ComponentTypeOrgConfig.fieldOptionsConfig —
+ *   { [fieldKey]: { options: string[] } }         — flat field (no dependsOn)
+ *   { [fieldKey]: { valueMap: Record<parentValue, string[]> } } — dependent field
+ *
+ * Note: the new Category → Glass Type → Thickness dependency chain (from the Stage 20
+ * design doc) is intentionally absent here — it starts genuinely unconfigured so org
+ * admins must fill it in via the Catalog screen. Only the existing starter values that
+ * were previously inline in fieldsSchema are lifted here.
+ */
+export const COMPONENT_TYPE_ORG_CONFIG_DEFS: {
+  code: string;
+  fieldOptionsConfig: Record<string, { options: string[] } | { valueMap: Record<string, string[]> }>;
+}[] = [
+  {
+    code: "GLASS",
+    fieldOptionsConfig: {
+      glassType: { options: ["Clear", "Frosted", "Tinted"] },
+      finish:    { options: ["Polished", "Satin", "Matt"] },
+    },
+  },
+  {
+    code: "DOOR",
+    fieldOptionsConfig: {
+      doorType:     { options: ["Single Swing", "Double Swing", "Sliding"] },
+      glassVariant: { options: ["Standard", "Fire-Rated"] },
+      handedness:   { options: ["Left", "Right", "Reversible"] },
+    },
+  },
+  {
+    code: "PROFILE_STOP",
+    fieldOptionsConfig: {
+      material: { options: ["Aluminium", "Steel", "Stainless Steel"] },
+    },
   },
 ];

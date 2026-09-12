@@ -159,18 +159,35 @@ export async function listProjectsPaginated(
 /**
  * Get a single project by id, scoped to the session org (tenancy guard).
  * Returns null if not found or if it belongs to a different org.
+ *
+ * Stage 19 Batch 4: also returns selectionCount and partitionCount for
+ * wizard step-gating. The three queries run in parallel via Promise.all.
+ * Tenancy on partitionCount is derived: projectId is already scoped to
+ * session.organizationId by the findFirst, so the Partition→Room→Floor→Project
+ * traversal cannot reach a different org's data.
  */
 export async function getProjectById(session: SessionData, projectId: string) {
-  return prisma.project.findFirst({
-    where: { id: projectId, organizationId: session.organizationId },
-    include: {
-      externalCompany: { select: { id: true, name: true, country: true } },
-      createdBy: { select: { id: true, username: true } },
-      // Pull the linked inquiry's human-readable display numbers so the detail
-      // and edit pages can show "INQ-42" / "#7" instead of a raw CUID2 FK.
-      inquiry: { select: { inquiryNumber: true, companyInquiryNumber: true } },
-    },
-  });
+  const [project, selectionCount, partitionCount] = await Promise.all([
+    prisma.project.findFirst({
+      where: { id: projectId, organizationId: session.organizationId },
+      include: {
+        externalCompany: { select: { id: true, name: true, country: true } },
+        createdBy: { select: { id: true, username: true } },
+        // Pull the linked inquiry's human-readable display numbers so the detail
+        // and edit pages can show "INQ-42" / "#7" instead of a raw CUID2 FK.
+        inquiry: { select: { inquiryNumber: true, companyInquiryNumber: true } },
+      },
+    }),
+    prisma.selection.count({
+      where: { projectId, organizationId: session.organizationId },
+    }),
+    prisma.partition.count({
+      where: { room: { floor: { projectId, project: { organizationId: session.organizationId } } } },
+    }),
+  ]);
+
+  if (!project) return null;
+  return { ...project, selectionCount, partitionCount };
 }
 
 // ─── Mutations ──────────────────────────────────────────────────────────────
@@ -378,4 +395,97 @@ export async function updateProject(
   });
 
   return { project: updated };
+}
+
+/**
+ * Delete a DRAFT Project and all its children in a FK-safe transaction.
+ *
+ * Guards:
+ *   - Returns null if the project does not exist or belongs to a different org
+ *     (caller -> 404).
+ *   - Returns { notDeletable: true } if the project exists but is not DRAFT
+ *     (caller -> 409).
+ *
+ * If this was the last Project linked to an Inquiry, the Inquiry is reverted
+ * to "NEW" status inside the same transaction (the delete-side counterpart to
+ * convertInquiry's one-way "already CONVERTED" guard).
+ *
+ * FK-safe deletion order (children before parents):
+ *   1. Selection  — references Project (FK_RESTRICT)
+ *   2. Room       — references Floor (Cascade from Floor, but explicit for
+ *                   belt-and-braces: a Room with this org's organizationId but
+ *                   whose Floor is gone would otherwise abort on FK_RESTRICT)
+ *   3. Floor      — references Project (FK_RESTRICT)
+ *   4. Project    — the row itself
+ * Partition rows cascade automatically when their Room is deleted (DB FK).
+ */
+export async function deleteProject(session: SessionData, projectId: string) {
+  // Prisma interactive transactions don't support early-returning the outer
+  // function from inside the callback, so we use boolean flags set inside the
+  // closure and act on them after the transaction settles.  TypeScript can type
+  // the three explicit return statements below correctly; a typed union variable
+  // would confuse narrowing at the call site.
+  let found = false;
+  let isDraft = false;
+
+  await prisma.$transaction(async (tx) => {
+    // Re-check existence and DRAFT status INSIDE the transaction to close the
+    // TOCTOU window: a concurrent PATCH could promote the project off DRAFT
+    // between an outer findFirst and the delete below.
+    const existing = await tx.project.findFirst({
+      where: { id: projectId, organizationId: session.organizationId },
+      select: { id: true, status: true, inquiryId: true },
+    });
+
+    if (!existing) return; // found stays false
+    found = true;
+
+    if (existing.status !== "DRAFT") return; // isDraft stays false
+    isDraft = true;
+
+    const { inquiryId } = existing;
+
+    // Optional: revert Inquiry to NEW if this was its last project.
+    if (inquiryId) {
+      const remainingCount = await tx.project.count({
+        where: {
+          inquiryId,
+          organizationId: session.organizationId,
+          id: { not: projectId },
+        },
+      });
+      if (remainingCount === 0) {
+        await tx.inquiry.update({
+          where: { id: inquiryId },
+          data: { status: "NEW" },
+        });
+      }
+    }
+
+    // 1. Selections — references Project (RESTRICT)
+    await tx.selection.deleteMany({
+      where: { projectId, organizationId: session.organizationId },
+    });
+
+    // 2. Rooms — references Floor (Cascade, but explicit belt-and-braces per
+    //    the precedent in lib/data/superadmin/orgs.ts FK-safe ordering)
+    await tx.room.deleteMany({
+      where: {
+        floor: { projectId },
+        organizationId: session.organizationId,
+      },
+    });
+
+    // 3. Floors — references Project (RESTRICT); Rooms/Partitions already gone
+    await tx.floor.deleteMany({
+      where: { projectId, organizationId: session.organizationId },
+    });
+
+    // 4. Project itself
+    await tx.project.delete({ where: { id: projectId } });
+  });
+
+  if (!found) return null;
+  if (!isDraft) return { notDeletable: true as const };
+  return { id: projectId };
 }

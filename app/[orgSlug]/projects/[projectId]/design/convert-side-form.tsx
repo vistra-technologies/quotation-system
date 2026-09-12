@@ -55,21 +55,24 @@ export function ConvertSideForm({
   const [widthMm, setWidthMm] = useState<number | null>(null);
   // Raw text mirrors of the two fields — `heightText`/`widthText` hold
   // exactly what the user typed, so a keystroke never gets clobbered by a
-  // derived-from-mm re-render. They're cleared only on a unit-toggle change
-  // (below), not on every keystroke; `type="number"` inputs already report
+  // derived-from-mm re-render. They're cleared when the unit changes (see
+  // below), not on every keystroke; `type="number"` inputs already report
   // an empty string for an in-progress "-"/"1." to `handleChange`, so those
   // intermediate states never need special-casing here. (Previously this
   // comment claimed a divergence-based clear that the code doesn't have —
   // review-item7-piece1-round2.md MINOR 2, fixed since Piece 2's
   // configure-mode.tsx copies this exact pattern.)
+  // Note (Stage 20 B5): the mm/in/m unit toggle was removed; unit is now
+  // always "mm", so the prevUnit guard below is dead code that can't fire.
+  // The structure is kept intact for safety rather than deleted.
   const [heightText, setHeightText] = useState("");
   const [widthText, setWidthText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // When the unit toggle changes, the raw text mirrors go stale relative to
-  // the new unit (they were typed against the old one) — clear them so the
-  // display falls back to re-deriving from canonical mm through the new
+  // If the unit ever changes (dead code since Stage 20 B5 removed the toggle),
+  // the raw text mirrors go stale relative to the new unit — clear them so
+  // the display falls back to re-deriving from canonical mm through the new
   // unit's toDisplay(). Canonical mm itself is untouched, so no precision is
   // lost and nothing is silently reinterpreted. Done during render (React's
   // "adjusting state when a prop/derived value changes" pattern) rather

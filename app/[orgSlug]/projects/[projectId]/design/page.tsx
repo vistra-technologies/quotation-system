@@ -69,6 +69,14 @@ export default async function DesignPage({
   // Tenancy guard: project not found or belongs to a different org.
   if (!project) notFound();
 
+  // Step-gating: Design requires ≥1 Selection to have content to work with.
+  // A project with 0 Selections has nothing to design — redirect to Project Details.
+  // The Configuration page (where Selections are added) is always accessible, so
+  // users are not left with no path forward. (Stage 19 Batch 4)
+  if (project.selectionCount === 0) {
+    redirect(await orgHref(orgSlug, `/projects/${projectId}`));
+  }
+
   const floors: FloorRow[] = floorsRes.ok
     ? ((await floorsRes.json()) as { floors: FloorRow[] }).floors
     : [];
@@ -108,9 +116,12 @@ export default async function DesignPage({
             {t("pageTitle")} — #{project.projectNumber} {project.name}
           </h1>
         </div>
+        {/* B4 (Stage 20): was bg-primary filled style (old UI); restyled to
+            secondary/outline to match the Configure/Add pattern used throughout
+            the Stage 17–19 rework (same visual weight as sidebar action buttons). */}
         <Link
           href={`${base}/projects/${projectId}/design/add-wall`}
-          className="shrink-0 rounded-sm bg-primary px-4 py-2 text-center text-sm font-bold text-text-on-primary hover:bg-primary-dark"
+          className="shrink-0 inline-flex items-center rounded-sm border border-border bg-bg-white px-4 py-2 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
         >
           {t("addWall")}
         </Link>

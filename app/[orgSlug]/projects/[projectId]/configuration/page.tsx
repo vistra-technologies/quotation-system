@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import { fetchProjectDetail } from "../_project-fetch";
 import { AddSelectionForm } from "./add-selection-form";
 
@@ -33,6 +34,8 @@ interface FieldEntry {
   hint?: string;
   required: boolean;
   basic: boolean;
+  // Stage 20: SuperAdmin-authored wiring (key of an earlier field this field depends on).
+  dependsOn?: string;
 }
 
 /** Shape of a single ComponentType as returned by GET /api/v1/.../component-types */
@@ -43,6 +46,9 @@ interface ComponentTypeRow {
   active: boolean;
   category: { id: string; name: string };
   fieldsSchema: FieldEntry[];
+  // Stage 20 Batch 4: org-level dropdown/radio value config, folded into the list route's
+  // response. null = the org hasn't configured any field on this type yet.
+  fieldOptionsConfig: FieldOptionsConfig | null;
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -100,6 +106,11 @@ export default async function ConfigurationPage({
 
   // Tenancy guard: project not found or belongs to a different org.
   if (!project) notFound();
+
+  // No step-gate on Configuration itself — this is the page where you ADD
+  // Selections, so it must be reachable from the start (via the Project Details
+  // "Next: Configuration →" button). The breadcrumb shows it as locked until
+  // selectionCount > 0, but the page itself is always accessible. (Stage 19 Batch 4)
 
   const selections: SelectionRow[] = selectionsRes.ok
     ? ((await selectionsRes.json()) as { selections: SelectionRow[] }).selections

@@ -207,20 +207,9 @@ test("sidebar admin flyout: Pricing link → /pricing (clean URL)", async () => 
 // NOTE (Stage 16 Batch F): Roles and Permissions flyout link tests removed.
 // Those sidebar links are gone — roles/permissions admin moved to /controls/roles.
 
-test("sidebar admin flyout: Component Types link → admin/components (clean URL)", async () => {
-  const page = await ctx.newPage();
-  await page.goto(DASHBOARD);
-  await page.getByRole("button", { name: "Admin" }).hover();
-  const ctLink = page.getByRole("link", { name: "Component Types" });
-  await expect(ctLink).toBeVisible({ timeout: 5_000 });
-  await ctLink.click();
-  await page.waitForURL(`${BASE}/admin/components`, { timeout: 15_000 });
-  assertCleanSubdomainUrl(page.url(), "/admin/components");
-  await expect(
-    page.getByRole("heading", { name: /Component Types/i }),
-  ).toBeVisible({ timeout: 10_000 });
-  await page.close();
-});
+// NOTE (Stage 19 Batch 5): Component Types flyout link test removed.
+// The sidebar flyout no longer contains a Component Types entry — management moved
+// to /controls/component-types (SuperAdmin console).
 
 // ---------------------------------------------------------------------------
 // B. List → detail → back-link flows
@@ -265,17 +254,13 @@ test("projects: list row link + back-link navigate with clean subdomain URLs", a
     page.getByRole("heading", { name: /Project Details/i }),
   ).toBeVisible({ timeout: 10_000 });
 
-  // "Back to Projects" back link — the Bug 1 regression guard for this page.
-  // Both the top-of-page link and the card footer link point at /projects.
-  const backLink = page.getByRole("link", { name: /Back to Projects/i }).first();
-  await expect(backLink).toBeVisible({ timeout: 5_000 });
-  const backHref = await backLink.getAttribute("href");
-  expect(
-    backHref,
-    `Back link href must be "/projects", got: "${backHref}"`,
-  ).toBe("/projects");
-  await backLink.click();
-  await page.waitForURL(`${BASE}/projects`, { timeout: 15_000 });
+  // NOTE (Stage 19 Batch 4 / test-fix batch 1): the "Back to Projects" link
+  // (both the top-of-page link and the card footer link) was deliberately
+  // removed from every wizard step, including the project-details page —
+  // this was the Bug-1 regression guard for a link that no longer exists.
+  // Navigate back via the URL bar instead, to keep this test's remaining
+  // "clean subdomain URL" coverage of the projects list page intact.
+  await page.goto(`${BASE}/projects`);
   assertCleanSubdomainUrl(page.url(), "/projects");
   await expect(page.getByRole("heading", { name: /Projects/i })).toBeVisible({
     timeout: 10_000,
@@ -333,46 +318,11 @@ test("admin users: Actions link + back-link navigate with clean subdomain URLs",
 // NOTE (Stage 16 Batch F): "admin roles: Role Permissions link + back-link" test removed.
 // The org-admin roles route is gone — roles/permissions admin moved to /controls/roles.
 
-test("admin component types: Edit link + back-link navigate with clean subdomain URLs", async () => {
-  const page = await ctx.newPage();
-
-  await page.goto(`${BASE}/admin/components`);
-  await expect(
-    page.getByRole("heading", { name: /Component Types/i }),
-  ).toBeVisible({ timeout: 15_000 });
-
-  // "Edit Component Type" is the link text for component type rows (t("editPageTitle")).
-  // 3 types are seeded (GLASS, DOOR, PROFILE_STOP); use the first.
-  const editLink = page.getByRole("link", { name: /Edit Component Type/i }).first();
-  await expect(editLink).toBeVisible({ timeout: 10_000 });
-  const href = await editLink.getAttribute("href");
-  expect(
-    href,
-    `Component type link must not contain /vistra/ prefix`,
-  ).not.toMatch(/^\/vistra\//);
-  expect(href).toMatch(/^\/admin\/components\//);
-
-  await editLink.click();
-  await page.waitForURL(/vistra\.test\.easeetool\.com\/admin\/components\/[^/]+$/, {
-    timeout: 15_000,
-  });
-  assertCleanSubdomainUrl(page.url(), "/admin/components/");
-  await expect(page.locator("h1")).toBeVisible({ timeout: 10_000 });
-
-  // Back link: "← Back to Component Types"
-  const backLink = page.getByRole("link", { name: /Back to Component Types/i });
-  await expect(backLink).toBeVisible({ timeout: 5_000 });
-  const backHref = await backLink.getAttribute("href");
-  expect(
-    backHref,
-    `Back link href must be "/admin/components", got: "${backHref}"`,
-  ).toBe("/admin/components");
-  await backLink.click();
-  await page.waitForURL(`${BASE}/admin/components`, { timeout: 15_000 });
-  assertCleanSubdomainUrl(page.url(), "/admin/components");
-
-  await page.close();
-});
+// NOTE (Stage 19 Batch 5): "admin component types: Edit link + back-link" test replaced.
+// The old /admin/components route is deleted. Component Type management moved to
+// /controls/component-types (SuperAdmin console). The new test verifies the
+// SuperAdmin navigation at /controls/component-types (covered by
+// superadmin-component-types.spec.ts — "controls component types: navigate to edit").
 
 test("pricing: Edit Prices link + back-link navigate with clean subdomain URLs", async () => {
   const page = await ctx.newPage();
@@ -436,6 +386,55 @@ test("project wizard: all 5 breadcrumb steps navigate with clean subdomain URLs"
   expect(createRes.status()).toBe(201);
   const { project } = (await createRes.json()) as { project: { id: string } };
   const pid = project.id;
+
+  // Stage 19 Batch 4 introduced sequential step-gating: Design locks until the
+  // project has ≥1 Selection, and Summary/Quotation lock until it has ≥1
+  // Partition. Locked steps render as <span aria-disabled> rather than <a>, so
+  // a fresh project only has 2 real links (Project Details, Configuration) in
+  // the breadcrumb — seed a Selection + Partition first (same shape as
+  // stage19.spec.ts's "project with Selections and Partitions" test) so all 5
+  // steps are unlocked <a> tags, matching this test's own intent (exercising
+  // clean-URL navigation across all 5 steps, not the gating itself — that's
+  // covered separately in stage19.spec.ts).
+  const ctRes = await page.request.get(`${BASE}/api/v1/orgs/vistra/component-types`);
+  expect(ctRes.status()).toBe(200);
+  const { componentTypes } = (await ctRes.json()) as { componentTypes: { id: string }[] };
+  expect(componentTypes.length).toBeGreaterThan(0);
+
+  const selRes = await page.request.post(`${BASE}/api/v1/orgs/vistra/selections`, {
+    data: {
+      projectId: pid,
+      componentTypeId: componentTypes[0].id,
+      label: "Wizard breadcrumb selection",
+      config: {},
+      orderIndex: 0,
+    },
+  });
+  expect(selRes.status()).toBe(201);
+
+  const floorRes = await page.request.post(`${BASE}/api/v1/orgs/vistra/floors`, {
+    data: { projectId: pid, label: "Wizard breadcrumb floor" },
+  });
+  expect(floorRes.status()).toBe(201);
+  const { floor: { id: floorId } } = (await floorRes.json()) as { floor: { id: string } };
+
+  const roomRes = await page.request.post(`${BASE}/api/v1/orgs/vistra/rooms`, {
+    data: { floorId, label: "Wizard breadcrumb room" },
+  });
+  expect(roomRes.status()).toBe(201);
+  const { room: { id: roomId } } = (await roomRes.json()) as { room: { id: string } };
+
+  // isClosed: false — a single-side open run bypasses the ≥3-sides validation
+  // that applies only to closed rooms (Stage 18 §2).
+  const sidesRes = await page.request.patch(`${BASE}/api/v1/orgs/vistra/rooms/${roomId}/sides`, {
+    data: {
+      isClosed: false,
+      sides: [
+        { kind: "PARTITION", turnDegrees: 90, label: "Wizard breadcrumb wall", heightMm: 2400, widthMm: 1200 },
+      ],
+    },
+  });
+  expect(sidesRes.status()).toBe(200);
 
   // Navigate to project detail (Step 1 — Project Details).
   await page.goto(`${BASE}/projects/${pid}`);
@@ -559,13 +558,8 @@ test("new-entry-point buttons across all list pages navigate to clean subdomain 
     `${BASE}/admin/external-companies/new`,
   );
 
-  // + Create Type (admin components list — button text is t("createType") = "Create Type")
-  await checkNewButton(
-    `${BASE}/admin/components`,
-    /Component Types/i,
-    /Create Type/i,
-    `${BASE}/admin/components/new`,
-  );
+  // NOTE (Stage 19 Batch 5): /admin/components create-button check removed.
+  // The route is deleted — Component Types management moved to /controls/component-types.
 
   await page.close();
 });

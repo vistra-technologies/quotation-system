@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { SelectField } from "@/components/select-field";
 import { formatBudget, stripGroupingSeparators } from "@/lib/format-currency";
 import { updateInquiry, type UpdateInquiryState } from "../../actions";
 
@@ -96,10 +97,12 @@ export function EditInquiryForm({
     return f === "—" ? "" : f;
   });
 
-  // C5: format on blur using current currency selection.
-  function handleBudgetBlur() {
+  // C5: reformat the budget field using the given currency (defaults to the
+  // currently selected one). Called on blur (decision 7) and immediately when
+  // currency changes (B2 fix, Stage 20 — safe for a cross-field change event).
+  function reformatBudget(currency: string = selectedCurrency) {
     const raw = stripGroupingSeparators(budgetValue.trim());
-    const formatted = formatBudget(raw, selectedCurrency);
+    const formatted = formatBudget(raw, currency);
     setBudgetValue(formatted === "—" ? "" : formatted);
   }
 
@@ -212,7 +215,7 @@ export function EditInquiryForm({
                   pattern="[\d,\.]*"
                   value={budgetValue}
                   onChange={(e) => setBudgetValue(e.target.value)}
-                  onBlur={handleBudgetBlur}
+                  onBlur={() => reformatBudget()}
                   className={inputCls}
                 />
               </div>
@@ -223,19 +226,23 @@ export function EditInquiryForm({
                   {t("fieldCurrency")}{" "}
                   <span className="text-status-failed-text font-normal">*</span>
                 </label>
-                <select
+                <SelectField
                   id="currency"
                   name="currency"
                   required
                   value={selectedCurrency}
-                  onChange={(e) => setSelectedCurrency(e.target.value)}
+                  onChange={(e) => {
+                    const newCurrency = e.target.value;
+                    setSelectedCurrency(newCurrency);
+                    reformatBudget(newCurrency);
+                  }}
                   className={selectCls}
+                  placeholder="Select currency..."
                 >
-                  <option value="" disabled>Select currency…</option>
                   <option value="INR">INR</option>
                   <option value="AED">AED</option>
                   <option value="USD">USD</option>
-                </select>
+                </SelectField>
               </div>
 
               {/* Row 4 left — Submission Date * (C7) */}

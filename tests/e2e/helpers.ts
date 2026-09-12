@@ -122,6 +122,10 @@ export async function fillCreateFormRequiredFields(
 ) {
   await page.locator("select[name='currency']").selectOption(currency);
   await page.locator("input[name='projectLocation']").fill(projectLocation);
+  // mainContractorName became required (Stage 17: "flip required/optional on
+  // intake form fields") — fill it so both the project-creation and
+  // inquiry-creation forms (which share this field name) submit successfully.
+  await page.locator("input[name='mainContractorName']").fill("E2E Contractor");
   await page.locator("input[name='endClientName']").fill("E2E Client");
   await page.locator("input[name='endClientPhone']").fill("+971501234567");
   await page.locator("input[name='endClientEmail']").fill("e2e@test.com");

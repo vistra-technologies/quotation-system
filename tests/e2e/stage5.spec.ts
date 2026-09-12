@@ -1,17 +1,16 @@
 /**
- * Stage 5 -- DAL + ComponentType + Project regression spec.
+ * Stage 5 -- DAL + Project regression spec.
  *
  * Covers behavioral Definition of Done items:
- *   - ComponentType RBAC: distributor/member without MANAGE_FEATURES is redirected to dashboard
- *   - ComponentType tenancy: admin only sees own org's types
- *   - ComponentType inert-caveat: warning visible on list and edit pages
- *   - ComponentType field schema round-trip: create type -> add field -> save -> navigate back -> field persists
  *   - Project CRUD: create project -> redirects to new project's Step 1 with correct projectNumber
  *   - Project tenancy: session guard prevents cross-org read
  *   - Cross-tenant externalCompanyId: crafted form submission with foreign company ID is rejected
  *
  * All checks target behavior invariants (tenancy, RBAC, data correctness).
  * No DOM structure / styling assertions (wireframe-stage rule).
+ *
+ * NOTE (Stage 19 Batch 5): ComponentType tests removed — relocated to superadmin-component-types.spec.ts.
+ * Component Type management moved to /controls/component-types (SuperAdmin console).
  */
 
 import { test, expect } from "@playwright/test";
@@ -25,136 +24,6 @@ test.setTimeout(90_000);
 // 11+ seconds apart so the rate-limit window always resets.
 test.beforeEach(async () => {
   await new Promise((resolve) => setTimeout(resolve, 7_000));
-});
-
-// ---------------------------------------------------------------------------
-// ComponentType -- RBAC gating
-// ---------------------------------------------------------------------------
-
-test("unauthenticated request to /admin/components redirects to login", async ({ page }) => {
-  await page.goto(orgUrl("acme-glass", "/admin/components"));
-  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/login"), { timeout: 10_000 });
-});
-
-test("distributor role (no MANAGE_FEATURES) redirected from /admin/components to dashboard", async ({
-  page,
-}) => {
-  await signIn(page, "distributor");
-  await page.goto(orgUrl("acme-glass", "/admin/components"), { waitUntil: "commit" });
-  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
-});
-
-test("distributor role redirected from /admin/components/new to dashboard", async ({ page }) => {
-  await signIn(page, "distributor");
-  await page.goto(orgUrl("acme-glass", "/admin/components/new"), { waitUntil: "commit" });
-  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
-});
-
-test("company member (MANAGE_PRICING only, no MANAGE_FEATURES) redirected from /admin/components", async ({
-  page,
-}) => {
-  await signIn(page, "member");
-  await page.goto(orgUrl("acme-glass", "/admin/components"), { waitUntil: "commit" });
-  // member role has MANAGE_PRICING + VIEW_ALL_DATA + APPLY_DISCOUNT but NOT MANAGE_FEATURES
-  await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
-});
-
-// ---------------------------------------------------------------------------
-// ComponentType -- inert caveat visible on list page
-// ---------------------------------------------------------------------------
-
-test("ComponentType list page shows inert-caveat warning for MANAGE_FEATURES admin", async ({
-  page,
-}) => {
-  await signIn(page, "admin");
-  await page.goto(orgUrl("acme-glass", "/admin/components"));
-  // Inert caveat must be visible as an aside element
-  await expect(page.locator("aside").first()).toBeVisible({ timeout: 15_000 });
-});
-
-test("ComponentType list page shows seeded GLASS, DOOR, PROFILE_STOP types", async ({ page }) => {
-  await signIn(page, "admin");
-  await page.goto(orgUrl("acme-glass", "/admin/components"));
-  await expect(page.getByRole("cell", { name: "DOOR", exact: true })).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(page.getByRole("cell", { name: "GLASS", exact: true })).toBeVisible();
-  await expect(page.getByRole("cell", { name: "PROFILE_STOP", exact: true })).toBeVisible();
-});
-
-// ---------------------------------------------------------------------------
-// ComponentType -- field schema round-trip (create -> add field -> save -> navigate back -> still there)
-// ---------------------------------------------------------------------------
-
-test("ComponentType field schema round-trip: create -> add field -> save -> navigate back -> field present", async ({
-  page,
-}) => {
-  const code = `E2E_CT_${Date.now()}`;
-  const name = `E2E Component ${code}`;
-  const fieldKey = `test_field_${Date.now()}`;
-  const fieldLabel = "E2E Test Field";
-
-  await signIn(page, "admin");
-
-  // Create a new ComponentType.
-  // IMPORTANT: waitForURL must NOT match "/new" (the current URL).
-  // Use a UUID pattern since typeIds are UUIDs.
-  await page.goto(orgUrl("acme-glass", "/admin/components/new"));
-  await page.locator("input[name='code']").fill(code);
-  await page.locator("input[name='name']").fill(name);
-  await page.locator("select[name='categoryId']").selectOption({ label: "Glass Partitions" });
-  await Promise.all([
-    page.waitForURL(
-      (url) =>
-        orgUrlPattern("acme-glass", "/admin/components/[0-9a-f-]{36}").test(url.toString()),
-      { timeout: 15_000 },
-    ),
-    page.getByRole("button", { name: /create component type/i }).click(),
-  ]);
-
-  // Save the edit URL for navigation-back verification
-  const editUrl = page.url();
-
-  // Add a field to the freshly-created type (starts with 0 fields)
-  // The first "+ Add Field" button is the Basic section's.
-  await page.getByRole("button", { name: /\+ add field/i }).first().click();
-
-  // Fill the first field row
-  const keyInput = page.locator("input[placeholder='field_1']");
-  await expect(keyInput).toBeVisible({ timeout: 10_000 });
-  await keyInput.fill(fieldKey);
-  await page.locator("input[placeholder='Display label']").fill(fieldLabel);
-
-  // Submit update -- wait for the POST server-action response before navigating away
-  await Promise.all([
-    page.waitForResponse(
-      (res) => res.request().method() === "POST" && res.url().includes("/admin/components"),
-      { timeout: 20_000 },
-    ),
-    page.getByRole("button", { name: /save changes/i }).click(),
-  ]);
-
-  // Navigate away then HARD RELOAD back to force a fresh server render from DB
-  await page.goto(orgUrl("acme-glass", "/admin/components"));
-  await expect(page).toHaveURL(orgUrlPattern("acme-glass", "/admin/components$"), { timeout: 10_000 });
-  await page.goto(editUrl);
-  await page.reload(); // Hard reload bypasses Next.js router cache
-
-  // The field key must be visible in the field editor -- proves JSONB round-trip
-  await expect(page.locator(`input[value='${fieldKey}']`)).toBeVisible({ timeout: 15_000 });
-});
-
-// ---------------------------------------------------------------------------
-// ComponentType -- list shows the FK-backed category for every type
-// ---------------------------------------------------------------------------
-
-test("ComponentType list shows the assigned category for seeded types", async ({ page }) => {
-  await signIn(page, "admin");
-  await page.goto(orgUrl("acme-glass", "/admin/components"));
-  // All ComponentTypes (there is no core/non-core distinction) show their category name
-  await expect(page.getByRole("cell", { name: "Glass Partitions", exact: true }).first()).toBeVisible({
-    timeout: 15_000,
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -182,7 +51,7 @@ test("Project CRUD: create project -> appears at Step 1 with correct projectNumb
   // page, not the projects list. Wait for the UUID-shaped project detail URL.
   await Promise.all([
     page.waitForURL(orgUrlPattern("acme-glass", "/projects/[0-9a-f-]{36}$"), { timeout: 15_000 }),
-    page.getByRole("button", { name: /configure/i }).click(),
+    page.getByRole("button", { name: /create/i }).click(),
   ]);
 
   // Project name must be visible on the Project Details page.

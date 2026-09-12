@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { SelectField } from "@/components/select-field";
 import { createExternalCompany, type CreateExternalCompanyState } from "../actions";
 
 interface CreateExternalCompanyFormProps {
@@ -63,15 +64,14 @@ export function CreateExternalCompanyForm({ orgSlug }: CreateExternalCompanyForm
           >
             {t("fieldType")}
           </label>
-          <select
+          <SelectField
             id="type"
             name="type"
             required
-            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           >
             <option value="DISTRIBUTOR">{t("typeDistributor")}</option>
             <option value="ARCHITECTURAL_FIRM">{t("typeArchitecturalFirm")}</option>
-          </select>
+          </SelectField>
         </div>
 
         {/* Country */}
@@ -82,15 +82,14 @@ export function CreateExternalCompanyForm({ orgSlug }: CreateExternalCompanyForm
           >
             {t("fieldCountry")}
           </label>
-          <select
+          <SelectField
             id="country"
             name="country"
             required
-            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           >
             <option value="INDIA">{t("countryIndia")}</option>
             <option value="UAE">{t("countryUAE")}</option>
-          </select>
+          </SelectField>
         </div>
 
         {/* Default Currency */}
@@ -101,16 +100,15 @@ export function CreateExternalCompanyForm({ orgSlug }: CreateExternalCompanyForm
           >
             {t("fieldDefaultCurrency")}
           </label>
-          <select
+          <SelectField
             id="defaultCurrency"
             name="defaultCurrency"
             required
-            className="rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]"
           >
             <option value="INR">{t("currencyINR")}</option>
             <option value="AED">{t("currencyAED")}</option>
             <option value="USD">{t("currencyUSD")}</option>
-          </select>
+          </SelectField>
         </div>
 
         <button

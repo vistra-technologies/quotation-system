@@ -58,6 +58,9 @@ export default async function OrgSlugLayout({
   };
 
   const canManageUsers = me.adminPermissions.includes("MANAGE_USERS");
+  // Stage 20 Batch 3: canManageFeatures reintroduced — gates the "Catalog" flyout link
+  // (org-admin value-list editor). Component Type shape/CRUD itself is still SuperAdmin-only
+  // at /controls/component-types (Stage 19 Batch 5); unaffected by this.
   const canManageFeatures = me.adminPermissions.includes("MANAGE_FEATURES");
 
   return (

@@ -48,6 +48,8 @@ model Organization {
   partitions        Partition[]
   // Stage 18 relations
   rooms             Room[]
+  // Stage 20 relations
+  componentTypeOrgConfigs ComponentTypeOrgConfig[]
 }
 
 // ────────────────────────────────────────────────────────────
@@ -298,18 +300,43 @@ model ComponentType {
   id             String            @id @default(uuid())
   organizationId String
   organization   Organization      @relation(fields: [organizationId], references: [id])
-  code           String            // stable key, admin-defined at creation
+  code           String            // admin-editable (Stage 20); locked for the 3 seeded codes — see RESERVED_COMPONENT_TYPE_CODES
   name           String            // admin-editable display label
   categoryId     String
   category       ComponentCategory @relation(fields: [categoryId], references: [id])
   fieldsSchema   Json              // JSONB field-list editor output
   active         Boolean           @default(true)
+  sortOrder      Int               @default(0) // Stage 20: admin-reorderable; drives SuperAdmin list + org-facing palette order
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
   // Stage 6 relations
   selections     Selection[]
+  // Stage 20 relations
+  orgConfig      ComponentTypeOrgConfig?
 
   @@unique([organizationId, code])
+}
+
+// Org-level field option values for a ComponentType — split from fieldsSchema (Stage 20).
+// 1:1 with ComponentType per org (ComponentType already carries organizationId, so every
+// org has its own rows). SuperAdmin authors the *shape* (fieldsSchema + dependsOn wiring);
+// this table holds each org's actual dropdown/radio option values (flat or valueMap).
+// See design-docs/04-data-model.md — ComponentTypeOrgConfig.
+model ComponentTypeOrgConfig {
+  id                 String        @id @default(uuid())
+  organizationId     String
+  organization       Organization  @relation(fields: [organizationId], references: [id])
+  // @unique on componentTypeId enforces the 1:1 relation (each ComponentType has at most one
+  // config row). The composite @@unique below adds an organizationId-scoped index useful for
+  // the org-admin Catalog queries, and mirrors the naming convention from the spec.
+  componentTypeId    String        @unique
+  componentType      ComponentType @relation(fields: [componentTypeId], references: [id])
+  // JSONB shape: { [fieldKey]: { options: string[] } | { valueMap: Record<parentValue, string[]> } }
+  fieldOptionsConfig Json
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  @@unique([organizationId, componentTypeId])
 }
 
 // Org-scoped project created by a user, optionally linked to an external company.

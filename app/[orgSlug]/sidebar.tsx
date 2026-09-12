@@ -11,6 +11,12 @@ interface SidebarProps {
    * window.location.hostname read and the resulting SSR/hydration mismatch. */
   isSubdomain: boolean;
   canManageUsers: boolean;
+  /**
+   * Stage 20 Batch 3: reintroduced — gates the "Catalog" flyout link (org-admin value-list
+   * editor for ComponentType dropdown/radio fields). Component Type shape/CRUD itself is still
+   * SuperAdmin-only at /controls/component-types (Stage 19 Batch 5); this permission now also
+   * covers the separate, narrower "fill in values" screen.
+   */
   canManageFeatures: boolean;
 }
 
@@ -25,8 +31,8 @@ interface SidebarProps {
  * Admin links are shown via a CSS-only hover flyout (Tailwind `group` /
  * `group-hover`) — no additional React state required.
  *
- * Receives `canManageUsers` and `canManageFeatures` from the parent Server
- * Component (layout.tsx) which has already fetched admin permissions.
+ * Receives `canManageUsers` from the parent Server Component (layout.tsx)
+ * which has already fetched admin permissions.
  *
  * Stage 10 — Task 1.3: initial extraction. The hardcoded "Vistra" brand string
  * in layout.tsx is removed here; the EaseeTool logo mark lives in the
@@ -59,6 +65,8 @@ export function Sidebar({
   const isActive = (section: string): boolean =>
     sectionPath === section || sectionPath.startsWith(`${section}/`);
 
+  // Stage 20 Batch 3: showAdmin now also opens for canManageFeatures-only roles, since the
+  // flyout gained the Catalog link (gated on MANAGE_FEATURES, independent of MANAGE_USERS).
   const showAdmin = canManageUsers || canManageFeatures;
 
   // Shared nav-item class builder — active state applies Sage Ease primary green.
@@ -332,12 +340,17 @@ export function Sidebar({
                 </>
               )}
 
+              {/* NOTE (Stage 19 Batch 5): Component Type CRUD flyout link removed.
+               * Component Type shape/CRUD moved to the SuperAdmin console at
+               * /controls/component-types.
+               * Stage 20 Batch 3: "Catalog" reintroduces a MANAGE_FEATURES-gated org
+               * screen — narrower than the old link (values only, not shape/CRUD). */}
               {canManageFeatures && (
                 <Link
-                  href={href("/admin/components")}
+                  href={href("/admin/field-values")}
                   className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                 >
-                  Component Types
+                  Catalog
                 </Link>
               )}
             </div>

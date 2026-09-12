@@ -201,7 +201,7 @@
     "fieldEndClientState": "State",
     "fieldEndClientGstNumber": "GST Number",
     "gstRequiredHint": "Required for India",
-    "submitConfigure": "Configure"
+    "submitConfigure": "Create"
   },
   "inquiries": {
     "pageTitle": "Inquiries",

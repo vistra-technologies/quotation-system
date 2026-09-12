@@ -134,10 +134,12 @@ export async function POST(
     return NextResponse.json({ selection }, { status: 201 });
   } catch (err) {
     if (err instanceof Error) {
-      // DAL throws descriptive messages for tenancy violations.
+      // DAL throws descriptive messages for tenancy violations and the Stage 20 Batch 4
+      // configuredness guard (a ComponentType with an unconfigured dropdown/radio field).
       if (
         err.message.includes("not found") ||
-        err.message.includes("access denied")
+        err.message.includes("access denied") ||
+        err.message.includes("not fully configured")
       ) {
         return apiBadRequest(err.message);
       }
