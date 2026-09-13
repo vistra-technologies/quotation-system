@@ -624,12 +624,13 @@ function FieldInput({ field, value, onChange, options, parentLabel }: FieldInput
 
   const displayLabel = field.label || field.key;
 
-  // Guard: radio and dropdown fields with no resolvable options render as a notice rather than
+  // Guard: radio/dropdown fields whose type has no options configured at all (not a
+  // dependsOn gate — genuinely nothing to ever select) render as a notice rather than
   // crashing. Under Batch 4's gating this should only be reachable in edit mode against a
   // Selection whose type has since become unconfigured (the "Add Component" palette otherwise
   // never opens the form for one) — still handled defensively rather than assumed unreachable.
-  if ((field.type === "radio" || field.type === "dropdown") && options.length === 0) {
-    const needsParentSelection = Boolean(field.dependsOn);
+  const needsParentSelection = Boolean(field.dependsOn) && options.length === 0;
+  if ((field.type === "radio" || field.type === "dropdown") && options.length === 0 && !field.dependsOn) {
     return (
       <div className="flex flex-col gap-1">
         <span className={labelClass}>
@@ -637,9 +638,7 @@ function FieldInput({ field, value, onChange, options, parentLabel }: FieldInput
           {field.required && <span className="ml-1 text-red-500">*</span>}
         </span>
         <p className="text-xs italic text-text-placeholder">
-          {needsParentSelection
-            ? `Select "${parentLabel ?? field.dependsOn}" first.`
-            : "Options not configured for this field."}
+          Options not configured for this field.
         </p>
       </div>
     );
@@ -668,7 +667,12 @@ function FieldInput({ field, value, onChange, options, parentLabel }: FieldInput
           value={(value as string) ?? ""}
           onChange={(e) => onChange(e.target.value)}
           className={inputClass}
-          placeholder="Select..."
+          placeholder={
+            needsParentSelection
+              ? `Select "${parentLabel ?? field.dependsOn}" first`
+              : "Select..."
+          }
+          disabled={needsParentSelection}
         >
           {options.map((opt) => (
             <option key={opt} value={opt}>
