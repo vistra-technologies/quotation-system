@@ -559,3 +559,19 @@ contradicts them). Final sanity: lint/tsc clean, health 200/connected, `stage14.
 pre-existing stale assertions), `select-field-options`/`superadmin-component-types`/
 `catalog-field-values`/`configurator-gating` all green. Full detail: `bugs-3.md`. Stage 20 (all batches)
 ready for `engineering:deploy`.
+
+---
+
+## tester — post-deploy production regression check @ `master` `7ff77d1` (dpl_4xhw5xdQfaeJAL7SDWpbbujbKA6F, Stage 19 + Stage 20 bundled) — 2026-09-13
+
+**PASS.** Read-only regression sweep against `https://easeetool.com` per the orchestrator's request
+(bundled Stage 19+20 production promotion). `/api/health` and `/api/auth/ok` 200; apex org selector 200;
+unknown org subdomain 404 JSON; `vistra.easeetool.com` subdomain resolves (health 200/connected, `/login`
+200); apex-host `x-org-id`/`x-org-slug` header spoof does not affect apex response; signup-disabled guard
+still returns 400 `EMAIL_PASSWORD_SIGN_UP_DISABLED`; unknown paths at apex and within a known org both
+404 correctly; deleted routes (`/admin/components`, `/admin/roles`) still 404. Stage 20 surface: SuperAdmin
+`/controls` and `/controls/component-types` correctly 307-redirect unauthenticated requests to
+`/controls/login` (200); org `admin/field-values` ("Catalog") correctly 307-redirects unauthenticated
+requests to `/login`. No authenticated/mutating checks performed (no destructive actions taken against
+production data, per instructions). No test data created. Full detail in chat response to orchestrator
+(no bugs-N.md — this was a quick regression check, not a full stage artifact).
