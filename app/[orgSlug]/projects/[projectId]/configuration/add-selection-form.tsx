@@ -223,12 +223,6 @@ export function AddSelectionForm({
   // selected type's org config and whatever the user has picked for its parent (if any) so far.
   const optionsFor = (field: FieldEntry): string[] =>
     resolveOptions(field, fieldValues, selectedType?.fieldOptionsConfig ?? null);
-  const parentLabelFor = (field: FieldEntry): string | undefined => {
-    if (!field.dependsOn) return undefined;
-    return (
-      selectedType?.fieldsSchema.find((f) => f.key === field.dependsOn)?.label ?? field.dependsOn
-    );
-  };
 
   const handleEditSelection = (sel: SelectionRow) => {
     setEditingSelectionId(sel.id);
@@ -426,7 +420,6 @@ export function AddSelectionForm({
                           value={fieldValues[field.key]}
                           onChange={(val) => updateField(field.key, val)}
                           options={optionsFor(field)}
-                          parentLabel={parentLabelFor(field)}
                         />
                       ))}
                     </div>
@@ -437,7 +430,6 @@ export function AddSelectionForm({
                       value={fieldValues[row[0].key]}
                       onChange={(val) => updateField(row[0].key, val)}
                       options={optionsFor(row[0])}
-                      parentLabel={parentLabelFor(row[0])}
                     />
                   ),
                 )}
@@ -473,7 +465,6 @@ export function AddSelectionForm({
                               value={fieldValues[field.key]}
                               onChange={(val) => updateField(field.key, val)}
                               options={optionsFor(field)}
-                              parentLabel={parentLabelFor(field)}
                             />
                           ))}
                         </div>
@@ -484,7 +475,6 @@ export function AddSelectionForm({
                           value={fieldValues[row[0].key]}
                           onChange={(val) => updateField(row[0].key, val)}
                           options={optionsFor(row[0])}
-                          parentLabel={parentLabelFor(row[0])}
                         />
                       ),
                     )}
@@ -613,13 +603,11 @@ interface FieldInputProps {
   // already accounting for dependsOn + the parent's currently-selected value. Replaces the old
   // `field.options` read (fieldsSchema no longer carries option values since Batch 1).
   options: string[];
-  // Label of the field this one depends on, if any — used for the "select X first" notice.
-  parentLabel?: string;
 }
 
-function FieldInput({ field, value, onChange, options, parentLabel }: FieldInputProps) {
+function FieldInput({ field, value, onChange, options }: FieldInputProps) {
   const inputClass =
-    "w-full rounded-sm border border-border bg-bg-white px-3.5 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/30";
+    "w-full rounded-sm border border-border bg-bg-white px-3.5 py-2.5 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50";
   const labelClass = "text-xs font-bold uppercase tracking-wider text-text-muted";
 
   const displayLabel = field.label || field.key;
@@ -667,11 +655,7 @@ function FieldInput({ field, value, onChange, options, parentLabel }: FieldInput
           value={(value as string) ?? ""}
           onChange={(e) => onChange(e.target.value)}
           className={inputClass}
-          placeholder={
-            needsParentSelection
-              ? `Select "${parentLabel ?? field.dependsOn}" first`
-              : "Select..."
-          }
+          placeholder="Select"
           disabled={needsParentSelection}
         >
           {options.map((opt) => (
