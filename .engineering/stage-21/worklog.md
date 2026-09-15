@@ -19,19 +19,21 @@ Run instruction: devs may reach out to the architect if unclear on task executio
 | T0.4 | 0 | S21-0.4 draft-state reducer/context (hard gate, highest risk) | — | approved | `feature/s21-t0-foundation` | |
 | T0.5 | 0 | S21-0.5 ContextMenu primitive | — | approved | `feature/s21-t0-foundation` | |
 | T0.6 | 0 | S21-0.6 unsaved-changes modal | 0.4 | approved | `feature/s21-t0-foundation` | |
-| A1 | A | S21-A1 floor bar | Track 0 | pending | | |
-| A2 | A | S21-A2 collapsible room groups | Track 0 | pending | | |
-| A3 | A | S21-A3 partition rows + preview | Track 0 | pending | | |
-| A4 | A | S21-A4 inline add-room form | Track 0 | pending | | |
-| B1 | B | S21-B1 empty state | Track 0 | pending | | |
-| B2 | B | S21-B2 room header + floorplan | Track 0 | pending | | |
-| C1 | C | S21-C1 wall details inline convert (retires add-wall) | Track 0, B2 | pending | | |
-| C2 | C | S21-C2 saved components rail | Track 0, D2 | pending | | |
-| C3 | C | S21-C3 door height slider | C2 | pending | | |
-| D1 | D | S21-D1 configure-mode shell | Track 0 | ready-for-review | `feature/s21-trackD-configure-mode` | a900550 |
-| D2 | D | S21-D2 wall canvas | D1 | ready-for-review | `feature/s21-trackD-configure-mode` | 21b8a4b |
-| D3 | D | S21-D3 multi-select + panel menu | D2, 0.5 | ready-for-review | `feature/s21-trackD-configure-mode` | db96528 |
-| D4 | D | S21-D4 door context menu | D3 | ready-for-review | `feature/s21-trackD-configure-mode` | a412970 |
+| A1 | A | S21-A1 floor bar | Track 0 | merged | `feature/s21-trackA-left-rail` | 9de0573 |
+| A2 | A | S21-A2 collapsible room groups | Track 0 | merged | `feature/s21-trackA-left-rail` | 9de0573 |
+| A3 | A | S21-A3 partition rows + preview | Track 0 | merged | `feature/s21-trackA-left-rail` | 9de0573 |
+| A4 | A | S21-A4 inline add-room form | Track 0 | merged | `feature/s21-trackA-left-rail` | 9de0573 |
+| B1 | B | S21-B1 empty state | Track 0 | merged | `feature/s21-trackB-layout-mode` | 019aa6e |
+| B2 | B | S21-B2 room header + floorplan | Track 0 | merged | `feature/s21-trackB-layout-mode` | 019aa6e |
+| C1 | C | S21-C1 wall details inline convert (retires add-wall) | Track 0, B2 | merged | `feature/s21-trackC-right-rail` | a608c9d |
+| C2 | C | S21-C2 saved components rail | Track 0, D2 | merged | `feature/s21-trackC-right-rail` | a608c9d |
+| C3 | C | S21-C3 door height slider | C2 | merged | `feature/s21-trackC-right-rail` | a608c9d |
+| D1 | D | S21-D1 configure-mode shell | Track 0 | merged | `feature/s21-trackD-configure-mode` | 28ea78c |
+| D2 | D | S21-D2 wall canvas | D1 | merged | `feature/s21-trackD-configure-mode` | 28ea78c |
+| D3 | D | S21-D3 multi-select + panel menu | D2, 0.5 | merged | `feature/s21-trackD-configure-mode` | 28ea78c |
+| D4 | D | S21-D4 door context menu | D3 | merged | `feature/s21-trackD-configure-mode` | 28ea78c |
+| INT | — | Integration wiring (design-workspace.tsx consolidation) | A, B, D | merged | `feature/s21-integration-wiring` | 874cbdc |
+| FIX | — | Final labels fix (Track C review findings) | C | merged | `feature/s21-final-workspace-labels` | a06459d |
 
 Track 0 is solo/serial internally (no file conflicts expected across its 6 tasks, but it's small enough
 to run as one dev pass rather than parallelize further). GATE A: Track 0 fully reviewed+merged into
