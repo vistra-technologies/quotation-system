@@ -27,6 +27,13 @@ interface ConfirmDialogProps {
    */
   thirdAction?: ThirdAction;
   /**
+   * Visual variant for the primary confirm button.
+   * Defaults to "danger" (red) to preserve backward compat — all existing
+   * destructive-action dialogs (org delete, floor delete, etc.) stay red.
+   * Pass "primary" for non-destructive confirm actions (e.g. Save & Go Back).
+   */
+  confirmVariant?: "primary" | "danger";
+  /**
    * When true, Escape does NOT dismiss this dialog (required by the unsaved-
    * changes modal per mockup lines 1916-1955 — it must force an explicit choice).
    * Defaults to false (existing behaviour: Escape triggers onCancel).
@@ -67,6 +74,7 @@ export function ConfirmDialog({
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   thirdAction,
+  confirmVariant = "danger",
   disableEscapeClose = false,
   disableOverlayClose = false,
   onConfirm,
@@ -126,18 +134,35 @@ export function ConfirmDialog({
           {message}
         </p>
 
-        <div className="flex flex-col gap-2">
+        {/* Button group — column layout only when a thirdAction is present;
+            otherwise row (Cancel left, Confirm right) matching the original layout. */}
+        <div className={thirdAction ? "flex flex-col gap-2" : "flex flex-row justify-end gap-3"}>
+          {/* Cancel action — rendered first in DOM but visually last in row layout */}
+          {!thirdAction && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-sm border border-border bg-bg-white px-4 py-2 text-sm font-bold text-text-body hover:border-[#b9c2ae]"
+            >
+              {cancelLabel}
+            </button>
+          )}
+
           {/* Primary action */}
           <button
             ref={confirmRef}
             type="button"
             onClick={onConfirm}
-            className="rounded-sm border border-primary-dark bg-primary px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-dark"
+            className={
+              confirmVariant === "primary"
+                ? "rounded-sm border border-primary-dark bg-primary px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-dark"
+                : "rounded-sm border border-red-700 bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700"
+            }
           >
             {confirmLabel}
           </button>
 
-          {/* Optional third action (danger or default) */}
+          {/* Optional third action (danger or default) — only when thirdAction present */}
           {thirdAction && (
             <button
               type="button"
@@ -152,14 +177,16 @@ export function ConfirmDialog({
             </button>
           )}
 
-          {/* Cancel action */}
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:border-[#b9c2ae]"
-          >
-            {cancelLabel}
-          </button>
+          {/* Cancel action — in column layout rendered after thirdAction */}
+          {thirdAction && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:border-[#b9c2ae]"
+            >
+              {cancelLabel}
+            </button>
+          )}
         </div>
       </div>
     </div>

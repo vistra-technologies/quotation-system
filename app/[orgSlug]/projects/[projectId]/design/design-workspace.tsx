@@ -14,7 +14,7 @@
  * dispatch actions via useDraftContext() from their own component files.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { UnitProvider } from "./unit-context";
 import { DraftProvider, useDraftContext } from "./design-draft-context";
@@ -89,6 +89,10 @@ function DesignWorkspaceInner({
     onSave: () => void;
     onDiscard: () => void;
   } | null>(null);
+
+  // Cancellation token for enterConfigureMode's async fetch — prevents the earlier
+  // response from overwriting the state if the user clicks two partitions quickly.
+  const fetchCancelRef = useRef({ cancelled: false });
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const selectedFloor = floors.find((f) => f.id === selectedFloorId) ?? null;
@@ -144,14 +148,21 @@ function DesignWorkspaceInner({
 
   /** Enter Configure mode: fetch partition → LOAD_PARTITION → switch view. */
   async function enterConfigureMode(partitionId: string, sideIndex: number) {
+    // Cancel any previous in-flight fetch so a rapid double-click between partitions
+    // doesn't let the earlier response overwrite the later one.
+    fetchCancelRef.current.cancelled = true;
+    const token = { cancelled: false };
+    fetchCancelRef.current = token;
     try {
       const res = await fetch(`/api/v1/orgs/${orgSlug}/partitions/${partitionId}`);
+      if (token.cancelled) return;
       if (res.status === 401 || res.status === 403) {
         redirectToLogin(orgSlug, isSubdomain);
         return;
       }
       if (!res.ok) return;
       const { partition } = (await res.json()) as { partition: PartitionRow };
+      if (token.cancelled) return;
       dispatch({ type: "LOAD_PARTITION", partition });
     } catch {
       return;
@@ -474,6 +485,7 @@ function DesignWorkspaceInner({
           title={t("unsavedChangesTitle")}
           message={t("unsavedChangesMessage")}
           confirmLabel={t("saveAndGoBack")}
+          confirmVariant="primary"
           cancelLabel={t("cancelStay")}
           disableEscapeClose={true}
           disableOverlayClose={true}

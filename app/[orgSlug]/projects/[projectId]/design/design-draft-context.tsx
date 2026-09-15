@@ -206,8 +206,10 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
       const half = Math.floor(orig.widthMm / 2);
       const firstId = crypto.randomUUID();
       const secondId = crypto.randomUUID();
-      const a: DesignPanel = { ...orig, id: firstId, widthMm: half, door: null };
-      const b: DesignPanel = { ...orig, id: secondId, widthMm: orig.widthMm - half, door: null };
+      // Reset type to "glass" on both halves — orig may have type:"door" if it was
+      // a door panel; halves have door:null so they must also be type:"glass".
+      const a: DesignPanel = { ...orig, id: firstId, widthMm: half, type: "glass", door: null };
+      const b: DesignPanel = { ...orig, id: secondId, widthMm: orig.widthMm - half, type: "glass", door: null };
       return {
         ...mutatePanels(state, (ps) => [...ps.slice(0, idx), a, b, ...ps.slice(idx + 1)]),
         selection: { type: "panel", panelIds: [firstId] },
@@ -264,8 +266,20 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
       const oldTotal = panels.reduce((s, p) => s + p.widthMm, 0);
       if (oldTotal === 0) return state;
       const scale = action.widthMm / oldTotal;
+      // Scale each panel, then adjust the last panel by the remainder so the
+      // sum equals action.widthMm exactly. Independent per-panel Math.round()
+      // can produce a sum that differs by ±(N−1) mm, which would be persisted
+      // to the DB as the wrong dimension.
+      const scaled = panels.map((p) => Math.max(1, Math.round(p.widthMm * scale)));
+      const scaledSum = scaled.reduce((s, w) => s + w, 0);
+      const remainder = action.widthMm - scaledSum;
       return mutatePanels(state, (ps) =>
-        ps.map((p) => ({ ...p, widthMm: Math.max(1, Math.round(p.widthMm * scale)) })),
+        ps.map((p, i) => ({
+          ...p,
+          widthMm: i === ps.length - 1
+            ? Math.max(1, scaled[i] + remainder)
+            : scaled[i],
+        })),
       );
     }
 

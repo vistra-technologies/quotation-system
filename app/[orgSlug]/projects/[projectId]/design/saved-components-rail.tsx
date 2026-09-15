@@ -78,14 +78,18 @@ export function SavedComponentsRail({ selections }: SavedComponentsRailProps) {
     const heightMm = existingHeight
       ? Math.min(existingHeight, wallHeightMm)
       : Math.max(MIN_DOOR_HEIGHT_MM, Math.round(wallHeightMm * DEFAULT_DOOR_HEIGHT_RATIO));
-    // If same door is already active, use TOGGLE_DOOR to remove; otherwise add.
     if (selectedPanel?.door && selectedPanel.door.selectionId === componentId) {
+      // Same door already active — toggle off (remove).
       dispatch({ type: "TOGGLE_DOOR", panelId, selectionId: componentId });
     } else {
-      // Set door via TOGGLE_DOOR (adds since no door present, or replaces).
-      // We dispatch TOGGLE_DOOR which handles the add/remove logic.
+      // Different door (or no door). TOGGLE_DOOR is a pure toggle: present→remove,
+      // absent→add. To *replace* an existing door with a different component we must
+      // remove the old one first, then add the new one.
+      if (selectedPanel?.door) {
+        dispatch({ type: "TOGGLE_DOOR", panelId, selectionId: selectedPanel.door.selectionId });
+      }
+      // Panel now has no door — TOGGLE_DOOR adds it with the new selectionId.
       dispatch({ type: "TOGGLE_DOOR", panelId, selectionId: componentId });
-      // Then ensure the height is correct via SET_DOOR_HEIGHT.
       dispatch({ type: "SET_DOOR_HEIGHT", panelId, heightMm });
     }
   }
