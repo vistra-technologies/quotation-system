@@ -125,7 +125,15 @@ export type DraftAction =
   // ── Edge stops (migrates saved-components-rail assignProfile call site) ────
   // SET_STOPS: update one edge-profile stop in design.stops. Track D removes the
   // UI that dispatches this (D-5), but the call site must compile cleanly.
-  | { type: "SET_STOPS"; side: EdgeSide; selectionId: string | null };
+  | { type: "SET_STOPS"; side: EdgeSide; selectionId: string | null }
+
+  // ── Bulk independent panel width map (Track D — sum-preserving Apply Width) ─
+  // SET_PANEL_WIDTHS_MAP: set each listed panel's widthMm independently in one
+  // dispatch. Used by panel-context-menu's Apply Width and Standard Width buttons,
+  // which redistribute the remaining width across non-target panels before
+  // dispatching so the sum is preserved exactly (last-panel-absorbs-remainder
+  // pattern, matching SET_PARTITION_WIDTH). Unlisted panels are left unchanged.
+  | { type: "SET_PANEL_WIDTHS_MAP"; widths: Record<string, number> };
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
 
@@ -370,6 +378,14 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
         pendingRoomNameEdits: { ...state.pendingRoomNameEdits, [action.roomId]: action.name },
         isDirty: true,
       };
+
+    // ── Bulk panel width map ──────────────────────────────────────────────────
+    case "SET_PANEL_WIDTHS_MAP":
+      return mutatePanels(state, (ps) =>
+        ps.map((p) =>
+          action.widths[p.id] !== undefined ? { ...p, widthMm: action.widths[p.id]! } : p,
+        ),
+      );
 
     // ── Edge stops ────────────────────────────────────────────────────────────
     case "SET_STOPS": {
