@@ -1,77 +1,37 @@
 "use client";
 
-import { useState } from "react";
+/**
+ * Right rail in Configure mode — Saved Components.
+ *
+ * S21-0.4: migrated from immediate-write mutations (mutatePartition) to the
+ * draft-state context (useDraftContext / dispatch). The `mutate`, `partition`,
+ * and `selection` props are gone; this component reads them from the context.
+ *
+ * Track C (S21-C2) will rebuild the full UI to mockup parity.
+ */
+
 import { useTranslations } from "next-intl";
 import { MIN_DOOR_HEIGHT_MM, DEFAULT_DOOR_HEIGHT_RATIO } from "./configure-constants";
-import type {
-  ConfigureSelection,
-  DesignPanel,
-  MutateResult,
-  PartitionPatch,
-  PartitionRow,
-  SelectionRow,
-} from "./types";
+import { useDraftContext } from "./design-draft-context";
+import type { DesignPanel, SelectionRow } from "./types";
 
 interface SavedComponentsRailProps {
-  partition: PartitionRow;
   selections: SelectionRow[];
-  selection: ConfigureSelection;
-  mutate: (build: (fresh: PartitionRow) => PartitionPatch) => Promise<MutateResult>;
+  // partition, selection, mutate — removed (S21-0.4). Use useDraftContext().
 }
 
-/**
- * Right rail in Configure mode — mirrors design-step-poc.html's
- * `renderConfigureSidebar`: 3 gated sections (glass always enabled, doors
- * only with a panel selected, profiles only with an edge selected), plus a
- * trailing "Other" section for any Selection whose componentType.code isn't
- * one of the 3 recognized codes.
- *
- * GROUPING IS BY `componentType.code` (GLASS/DOOR/PROFILE_STOP), NOT
- * `category.name` — architect-review-item7.md's binding correction to
- * plan-item7.md's flag 3, which incorrectly assumed free-text category
- * grouping. Every org seeds exactly one category ("Glass Partitions")
- * containing these 3 coded ComponentTypes (lib/component-catalog-seed.ts),
- * so category-name grouping would put everything in one bucket — the code
- * is the only thing that carries behavioral meaning here (same precedent as
- * lib/component-icons.tsx).
- */
-export function SavedComponentsRail({
-  partition,
-  selections,
-  selection,
-  mutate,
-}: SavedComponentsRailProps) {
+export function SavedComponentsRail({ selections }: SavedComponentsRailProps) {
   const t = useTranslations("design");
+  const { state, dispatch } = useDraftContext();
 
-  // Same busy/error surface ConfigureMode's run() gives its own mutations
-  // (configure-mode.tsx:85-92) — without it, a 400 (cross-tenant reference)
-  // or a network error on assignGlass/toggleDoor/assignProfile produced no
-  // feedback at all, and nothing guarded against a rapid double-click firing
-  // two overlapping read-modify-write cycles (review-item7-piece2 MINOR 4).
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const partition = state.draft;
+  const selection = state.selection;
 
-  // A stale error from a previous mutation shouldn't keep showing once the
-  // user has moved on to a different panel/edge selection (or left Configure
-  // mode entirely) — review-item7-piece2-round2.md MINOR 5b. Cleared during
-  // render on a genuine selection change (same "adjust state when a prop
-  // changes" pattern room-name-input.tsx/configure-mode.tsx already use for
-  // their own prop-keyed resets), not a useEffect.
-  const selectionKey = selection ? `${selection.type}:${selection.type === "panel" ? selection.panelId : selection.side}` : null;
-  const [prevSelectionKey, setPrevSelectionKey] = useState(selectionKey);
-  if (prevSelectionKey !== selectionKey) {
-    setPrevSelectionKey(selectionKey);
-    setError(null);
-  }
+  // error/busy state removed: dispatch is synchronous, no async error handling needed here.
+  // Save errors are surfaced at the design-workspace.tsx level.
 
-  async function run(build: (fresh: PartitionRow) => PartitionPatch): Promise<MutateResult> {
-    if (busy) return { ok: false, error: t("busyPleaseWait") };
-    setBusy(true);
-    setError(null);
-    const result = await mutate(build);
-    if (!result.ok) setError(result.error);
-    setBusy(false);
-    return result;
+  if (!partition) {
+    return <p className="text-xs text-text-muted">{t("loadingPartition")}</p>;
   }
 
   const glassSelections = selections.filter((s) => s.componentType.code === "GLASS");
@@ -81,12 +41,16 @@ export function SavedComponentsRail({
     (s) => !["GLASS", "DOOR", "PROFILE_STOP"].includes(s.componentType.code ?? ""),
   );
 
+  const busy = false; // Dispatch is synchronous — no async busy guard needed.
   const doorEnabled = selection?.type === "panel";
   const profileEnabled = selection?.type === "edge";
 
   const panels = partition.design?.panels ?? [];
-  const selectedPanel: DesignPanel | undefined =
-    selection?.type === "panel" ? panels.find((p) => p.id === selection.panelId) : undefined;
+  // For door/profile operations, the primary selected panel is the first panelId.
+  const primaryPanelId = selection?.type === "panel" ? selection.panelIds[0] : undefined;
+  const selectedPanel: DesignPanel | undefined = primaryPanelId
+    ? panels.find((p) => p.id === primaryPanelId)
+    : undefined;
 
   function isGlassActive(id: string): boolean {
     return panels.length > 0 && panels.every((p) => p.selectionId === id);
@@ -95,53 +59,42 @@ export function SavedComponentsRail({
     return !!selectedPanel?.door && selectedPanel.door.selectionId === id;
   }
   function isProfileActive(id: string): boolean {
-    return selection?.type === "edge" && partition.design?.stops?.[selection.side] === id;
+    // partition! — non-null assertion safe here: functions are only called after
+    // the early return guard above ensures partition is non-null.
+    return selection?.type === "edge" && partition!.design?.stops?.[selection.side] === id;
   }
 
   function assignGlass(componentId: string) {
-    void run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      const nextPanels = freshPanels.map((p) => ({ ...p, selectionId: componentId }));
-      return { design: { panels: nextPanels } };
-    });
+    if (busy) return;
+    const allPanelIds = panels.map((p) => p.id);
+    dispatch({ type: "SET_GLASS", panelIds: allPanelIds, selectionId: componentId });
   }
 
   function toggleDoor(componentId: string) {
-    if (selection?.type !== "panel") return;
-    const panelId = selection.panelId;
-    void run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      const nextPanels = freshPanels.map((p): DesignPanel => {
-        if (p.id !== panelId) return p;
-        if (p.door && p.door.selectionId === componentId) {
-          return { ...p, type: "glass", door: null };
-        }
-        const wallHeightMm = fresh.heightMm;
-        const existingHeight = p.door?.outerFrame?.h;
-        const heightMm = existingHeight
-          ? Math.min(existingHeight, wallHeightMm)
-          : Math.max(MIN_DOOR_HEIGHT_MM, Math.round(wallHeightMm * DEFAULT_DOOR_HEIGHT_RATIO));
-        return {
-          ...p,
-          type: "door",
-          door: {
-            selectionId: componentId,
-            hinging: "left",
-            outerFrame: { w: p.widthMm, h: heightMm },
-          },
-        };
-      });
-      return { design: { panels: nextPanels } };
-    });
+    if (busy || selection?.type !== "panel") return;
+    const panelId = selection.panelIds[0];
+    const wallHeightMm = partition!.heightMm; // non-null: see isProfileActive comment
+    const existingHeight = selectedPanel?.door?.outerFrame?.h;
+    const heightMm = existingHeight
+      ? Math.min(existingHeight, wallHeightMm)
+      : Math.max(MIN_DOOR_HEIGHT_MM, Math.round(wallHeightMm * DEFAULT_DOOR_HEIGHT_RATIO));
+    // If same door is already active, use TOGGLE_DOOR to remove; otherwise add.
+    if (selectedPanel?.door && selectedPanel.door.selectionId === componentId) {
+      dispatch({ type: "TOGGLE_DOOR", panelId, selectionId: componentId });
+    } else {
+      // Set door via TOGGLE_DOOR (adds since no door present, or replaces).
+      // We dispatch TOGGLE_DOOR which handles the add/remove logic.
+      dispatch({ type: "TOGGLE_DOOR", panelId, selectionId: componentId });
+      // Then ensure the height is correct via SET_DOOR_HEIGHT.
+      dispatch({ type: "SET_DOOR_HEIGHT", panelId, heightMm });
+    }
   }
 
   function assignProfile(componentId: string) {
-    if (selection?.type !== "edge") return;
-    const side = selection.side;
-    void run((fresh) => {
-      const stops = { ...(fresh.design?.stops ?? {}), [side]: componentId };
-      return { design: { stops } };
-    });
+    if (busy || selection?.type !== "edge") return;
+    // Track D (S21-D5) removes this UI section. Until then, dispatch SET_STOPS
+    // so the edge-profile assignment defers to Save rather than doing an immediate write.
+    dispatch({ type: "SET_STOPS", side: selection.side, selectionId: componentId });
   }
 
   return (
@@ -150,8 +103,6 @@ export function SavedComponentsRail({
         {t("selectionsTitle")}
       </h2>
       <p className="mb-3 text-[11px] text-text-muted">{t("savedComponentsFrom")}</p>
-      {error && <p className="mb-2 text-xs text-red-700 dark:text-red-400">{error}</p>}
-
       <div className="min-h-0 flex-1 overflow-y-auto">
         {glassSelections.length > 0 && (
           <ComponentSection

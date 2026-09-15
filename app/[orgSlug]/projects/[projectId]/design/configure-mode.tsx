@@ -1,80 +1,65 @@
 "use client";
 
+/**
+ * Configure mode — the wall/panel editor.
+ *
+ * S21-0.4: migrated from immediate-write mutations (mutatePartition) to the
+ * draft-state context (useDraftContext / dispatch). The `mutate` prop is gone;
+ * all field changes dispatch reducer actions and are only written to the server
+ * on explicit Save. No network write happens between entering Configure mode
+ * and pressing Save.
+ *
+ * Track D (S21-D1..D4) will rebuild the full UI to mockup parity — this file
+ * retains the existing visual structure for now, wired to the new reducer.
+ */
+
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { LoadingOverlay } from "@/components/loading-overlay";
 import { useUnit } from "./unit-context";
 import { WallCanvas } from "./wall-canvas";
 import { PanelList } from "./panel-list";
 import { EdgeProfile, EDGE_LABEL_KEY } from "./edge-profile";
-import { DEFAULT_PANEL_WIDTH_MM, MIN_SPLIT_WIDTH_MM } from "./configure-constants";
-import type {
-  ConfigureSelection,
-  DesignPanel,
-  EdgeSide,
-  MutateResult,
-  PartitionPatch,
-  PartitionRow,
-  SelectionRow,
-} from "./types";
+import { MIN_SPLIT_WIDTH_MM } from "./configure-constants";
+import { useDraftContext } from "./design-draft-context";
+import type { DraftSelection } from "./design-draft-context";
+import type { EdgeSide, SelectionRow } from "./types";
 
 interface ConfigureModeProps {
-  partition: PartitionRow;
   selections: SelectionRow[];
   floorLabel: string;
   roomLabel: string;
-  selection: ConfigureSelection;
-  onSelectionChange: (selection: ConfigureSelection) => void;
   onBack: () => void;
-  /** Every mutation re-reads the partition fresh from the server before
-   * building its PATCH body (see design-workspace.tsx's mutatePartition) —
-   * the binding condition architect-review-item7.md attached to client-side
-   * mutation transport for any full-document write, ported from Piece 1's
-   * convert-side-form.tsx. */
-  mutate: (build: (fresh: PartitionRow) => PartitionPatch) => Promise<MutateResult>;
+  // partition, selection, onSelectionChange, mutate — removed (S21-0.4).
+  // Use useDraftContext() inside this component instead.
 }
 
-/**
- * Configure mode — the wall/panel editor. Mirrors design-step-poc.html's
- * `renderConfigureMode`/`renderCanvas`: a consolidated toolbar row (back,
- * name, floor/panel tags, dimensions), a to-scale wall canvas with 4
- * edge-profile pickers around it, add/remove/split-panel controls, a
- * contextual hint line, and the itemized panel list.
- */
 export function ConfigureMode({
-  partition,
   selections,
   floorLabel,
   roomLabel,
-  selection,
-  onSelectionChange,
   onBack,
-  mutate,
 }: ConfigureModeProps) {
   const t = useTranslations("design");
   const { unit, toDisplay, fromDisplay } = useUnit();
+  const { state, dispatch } = useDraftContext();
 
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const partition = state.draft;
+  const selection = state.selection;
 
-  const [nameValue, setNameValue] = useState(partition.label);
+  const [nameValue, setNameValue] = useState(partition?.label ?? "");
   const [widthText, setWidthText] = useState("");
   const [heightText, setHeightText] = useState("");
 
-  // Reset local drafts when a DIFFERENT partition becomes active (not on
-  // every prop update from this same partition, which would clobber
-  // in-progress typing) — same "adjust state during render" pattern
-  // room-name-input.tsx / convert-side-form.tsx already use.
-  const [prevPartitionId, setPrevPartitionId] = useState(partition.id);
-  if (prevPartitionId !== partition.id) {
-    setPrevPartitionId(partition.id);
-    setNameValue(partition.label);
+  // Reset local text mirrors when a different partition becomes active.
+  const [prevPartitionId, setPrevPartitionId] = useState(partition?.id ?? null);
+  if (prevPartitionId !== (partition?.id ?? null)) {
+    setPrevPartitionId(partition?.id ?? null);
+    setNameValue(partition?.label ?? "");
     setWidthText("");
     setHeightText("");
   }
-  // Unit-toggle change: clear the raw text mirrors so the display re-derives
-  // from the same canonical mm through the new unit (convert-side-form.tsx's
-  // fixed pattern — never reinterpret stale digits through fromDisplay()).
+
+  // Unit-toggle change: clear raw text mirrors to prevent stale-digit reinterpretation.
   const [prevUnit, setPrevUnit] = useState(unit);
   if (prevUnit !== unit) {
     setPrevUnit(unit);
@@ -82,169 +67,91 @@ export function ConfigureMode({
     setHeightText("");
   }
 
-  async function run(build: (fresh: PartitionRow) => PartitionPatch): Promise<MutateResult> {
-    setBusy(true);
-    setError(null);
-    const result = await mutate(build);
-    if (!result.ok) setError(result.error);
-    setBusy(false);
-    return result;
-  }
+  if (!partition) return <p className="text-xs text-text-muted">{t("loadingPartition")}</p>;
 
-  async function commitName() {
-    const trimmed = nameValue.trim();
-    if (!trimmed || trimmed === partition.label) {
-      setNameValue(partition.label);
-      return;
-    }
-    const result = await run(() => ({ label: trimmed }));
-    if (!result.ok) setNameValue(partition.label);
-  }
+  const panels = partition.design?.panels ?? [];
 
-  async function commitWidth() {
-    const parsed = Number(widthText);
-    if (widthText === "" || isNaN(parsed) || parsed <= 0) {
-      setWidthText("");
-      return;
-    }
-    const newTotalMm = Math.round(fromDisplay(parsed));
-    setWidthText("");
-    await run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      const oldTotalMm = freshPanels.reduce((sum, p) => sum + p.widthMm, 0) || 1;
-      const scale = newTotalMm / oldTotalMm;
-      const nextPanels = freshPanels.map((p) => ({
-        ...p,
-        widthMm: Math.max(1, Math.round(p.widthMm * scale)),
-      }));
-      return { design: { panels: nextPanels } };
-    });
-  }
-
-  async function commitHeight() {
-    const parsed = Number(heightText);
-    if (heightText === "" || isNaN(parsed) || parsed <= 0) {
-      setHeightText("");
-      return;
-    }
-    const newHeightMm = Math.round(fromDisplay(parsed));
-    setHeightText("");
-    await run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      // Clamp any door heights that now exceed the new (shorter) wall height
-      // — mirrors design-step-poc.html:1086.
-      const nextPanels = freshPanels.map((p): DesignPanel => {
-        if (!p.door) return p;
-        const currentH = p.door.outerFrame?.h ?? newHeightMm;
-        const clampedH = Math.min(currentH, newHeightMm);
-        return {
-          ...p,
-          door: { ...p.door, outerFrame: { w: p.door.outerFrame?.w ?? p.widthMm, h: clampedH } },
-        };
-      });
-      return { heightMm: newHeightMm, design: { panels: nextPanels } };
-    });
+  function onSelectionChange(sel: DraftSelection) {
+    dispatch({ type: "SET_SELECTION", selection: sel });
   }
 
   function selectPanel(panelId: string) {
-    onSelectionChange(
-      selection?.type === "panel" && selection.panelId === panelId
-        ? null
-        : { type: "panel", panelId },
-    );
+    if (selection?.type === "panel" && selection.panelIds.length === 1 && selection.panelIds[0] === panelId) {
+      onSelectionChange(null);
+    } else {
+      onSelectionChange({ type: "panel", panelIds: [panelId] });
+    }
   }
+
   function selectEdge(side: EdgeSide) {
     onSelectionChange(
       selection?.type === "edge" && selection.side === side ? null : { type: "edge", side },
     );
   }
 
+  function commitName() {
+    const trimmed = nameValue.trim();
+    // partition is guaranteed non-null here — the early return above prevents
+    // rendering when draft is null, but TS can't see through closures.
+    if (!trimmed || trimmed === partition!.label) {
+      setNameValue(partition!.label);
+      return;
+    }
+    dispatch({ type: "SET_PARTITION_LABEL", label: trimmed });
+  }
+
+  function commitWidth() {
+    const parsed = Number(widthText);
+    if (widthText === "" || isNaN(parsed) || parsed <= 0) {
+      setWidthText("");
+      return;
+    }
+    const newTotalMm = Math.max(1, Math.round(fromDisplay(parsed)));
+    setWidthText("");
+    dispatch({ type: "SET_PARTITION_WIDTH", widthMm: newTotalMm });
+  }
+
+  function commitHeight() {
+    const parsed = Number(heightText);
+    if (heightText === "" || isNaN(parsed) || parsed <= 0) {
+      setHeightText("");
+      return;
+    }
+    const newHeightMm = Math.max(1, Math.round(fromDisplay(parsed)));
+    setHeightText("");
+    dispatch({ type: "SET_PARTITION_HEIGHT", heightMm: newHeightMm });
+  }
+
   function addPanel() {
-    void run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      // Inherit the wall's common glass assignment (if every existing panel
-      // shares one) so adding a panel doesn't silently leave it "unglazed"
-      // relative to the rest of the wall — the Saved-Components rail's
-      // isGlassActive check depends on every panel sharing the same
-      // selectionId (review-item7-piece2 IMPORTANT 2).
-      const commonSelectionId =
-        freshPanels.length > 0 && freshPanels.every((p) => p.selectionId === freshPanels[0].selectionId)
-          ? freshPanels[0].selectionId
-          : null;
-      const newPanel: DesignPanel = {
-        id: crypto.randomUUID(),
-        type: "glass",
-        widthMm: DEFAULT_PANEL_WIDTH_MM,
-        heightMm: fresh.heightMm,
-        selectionId: commonSelectionId,
-      };
-      return { design: { panels: [...freshPanels, newPanel] } };
-    });
+    dispatch({ type: "ADD_PANEL" });
   }
 
   function removeSelectedPanel() {
     if (selection?.type !== "panel") return;
-    const panelId = selection.panelId;
-    void run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      if (freshPanels.length <= 1) return {};
-      return { design: { panels: freshPanels.filter((p) => p.id !== panelId) } };
-    }).then((result) => {
-      if (result.ok) onSelectionChange(null);
-    });
+    dispatch({ type: "REMOVE_PANELS", panelIds: selection.panelIds });
   }
 
   function splitSelectedPanel() {
-    if (selection?.type !== "panel") return;
-    const panelId = selection.panelId;
-    let firstHalfId: string | undefined;
-    void run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      const idx = freshPanels.findIndex((p) => p.id === panelId);
-      if (idx === -1) return {};
-      const panel = freshPanels[idx];
-      if (panel.widthMm < MIN_SPLIT_WIDTH_MM) return {};
-      const halfA = Math.floor(panel.widthMm / 2);
-      const halfB = panel.widthMm - halfA;
-      firstHalfId = crypto.randomUUID();
-      const secondHalfId = crypto.randomUUID();
-      const nextPanels = [...freshPanels];
-      nextPanels.splice(
-        idx,
-        1,
-        // Both halves inherit the split panel's own glass assignment — a
-        // split must not silently drop glass the panel already had
-        // (review-item7-piece2 IMPORTANT 2).
-        { id: firstHalfId, type: "glass", widthMm: halfA, heightMm: panel.heightMm, selectionId: panel.selectionId },
-        { id: secondHalfId, type: "glass", widthMm: halfB, heightMm: panel.heightMm, selectionId: panel.selectionId },
-      );
-      return { design: { panels: nextPanels } };
-    }).then((result) => {
-      if (result.ok && firstHalfId) onSelectionChange({ type: "panel", panelId: firstHalfId });
-    });
+    if (selection?.type !== "panel" || selection.panelIds.length !== 1) return;
+    dispatch({ type: "SPLIT_PANEL", panelId: selection.panelIds[0] });
   }
 
   function commitDoorHeight(panelId: string, heightMm: number) {
-    void run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      const nextPanels = freshPanels.map((p) => {
-        if (p.id !== panelId || !p.door) return p;
-        return {
-          ...p,
-          door: { ...p.door, outerFrame: { w: p.door.outerFrame?.w ?? p.widthMm, h: heightMm } },
-        };
-      });
-      return { design: { panels: nextPanels } };
-    });
+    dispatch({ type: "SET_DOOR_HEIGHT", panelId, heightMm });
   }
 
-  const panels = partition.design?.panels ?? [];
-  const selectedPanel =
-    selection?.type === "panel" ? panels.find((p) => p.id === selection.panelId) : undefined;
-  const removeDisabled = !selectedPanel || panels.length <= 1;
-  const splitDisabled = !selectedPanel || selectedPanel.widthMm < MIN_SPLIT_WIDTH_MM;
+  // The "selected panel" for toolbar state checks — first in the array.
+  const primaryPanelId = selection?.type === "panel" ? selection.panelIds[0] : undefined;
+  const selectedPanel = primaryPanelId ? panels.find((p) => p.id === primaryPanelId) : undefined;
+  const removeDisabled = !selection || selection.type !== "panel" || panels.length <= selection.panelIds.length;
+  const splitDisabled =
+    !selection || selection.type !== "panel" || selection.panelIds.length !== 1 ||
+    !selectedPanel || selectedPanel.widthMm < MIN_SPLIT_WIDTH_MM;
 
-  const widthDisplay = widthText !== "" ? widthText : String(toDisplay(partition.widthMm));
+  // Width display: use sum of panel widths (the server-authoritative value is derived
+  // from this sum — partition.widthMm may lag until Save).
+  const panelWidthSum = panels.reduce((s, p) => s + p.widthMm, 0);
+  const widthDisplay = widthText !== "" ? widthText : String(toDisplay(panelWidthSum));
   const heightDisplay = heightText !== "" ? heightText : String(toDisplay(partition.heightMm));
 
   let hint: string;
@@ -254,9 +161,6 @@ export function ConfigureMode({
 
   return (
     <div className="relative flex w-full max-w-2xl flex-col gap-4">
-      <LoadingOverlay visible={busy} />
-      {error && <p className="text-xs text-red-700 dark:text-red-400">{error}</p>}
-
       {/* Toolbar row — back, name, tags, dimensions */}
       <div className="flex flex-wrap items-center gap-2">
         <button
@@ -272,7 +176,7 @@ export function ConfigureMode({
           type="text"
           value={nameValue}
           onChange={(e) => setNameValue(e.target.value)}
-          onBlur={() => void commitName()}
+          onBlur={commitName}
           onKeyDown={(e) => {
             if (e.key === "Enter") e.currentTarget.blur();
             else if (e.key === "Escape") setNameValue(partition.label);
@@ -294,7 +198,7 @@ export function ConfigureMode({
             step="any"
             value={widthDisplay}
             onChange={(e) => setWidthText(e.target.value)}
-            onBlur={() => void commitWidth()}
+            onBlur={commitWidth}
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
             className="w-20 rounded-sm border border-border bg-bg-white px-2 py-1 text-xs text-text-body focus:border-primary focus:outline-none"
           />
@@ -307,7 +211,7 @@ export function ConfigureMode({
             step="any"
             value={heightDisplay}
             onChange={(e) => setHeightText(e.target.value)}
-            onBlur={() => void commitHeight()}
+            onBlur={commitHeight}
             onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
             className="w-20 rounded-sm border border-border bg-bg-white px-2 py-1 text-xs text-text-body focus:border-primary focus:outline-none"
           />
@@ -315,8 +219,7 @@ export function ConfigureMode({
         </label>
       </div>
 
-      {/* Canvas + edge profiles — background click clears selection, mirrors
-          design-step-poc.html's `canvasWrap` click listener. */}
+      {/* Canvas + edge profiles */}
       <div
         onClick={() => onSelectionChange(null)}
         className="flex flex-col items-center gap-2"

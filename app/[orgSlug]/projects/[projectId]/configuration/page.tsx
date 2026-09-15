@@ -128,7 +128,7 @@ export default async function ConfigurationPage({
   const activeComponentTypes = allComponentTypes.filter((ct) => ct.active);
 
   return (
-    <div>
+    <div className="py-8">
       {/* Page heading */}
       <div className="mb-6 text-center">
         <h1 className="text-3xl font-extrabold text-text-heading">Configuration</h1>

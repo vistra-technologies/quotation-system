@@ -4,14 +4,40 @@ import { useEffect, useRef } from "react";
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
+interface ThirdAction {
+  /** Label for the optional third button (rendered between primary and cancel). */
+  label: string;
+  onClick: () => void;
+  /** Visual variant — "danger" renders in red, "default" renders in neutral. */
+  variant: "danger" | "default";
+}
+
 interface ConfirmDialogProps {
   isOpen: boolean;
   title: string;
   message: string;
-  /** Label for the destructive confirm button. Defaults to "Confirm". */
+  /** Label for the primary confirm button. Defaults to "Confirm". */
   confirmLabel?: string;
   /** Label for the cancel button. Defaults to "Cancel". */
   cancelLabel?: string;
+  /**
+   * Optional third action button, rendered between confirm and cancel.
+   * Used by the unsaved-changes modal for Save & Go Back / Discard / Cancel.
+   * When omitted the dialog behaves exactly as before (backward-compatible).
+   */
+  thirdAction?: ThirdAction;
+  /**
+   * When true, Escape does NOT dismiss this dialog (required by the unsaved-
+   * changes modal per mockup lines 1916-1955 — it must force an explicit choice).
+   * Defaults to false (existing behaviour: Escape triggers onCancel).
+   */
+  disableEscapeClose?: boolean;
+  /**
+   * When true, clicking the overlay does NOT dismiss this dialog.
+   * Required by the unsaved-changes modal (clicking outside = Cancel, not Discard).
+   * Defaults to false (existing behaviour: overlay click triggers onCancel).
+   */
+  disableOverlayClose?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -25,11 +51,14 @@ interface ConfirmDialogProps {
  * so this component has no i18n dependency and can be used under any layout
  * without worrying about clientMessages namespace forwarding.
  *
- * Accessibility: role="dialog", aria-modal, Escape-to-cancel, auto-focus on
- * the confirm button so keyboard users can act immediately or Tab to cancel.
+ * Accessibility: role="dialog", aria-modal, auto-focus on the confirm button
+ * so keyboard users can act immediately or Tab to cancel.
+ *
+ * S21-0.6: added `thirdAction`, `disableEscapeClose`, `disableOverlayClose`
+ * props for the unsaved-changes modal. All new props are optional and default
+ * to the prior behaviour — fully backward-compatible.
  *
  * No portal — renders inline at its mount point, behind a z-50 fixed overlay.
- * Sufficient for admin pages which have no competing z-index stack.
  */
 export function ConfirmDialog({
   isOpen,
@@ -37,6 +66,9 @@ export function ConfirmDialog({
   message,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
+  thirdAction,
+  disableEscapeClose = false,
+  disableOverlayClose = false,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -49,23 +81,28 @@ export function ConfirmDialog({
     }
   }, [isOpen]);
 
-  // Close on Escape key.
+  // Close on Escape key — only if not disabled (unsaved-changes modal requires
+  // an explicit choice and must not dismiss on Escape).
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || disableEscapeClose) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") onCancel();
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onCancel]);
+  }, [isOpen, disableEscapeClose, onCancel]);
 
   if (!isOpen) return null;
+
+  function handleOverlayClick() {
+    if (!disableOverlayClose) onCancel();
+  }
 
   return (
     /* Fixed overlay — blocks interaction with the page behind it. */
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={onCancel}
+      onClick={handleOverlayClick}
     >
       {/* Dialog card — stop propagation so clicking inside doesn't dismiss. */}
       <div
@@ -73,7 +110,7 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-message"
-        className="mx-4 w-full max-w-sm rounded-md border border-border bg-bg-card p-6 shadow-card"
+        className="mx-4 w-full max-w-sm rounded-md border border-border bg-bg-white p-6 shadow-[0_24px_48px_-16px_rgba(27,40,30,.4)]"
         onClick={(e) => e.stopPropagation()}
       >
         <h2
@@ -89,21 +126,39 @@ export function ConfirmDialog({
           {message}
         </p>
 
-        <div className="flex items-center justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-sm border border-border bg-bg-white px-4 py-2 text-sm font-bold text-text-body hover:bg-primary-softer"
-          >
-            {cancelLabel}
-          </button>
+        <div className="flex flex-col gap-2">
+          {/* Primary action */}
           <button
             ref={confirmRef}
             type="button"
             onClick={onConfirm}
-            className="rounded-sm bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700"
+            className="rounded-sm border border-primary-dark bg-primary px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-dark"
           >
             {confirmLabel}
+          </button>
+
+          {/* Optional third action (danger or default) */}
+          {thirdAction && (
+            <button
+              type="button"
+              onClick={thirdAction.onClick}
+              className={
+                thirdAction.variant === "danger"
+                  ? "rounded-sm border border-[--color-danger-border] bg-bg-white px-4 py-2.5 text-sm font-bold text-[--color-status-failed-text] hover:bg-[--color-danger-bg]"
+                  : "rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:border-[#b9c2ae]"
+              }
+            >
+              {thirdAction.label}
+            </button>
+          )}
+
+          {/* Cancel action */}
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:border-[#b9c2ae]"
+          >
+            {cancelLabel}
           </button>
         </div>
       </div>

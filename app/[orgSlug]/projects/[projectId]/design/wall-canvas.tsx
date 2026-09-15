@@ -51,7 +51,7 @@ export function WallCanvas({
       style={{ height: canvasHeightPx }}
     >
       {panels.map((panel) => {
-        const isSelected = selection?.type === "panel" && selection.panelId === panel.id;
+        const isSelected = selection?.type === "panel" && selection.panelIds.includes(panel.id);
         const isDimmed = selection !== null && !isSelected;
         const glass = panel.selectionId
           ? selections.find((s) => s.id === panel.selectionId)

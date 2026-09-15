@@ -62,8 +62,11 @@ export default async function ProjectWizardLayout({
         partitionCount={project.partitionCount}
       />
 
-      {/* Page content */}
-      <div className="py-8">{children}</div>
+      {/* Page content — S21-0.2: py-8 removed from the shared wrapper so the
+          Design page can take its full height without an imposed vertical
+          gutter. Each non-Design wizard page adds py-8 to its own outermost
+          wrapper to preserve its prior appearance. */}
+      <div>{children}</div>
     </div>
   );
 }
