@@ -68,3 +68,24 @@ tracks' anticipated actions per their task files.
   optional prop on ConfirmDialog (backward-compatible); Escape key capture:true on
   ContextMenu to intercept before Configure-mode handler.
   T0.1–0.6 status: ready for review.
+- 2026-09-15 — developer (T0): review CHANGES-NEEDED addressed. Commit `b8189c8`.
+  Vercel preview READY: https://quotation-system-c9mc7nsvy-vistra-indias-projects.vercel.app
+  Health check: ok/connected.
+  Findings addressed:
+    1 [IMPORTANT] SET_PARTITION_WIDTH: last-panel absorbs remainder → sum exact.
+    2 [IMPORTANT] ConfirmDialog: confirmVariant prop (default "danger"/red); column
+      layout only when thirdAction present; unsaved modal passes confirmVariant="primary".
+    3 [IMPORTANT] toggleDoor: double-dispatch TOGGLE_DOOR to remove+add when replacing.
+    4 [MINOR] SPLIT_PANEL: explicit type:"glass" on both halves.
+    5 [MINOR] enterConfigureMode: fetchCancelRef cancellation guard on async fetch.
+    6 [MINOR] Dead i18n key busyPleaseWait removed from en.json.
+  tsc --noEmit: clean. lint: 0 errors / 5 pre-existing test warnings.
+- 2026-09-15 — reviewer: CHANGES-NEEDED. 3 IMPORTANT / 3 MINOR. See
+  `.engineering/stage-21/review-track0.md`. Architecture is sound — draft isolation
+  confirmed, frozen contract confirmed, SET_ROOM_NAME/pendingRoomNameEdits implemented
+  correctly, MAKE_EQUAL_WIDTH/SPLIT/UNITE sum invariants exact. Three blockers require
+  fixes before GATE A clears: (1) SET_PARTITION_WIDTH proportional rescale rounding can
+  save wrong widthMm to DB — apply last-panel-absorbs-remainder fix; (2) ConfirmDialog
+  primary button changed red→green, breaking existing destructive-action dialogs — add
+  confirmVariant prop defaulting to "danger"; (3) toggleDoor replace-with-different-
+  component removes door instead of replacing it — two-dispatch fix in saved-components-rail.
