@@ -365,7 +365,20 @@
     "unsavedChangesMessage": "You have unsaved changes on this partition. Do you want to save them before leaving?",
     "saveAndGoBack": "Save & Go Back",
     "discardChanges": "Discard Changes",
-    "cancelStay": "Cancel"
+    "cancelStay": "Cancel",
+    "renameFloor": "Rename floor",
+    "deleteFloor": "Delete floor",
+    "deleteFloorConfirmTitle": "Delete floor?",
+    "deleteFloorConfirmMsg": "Delete \"{name}\" and all its rooms and partitions? This cannot be undone.",
+    "confirmDelete": "Delete",
+    "renameFloorSubmit": "Save",
+    "floorNamePlaceholder": "Floor name",
+    "deleteRoom": "Delete room",
+    "deleteRoomConfirmTitle": "Delete room?",
+    "deleteRoomConfirmMsg": "Delete \"{name}\" and all its partitions? This cannot be undone.",
+    "convertedWalls": "{converted}/{total} walls",
+    "noRoomsYet": "No rooms on this floor yet.",
+    "loadingPartitions": "Loading…"
   },
   "wizard": {
     "step1": "Project Details",

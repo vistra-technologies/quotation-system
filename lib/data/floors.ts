@@ -90,6 +90,44 @@ export async function createFloorIfNotExists(
 }
 
 /**
+ * Rename a Floor. Tenancy guard: verifies the floor belongs to the session's
+ * org before updating. Returns null if not found (caller -> 404).
+ * Throws { code: "DUPLICATE_FLOOR_LABEL" } on a @@unique([projectId, label])
+ * collision — mirrors createFloorIfNotExists's own mapping.
+ */
+export async function renameFloor(
+  session: SessionData,
+  floorId: string,
+  label: string,
+) {
+  const existing = await prisma.floor.findFirst({
+    where: { id: floorId, organizationId: session.organizationId },
+    select: { id: true },
+  });
+  if (!existing) return null;
+
+  try {
+    return await prisma.floor.update({
+      where: { id: floorId },
+      data: { label },
+    });
+  } catch (err) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as { code: string }).code === "P2002"
+    ) {
+      throw Object.assign(
+        new Error("A floor with this name already exists in this project."),
+        { code: "DUPLICATE_FLOOR_LABEL" },
+      );
+    }
+    throw err;
+  }
+}
+
+/**
  * Delete a Floor. Tenancy guard: verifies the floor belongs to the session's
  * org before deleting. Rooms under it (Room.floorId, onDelete: Cascade) and
  * their Partitions (Partition.roomId, onDelete: Cascade) are removed

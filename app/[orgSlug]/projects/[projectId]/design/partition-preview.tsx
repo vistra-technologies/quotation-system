@@ -5,39 +5,54 @@ interface PartitionPreviewProps {
 }
 
 /**
- * Small to-scale preview swatch for a converted (PARTITION) side, shown in
- * the left rail under each partition row — mirrors design-step-poc.html's
- * `.partition-preview` (a rectangular, to-scale glass-fill swatch).
+ * S21-A3: To-scale partition preview swatch for the left rail.
  *
- * Still a simplified stub as of Piece 3 (review-item7-piece2-round2.md
- * MINOR 9 — re-labelled here since Piece 2 shipped Configure mode's real
- * panel/door canvas primitives (`wall-canvas.tsx`), so this comment's
- * original "isn't fetched until Piece 2" framing is now stale): the
- * `PartitionRow` type this component receives (types.ts) doesn't carry
- * `design`, only `label`/`heightMm`/`widthMm` — the collection route
- * (`GET /partitions?roomId=`) that feeds the room list deliberately never
- * returns the `design` JSONB (see by-page.sql's note on that route), so a
- * real per-panel/door swatch here would need either a second fetch per
- * expanded partition or a route-shape change, neither of which Piece 3's
- * polish scope covers. Deliberate, not forgotten — flag again if a future
- * pass revisits the left-rail preview's fidelity. Renders one flat-colour
- * rectangle sized to the partition's own width:height aspect ratio —
- * non-interactive, no panel subdivision.
+ * Renders each panel as a proportional flex segment (flexBasis = panel.widthMm
+ * / totalWidth * 100%) with a door-notch overlay when panel.door is set —
+ * mirrors design-step-poc.html's makePartitionPreview().
+ *
+ * The collection route (GET /partitions?roomId=) returns the full Prisma row
+ * including the `design` JSONB, so `partition.design?.panels` is always
+ * available for expanded rooms (fetched by room-list.tsx).
+ *
+ * Falls back to a flat-colour rectangle for newly-created partitions that
+ * have no panels yet (zero-panel edge case).
  */
 export function PartitionPreview({ partition }: PartitionPreviewProps) {
-  const aspect = partition.widthMm > 0 && partition.heightMm > 0
-    ? partition.widthMm / partition.heightMm
-    : 3;
+  const panels = partition.design?.panels ?? [];
+
+  if (panels.length === 0) {
+    // No panels yet (new partition, empty design) — flat-colour fallback.
+    return (
+      <div
+        className="mt-1 h-[38px] w-full overflow-hidden rounded-[3px] border border-border bg-bg-white"
+        aria-hidden="true"
+      />
+    );
+  }
+
+  const totalWidth = panels.reduce((s, p) => s + p.widthMm, 0) || 1;
 
   return (
     <div
-      className="mt-1 flex h-9 w-full items-center justify-center overflow-hidden rounded-[3px] border border-border bg-bg-white"
+      className="mt-1 flex h-[38px] w-full overflow-hidden rounded-[3px] border-[1.5px] border-border bg-bg-white"
       aria-hidden="true"
     >
-      <div
-        className="h-full bg-primary-soft"
-        style={{ aspectRatio: aspect, maxWidth: "100%" }}
-      />
+      {panels.map((panel) => (
+        <div
+          key={panel.id}
+          className="relative shrink-0 border-r border-[rgba(27,40,30,.14)] last:border-r-0"
+          style={{ flexBasis: `${(panel.widthMm / totalWidth) * 100}%` }}
+        >
+          {panel.door && (
+            /* Door notch — matches .preview-door in the mockup CSS */
+            <div
+              className="absolute bottom-0 left-[16%] right-[16%] top-[22%] rounded-t-[2px] border border-[rgba(27,40,30,.22)] border-b-0 bg-white/65"
+              aria-hidden="true"
+            />
+          )}
+        </div>
+      ))}
     </div>
   );
 }
