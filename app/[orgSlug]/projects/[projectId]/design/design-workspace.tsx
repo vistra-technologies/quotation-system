@@ -20,7 +20,7 @@ import { UnitProvider } from "./unit-context";
 import { DraftProvider, useDraftContext } from "./design-draft-context";
 import { FloorBar } from "./floor-bar";
 import { RoomList } from "./room-list";
-import { RoomFloorPlan } from "./room-floor-plan";
+import { RoomFloorPlan, sideName } from "./room-floor-plan";
 import { LayoutModePanel } from "./layout-mode-panel";
 import { ConfigureMode } from "./configure-mode";
 import { SavedComponentsRail } from "./saved-components-rail";
@@ -493,8 +493,15 @@ function DesignWorkspaceInner({
           ) : (
             <>
               <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-text-muted">
-                {t("selectionsTitle")}
+                {viewMode === "layout" ? t("wallDetails") : t("selectionsTitle")}
               </h2>
+              {viewMode === "layout" && selectedRoom && layoutSideSelection !== null && (
+                <p className="mb-2 text-xs text-text-muted">
+                  {t("wallSelected", {
+                    side: sideName(layoutSideSelection, selectedRoom.sides.length),
+                  })}
+                </p>
+              )}
               {viewMode === "layout" && selectedRoom && layoutSideSelection !== null ? (
                 <LayoutModePanel
                   orgSlug={orgSlug}

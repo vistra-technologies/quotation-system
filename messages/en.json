@@ -301,6 +301,8 @@
   "design": {
     "pageTitle": "Wall Design",
     "selectionsTitle": "Saved Components",
+    "wallDetails": "Wall Details",
+    "wallSelected": "{side} wall selected",
     "wallsTitle": "Rooms",
     "noWalls": "No floors added yet.",
     "addWall": "Add Wall",
