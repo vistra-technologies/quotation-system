@@ -47,10 +47,10 @@ export function LayoutModePanel({
     // Auto-generate the partition label from room name + side label (matches
     // mockup: room.name + ' ' + cap(side) + ' Wall Partition').
     const wallTitle = side.label
-      ? `${room.label} — ${side.label}`
+      ? `${room.label} ${side.label} Wall`
       : room.label;
     const autoLabel = side.label
-      ? `${side.label} Partition`
+      ? `${room.label} ${side.label} Wall Partition`
       : `${room.label} Partition`;
 
     return (
