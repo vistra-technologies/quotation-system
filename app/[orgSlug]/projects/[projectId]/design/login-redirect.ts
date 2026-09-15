@@ -3,8 +3,8 @@
  * fetch() call.
  *
  * The server-side equivalent (redirect(await orgHref(orgSlug, "/login")) —
- * used by design/actions.ts's now-removed server actions and still used by
- * add-wall/actions.ts) can't run here: orgHref()/detectIsSubdomain() read
+ * used by design/actions.ts's now-removed server actions) can't run here:
+ * orgHref()/detectIsSubdomain() read
  * next/headers(), which only works in a Server Component/action. Instead,
  * the server computes `isSubdomain` once (page.tsx, via detectIsSubdomain())
  * and forwards it as a plain boolean prop — same pattern

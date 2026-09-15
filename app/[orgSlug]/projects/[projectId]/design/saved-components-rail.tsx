@@ -7,12 +7,20 @@
  * draft-state context (useDraftContext / dispatch). The `mutate`, `partition`,
  * and `selection` props are gone; this component reads them from the context.
  *
- * Track C (S21-C2) will rebuild the full UI to mockup parity.
+ * S21-C2: fixed doorEnabled to require exactly one panel selected (not just
+ * any panel selection). Active-state highlighting, heading/note copy, and
+ * comp-card structure updated to mockup parity (lines 567-599, 1964-1996,
+ * 2038-2054).
+ *
+ * S21-C3: Door Height slider — shown only when exactly one door-bearing panel
+ * is selected. Dispatches SET_DOOR_HEIGHT on every input event so the canvas
+ * updates live while dragging; numeric readout updates alongside the thumb.
  */
 
 import { useTranslations } from "next-intl";
 import { MIN_DOOR_HEIGHT_MM, DEFAULT_DOOR_HEIGHT_RATIO } from "./configure-constants";
 import { useDraftContext } from "./design-draft-context";
+import { useUnit } from "./unit-context";
 import type { DesignPanel, SelectionRow } from "./types";
 
 interface SavedComponentsRailProps {
@@ -22,13 +30,11 @@ interface SavedComponentsRailProps {
 
 export function SavedComponentsRail({ selections }: SavedComponentsRailProps) {
   const t = useTranslations("design");
+  const { formatLen } = useUnit();
   const { state, dispatch } = useDraftContext();
 
   const partition = state.draft;
   const selection = state.selection;
-
-  // error/busy state removed: dispatch is synchronous, no async error handling needed here.
-  // Save errors are surfaced at the design-workspace.tsx level.
 
   if (!partition) {
     return <p className="text-xs text-text-muted">{t("loadingPartition")}</p>;
@@ -41,16 +47,23 @@ export function SavedComponentsRail({ selections }: SavedComponentsRailProps) {
     (s) => !["GLASS", "DOOR", "PROFILE_STOP"].includes(s.componentType.code ?? ""),
   );
 
-  const busy = false; // Dispatch is synchronous — no async busy guard needed.
-  const doorEnabled = selection?.type === "panel";
+  // Glass: always enabled (whole-wall property — applies to every panel).
+  // Doors: enabled ONLY when exactly one panel is selected (mockup line 2083:
+  //   `const doorEnabled = !!soloPanelId` where soloPanelId requires length===1).
+  const soloPanelId =
+    selection?.type === "panel" && selection.panelIds.length === 1
+      ? selection.panelIds[0]
+      : undefined;
+  const doorEnabled = soloPanelId !== undefined;
   const profileEnabled = selection?.type === "edge";
 
   const panels = partition.design?.panels ?? [];
-  // For door/profile operations, the primary selected panel is the first panelId.
-  const primaryPanelId = selection?.type === "panel" ? selection.panelIds[0] : undefined;
-  const selectedPanel: DesignPanel | undefined = primaryPanelId
-    ? panels.find((p) => p.id === primaryPanelId)
+  const selectedPanel: DesignPanel | undefined = soloPanelId
+    ? panels.find((p) => p.id === soloPanelId)
     : undefined;
+
+  // C3: Door Height slider — shown only when exactly one door-bearing panel is selected.
+  const hasDoorHeightControl = !!(selectedPanel?.door);
 
   function isGlassActive(id: string): boolean {
     return panels.length > 0 && panels.every((p) => p.selectionId === id);
@@ -65,77 +78,120 @@ export function SavedComponentsRail({ selections }: SavedComponentsRailProps) {
   }
 
   function assignGlass(componentId: string) {
-    if (busy) return;
     const allPanelIds = panels.map((p) => p.id);
     dispatch({ type: "SET_GLASS", panelIds: allPanelIds, selectionId: componentId });
   }
 
   function toggleDoor(componentId: string) {
-    if (busy || selection?.type !== "panel") return;
-    const panelId = selection.panelIds[0];
-    const wallHeightMm = partition!.heightMm; // non-null: see isProfileActive comment
+    if (!soloPanelId) return;
+    const wallHeightMm = partition!.heightMm;
     const existingHeight = selectedPanel?.door?.outerFrame?.h;
     const heightMm = existingHeight
       ? Math.min(existingHeight, wallHeightMm)
       : Math.max(MIN_DOOR_HEIGHT_MM, Math.round(wallHeightMm * DEFAULT_DOOR_HEIGHT_RATIO));
     if (selectedPanel?.door && selectedPanel.door.selectionId === componentId) {
       // Same door already active — toggle off (remove).
-      dispatch({ type: "TOGGLE_DOOR", panelId, selectionId: componentId });
+      dispatch({ type: "TOGGLE_DOOR", panelId: soloPanelId, selectionId: componentId });
     } else {
-      // Different door (or no door). TOGGLE_DOOR is a pure toggle: present→remove,
-      // absent→add. To *replace* an existing door with a different component we must
-      // remove the old one first, then add the new one.
+      // Different door (or no door). Replace: remove old first, then add new.
       if (selectedPanel?.door) {
-        dispatch({ type: "TOGGLE_DOOR", panelId, selectionId: selectedPanel.door.selectionId });
+        dispatch({ type: "TOGGLE_DOOR", panelId: soloPanelId, selectionId: selectedPanel.door.selectionId });
       }
-      // Panel now has no door — TOGGLE_DOOR adds it with the new selectionId.
-      dispatch({ type: "TOGGLE_DOOR", panelId, selectionId: componentId });
-      dispatch({ type: "SET_DOOR_HEIGHT", panelId, heightMm });
+      dispatch({ type: "TOGGLE_DOOR", panelId: soloPanelId, selectionId: componentId });
+      dispatch({ type: "SET_DOOR_HEIGHT", panelId: soloPanelId, heightMm });
     }
   }
 
   function assignProfile(componentId: string) {
-    if (busy || selection?.type !== "edge") return;
+    if (selection?.type !== "edge") return;
     // Track D (S21-D5) removes this UI section. Until then, dispatch SET_STOPS
     // so the edge-profile assignment defers to Save rather than doing an immediate write.
     dispatch({ type: "SET_STOPS", side: selection.side, selectionId: componentId });
   }
 
+  // C3: Door height slider values
+  const wallHeightMm = partition.heightMm;
+  const currentDoorHeightMm = selectedPanel?.door?.outerFrame?.h ?? wallHeightMm;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-text-muted">
+      {/* Heading + sub — mirrors renderConfigureSidebar lines 2045-2047 */}
+      <h2 className="mb-0.5 text-xs font-bold uppercase tracking-wider text-text-muted">
         {t("selectionsTitle")}
       </h2>
-      <p className="mb-3 text-[11px] text-text-muted">{t("savedComponentsFrom")}</p>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <p className="mb-3.5 text-[11.5px] text-text-muted">{t("savedComponentsFrom")}</p>
+
+      <div className="min-h-0 flex-1 overflow-y-auto pb-2.5">
+        {/* Partitions (glass) — always enabled */}
         {glassSelections.length > 0 && (
           <ComponentSection
             title={t("sectionPartitions")}
             note={t("appliesEveryPanel")}
             comps={glassSelections}
-            enabled={!busy}
+            enabled={true}
             isActive={isGlassActive}
             onClick={assignGlass}
           />
         )}
+
+        {/* Doors — enabled only when exactly one panel is selected */}
         {doorSelections.length > 0 && (
           <ComponentSection
             title={t("sectionDoors")}
             comps={doorSelections}
-            enabled={doorEnabled && !busy}
+            enabled={doorEnabled}
             isActive={isDoorActive}
             onClick={toggleDoor}
           />
         )}
+
+        {/* C3: Door Height slider — only when one door-bearing panel is selected */}
+        {hasDoorHeightControl && soloPanelId && (
+          <section className="mb-4">
+            <h3 className="mb-0.5 text-[10.5px] font-bold uppercase tracking-[.04em] text-text-muted">
+              {t("sectionDoorHeight")}
+            </h3>
+            <div className="flex items-center gap-2.5">
+              <input
+                type="range"
+                min={MIN_DOOR_HEIGHT_MM}
+                max={wallHeightMm}
+                value={currentDoorHeightMm}
+                // Dispatch on every input event so the canvas door graphic
+                // updates live while dragging (mockup line 2070-2076). The
+                // draft reducer's SET_DOOR_HEIGHT is synchronous — no network
+                // write until Save. Only the components consuming draft.design.panels
+                // re-render; the rest of the workspace is unaffected.
+                onInput={(e) => {
+                  const heightMm = parseInt((e.target as HTMLInputElement).value, 10);
+                  dispatch({ type: "SET_DOOR_HEIGHT", panelId: soloPanelId, heightMm });
+                }}
+                onChange={() => {
+                  // onChange fires on release — the onInput dispatch above has
+                  // already committed the value; nothing extra needed here. The
+                  // event handler is present to satisfy React's controlled-input
+                  // contract (onInput alone doesn't suppress the warning).
+                }}
+                className="min-w-0 flex-1 accent-primary"
+              />
+              <span className="min-w-[52px] text-right text-xs font-bold text-text-heading">
+                {formatLen(currentDoorHeightMm)}
+              </span>
+            </div>
+          </section>
+        )}
+
+        {/* Profiles — Track D (S21-D5) removes this section */}
         {profileSelections.length > 0 && (
           <ComponentSection
             title={t("sectionProfiles")}
             comps={profileSelections}
-            enabled={profileEnabled && !busy}
+            enabled={profileEnabled}
             isActive={isProfileActive}
             onClick={assignProfile}
           />
         )}
+
         {otherSelections.length > 0 && (
           <ComponentSection
             title={t("sectionOther")}
@@ -145,6 +201,7 @@ export function SavedComponentsRail({ selections }: SavedComponentsRailProps) {
             onClick={() => {}}
           />
         )}
+
         {glassSelections.length === 0 &&
           doorSelections.length === 0 &&
           profileSelections.length === 0 &&
@@ -167,16 +224,24 @@ interface ComponentSectionProps {
   onClick: (id: string) => void;
 }
 
+/**
+ * A list of component cards — mirrors renderCompList (lines 1964-1993) and
+ * the comp-item / comp-icon / comp-text / comp-edit structure (lines 567-581).
+ */
 function ComponentSection({ title, note, comps, enabled, isActive, onClick }: ComponentSectionProps) {
   return (
-    <section className="mb-4">
-      <h3 className="mb-0.5 text-[10.5px] font-bold uppercase tracking-wide text-text-muted">
+    <section className="mb-4 last:mb-1">
+      <h3 className="mb-0.5 text-[10.5px] font-bold uppercase tracking-[.04em] text-text-muted">
         {title}
       </h3>
       {note && <p className="mb-2 text-[10px] italic text-text-muted">{note}</p>}
       <div className="flex flex-col gap-1.5">
         {comps.map((comp) => {
           const active = enabled && isActive(comp.id);
+          // comp-icon: first character of the label as a small placeholder
+          // (the mockup uses emoji icons from static COMPONENT_LIBRARY data;
+          // our SelectionRow has no icon field — use a letter badge instead).
+          const iconChar = comp.label.charAt(0).toUpperCase();
           return (
             <button
               key={comp.id}
@@ -184,19 +249,28 @@ function ComponentSection({ title, note, comps, enabled, isActive, onClick }: Co
               disabled={!enabled}
               onClick={() => onClick(comp.id)}
               className={
-                "flex items-center gap-2.5 rounded-md border px-2.5 py-2 text-left transition-colors " +
+                "flex items-center gap-2.5 rounded-[7px] border px-2.5 py-2 text-left transition-colors duration-150 " +
                 (active
-                  ? "border-primary-dark bg-primary-softer"
-                  : "border-border bg-bg-white hover:border-primary-soft") +
+                  ? "border-primary bg-primary-softer"
+                  : enabled
+                  ? "border-border bg-bg-white hover:border-primary hover:bg-[#f7fbf7]"
+                  : "border-border bg-bg-white") +
                 (!enabled ? " cursor-not-allowed opacity-35" : "")
               }
             >
+              {/* comp-icon */}
+              <span className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[6px] border border-[#d8dcd0] bg-[#fbfcf9] text-xs">
+                {iconChar}
+              </span>
+              {/* comp-text */}
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-xs font-bold text-text-heading">{comp.label}</span>
                 <span className="truncate text-[10.5px] text-text-muted">
                   {comp.componentType.name}
                 </span>
               </span>
+              {/* comp-edit pencil indicator */}
+              <span className="text-[#b7bcae] text-xs" aria-hidden="true">✎</span>
             </button>
           );
         })}
