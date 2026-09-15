@@ -36,6 +36,16 @@ interface RoomListProps {
    */
   onSelectPartition?: (partitionId: string, sideIndex: number) => void;
   /**
+   * The partition currently open in Configure mode. When provided, only that
+   * partition row renders with the active (green left-border + softer bg) style;
+   * all others render neutral.
+   *
+   * design-workspace.tsx is frozen and does not pass this prop yet — until it
+   * does, the prop is undefined, and all partition rows default to the correct
+   * *unselected* appearance (no spurious active styling).
+   */
+  selectedPartitionId?: string | null;
+  /**
    * A4↔B1 wiring note (for reviewers):
    * Track B's B1 empty-state CTA triggers `addingRoomForEmptyState` state in
    * design-workspace.tsx (already implemented, frozen). That shows the
@@ -68,6 +78,7 @@ export function RoomList({
   onRoomCreated,
   onRoomDeleted,
   onSelectPartition,
+  selectedPartitionId,
 }: RoomListProps) {
   const t = useTranslations("design");
 
@@ -83,6 +94,7 @@ export function RoomList({
   // Room-confirm-delete state.
   const [confirmDeleteRoom, setConfirmDeleteRoom] = useState<RoomRow | null>(null);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Partitions fetched lazily per expanded room. The collection route returns
   // the full Prisma row (including design JSONB), so PartitionPreview can render
@@ -139,12 +151,17 @@ export function RoomList({
 
   async function handleDeleteRoom(room: RoomRow) {
     setDeleteSubmitting(true);
+    setDeleteError(null);
     try {
       const res = await fetch(`/api/v1/orgs/${orgSlug}/rooms/${room.id}`, {
         method: "DELETE",
       });
       if (res.status === 401 || res.status === 403) { redirectToLogin(orgSlug, isSubdomain); return; }
-      if (!res.ok) return; // silently ignore — room stays in UI
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setDeleteError(body.error ?? "Failed to delete room — please try again.");
+        return;
+      }
 
       // Hide the deleted room locally.
       setDeletedRoomIds((prev) => new Set([...prev, room.id]));
@@ -198,7 +215,7 @@ export function RoomList({
           onClick={() => setAddingRoom(true)}
           className="mb-3 flex w-full shrink-0 items-center justify-center gap-1.5 rounded-sm border border-dashed border-primary-soft px-3 py-2 text-center text-[12px] font-bold text-primary-dark hover:bg-primary-softer"
         >
-          ＋ Add Room
+          {t("newRoom")}
         </button>
       )}
 
@@ -295,12 +312,13 @@ export function RoomList({
                               }}
                               className={[
                                 "mb-0.5 flex cursor-pointer flex-col gap-0.5 rounded-sm border-l-2 px-2.5 py-1.5 text-xs transition-colors",
-                                // Active (configure mode open for this partition)
-                                "border-primary bg-primary-softer",
-                                onSelectPartition
-                                  ? "hover:bg-primary-softer/70"
-                                  : "cursor-default",
-                              ].join(" ")}
+                                selectedPartitionId === partition.id
+                                  ? "border-primary bg-primary-softer"
+                                  : "border-transparent hover:border-primary-soft hover:bg-bg-hover",
+                                !onSelectPartition && "cursor-default",
+                              ]
+                                .filter(Boolean)
+                                .join(" ")}
                             >
                               <div className="flex items-baseline justify-between gap-1.5">
                                 <span className="min-w-0 truncate text-[12px] font-bold text-text-heading">
@@ -327,16 +345,26 @@ export function RoomList({
 
       {/* Delete-room confirm dialog */}
       {confirmDeleteRoom && (
-        <ConfirmDialog
-          isOpen={true}
-          title={t("deleteRoomConfirmTitle")}
-          message={t("deleteRoomConfirmMsg", { name: confirmDeleteRoom.label })}
-          confirmLabel={t("confirmDelete")}
-          confirmVariant="danger"
-          cancelLabel={t("cancel")}
-          onConfirm={() => void handleDeleteRoom(confirmDeleteRoom)}
-          onCancel={() => { if (!deleteSubmitting) setConfirmDeleteRoom(null); }}
-        />
+        <>
+          {deleteError && (
+            <p className="mt-1 text-[11px] text-red-700">{deleteError}</p>
+          )}
+          <ConfirmDialog
+            isOpen={true}
+            title={t("deleteRoomConfirmTitle")}
+            message={t("deleteRoomConfirmMsg", { name: confirmDeleteRoom.label })}
+            confirmLabel={t("confirmDelete")}
+            confirmVariant="danger"
+            cancelLabel={t("cancel")}
+            onConfirm={() => void handleDeleteRoom(confirmDeleteRoom)}
+            onCancel={() => {
+              if (!deleteSubmitting) {
+                setConfirmDeleteRoom(null);
+                setDeleteError(null);
+              }
+            }}
+          />
+        </>
       )}
     </div>
   );
