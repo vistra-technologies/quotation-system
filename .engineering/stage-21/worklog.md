@@ -13,12 +13,12 @@ Run instruction: devs may reach out to the architect if unclear on task executio
 
 | ID | Track | Task(s) | Depends on | Status | Branch | Detail |
 |---|---|---|---|---|---|---|
-| T0.1 | 0 | S21-0.1 token mapping | — | ready for review | `feature/s21-t0-foundation` | |
-| T0.2 | 0 | S21-0.2 padding trim | — | ready for review | `feature/s21-t0-foundation` | |
-| T0.3 | 0 | S21-0.3 CSS grid shell | 0.1 | ready for review | `feature/s21-t0-foundation` | |
-| T0.4 | 0 | S21-0.4 draft-state reducer/context (hard gate, highest risk) | — | ready for review | `feature/s21-t0-foundation` | |
-| T0.5 | 0 | S21-0.5 ContextMenu primitive | — | ready for review | `feature/s21-t0-foundation` | |
-| T0.6 | 0 | S21-0.6 unsaved-changes modal | 0.4 | ready for review | `feature/s21-t0-foundation` | |
+| T0.1 | 0 | S21-0.1 token mapping | — | approved | `feature/s21-t0-foundation` | |
+| T0.2 | 0 | S21-0.2 padding trim | — | approved | `feature/s21-t0-foundation` | |
+| T0.3 | 0 | S21-0.3 CSS grid shell | 0.1 | approved | `feature/s21-t0-foundation` | |
+| T0.4 | 0 | S21-0.4 draft-state reducer/context (hard gate, highest risk) | — | approved | `feature/s21-t0-foundation` | |
+| T0.5 | 0 | S21-0.5 ContextMenu primitive | — | approved | `feature/s21-t0-foundation` | |
+| T0.6 | 0 | S21-0.6 unsaved-changes modal | 0.4 | approved | `feature/s21-t0-foundation` | |
 | A1 | A | S21-A1 floor bar | Track 0 | pending | | |
 | A2 | A | S21-A2 collapsible room groups | Track 0 | pending | | |
 | A3 | A | S21-A3 partition rows + preview | Track 0 | pending | | |
@@ -68,19 +68,7 @@ tracks' anticipated actions per their task files.
   optional prop on ConfirmDialog (backward-compatible); Escape key capture:true on
   ContextMenu to intercept before Configure-mode handler.
   T0.1–0.6 status: ready for review.
-- 2026-09-15 — developer (T0): review CHANGES-NEEDED addressed. Commit `b8189c8`.
-  Vercel preview READY: https://quotation-system-c9mc7nsvy-vistra-indias-projects.vercel.app
-  Health check: ok/connected.
-  Findings addressed:
-    1 [IMPORTANT] SET_PARTITION_WIDTH: last-panel absorbs remainder → sum exact.
-    2 [IMPORTANT] ConfirmDialog: confirmVariant prop (default "danger"/red); column
-      layout only when thirdAction present; unsaved modal passes confirmVariant="primary".
-    3 [IMPORTANT] toggleDoor: double-dispatch TOGGLE_DOOR to remove+add when replacing.
-    4 [MINOR] SPLIT_PANEL: explicit type:"glass" on both halves.
-    5 [MINOR] enterConfigureMode: fetchCancelRef cancellation guard on async fetch.
-    6 [MINOR] Dead i18n key busyPleaseWait removed from en.json.
-  tsc --noEmit: clean. lint: 0 errors / 5 pre-existing test warnings.
-- 2026-09-15 — reviewer: CHANGES-NEEDED. 3 IMPORTANT / 3 MINOR. See
+- 2026-09-15 — reviewer (round 1): CHANGES-NEEDED. 3 IMPORTANT / 3 MINOR. See
   `.engineering/stage-21/review-track0.md`. Architecture is sound — draft isolation
   confirmed, frozen contract confirmed, SET_ROOM_NAME/pendingRoomNameEdits implemented
   correctly, MAKE_EQUAL_WIDTH/SPLIT/UNITE sum invariants exact. Three blockers require
@@ -89,3 +77,12 @@ tracks' anticipated actions per their task files.
   primary button changed red→green, breaking existing destructive-action dialogs — add
   confirmVariant prop defaulting to "danger"; (3) toggleDoor replace-with-different-
   component removes door instead of replacing it — two-dispatch fix in saved-components-rail.
+- 2026-09-15 — developer (T0): round-2 fixes. Commit `b8189c8`. All 3 IMPORTANT + 3 MINOR
+  findings addressed: SET_PARTITION_WIDTH last-panel remainder fix; confirmVariant prop
+  (default "danger"); toggleDoor double-dispatch; SPLIT_PANEL type:"glass"; cancellation
+  token on enterConfigureMode; busyPleaseWait key removed.
+- 2026-09-15 — reviewer (round 2): APPROVE. 0 CRITICAL / 0 IMPORTANT / 0 MINOR. See
+  `.engineering/stage-21/review-track0.md`. All 6 findings verified resolved — sum
+  invariant traced for 4 edge cases, ConfirmDialog default/layout/caller impact confirmed,
+  toggleDoor double-dispatch React batching confirmed (no flash), cancellation token
+  pattern correct. GATE A clears. Tracks A–D may proceed.
