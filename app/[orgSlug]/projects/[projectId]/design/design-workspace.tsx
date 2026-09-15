@@ -252,6 +252,21 @@ function DesignWorkspaceInner({
     setLayoutSideSelection(null);
   }
 
+  function handleFloorRenamed(floor: FloorRow) {
+    setFloors((prev) =>
+      prev.map((f) => (f.id === floor.id ? { ...f, label: floor.label } : f)),
+    );
+  }
+
+  function handleFloorDeleted(floorId: string) {
+    setFloors((prev) => prev.filter((f) => f.id !== floorId));
+    // FloorBar already calls onSelectFloor(remaining[0]) after a deletion,
+    // which updates selectedFloorId. If no floors remain, selectedFloorId
+    // will stay as the deleted id momentarily — the FloorBar guard
+    // (canDelete = visibleFloors.length > 1) prevents deleting the last floor,
+    // so there is always at least one surviving floor.
+  }
+
   function selectRoom(room: RoomRow) {
     setSelectedRoomId(room.id);
     setViewMode("layout");
@@ -267,6 +282,29 @@ function DesignWorkspaceInner({
     setViewMode("layout");
     setLayoutSideSelection(null);
     setAddingRoomForEmptyState(false);
+  }
+
+  function handleRoomDeleted(roomId: string) {
+    // Remove the room from workspace's floors state so re-renders don't resurrect it.
+    setFloors((prev) =>
+      prev.map((f) =>
+        f.id === selectedFloorId
+          ? { ...f, rooms: f.rooms.filter((r) => r.id !== roomId) }
+          : f,
+      ),
+    );
+    // If the deleted room was selected and no remaining rooms exist on this floor,
+    // go to empty state. The case with remaining rooms is handled by RoomList
+    // already calling onSelectRoom(remaining[0]) in its own handleDeleteRoom.
+    if (selectedRoomId === roomId) {
+      const currentFloor = floors.find((f) => f.id === selectedFloorId);
+      const remaining = (currentFloor?.rooms ?? []).filter((r) => r.id !== roomId);
+      if (remaining.length === 0) {
+        setSelectedRoomId(null);
+        setViewMode("empty");
+        setLayoutSideSelection(null);
+      }
+    }
   }
 
   function handleSideConverted(updatedRoom: RoomRow) {
@@ -326,6 +364,8 @@ function DesignWorkspaceInner({
             selectedFloorId={selectedFloorId}
             onSelectFloor={selectFloor}
             onFloorCreated={handleFloorCreated}
+            onFloorRenamed={handleFloorRenamed}
+            onFloorDeleted={handleFloorDeleted}
           />
           {floors.length === 0 ? (
             <p className="text-sm text-text-muted">{t("noWalls")}</p>
@@ -341,6 +381,9 @@ function DesignWorkspaceInner({
                   selectedRoomId={viewMode === "layout" ? selectedRoomId : null}
                   onSelectRoom={selectRoom}
                   onRoomCreated={handleRoomCreated}
+                  onRoomDeleted={handleRoomDeleted}
+                  onSelectPartition={enterConfigureMode}
+                  selectedPartitionId={viewMode === "configure" ? state.partitionId : null}
                 />
               ) : null}
             </>
