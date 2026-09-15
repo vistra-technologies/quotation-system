@@ -60,15 +60,17 @@ interface PanelContextMenuProps {
 
 /**
  * Returns true iff the given panel IDs form a contiguous (adjacent) run in the
- * panels array — mirrors mockup's `isContiguousSelection` (lines 1413-1423).
- * Single-panel selection is trivially contiguous.
+ * panels array — mirrors mockup's `isContiguousSelection` (lines 1413-1445).
+ *
+ * Ported verbatim per task spec:
+ *   - Single-panel (or empty) selection returns false (not "trivially contiguous").
+ *   - Any panelId not found in panels (indices.length !== panelIds.length) returns false.
  */
 function isContiguousSelection(panels: DesignPanel[], panelIds: string[]): boolean {
-  if (panelIds.length < 2) return true;
-  const indices = panelIds
-    .map((id) => panels.findIndex((p) => p.id === id))
-    .filter((i) => i !== -1)
-    .sort((a, b) => a - b);
+  if (panelIds.length < 2) return false;
+  const indices = panelIds.map((id) => panels.findIndex((p) => p.id === id)).sort((a, b) => a - b);
+  // Guard: all IDs must exist in panels (mirrors mockup lines 1440-1445).
+  if (indices.length !== panelIds.length || indices[0] === -1) return false;
   for (let i = 1; i < indices.length; i++) {
     if (indices[i] !== indices[i - 1] + 1) return false;
   }
@@ -130,14 +132,21 @@ function computeSumPreservingWidths(
     });
   } else {
     const scale = newNonTargetTotal / oldNonTargetTotal;
-    const scaled = nonTargets.map((p) => Math.max(1, Math.round(p.widthMm * scale)));
+    // Do NOT clamp intermediates with Math.max(1, …): clamping an intermediate
+    // upward inflates scaledSum, makes adjustment negative, and drives the last
+    // absorber below 1 (which was then also clamped, silently breaking the sum).
+    // Instead: compute raw rounded values, let the last absorber carry the residual,
+    // and reject as infeasible if the last absorber's final value would be < 1 mm.
+    const scaled = nonTargets.map((p) => Math.round(p.widthMm * scale));
     const scaledSum = scaled.reduce((s, w) => s + w, 0);
     const adjustment = newNonTargetTotal - scaledSum;
+    const lastValue = scaled[nonTargets.length - 1] + adjustment;
+    // Infeasibility: rounding of intermediates can shift enough residual onto the
+    // last absorber to push it below 1 mm even when the budget check passed.
+    if (lastValue < 1) return null;
     nonTargets.forEach((p, i) => {
       result[p.id] =
-        i === nonTargets.length - 1
-          ? Math.max(1, scaled[i] + adjustment)
-          : scaled[i];
+        i === nonTargets.length - 1 ? lastValue : scaled[i];
     });
   }
 
