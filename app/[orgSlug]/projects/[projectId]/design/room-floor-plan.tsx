@@ -97,7 +97,7 @@ function innerVertex(
  * `cap(side)` for the standard 4-sided case; falls back to "Side N" for
  * arbitrary N (D-1: no N≠4 polish required, but must not crash).
  */
-function sideName(index: number, n: number): string {
+export function sideName(index: number, n: number): string {
   if (n === 4) {
     return (["Top", "Right", "Bottom", "Left"] as const)[index] ?? `Side ${index + 1}`;
   }
