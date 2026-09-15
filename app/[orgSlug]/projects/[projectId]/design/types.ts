@@ -104,10 +104,19 @@ export type ViewMode = "empty" | "layout" | "configure";
  * arbitrary-N sides), matching `design.stops`'s own shape. */
 export type EdgeSide = "top" | "left" | "right" | "bottom";
 
-/** Configure mode's local selection state — mirrors the mockup's
- * `selection`. */
+/**
+ * Configure mode's selection state.
+ *
+ * S21-0.4: updated to use `panelIds: string[]` (always an array) to support
+ * multi-select (Ctrl/Cmd-click). Single-select uses a length-1 array.
+ * Previously `panelId: string` (singular) — renamed to `panelIds` to match
+ * the mockup's `selection.panelIds` shape and the draft reducer contract.
+ *
+ * Re-exported from design-draft-context.tsx as `DraftSelection`; both names
+ * refer to the same type shape.
+ */
 export type ConfigureSelection =
-  | { type: "panel"; panelId: string }
+  | { type: "panel"; panelIds: string[] }
   | { type: "edge"; side: EdgeSide }
   | null;
 

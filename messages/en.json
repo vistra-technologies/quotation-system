@@ -359,7 +359,13 @@
     "sectionProfiles": "Profiles",
     "sectionOther": "Other",
     "appliesEveryPanel": "Applies to every panel on this wall",
-    "busyPleaseWait": "Busy — please wait."
+    "saveChanges": "Save changes",
+    "saved": "Saved",
+    "unsavedChangesTitle": "Save changes?",
+    "unsavedChangesMessage": "You have unsaved changes on this partition. Do you want to save them before leaving?",
+    "saveAndGoBack": "Save & Go Back",
+    "discardChanges": "Discard Changes",
+    "cancelStay": "Cancel"
   },
   "wizard": {
     "step1": "Project Details",

@@ -43,7 +43,7 @@ export default async function QuotationPage({
   const t = await getTranslations("wizard");
 
   return (
-    <div>
+    <div className="py-8">
       {/* Page heading */}
       <div className="mb-6 text-center">
         <h1 className="text-3xl font-extrabold text-text-heading">

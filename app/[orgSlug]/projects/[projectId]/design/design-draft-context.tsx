@@ -1,0 +1,511 @@
+"use client";
+
+/**
+ * Draft-state model for the Design page — Stage 21 (S21-0.4).
+ *
+ * Replaces the previous per-field immediate-write pattern
+ * (design-workspace.tsx's mutatePartition) with a local draft + explicit Save.
+ *
+ * CONTRACT (append-only, frozen after Track 0 merges):
+ *   - DraftAction is a discriminated union. Tracks A–D MAY add new variants at
+ *     the bottom of the union and a matching `case` in draftReducer.
+ *   - design-workspace.tsx is frozen: it only calls useDraftContext() for
+ *     isDirty / save / discard / back-button guard. It never switches on action
+ *     types. Do not edit design-workspace.tsx to add action handling.
+ *   - To add a new action: (1) append its type to DraftAction, (2) add its
+ *     `case` in draftReducer, (3) dispatch it from your UI component.
+ *
+ * Single-editor assumption: concurrent multi-user editing of the same partition
+ * is not handled. Last Save wins. This is intentional for Stage 21.
+ */
+
+import React, { createContext, useContext, useReducer } from "react";
+import { redirectToLogin } from "./login-redirect";
+import { DEFAULT_PANEL_WIDTH_MM } from "./configure-constants";
+import type {
+  DesignDoor,
+  DesignPanel,
+  EdgeSide,
+  PartitionPatch,
+  PartitionRow,
+  RoomRow,
+} from "./types";
+
+// ─── Selection type (replaces ConfigureSelection — always uses panelIds[]) ────
+
+export type DraftSelection =
+  | { type: "panel"; panelIds: string[] } // always an array; single-select uses length-1
+  | { type: "edge"; side: EdgeSide }
+  | null;
+
+// ─── State ────────────────────────────────────────────────────────────────────
+
+export interface DraftState {
+  partitionId: string | null;
+  draft: PartitionRow | null; // local working copy — mutated by reducer, not yet saved
+  server: PartitionRow | null; // snapshot of last-saved state — restored on Discard
+  isDirty: boolean; // true after any mutating action; false after LOAD_PARTITION or MARK_SAVED
+  selection: DraftSelection;
+  /**
+   * Room renames deferred until Save. roomId → pending label.
+   * Cleared by LOAD_PARTITION and MARK_SAVED. Set by SET_ROOM_NAME.
+   * Track B's S21-B2 dispatches SET_ROOM_NAME from room-name-input.tsx.
+   */
+  pendingRoomNameEdits: Record<string, string>;
+}
+
+const initialDraftState: DraftState = {
+  partitionId: null,
+  draft: null,
+  server: null,
+  isDirty: false,
+  selection: null,
+  pendingRoomNameEdits: {},
+};
+
+// ─── Actions ──────────────────────────────────────────────────────────────────
+//
+// FROZEN after Track 0 merges. See contract note at the top of this file.
+
+export type DraftAction =
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  // LOAD_PARTITION: replaces both draft and server snapshot, clears isDirty and
+  // pendingRoomNameEdits. Call after a fresh GET /partitions/[id].
+  | { type: "LOAD_PARTITION"; partition: PartitionRow }
+  // MARK_SAVED: after a successful Save PATCH; updates server snapshot, clears
+  // isDirty and pendingRoomNameEdits.
+  | { type: "MARK_SAVED"; partition: PartitionRow }
+
+  // ── Selection ──────────────────────────────────────────────────────────────
+  // SET_SELECTION: replace selection entirely (pass null to deselect).
+  | { type: "SET_SELECTION"; selection: DraftSelection }
+
+  // ── Panel structural mutations ─────────────────────────────────────────────
+  // ADD_PANEL: append a new glass panel at DEFAULT_PANEL_WIDTH_MM.
+  // NOTE: draft.widthMm is NOT updated here because widthMm is a derived value:
+  // the server recomputes it as sum(panels[].widthMm) whenever patch.design.panels
+  // is present (lib/data/partitions.ts line 284). Adding a panel increases the
+  // logical total client-side; the server normalises it on Save.
+  | { type: "ADD_PANEL" }
+  // REMOVE_PANELS: caller ensures panelIds.length < total panels.
+  | { type: "REMOVE_PANELS"; panelIds: string[] }
+  // SPLIT_PANEL: caller ensures panel widthMm >= MIN_SPLIT_WIDTH_MM.
+  | { type: "SPLIT_PANEL"; panelId: string }
+  // MAKE_EQUAL_WIDTH: floor(total/n) per panel; last panel absorbs the remainder
+  // so sum is preserved exactly.
+  | { type: "MAKE_EQUAL_WIDTH" }
+  // UNITE_PANELS: caller ensures panelIds are contiguous; merged width = sum of targets.
+  | { type: "UNITE_PANELS"; panelIds: string[] }
+
+  // ── Panel / partition dimension mutations ──────────────────────────────────
+  // SET_PANEL_WIDTH: set exact widthMm on one or more panels (bulk-aware).
+  | { type: "SET_PANEL_WIDTH"; panelIds: string[]; widthMm: number }
+  // SET_PARTITION_WIDTH: proportional rescale all panels to a new total widthMm.
+  | { type: "SET_PARTITION_WIDTH"; widthMm: number }
+  // SET_PARTITION_HEIGHT: update heightMm; clamp each door.outerFrame.h ≤ heightMm.
+  | { type: "SET_PARTITION_HEIGHT"; heightMm: number }
+  // SET_PARTITION_LABEL: rename the partition.
+  | { type: "SET_PARTITION_LABEL"; label: string }
+
+  // ── Glass / door mutations (Track C/D UI dispatches these) ────────────────
+  // SET_GLASS: set selectionId on targeted panels (null = clear glass assignment).
+  | { type: "SET_GLASS"; panelIds: string[]; selectionId: string | null }
+  // TOGGLE_DOOR: if panel has a door, remove it; else add with selectionId.
+  | { type: "TOGGLE_DOOR"; panelId: string; selectionId: string }
+  // SET_DOOR_HEIGHT: update door.outerFrame.h; clamped to partition.heightMm.
+  | { type: "SET_DOOR_HEIGHT"; panelId: string; heightMm: number }
+  // SET_DOOR_HINGE: switch hinging on an existing door.
+  | { type: "SET_DOOR_HINGE"; panelId: string; hinging: "left" | "right" }
+
+  // ── Room name (Track B's S21-B2 dispatches this) ──────────────────────────
+  // SET_ROOM_NAME: deferred room rename; only written to the server on Save via
+  // PATCH /api/v1/orgs/[orgSlug]/rooms/[id]. Marks isDirty true.
+  | { type: "SET_ROOM_NAME"; roomId: string; name: string }
+
+  // ── Edge stops (migrates saved-components-rail assignProfile call site) ────
+  // SET_STOPS: update one edge-profile stop in design.stops. Track D removes the
+  // UI that dispatches this (D-5), but the call site must compile cleanly.
+  | { type: "SET_STOPS"; side: EdgeSide; selectionId: string | null };
+
+// ─── Reducer ──────────────────────────────────────────────────────────────────
+
+function mutatePanels(
+  state: DraftState,
+  fn: (panels: DesignPanel[]) => DesignPanel[],
+): DraftState {
+  if (!state.draft) return state;
+  const panels = state.draft.design?.panels ?? [];
+  return {
+    ...state,
+    draft: {
+      ...state.draft,
+      design: { ...state.draft.design, panels: fn(panels) },
+    },
+    isDirty: true,
+  };
+}
+
+function draftReducer(state: DraftState, action: DraftAction): DraftState {
+  switch (action.type) {
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+    case "LOAD_PARTITION":
+      return {
+        ...state,
+        partitionId: action.partition.id,
+        draft: action.partition,
+        server: action.partition,
+        isDirty: false,
+        selection: null,
+        pendingRoomNameEdits: {},
+      };
+
+    case "MARK_SAVED":
+      return {
+        ...state,
+        server: action.partition,
+        draft: action.partition,
+        isDirty: false,
+        pendingRoomNameEdits: {},
+      };
+
+    // ── Selection ────────────────────────────────────────────────────────────
+    case "SET_SELECTION":
+      return { ...state, selection: action.selection };
+
+    // ── Panel structural mutations ────────────────────────────────────────────
+    case "ADD_PANEL": {
+      if (!state.draft) return state;
+      const panels = state.draft.design?.panels ?? [];
+      // draft.widthMm is intentionally NOT updated — the server derives it from
+      // sum(panels[].widthMm) on every Save (lib/data/partitions.ts line 284).
+      const newPanel: DesignPanel = {
+        id: crypto.randomUUID(),
+        type: "glass",
+        widthMm: DEFAULT_PANEL_WIDTH_MM,
+        heightMm: state.draft.heightMm,
+        selectionId:
+          panels.length > 0 && panels.every((p) => p.selectionId === panels[0].selectionId)
+            ? panels[0].selectionId
+            : null,
+      };
+      return mutatePanels(state, (ps) => [...ps, newPanel]);
+    }
+
+    case "REMOVE_PANELS":
+      return mutatePanels(
+        { ...state, selection: null },
+        (ps) => ps.filter((p) => !action.panelIds.includes(p.id)),
+      );
+
+    case "SPLIT_PANEL": {
+      if (!state.draft) return state;
+      const panels = state.draft.design?.panels ?? [];
+      const idx = panels.findIndex((p) => p.id === action.panelId);
+      if (idx === -1) return state;
+      const orig = panels[idx];
+      const half = Math.floor(orig.widthMm / 2);
+      const firstId = crypto.randomUUID();
+      const secondId = crypto.randomUUID();
+      // Reset type to "glass" on both halves — orig may have type:"door" if it was
+      // a door panel; halves have door:null so they must also be type:"glass".
+      const a: DesignPanel = { ...orig, id: firstId, widthMm: half, type: "glass", door: null };
+      const b: DesignPanel = { ...orig, id: secondId, widthMm: orig.widthMm - half, type: "glass", door: null };
+      return {
+        ...mutatePanels(state, (ps) => [...ps.slice(0, idx), a, b, ...ps.slice(idx + 1)]),
+        selection: { type: "panel", panelIds: [firstId] },
+      };
+    }
+
+    case "MAKE_EQUAL_WIDTH": {
+      if (!state.draft) return state;
+      const panels = state.draft.design?.panels ?? [];
+      if (panels.length === 0) return state;
+      const total = panels.reduce((s, p) => s + p.widthMm, 0);
+      const base = Math.floor(total / panels.length);
+      return mutatePanels(state, (ps) =>
+        ps.map((p, i) => ({
+          ...p,
+          widthMm: i === ps.length - 1 ? total - base * (ps.length - 1) : base,
+        })),
+      );
+    }
+
+    case "UNITE_PANELS": {
+      if (!state.draft) return state;
+      const panels = state.draft.design?.panels ?? [];
+      const targets = panels.filter((p) => action.panelIds.includes(p.id));
+      if (targets.length < 2) return state;
+      const totalWidth = targets.reduce((s, p) => s + p.widthMm, 0);
+      const firstTarget = targets[0];
+      const mergedId = crypto.randomUUID();
+      const merged: DesignPanel = {
+        ...firstTarget,
+        id: mergedId,
+        widthMm: totalWidth,
+        door: null,
+      };
+      const newState = mutatePanels(state, (ps) =>
+        ps
+          .map((p) => (p.id === firstTarget.id ? merged : p))
+          .filter((p) => p.id === mergedId || !action.panelIds.includes(p.id)),
+      );
+      return { ...newState, selection: { type: "panel", panelIds: [mergedId] } };
+    }
+
+    // ── Panel / partition dimension mutations ─────────────────────────────────
+    case "SET_PANEL_WIDTH":
+      return mutatePanels(state, (ps) =>
+        ps.map((p) =>
+          action.panelIds.includes(p.id) ? { ...p, widthMm: action.widthMm } : p,
+        ),
+      );
+
+    case "SET_PARTITION_WIDTH": {
+      if (!state.draft) return state;
+      const panels = state.draft.design?.panels ?? [];
+      const oldTotal = panels.reduce((s, p) => s + p.widthMm, 0);
+      if (oldTotal === 0) return state;
+      const scale = action.widthMm / oldTotal;
+      // Scale each panel, then adjust the last panel by the remainder so the
+      // sum equals action.widthMm exactly. Independent per-panel Math.round()
+      // can produce a sum that differs by ±(N−1) mm, which would be persisted
+      // to the DB as the wrong dimension.
+      const scaled = panels.map((p) => Math.max(1, Math.round(p.widthMm * scale)));
+      const scaledSum = scaled.reduce((s, w) => s + w, 0);
+      const remainder = action.widthMm - scaledSum;
+      return mutatePanels(state, (ps) =>
+        ps.map((p, i) => ({
+          ...p,
+          widthMm: i === ps.length - 1
+            ? Math.max(1, scaled[i] + remainder)
+            : scaled[i],
+        })),
+      );
+    }
+
+    case "SET_PARTITION_HEIGHT": {
+      if (!state.draft) return state;
+      return {
+        ...state,
+        draft: {
+          ...state.draft,
+          heightMm: action.heightMm,
+          design: {
+            ...state.draft.design,
+            panels: (state.draft.design?.panels ?? []).map((p) => {
+              if (!p.door) return { ...p, heightMm: action.heightMm };
+              const clampedH = Math.min(
+                p.door.outerFrame?.h ?? action.heightMm,
+                action.heightMm,
+              );
+              return {
+                ...p,
+                heightMm: action.heightMm,
+                door: {
+                  ...p.door,
+                  outerFrame: { w: p.door.outerFrame?.w ?? p.widthMm, h: clampedH },
+                },
+              };
+            }),
+          },
+        },
+        isDirty: true,
+      };
+    }
+
+    case "SET_PARTITION_LABEL":
+      if (!state.draft) return state;
+      return { ...state, draft: { ...state.draft, label: action.label }, isDirty: true };
+
+    // ── Glass / door mutations ────────────────────────────────────────────────
+    case "SET_GLASS":
+      return mutatePanels(state, (ps) =>
+        ps.map((p) =>
+          action.panelIds.includes(p.id) ? { ...p, selectionId: action.selectionId } : p,
+        ),
+      );
+
+    case "TOGGLE_DOOR":
+      return mutatePanels(state, (ps) =>
+        ps.map((p): DesignPanel => {
+          if (p.id !== action.panelId) return p;
+          if (p.door) return { ...p, type: "glass", door: null };
+          const wallHeightMm = state.draft?.heightMm ?? p.heightMm;
+          const door: DesignDoor = {
+            selectionId: action.selectionId,
+            hinging: "left",
+            outerFrame: { w: p.widthMm, h: wallHeightMm },
+          };
+          return { ...p, type: "door", door };
+        }),
+      );
+
+    case "SET_DOOR_HEIGHT":
+      return mutatePanels(state, (ps) =>
+        ps.map((p) => {
+          if (p.id !== action.panelId || !p.door) return p;
+          const clampedH = Math.min(action.heightMm, state.draft?.heightMm ?? action.heightMm);
+          return {
+            ...p,
+            door: {
+              ...p.door,
+              outerFrame: { w: p.door.outerFrame?.w ?? p.widthMm, h: clampedH },
+            },
+          };
+        }),
+      );
+
+    case "SET_DOOR_HINGE":
+      return mutatePanels(state, (ps) =>
+        ps.map((p) => {
+          if (p.id !== action.panelId || !p.door) return p;
+          return { ...p, door: { ...p.door, hinging: action.hinging } };
+        }),
+      );
+
+    // ── Room name ─────────────────────────────────────────────────────────────
+    case "SET_ROOM_NAME":
+      return {
+        ...state,
+        pendingRoomNameEdits: { ...state.pendingRoomNameEdits, [action.roomId]: action.name },
+        isDirty: true,
+      };
+
+    // ── Edge stops ────────────────────────────────────────────────────────────
+    case "SET_STOPS": {
+      if (!state.draft) return state;
+      const stops = { ...(state.draft.design?.stops ?? {}), [action.side]: action.selectionId };
+      return {
+        ...state,
+        draft: { ...state.draft, design: { ...state.draft.design, stops } },
+        isDirty: true,
+      };
+    }
+
+    default:
+      return state;
+  }
+}
+
+// ─── Save / discard results ───────────────────────────────────────────────────
+
+export type SaveResult =
+  | { ok: true; partition: PartitionRow; updatedRooms: RoomRow[] }
+  | { ok: false; error: string };
+
+// ─── Context ──────────────────────────────────────────────────────────────────
+
+interface DraftContextValue {
+  state: DraftState;
+  dispatch: React.Dispatch<DraftAction>;
+  /**
+   * One PATCH of the partition design + PATCHes for all pendingRoomNameEdits
+   * (parallel). On success dispatches MARK_SAVED and returns updatedRooms so
+   * design-workspace.tsx can update its floors state.
+   */
+  save: (orgSlug: string, isSubdomain: boolean) => Promise<SaveResult>;
+  /**
+   * Reload the partition fresh from the server → dispatches LOAD_PARTITION,
+   * which also clears pendingRoomNameEdits (room renames are discarded).
+   */
+  discard: (orgSlug: string, isSubdomain: boolean) => Promise<void>;
+}
+
+const DraftContext = createContext<DraftContextValue | null>(null);
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
+
+export function DraftProvider({ children }: { children: React.ReactNode }) {
+  const [state, dispatch] = useReducer(draftReducer, initialDraftState);
+
+  async function save(orgSlug: string, isSubdomain: boolean): Promise<SaveResult> {
+    if (!state.partitionId || !state.draft) {
+      return { ok: false, error: "No active partition." };
+    }
+
+    const patchBody: PartitionPatch = {
+      label: state.draft.label,
+      heightMm: state.draft.heightMm,
+      design: state.draft.design ?? undefined,
+    };
+
+    const pendingRooms = Object.entries(state.pendingRoomNameEdits);
+
+    try {
+      const [partitionRes, ...roomResults] = await Promise.all([
+        fetch(`/api/v1/orgs/${orgSlug}/partitions/${state.partitionId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patchBody),
+        }),
+        ...pendingRooms.map(([roomId, label]) =>
+          fetch(`/api/v1/orgs/${orgSlug}/rooms/${roomId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ label }),
+          }),
+        ),
+      ]);
+
+      if (partitionRes.status === 401 || partitionRes.status === 403) {
+        redirectToLogin(orgSlug, isSubdomain);
+        return { ok: false, error: "Redirecting to login." };
+      }
+      if (!partitionRes.ok) {
+        const body = (await partitionRes.json().catch(() => ({}))) as { error?: string };
+        return { ok: false, error: body.error ?? "An unexpected error occurred — please try again." };
+      }
+      const { partition: updated } = (await partitionRes.json()) as { partition: PartitionRow };
+
+      const updatedRooms: RoomRow[] = [];
+      for (let i = 0; i < roomResults.length; i++) {
+        const res = roomResults[i];
+        if (res.status === 401 || res.status === 403) {
+          redirectToLogin(orgSlug, isSubdomain);
+          return { ok: false, error: "Redirecting to login." };
+        }
+        if (!res.ok) {
+          const body = (await res.json().catch(() => ({}))) as { error?: string };
+          return { ok: false, error: body.error ?? "Failed to rename room — please try again." };
+        }
+        const { room } = (await res.json()) as { room: RoomRow };
+        updatedRooms.push(room);
+      }
+
+      dispatch({ type: "MARK_SAVED", partition: updated });
+      return { ok: true, partition: updated, updatedRooms };
+    } catch {
+      return { ok: false, error: "Network error — please try again." };
+    }
+  }
+
+  async function discard(orgSlug: string, isSubdomain: boolean): Promise<void> {
+    if (!state.partitionId) return;
+    try {
+      const res = await fetch(`/api/v1/orgs/${orgSlug}/partitions/${state.partitionId}`);
+      if (res.status === 401 || res.status === 403) {
+        redirectToLogin(orgSlug, isSubdomain);
+        return;
+      }
+      if (!res.ok) return;
+      const { partition } = (await res.json()) as { partition: PartitionRow };
+      dispatch({ type: "LOAD_PARTITION", partition });
+    } catch {
+      // Silently fail — state remains dirty, user can retry.
+    }
+  }
+
+  return (
+    <DraftContext.Provider value={{ state, dispatch, save, discard }}>
+      {children}
+    </DraftContext.Provider>
+  );
+}
+
+// ─── Hook ─────────────────────────────────────────────────────────────────────
+
+export function useDraftContext(): DraftContextValue {
+  const ctx = useContext(DraftContext);
+  if (!ctx) throw new Error("useDraftContext must be used inside <DraftProvider>");
+  return ctx;
+}
