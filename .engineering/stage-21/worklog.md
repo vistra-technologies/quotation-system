@@ -13,12 +13,12 @@ Run instruction: devs may reach out to the architect if unclear on task executio
 
 | ID | Track | Task(s) | Depends on | Status | Branch | Detail |
 |---|---|---|---|---|---|---|
-| T0.1 | 0 | S21-0.1 token mapping | — | planned | `feature/s21-t0-foundation` | |
-| T0.2 | 0 | S21-0.2 padding trim | — | planned | `feature/s21-t0-foundation` | |
-| T0.3 | 0 | S21-0.3 CSS grid shell | 0.1 | planned | `feature/s21-t0-foundation` | |
-| T0.4 | 0 | S21-0.4 draft-state reducer/context (hard gate, highest risk) | — | planned | `feature/s21-t0-foundation` | |
-| T0.5 | 0 | S21-0.5 ContextMenu primitive | — | planned | `feature/s21-t0-foundation` | |
-| T0.6 | 0 | S21-0.6 unsaved-changes modal | 0.4 | planned | `feature/s21-t0-foundation` | |
+| T0.1 | 0 | S21-0.1 token mapping | — | ready for review | `feature/s21-t0-foundation` | |
+| T0.2 | 0 | S21-0.2 padding trim | — | ready for review | `feature/s21-t0-foundation` | |
+| T0.3 | 0 | S21-0.3 CSS grid shell | 0.1 | ready for review | `feature/s21-t0-foundation` | |
+| T0.4 | 0 | S21-0.4 draft-state reducer/context (hard gate, highest risk) | — | ready for review | `feature/s21-t0-foundation` | |
+| T0.5 | 0 | S21-0.5 ContextMenu primitive | — | ready for review | `feature/s21-t0-foundation` | |
+| T0.6 | 0 | S21-0.6 unsaved-changes modal | 0.4 | ready for review | `feature/s21-t0-foundation` | |
 | A1 | A | S21-A1 floor bar | Track 0 | pending | | |
 | A2 | A | S21-A2 collapsible room groups | Track 0 | pending | | |
 | A3 | A | S21-A3 partition rows + preview | Track 0 | pending | | |
@@ -53,3 +53,18 @@ tracks' anticipated actions per their task files.
   `design-workspace.tsx`). One pre-flagged decision: `ConfirmDialog` three-button extension
   vs. a dedicated component — plan proposes extending with optional `thirdAction` prop;
   reviewer should confirm or redirect before T0.6 implementation. T0.1–0.6 status: planned.
+- 2026-09-15 — developer (T0): all 6 Track 0 tasks implemented. Commit `68136bc` on
+  `feature/s21-t0-foundation`. Vercel preview READY:
+  https://quotation-system-fciy7yl50-vistra-indias-projects.vercel.app (alias:
+  quotation-system-git-feature-s21-7d1b0d-vistra-indias-projects.vercel.app).
+  Health check: `{"status":"ok","database":"connected"}`. Design route 200.
+  lint: 0 errors / 5 pre-existing test-file warnings. tsc --noEmit: clean.
+  Files changed: app/globals.css, design-draft-context.tsx (new),
+  design-workspace.tsx, configure-mode.tsx, saved-components-rail.tsx,
+  panel-list.tsx, wall-canvas.tsx, types.ts, confirm-dialog.tsx,
+  components/context-menu.tsx (new), messages/en.json, layout.tsx + 5 wizard pages.
+  Notable decisions taken: `pendingRoomNameEdits: Record<string,string>` added to
+  DraftState for deferred room renames (Track B S21-B2 compatibility); `thirdAction`
+  optional prop on ConfirmDialog (backward-compatible); Escape key capture:true on
+  ContextMenu to intercept before Configure-mode handler.
+  T0.1–0.6 status: ready for review.
