@@ -28,10 +28,10 @@ Run instruction: devs may reach out to the architect if unclear on task executio
 | C1 | C | S21-C1 wall details inline convert (retires add-wall) | Track 0, B2 | pending | | |
 | C2 | C | S21-C2 saved components rail | Track 0, D2 | pending | | |
 | C3 | C | S21-C3 door height slider | C2 | pending | | |
-| D1 | D | S21-D1 configure-mode shell | Track 0 | pending | | |
-| D2 | D | S21-D2 wall canvas | D1 | pending | | |
-| D3 | D | S21-D3 multi-select + panel menu | D2, 0.5 | pending | | |
-| D4 | D | S21-D4 door context menu | D3 | pending | | |
+| D1 | D | S21-D1 configure-mode shell | Track 0 | ready-for-review | `feature/s21-trackD-configure-mode` | a900550 |
+| D2 | D | S21-D2 wall canvas | D1 | ready-for-review | `feature/s21-trackD-configure-mode` | 21b8a4b |
+| D3 | D | S21-D3 multi-select + panel menu | D2, 0.5 | ready-for-review | `feature/s21-trackD-configure-mode` | db96528 |
+| D4 | D | S21-D4 door context menu | D3 | ready-for-review | `feature/s21-trackD-configure-mode` | a412970 |
 
 Track 0 is solo/serial internally (no file conflicts expected across its 6 tasks, but it's small enough
 to run as one dev pass rather than parallelize further). GATE A: Track 0 fully reviewed+merged into
@@ -86,3 +86,20 @@ tracks' anticipated actions per their task files.
   invariant traced for 4 edge cases, ConfirmDialog default/layout/caller impact confirmed,
   toggleDoor double-dispatch React batching confirmed (no flash), cancellation token
   pattern correct. GATE A clears. Tracks A–D may proceed.
+- 2026-09-15 — reviewer (Track B, round 1): CHANGES-NEEDED. 4 IMPORTANT / 3 MINOR. See
+  `.engineering/stage-21/review-trackB.md`. Draft-defer logic in `room-name-input.tsx` is
+  structurally correct; SVG miter geometry confirmed equivalent to mockup's CSS clip-path;
+  B1 functional wiring confirmed complete. Four IMPORTANT blockers: (1) Discard doesn't reset
+  room name input — local `value` state stale after context cleared, re-dirties draft on next
+  blur; (2) tooltip direction wrong for bottom/left/right edges — always renders above; (3)
+  legend partition swatch is solid color, not diagonal stripe per mockup; (4) tooltip content
+  unmet AC (missing positional prefix + panel count) — requires fix or formal deviation
+  registration in stage-21.md.
+
+- 2026-09-15 — reviewer (Track A, round 1): CHANGES-NEEDED. 1 IMPORTANT / 2 MINOR. See `.engineering/stage-21/review-trackA.md`. Backend (PATCH route + renameFloor DAL) clean — tenancy/auth pattern matches codebase exactly, duplicate-label mapping correct. Partition preview matches mockup CSS to the pixel. Floor bar inline-form UX, delete gating, and i18n all correct. One IMPORTANT blocker: all partition rows unconditionally styled as active (border-primary + bg-primary-softer) — missing selectedPartitionId prop on RoomListProps means every row always looks selected; fix requires adding the optional prop and a conditional class. Two MINOR: hardcoded "+ Add Room" string bypasses t("newRoom"), silent room-delete failure shows no user error. Integration deferred items (onSelectPartition/onFloorRenamed/onRoomDeleted wiring) acknowledged, not flagged.
+
+- 2026-09-15 — reviewer (Track B, round 2): APPROVE-WITH-NITS. 0 IMPORTANT / 1 new MINOR. See `.engineering/stage-21/review-trackB.md`. All 4 IMPORTANT findings verified resolved: Guard 2 render-time pattern safe (loop traced — stable after 1 re-render, no infinite cycle); tooltipTransform traced for all 4 edges, directions correct; legend gradient CSS matches mockup line 518; panel count sourced from design.panels confirmed available in collection route (listPartitionsByRoom has no select restriction, route passes full row through). One new MINOR: types.ts PartitionRow.design comment now misleading since tipFor() reads it — update the comment. MINOR 5/6 (frozen file button style, SVG stroke vs outline) remain open follow-ups for Track 0 before release/stage-21 merges.
+- 2026-09-15 — reviewer (Track A, round 2): APPROVE. All 3 findings from round 1 resolved. See `.engineering/stage-21/review-trackA.md` round-2 section. selectedPartitionId ternary verified: undefined === partition.id always false, all rows neutral by default until workspace.tsx wires the prop. i18n key swap confirmed. Delete-error state and render confirmed, consistent with floor-bar pattern.
+- 2026-09-15 — developer (Track D): D1–D4 implemented, 4 commits pushed to `feature/s21-trackD-configure-mode`. See `item-trackD.md` for full detail. Commits: a900550 (D1), 21b8a4b (D2), db96528 (D3), a412970 (D4). Vercel preview READY: https://quotation-system-9gu91u66y-vistra-indias-projects.vercel.app. Health check: `{"status":"ok","database":"connected"}`. Bundle verified (all Track D action types + translation keys confirmed in production JS chunk 09_caindjr9fp). Design page loads correctly with all Track D translations. No Exclude/Include anywhere. No unit-toggle anywhere. Sum invariant: computeSumPreservingWidths() uses last-absorbs-remainder to guarantee exact sum preservation. DraftAction append-only: added SET_PANEL_WIDTHS_MAP only. design-workspace.tsx not touched. Auth limitation on feature preview URL (cookie domain mismatch on *.vercel.app) prevents Playwright e2e login — pre-existing infrastructure constraint, not a Track D regression. Track D ready for review.
+- 2026-09-15 — developer (Track D, round-2 fixes): 3 review findings addressed in commit `28ea78c`. (1) IMPORTANT: computeSumPreservingWidths — removed Math.max(1,…) from intermediates, added lastValue < 1 infeasibility check; repro case [1000,2,1]+997 now returns null instead of writing sum 1004. (2) MINOR: isContiguousSelection — single-panel returns false; added -1 guard for missing IDs. (3) MINOR: removed dead en.json keys hintNone/hintPanel/hintEdge. Pushed to feature/s21-trackD-configure-mode.
+- 2026-09-15 — reviewer (Track D, round 1): CHANGES-NEEDED. 1 IMPORTANT / 2 MINOR. See `.engineering/stage-21/review-trackD.md`. Architecture is sound — draft isolation confirmed, scope removals (Exclude/Include, unit toggle) confirmed absent everywhere, design-workspace.tsx untouched, SET_PANEL_WIDTHS_MAP reducer sets isDirty via mutatePanels, door hinge mirroring correct, door onContextMenu stopPropagation correct, both context menus on Track 0 primitive. One blocker: computeSumPreservingWidths() applies Math.max(1,…) to intermediate non-target elements before computing the adjustment, which inflates scaledSum above newNonTargetTotal when small panels are present; the last absorber then gets clamped to 1 and cannot compensate, breaking the exact-sum invariant. Unreachable with panels >= ~200mm (practical floor for glass), but the invariant must be exact per spec. Fix: remove Math.max(1,…) from intermediate scaled elements; check final absorber >= 1 and return null if not. Two MINOR: isContiguousSelection deviates from verbatim mockup spec (returns true for single-panel, missing indices.length guard — no functional impact); hintNone/hintPanel/hintEdge become orphaned dead keys in messages/en.json.
