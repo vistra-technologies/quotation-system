@@ -24,8 +24,8 @@ interface RoomNameInputProps {
  * Save (workspace's save() flushes pendingRoomNameEdits in parallel with the
  * partition PATCH and then calls onRenamed() for each updated room).
  *
- * Mirrors design-step-poc.html's wall-name-input (lines 1193-1198 of
- * design-page.html — change listener updates room.name and calls renderAll()).
+ * Mirrors design-page.html's wall-name-input (lines 1193-1198 — change
+ * listener updates room.name and calls renderAll()).
  *
  * S21-B2: replaces the previous immediate-write pattern (PATCH on blur) to
  * satisfy "editing the room name marks the draft dirty and only persists on
@@ -43,13 +43,32 @@ export function RoomNameInput({
     state.pendingRoomNameEdits[room.id] ?? room.label,
   );
 
-  // Reset local draft when a *different* room is selected — React's
-  // "adjusting state when a prop changes" pattern (avoids an extra render
-  // pass). Same technique as the previous implementation.
+  // ── "Adjusting state when a prop changes" guards (React docs pattern) ───
+  //
+  // Guard 1: room switch. Reset the local draft when a *different* room is
+  // selected. Avoids an extra render pass (useEffect alternative).
   const [prevRoomId, setPrevRoomId] = useState(room.id);
   if (prevRoomId !== room.id) {
     setPrevRoomId(room.id);
     setValue(state.pendingRoomNameEdits[room.id] ?? room.label);
+  }
+
+  // Guard 2: pending edit for *this* room was cleared externally. Handles
+  // the Discard scenario: context.discard() dispatches LOAD_PARTITION →
+  // pendingRoomNameEdits is cleared → currentPending becomes undefined, but
+  // prevRoomId === room.id so Guard 1 doesn't fire. Without this guard the
+  // input keeps showing the discarded name and re-dirties the draft on the
+  // next blur.
+  //
+  // The same logic also fires when SET_ROOM_NAME is dispatched (pending value
+  // goes from undefined → "New Name"), syncing setValue to "New Name" — a
+  // no-op visually since the user just typed that value, but it keeps the
+  // local state in sync with the context.
+  const currentPendingName = state.pendingRoomNameEdits[room.id];
+  const [prevPendingName, setPrevPendingName] = useState(currentPendingName);
+  if (prevPendingName !== currentPendingName) {
+    setPrevPendingName(currentPendingName);
+    setValue(currentPendingName ?? room.label);
   }
 
   function commit() {
