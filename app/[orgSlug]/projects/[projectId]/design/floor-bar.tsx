@@ -16,16 +16,18 @@ interface FloorBarProps {
   onSelectFloor: (floorId: string) => void;
   onFloorCreated: (floor: FloorRow) => void;
   /**
-   * Optional — called after a successful rename so the parent (design-workspace.tsx)
-   * can sync its own floor list. design-workspace.tsx is currently frozen (Track 0
-   * contract) and does not pass this prop; FloorBar manages the display label
-   * locally until the parent is updated.
+   * Optional — called after a successful rename so the parent
+   * (design-workspace.tsx) can sync its own floor list. design-workspace.tsx
+   * wires this (see its `onFloorRenamed={handleFloorRenamed}` call); kept
+   * optional so FloorBar's own local-label update still works standalone
+   * (e.g. in isolation/tests) if a caller doesn't pass it.
    */
   onFloorRenamed?: (floor: FloorRow) => void;
   /**
    * Optional — called after a successful delete so the parent can remove the
-   * floor from its list. design-workspace.tsx is frozen and does not pass this
-   * prop; FloorBar hides deleted floors locally.
+   * floor from its list. design-workspace.tsx wires this (see its
+   * `onFloorDeleted={handleFloorDeleted}` call); kept optional for the same
+   * reason as onFloorRenamed above.
    */
   onFloorDeleted?: (floorId: string) => void;
 }
