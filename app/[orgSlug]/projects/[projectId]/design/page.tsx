@@ -103,16 +103,25 @@ export default async function DesignPage({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Page header */}
-      <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-6 py-4">
-        <div>
+      {/* Page header — S21 padding fix: mockup (design-step-poc.html) has no
+          separate title bar above the 3-column grid at all (the room name
+          renders inside the center card itself, per DesignWorkspace's layout
+          mode). This header is app-only chrome for back-navigation + a page
+          title, kept for UX but trimmed to a minimal strip so it doesn't
+          stack a second full gutter on top of the wizard breadcrumb above and
+          the grid's own 18px/24px padding below (S21-0.2's mockup-matched
+          value) — that stacking was the excess whitespace. Design-page-local
+          markup only; other wizard steps are untouched. */}
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-6 py-2">
+        <div className="flex items-center gap-3">
           <Link
             href={`${base}/projects/${projectId}`}
-            className="mb-2 inline-block text-sm text-text-muted hover:text-text-heading"
+            className="text-sm text-text-muted hover:text-text-heading"
           >
             {t("backToProject")}
           </Link>
-          <h1 className="text-xl font-extrabold tracking-tight text-text-heading">
+          <span className="text-border">|</span>
+          <h1 className="text-sm font-bold tracking-tight text-text-heading">
             {t("pageTitle")} — #{project.projectNumber} {project.name}
           </h1>
         </div>
