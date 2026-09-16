@@ -445,7 +445,10 @@ function DesignWorkspaceInner({
                   </span>
                 )}
                 <span className="rounded-pill border border-primary-soft bg-primary-softer px-2.5 py-0.5 text-[11px] font-semibold text-primary-dark">
-                  {t("sidesCount", { count: selectedRoom.sides.length })}
+                  {t("convertedWalls", {
+                    converted: selectedRoom.sides.filter((s) => s.kind === "PARTITION").length,
+                    total: selectedRoom.sides.length,
+                  })}
                 </span>
               </div>
 
