@@ -27,11 +27,19 @@ export default function ProjectsLayout({ children }: { children: React.ReactNode
     toast: allMessages.toast,
   };
 
+  // S21 padding fix (round 3): this wrapper used to carry the shared
+  // max-w-[1180px] px-8 pt-7 pb-4 box that suits narrow form pages, but the
+  // Design page needs the full width + minimal padding the mockup uses and
+  // was silently inheriting this cap too (squeezing its 3-column grid to
+  // ~1116px and blocking it from stretching to fill the viewport height).
+  // The wrapper is now owned by each leaf that wants it: the list page and
+  // "new project" page apply it directly on their own root element; the
+  // [projectId] wizard-step pages apply it via WizardPageShell, which
+  // renders a different (unconstrained, height-stretching) box specifically
+  // for the design route. This layout now only provides i18n context.
   return (
     <NextIntlClientProvider messages={clientMessages}>
-      <div className="mx-auto flex h-full w-full max-w-[1180px] flex-col px-8 pb-4 pt-7">
-        {children}
-      </div>
+      {children}
     </NextIntlClientProvider>
   );
 }

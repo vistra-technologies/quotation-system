@@ -174,7 +174,7 @@ export default async function ProjectsPage({
   const clientColumnHeader = isInternal ? "Company" : "Client Name";
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="mx-auto flex h-full w-full max-w-[1180px] flex-col px-8 pb-4 pt-7">
       {/* ── Page header ─────────────────────────────────────────────── */}
       <div className="mb-5 shrink-0 flex flex-wrap items-start justify-between gap-4">
         <div>

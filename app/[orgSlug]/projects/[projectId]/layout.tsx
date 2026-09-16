@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { orgHref, detectIsSubdomain } from "@/lib/orgHref";
 import { fetchProjectDetail } from "./_project-fetch";
-import { ProjectWizardBreadcrumb } from "./project-wizard-breadcrumb";
+import { WizardPageShell } from "./wizard-page-shell";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -51,22 +51,22 @@ export default async function ProjectWizardLayout({
     notFound();
   }
 
+  // S21 padding fix (round 3): WizardPageShell now owns both the breadcrumb
+  // and the box around {children}, since which box to use (the narrow/padded
+  // one every other step wants, vs the full-width/height-stretching one
+  // Design wants) depends on which step is active — see its own comment.
+  // Replaces the old flat "flex flex-col" wrapper + bare children div, and
+  // subsumes the S21-0.2 note above (Design's height-stretch is now handled
+  // by WizardPageShell's design branch instead of by removing py-8 here).
   return (
-    <div className="flex flex-col">
-      {/* Wizard breadcrumb — persists across all project sub-routes */}
-      <ProjectWizardBreadcrumb
-        orgSlug={orgSlug}
-        projectId={projectId}
-        isSubdomain={isSubdomain}
-        selectionCount={project.selectionCount}
-        partitionCount={project.partitionCount}
-      />
-
-      {/* Page content — S21-0.2: py-8 removed from the shared wrapper so the
-          Design page can take its full height without an imposed vertical
-          gutter. Each non-Design wizard page adds py-8 to its own outermost
-          wrapper to preserve its prior appearance. */}
-      <div>{children}</div>
-    </div>
+    <WizardPageShell
+      orgSlug={orgSlug}
+      projectId={projectId}
+      isSubdomain={isSubdomain}
+      selectionCount={project.selectionCount}
+      partitionCount={project.partitionCount}
+    >
+      {children}
+    </WizardPageShell>
   );
 }
