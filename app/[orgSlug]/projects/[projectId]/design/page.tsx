@@ -1,6 +1,4 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getTranslations } from "next-intl/server";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref, detectIsSubdomain } from "@/lib/orgHref";
 import { fetchProjectDetail } from "../_project-fetch";
@@ -39,20 +37,17 @@ export default async function DesignPage({
 }) {
   const { orgSlug, projectId } = await params;
   const sp = await searchParams;
-  const base = await orgHref(orgSlug, "");
 
   const [
     { status: projectStatus, project },
     floorsRes,
     selectionsRes,
     isSubdomain,
-    t,
   ] = await Promise.all([
     fetchProjectDetail(orgSlug, projectId),
     internalFetch(`/api/v1/orgs/${orgSlug}/floors?projectId=${projectId}`),
     internalFetch(`/api/v1/orgs/${orgSlug}/selections?projectId=${projectId}`),
     detectIsSubdomain(orgSlug),
-    getTranslations("design"),
   ]);
 
   if (
@@ -101,45 +96,23 @@ export default async function DesignPage({
     }),
   );
 
+  // S21 padding fix (round 2): the mockup (design-step-poc.html) has NO
+  // page-level title bar above the 3-column grid at all — it goes straight
+  // from the wizard-steps breadcrumb into the grid. The room name renders
+  // inside the center card itself (DesignWorkspace's layout-mode heading).
+  // The previous "Back to Project | Wall Design — ..." strip (even trimmed)
+  // was still a deviation from the mockup's structure, not just its sizing.
+  // Removed entirely to match 1:1; back-navigation is still reachable via
+  // the "Project Details" wizard-step pill. Design-page-local change only —
+  // other wizard steps keep their own page-level headers untouched.
   return (
-    <div className="flex h-full flex-col">
-      {/* Page header — S21 padding fix: mockup (design-step-poc.html) has no
-          separate title bar above the 3-column grid at all (the room name
-          renders inside the center card itself, per DesignWorkspace's layout
-          mode). This header is app-only chrome for back-navigation + a page
-          title, kept for UX but trimmed to a minimal strip so it doesn't
-          stack a second full gutter on top of the wizard breadcrumb above and
-          the grid's own 18px/24px padding below (S21-0.2's mockup-matched
-          value) — that stacking was the excess whitespace. Design-page-local
-          markup only; other wizard steps are untouched. */}
-      <div className="flex shrink-0 items-center justify-between gap-4 border-b border-border px-6 py-2">
-        <div className="flex items-center gap-3">
-          <Link
-            href={`${base}/projects/${projectId}`}
-            className="text-sm text-text-muted hover:text-text-heading"
-          >
-            {t("backToProject")}
-          </Link>
-          <span className="text-border">|</span>
-          <h1 className="text-sm font-bold tracking-tight text-text-heading">
-            {t("pageTitle")} — #{project.projectNumber} {project.name}
-          </h1>
-        </div>
-        {/* S21-C1: The "Add Wall" button (which navigated to /design/add-wall)
-            has been retired — converting a PLAIN side to a partition is now
-            done inline in the right rail via LayoutModePanel / ConvertSideForm.
-            The route /design/add-wall no longer exists; any old bookmark to
-            it returns 404. */}
-      </div>
-
-      <DesignWorkspace
-        orgSlug={orgSlug}
-        projectId={projectId}
-        isSubdomain={isSubdomain}
-        initialFloors={floorsWithRooms}
-        selections={selections}
-        initialOpenRoomId={sp.openRoom ?? null}
-      />
-    </div>
+    <DesignWorkspace
+      orgSlug={orgSlug}
+      projectId={projectId}
+      isSubdomain={isSubdomain}
+      initialFloors={floorsWithRooms}
+      selections={selections}
+      initialOpenRoomId={sp.openRoom ?? null}
+    />
   );
 }
