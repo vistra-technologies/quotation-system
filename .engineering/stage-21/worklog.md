@@ -113,3 +113,20 @@ tracks' anticipated actions per their task files.
 - 2026-09-16 — reviewer (Track C, round 1): CHANGES-NEEDED. 0 CRITICAL / 2 IMPORTANT / 3 MINOR. See `.engineering/stage-21/review-trackC.md`. Track C's own files (convert-side-form.tsx, layout-mode-panel.tsx, saved-components-rail.tsx, page.tsx) are correct and fulfill S21-C1/C2/C3 AC. Auth/tenancy preservation confirmed via route trace (named reviewer obligation met). Partition name immediate-PATCH confirmed architecturally correct for Layout mode (not a draft violation). add-wall route deletion confirmed clean. Two IMPORTANT bugs require a fix commit to design-workspace.tsx before engineering:test: (1) right-rail h2 shows "Saved Components" in Layout mode — should be "Wall Details" (mockup line 2017); (2) "{side} wall selected" sub-text is missing in Layout mode when a wall is selected (mockup line 2033). Both were deferred by prior tracks as "integration-wiring pass to address" but were not fixed there. Three MINOR: wallTitle/autoLabel format deviates from mockup verbatim pattern; stale add-wall comment in project-wizard-breadcrumb.tsx.
 
 - 2026-09-16 — reviewer (final labels fix): APPROVE-WITH-NITS. 0 CRITICAL / 0 IMPORTANT / 1 MINOR. See `.engineering/stage-21/review-final-labels.md`. All 4 findings from review-trackC.md confirmed resolved: heading 3-state branch correct, sub-text gated on layoutSideSelection !== null (index-0 safe), sideName() re-exported (not reinvented), next-intl {side} interpolation correct, wallTitle/autoLabel format matches mockup verbatim, null guards preserved. One MINOR nit: sub-text uses sideName() (positional: Top/Right/Bottom/Left) while panel title uses side.label (stored value) — could diverge if labels are user-custom; consistent with existing tipFor() tooltip pattern, no functional impact. Stage 21 ready for engineering:test.
+
+- 2026-09-16 — tester: FAIL. 1 IMPORTANT / 1 MINOR. See `.engineering/stage-21/bugs-1.md`. Tested against
+  `test.easeetool.com` (`de65771`) after the orchestrator confirmed `release/stage-21` -> `staging` merge
+  and re-point; login confirmed working correctly on this stable alias (the feature-branch cross-subdomain
+  cookie issue does not reproduce here). Lint/tsc clean (tsc's 2 `add-wall` errors were stale local `.next`
+  cache noise, not source errors — cleared). Full manual pass of Layout mode, Configure mode, draft/save
+  model, multi-select, doors, tenancy, and the wizard-padding sweep. Added a committed Playwright suite
+  (`tests/e2e/stage21-design.spec.ts`, 7 tests: 6 passing, 1 `test.skip()`'d as a confirmed regression case
+  for the one IMPORTANT finding) covering draft isolation, Save/Discard round-trip, the width-sum invariant
+  across a full chained operation sequence, and cross-org tenancy. Found B-1 (IMPORTANT): Layout-mode wall
+  tooltip is clipped by the center card's `overflow-hidden` ancestor for left/right walls — confirmed via
+  computed geometry (right-wall tooltip's right edge lands ~120px past the card's own right edge), a gap
+  in Track B's tooltip-direction review rather than a new regression. B-2 (MINOR): stale comment in
+  `floor-bar.tsx` claims `design-workspace.tsx` doesn't wire `onFloorRenamed`/`onFloorDeleted`, though the
+  integration-wiring pass added both. All test-created project records (`e2e-tester-stage21-*`,
+  `e2e-stage21-*`) were deleted; confirmed zero remain via a final `GET /projects` sweep. No local dev
+  server was started at any point (all verification against the deployed preview).
