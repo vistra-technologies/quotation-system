@@ -46,12 +46,42 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain, selec
   // the correct href is rendered in the SSR HTML without a hydration mismatch.
   const hrefBase = isSubdomain ? `/projects/${projectId}` : `/${orgSlug}/projects/${projectId}`;
 
+  // Tooltip copy: each step's page used to show this as an on-page heading +
+  // subtitle; both are now removed from the page bodies (matching Design,
+  // which never had one) and surfaced here instead, on hover, so the pill
+  // stepper stays the one place that explains what each stage is for.
   const steps = [
-    { label: t("step1"), href: base, linkHref: hrefBase },
-    { label: t("step2"), href: `${base}/configuration`, linkHref: `${hrefBase}/configuration` },
-    { label: t("step3"), href: `${base}/design`, linkHref: `${hrefBase}/design` },
-    { label: t("step4"), href: `${base}/summary`, linkHref: `${hrefBase}/summary` },
-    { label: t("step5"), href: `${base}/quotation`, linkHref: `${hrefBase}/quotation` },
+    {
+      label: t("step1"),
+      href: base,
+      linkHref: hrefBase,
+      tooltip: "Review your project information to continue",
+    },
+    {
+      label: t("step2"),
+      href: `${base}/configuration`,
+      linkHref: `${hrefBase}/configuration`,
+      tooltip: "Add and configure the components for this project",
+    },
+    {
+      label: t("step3"),
+      href: `${base}/design`,
+      linkHref: `${hrefBase}/design`,
+      tooltip: "Design each floor, room and wall as per requirement",
+    },
+    {
+      label: t("step4"),
+      href: `${base}/summary`,
+      linkHref: `${hrefBase}/summary`,
+      tooltip:
+        "Shop drawing and cut list for every partition, grouped by floor — for print and factory use",
+    },
+    {
+      label: t("step5"),
+      href: `${base}/quotation`,
+      linkHref: `${hrefBase}/quotation`,
+      tooltip: "Review your priced quotation before placing an order",
+    },
   ];
 
   // Step-gating: locked steps render as non-clickable spans (Stage 19 Batch 4).
@@ -132,6 +162,7 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain, selec
               {isLocked ? (
                 <span
                   aria-disabled="true"
+                  title={step.tooltip}
                   className={`${baseClass} cursor-not-allowed opacity-50`}
                 >
                   {innerContent}
@@ -141,6 +172,7 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain, selec
                   href={step.linkHref}
                   className={baseClass}
                   aria-current={isActive ? "step" : undefined}
+                  title={step.tooltip}
                 >
                   {innerContent}
                 </Link>
