@@ -26,9 +26,9 @@ export const dynamic = "force-dynamic";
  * this page redirects to login on either. 404 -> notFound() on a missing/
  * cross-org project (tenancy guard).
  *
- * ?openRoom=<id> is still read once, on initial load — it's set by
- * add-wall/actions.ts's server-side redirect (a genuine top-level entry
- * point, unchanged), not by any in-page mutation anymore.
+ * ?openRoom=<id> is read once on initial load for backward-compat with any
+ * existing links that included it; the add-wall route that set it is retired
+ * (S21-C1) but the query-param support is harmless to keep.
  */
 export default async function DesignPage({
   params,
@@ -116,15 +116,11 @@ export default async function DesignPage({
             {t("pageTitle")} — #{project.projectNumber} {project.name}
           </h1>
         </div>
-        {/* B4 (Stage 20): was bg-primary filled style (old UI); restyled to
-            secondary/outline to match the Configure/Add pattern used throughout
-            the Stage 17–19 rework (same visual weight as sidebar action buttons). */}
-        <Link
-          href={`${base}/projects/${projectId}/design/add-wall`}
-          className="shrink-0 inline-flex items-center rounded-sm border border-border bg-bg-white px-4 py-2 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
-        >
-          {t("addWall")}
-        </Link>
+        {/* S21-C1: The "Add Wall" button (which navigated to /design/add-wall)
+            has been retired — converting a PLAIN side to a partition is now
+            done inline in the right rail via LayoutModePanel / ConvertSideForm.
+            The route /design/add-wall no longer exists; any old bookmark to
+            it returns 404. */}
       </div>
 
       <DesignWorkspace

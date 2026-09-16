@@ -23,7 +23,7 @@ export function PanelList({ panels, selections, selection, onSelectPanel }: Pane
   return (
     <div className="flex flex-col gap-1">
       {panels.map((panel, idx) => {
-        const isSelected = selection?.type === "panel" && selection.panelId === panel.id;
+        const isSelected = selection?.type === "panel" && selection.panelIds.includes(panel.id);
         const doorSelection = panel.door
           ? selections.find((s) => s.id === panel.door!.selectionId)
           : undefined;

@@ -1,80 +1,83 @@
 "use client";
 
+/**
+ * Configure mode — the wall/panel editor.
+ *
+ * S21-D1: rebuilt to mockup parity (design-page.html lines 295-341, 1483-1646).
+ *   - One consolidated header row: back button, editable partition name, floor·room
+ *     tag, panel-count tag, and a right-aligned Width/Height stat card.
+ *   - Width change dispatches SET_PARTITION_WIDTH (proportional rescale, last-panel
+ *     absorbs remainder — sum === new total exactly).
+ *   - Height change dispatches SET_PARTITION_HEIGHT.
+ *   - Back button calls onBack (design-workspace.tsx guards unsaved changes).
+ *   - Save footer rendered in design-workspace.tsx (frozen file) — not duplicated here.
+ * S21-D2: WallCanvas wired with door graphic + multi-select.
+ * S21-D3: PanelContextMenu state + wiring.
+ * S21-D4: DoorContextMenu state + wiring.
+ *
+ * Removed per Deviations register:
+ *   D-4: unit-toggle control — not rendered anywhere in this file.
+ *   D-5: EdgeProfile / edge-stop editor — removed entirely.
+ *   D-2: panel Exclude/Include — not in this file, not in any context menu.
+ */
+
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { LoadingOverlay } from "@/components/loading-overlay";
 import { useUnit } from "./unit-context";
 import { WallCanvas } from "./wall-canvas";
-import { PanelList } from "./panel-list";
-import { EdgeProfile, EDGE_LABEL_KEY } from "./edge-profile";
-import { DEFAULT_PANEL_WIDTH_MM, MIN_SPLIT_WIDTH_MM } from "./configure-constants";
-import type {
-  ConfigureSelection,
-  DesignPanel,
-  EdgeSide,
-  MutateResult,
-  PartitionPatch,
-  PartitionRow,
-  SelectionRow,
-} from "./types";
+import { PanelContextMenu } from "./panel-context-menu";
+import { DoorContextMenu } from "./door-context-menu";
+import { MIN_SPLIT_WIDTH_MM } from "./configure-constants";
+import { useDraftContext } from "./design-draft-context";
+import type { DraftSelection } from "./design-draft-context";
+import type { SelectionRow } from "./types";
 
 interface ConfigureModeProps {
-  partition: PartitionRow;
   selections: SelectionRow[];
   floorLabel: string;
   roomLabel: string;
-  selection: ConfigureSelection;
-  onSelectionChange: (selection: ConfigureSelection) => void;
   onBack: () => void;
-  /** Every mutation re-reads the partition fresh from the server before
-   * building its PATCH body (see design-workspace.tsx's mutatePartition) —
-   * the binding condition architect-review-item7.md attached to client-side
-   * mutation transport for any full-document write, ported from Piece 1's
-   * convert-side-form.tsx. */
-  mutate: (build: (fresh: PartitionRow) => PartitionPatch) => Promise<MutateResult>;
 }
 
-/**
- * Configure mode — the wall/panel editor. Mirrors design-step-poc.html's
- * `renderConfigureMode`/`renderCanvas`: a consolidated toolbar row (back,
- * name, floor/panel tags, dimensions), a to-scale wall canvas with 4
- * edge-profile pickers around it, add/remove/split-panel controls, a
- * contextual hint line, and the itemized panel list.
- */
 export function ConfigureMode({
-  partition,
   selections,
   floorLabel,
   roomLabel,
-  selection,
-  onSelectionChange,
   onBack,
-  mutate,
 }: ConfigureModeProps) {
   const t = useTranslations("design");
-  const { unit, toDisplay, fromDisplay } = useUnit();
+  const { toDisplay, fromDisplay, unit } = useUnit();
+  const { state, dispatch } = useDraftContext();
 
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const partition = state.draft;
+  const selection = state.selection;
 
-  const [nameValue, setNameValue] = useState(partition.label);
+  const [nameValue, setNameValue] = useState(partition?.label ?? "");
   const [widthText, setWidthText] = useState("");
   const [heightText, setHeightText] = useState("");
 
-  // Reset local drafts when a DIFFERENT partition becomes active (not on
-  // every prop update from this same partition, which would clobber
-  // in-progress typing) — same "adjust state during render" pattern
-  // room-name-input.tsx / convert-side-form.tsx already use.
-  const [prevPartitionId, setPrevPartitionId] = useState(partition.id);
-  if (prevPartitionId !== partition.id) {
-    setPrevPartitionId(partition.id);
-    setNameValue(partition.label);
+  // Context-menu anchor state — only one can be open at a time.
+  const [panelMenu, setPanelMenu] = useState<{
+    panelId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [doorMenu, setDoorMenu] = useState<{
+    panelId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  // Reset local text mirrors when a different partition becomes active.
+  const [prevPartitionId, setPrevPartitionId] = useState(partition?.id ?? null);
+  if (prevPartitionId !== (partition?.id ?? null)) {
+    setPrevPartitionId(partition?.id ?? null);
+    setNameValue(partition?.label ?? "");
     setWidthText("");
     setHeightText("");
   }
-  // Unit-toggle change: clear the raw text mirrors so the display re-derives
-  // from the same canonical mm through the new unit (convert-side-form.tsx's
-  // fixed pattern — never reinterpret stale digits through fromDisplay()).
+
+  // Unit change: clear raw text mirrors to prevent stale-digit reinterpretation.
   const [prevUnit, setPrevUnit] = useState(unit);
   if (prevUnit !== unit) {
     setPrevUnit(unit);
@@ -82,312 +85,254 @@ export function ConfigureMode({
     setHeightText("");
   }
 
-  async function run(build: (fresh: PartitionRow) => PartitionPatch): Promise<MutateResult> {
-    setBusy(true);
-    setError(null);
-    const result = await mutate(build);
-    if (!result.ok) setError(result.error);
-    setBusy(false);
-    return result;
+  if (!partition) return <p className="text-xs text-text-muted">{t("loadingPartition")}</p>;
+
+  const panels = partition.design?.panels ?? [];
+
+  // ── Selection helpers ──────────────────────────────────────────────────────
+
+  function handleSelectionChange(sel: DraftSelection) {
+    dispatch({ type: "SET_SELECTION", selection: sel });
   }
 
-  async function commitName() {
+  // ── Name / dimension commit handlers ──────────────────────────────────────
+
+  function commitName() {
     const trimmed = nameValue.trim();
-    if (!trimmed || trimmed === partition.label) {
-      setNameValue(partition.label);
+    if (!trimmed || trimmed === partition!.label) {
+      setNameValue(partition!.label);
       return;
     }
-    const result = await run(() => ({ label: trimmed }));
-    if (!result.ok) setNameValue(partition.label);
+    dispatch({ type: "SET_PARTITION_LABEL", label: trimmed });
   }
 
-  async function commitWidth() {
+  function commitWidth() {
     const parsed = Number(widthText);
     if (widthText === "" || isNaN(parsed) || parsed <= 0) {
       setWidthText("");
       return;
     }
-    const newTotalMm = Math.round(fromDisplay(parsed));
+    // fromDisplay converts from the current display unit back to mm; round to integer mm.
+    const newTotalMm = Math.max(1, Math.round(fromDisplay(parsed)));
     setWidthText("");
-    await run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      const oldTotalMm = freshPanels.reduce((sum, p) => sum + p.widthMm, 0) || 1;
-      const scale = newTotalMm / oldTotalMm;
-      const nextPanels = freshPanels.map((p) => ({
-        ...p,
-        widthMm: Math.max(1, Math.round(p.widthMm * scale)),
-      }));
-      return { design: { panels: nextPanels } };
-    });
+    dispatch({ type: "SET_PARTITION_WIDTH", widthMm: newTotalMm });
   }
 
-  async function commitHeight() {
+  function commitHeight() {
     const parsed = Number(heightText);
     if (heightText === "" || isNaN(parsed) || parsed <= 0) {
       setHeightText("");
       return;
     }
-    const newHeightMm = Math.round(fromDisplay(parsed));
+    const newHeightMm = Math.max(1, Math.round(fromDisplay(parsed)));
     setHeightText("");
-    await run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      // Clamp any door heights that now exceed the new (shorter) wall height
-      // — mirrors design-step-poc.html:1086.
-      const nextPanels = freshPanels.map((p): DesignPanel => {
-        if (!p.door) return p;
-        const currentH = p.door.outerFrame?.h ?? newHeightMm;
-        const clampedH = Math.min(currentH, newHeightMm);
-        return {
-          ...p,
-          door: { ...p.door, outerFrame: { w: p.door.outerFrame?.w ?? p.widthMm, h: clampedH } },
-        };
-      });
-      return { heightMm: newHeightMm, design: { panels: nextPanels } };
-    });
+    dispatch({ type: "SET_PARTITION_HEIGHT", heightMm: newHeightMm });
   }
 
-  function selectPanel(panelId: string) {
-    onSelectionChange(
-      selection?.type === "panel" && selection.panelId === panelId
-        ? null
-        : { type: "panel", panelId },
-    );
-  }
-  function selectEdge(side: EdgeSide) {
-    onSelectionChange(
-      selection?.type === "edge" && selection.side === side ? null : { type: "edge", side },
-    );
-  }
+  // ── Toolbar actions ────────────────────────────────────────────────────────
 
   function addPanel() {
-    void run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      // Inherit the wall's common glass assignment (if every existing panel
-      // shares one) so adding a panel doesn't silently leave it "unglazed"
-      // relative to the rest of the wall — the Saved-Components rail's
-      // isGlassActive check depends on every panel sharing the same
-      // selectionId (review-item7-piece2 IMPORTANT 2).
-      const commonSelectionId =
-        freshPanels.length > 0 && freshPanels.every((p) => p.selectionId === freshPanels[0].selectionId)
-          ? freshPanels[0].selectionId
-          : null;
-      const newPanel: DesignPanel = {
-        id: crypto.randomUUID(),
-        type: "glass",
-        widthMm: DEFAULT_PANEL_WIDTH_MM,
-        heightMm: fresh.heightMm,
-        selectionId: commonSelectionId,
-      };
-      return { design: { panels: [...freshPanels, newPanel] } };
-    });
+    dispatch({ type: "ADD_PANEL" });
   }
 
-  function removeSelectedPanel() {
+  function removeSelectedPanels() {
     if (selection?.type !== "panel") return;
-    const panelId = selection.panelId;
-    void run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      if (freshPanels.length <= 1) return {};
-      return { design: { panels: freshPanels.filter((p) => p.id !== panelId) } };
-    }).then((result) => {
-      if (result.ok) onSelectionChange(null);
-    });
+    dispatch({ type: "REMOVE_PANELS", panelIds: selection.panelIds });
   }
 
   function splitSelectedPanel() {
-    if (selection?.type !== "panel") return;
-    const panelId = selection.panelId;
-    let firstHalfId: string | undefined;
-    void run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      const idx = freshPanels.findIndex((p) => p.id === panelId);
-      if (idx === -1) return {};
-      const panel = freshPanels[idx];
-      if (panel.widthMm < MIN_SPLIT_WIDTH_MM) return {};
-      const halfA = Math.floor(panel.widthMm / 2);
-      const halfB = panel.widthMm - halfA;
-      firstHalfId = crypto.randomUUID();
-      const secondHalfId = crypto.randomUUID();
-      const nextPanels = [...freshPanels];
-      nextPanels.splice(
-        idx,
-        1,
-        // Both halves inherit the split panel's own glass assignment — a
-        // split must not silently drop glass the panel already had
-        // (review-item7-piece2 IMPORTANT 2).
-        { id: firstHalfId, type: "glass", widthMm: halfA, heightMm: panel.heightMm, selectionId: panel.selectionId },
-        { id: secondHalfId, type: "glass", widthMm: halfB, heightMm: panel.heightMm, selectionId: panel.selectionId },
-      );
-      return { design: { panels: nextPanels } };
-    }).then((result) => {
-      if (result.ok && firstHalfId) onSelectionChange({ type: "panel", panelId: firstHalfId });
-    });
+    if (selection?.type !== "panel" || selection.panelIds.length !== 1) return;
+    dispatch({ type: "SPLIT_PANEL", panelId: selection.panelIds[0] });
   }
 
-  function commitDoorHeight(panelId: string, heightMm: number) {
-    void run((fresh) => {
-      const freshPanels = fresh.design?.panels ?? [];
-      const nextPanels = freshPanels.map((p) => {
-        if (p.id !== panelId || !p.door) return p;
-        return {
-          ...p,
-          door: { ...p.door, outerFrame: { w: p.door.outerFrame?.w ?? p.widthMm, h: heightMm } },
-        };
-      });
-      return { design: { panels: nextPanels } };
-    });
-  }
+  // ── Toolbar disabled-state derivations ────────────────────────────────────
 
-  const panels = partition.design?.panels ?? [];
-  const selectedPanel =
-    selection?.type === "panel" ? panels.find((p) => p.id === selection.panelId) : undefined;
-  const removeDisabled = !selectedPanel || panels.length <= 1;
-  const splitDisabled = !selectedPanel || selectedPanel.widthMm < MIN_SPLIT_WIDTH_MM;
+  const primaryPanelId = selection?.type === "panel" ? selection.panelIds[0] : undefined;
+  const selectedPanel = primaryPanelId ? panels.find((p) => p.id === primaryPanelId) : undefined;
+  const removeDisabled =
+    !selection ||
+    selection.type !== "panel" ||
+    panels.length <= selection.panelIds.length;
+  const splitDisabled =
+    !selection ||
+    selection.type !== "panel" ||
+    selection.panelIds.length !== 1 ||
+    !selectedPanel ||
+    selectedPanel.widthMm < MIN_SPLIT_WIDTH_MM;
 
-  const widthDisplay = widthText !== "" ? widthText : String(toDisplay(partition.widthMm));
-  const heightDisplay = heightText !== "" ? heightText : String(toDisplay(partition.heightMm));
+  // ── Display values ─────────────────────────────────────────────────────────
 
+  // Width display uses sum of panel widths (authoritative client-side value).
+  // partition.widthMm may lag the live sum until Save (server re-derives it).
+  const panelWidthSum = panels.reduce((s, p) => s + p.widthMm, 0);
+  const widthDisplay = widthText !== "" ? widthText : String(toDisplay(panelWidthSum));
+  const heightDisplay =
+    heightText !== "" ? heightText : String(toDisplay(partition.heightMm));
+
+  // ── Hint text (D2/D3) ─────────────────────────────────────────────────────
+
+  const selectedPanelIds = selection?.type === "panel" ? selection.panelIds : [];
   let hint: string;
-  if (!selection) hint = t("hintNone");
-  else if (selection.type === "panel") hint = t("hintPanel");
-  else hint = t("hintEdge", { side: t(EDGE_LABEL_KEY[selection.side]) });
+  if (selectedPanelIds.length > 1) {
+    hint = t("hintMultiPanel", { count: selectedPanelIds.length });
+  } else if (selectedPanelIds.length === 1) {
+    hint = t("hintPanelD");
+  } else {
+    hint = t("hintNoneD");
+  }
+
+  // ── Context menu open handlers ─────────────────────────────────────────────
+
+  function openPanelMenu(panelId: string, x: number, y: number) {
+    setPanelMenu({ panelId, x, y });
+    setDoorMenu(null);
+  }
+
+  function openDoorMenu(panelId: string, x: number, y: number) {
+    setDoorMenu({ panelId, x, y });
+    setPanelMenu(null);
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="relative flex w-full max-w-2xl flex-col gap-4">
-      <LoadingOverlay visible={busy} />
-      {error && <p className="text-xs text-red-700 dark:text-red-400">{error}</p>}
-
-      {/* Toolbar row — back, name, tags, dimensions */}
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex w-full flex-col gap-3">
+      {/*
+        Header row — mirrors mockup .wall-toolbar-row (lines 294-341, 1498-1553).
+        stopPropagation: toolbar row clicks must not bubble to the outer card's
+        click handler (design-workspace.tsx) which would clear the panel selection.
+      */}
+      <div
+        className="flex shrink-0 flex-wrap items-center gap-2.5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Back button — mirrors .icon-back */}
         <button
           type="button"
           onClick={onBack}
           title={t("backToLayout")}
           aria-label={t("backToLayout")}
-          className="rounded-sm border border-border px-2 py-1 text-sm text-text-body hover:bg-primary-softer"
+          className="flex h-[30px] w-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[8px] border border-border bg-bg-white text-[15px] text-text-muted hover:border-primary hover:text-primary-dark"
         >
           ←
         </button>
-        <input
-          type="text"
-          value={nameValue}
-          onChange={(e) => setNameValue(e.target.value)}
-          onBlur={() => void commitName()}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") e.currentTarget.blur();
-            else if (e.key === "Escape") setNameValue(partition.label);
-          }}
-          title={nameValue}
-          className="truncate rounded-sm border border-transparent bg-transparent px-1 py-0.5 text-base font-extrabold text-text-heading hover:border-border focus:border-primary focus:bg-bg-white focus:outline-none"
-        />
-        <span className="rounded-pill border border-primary-soft bg-primary-softer px-2.5 py-0.5 text-[11px] font-semibold text-primary-dark">
-          {floorLabel} · {roomLabel}
-        </span>
-        <span className="rounded-pill border border-primary-soft bg-primary-softer px-2.5 py-0.5 text-[11px] font-semibold text-primary-dark">
-          {t("panelsCount", { count: panels.length })}
-        </span>
 
-        <label className="ml-auto flex items-center gap-1.5 text-[11px] font-bold text-text-muted">
-          {t("fieldWidth")}
+        {/* Name + floor·room tag + panel-count tag — mirrors .wall-head */}
+        <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2">
           <input
-            type="number"
-            step="any"
-            value={widthDisplay}
-            onChange={(e) => setWidthText(e.target.value)}
-            onBlur={() => void commitWidth()}
-            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-            className="w-20 rounded-sm border border-border bg-bg-white px-2 py-1 text-xs text-text-body focus:border-primary focus:outline-none"
+            type="text"
+            value={nameValue}
+            onChange={(e) => setNameValue(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.currentTarget.blur();
+              else if (e.key === "Escape") setNameValue(partition.label);
+            }}
+            title={nameValue}
+            aria-label="Partition name"
+            className="min-w-0 rounded-[6px] border border-transparent bg-transparent px-[5px] py-[3px] text-[16px] font-extrabold text-text-heading hover:border-border hover:bg-[#fafaf6] focus:border-primary focus:bg-[#fafaf6] focus:outline-none"
           />
-          {unit}
-        </label>
-        <label className="flex items-center gap-1.5 text-[11px] font-bold text-text-muted">
-          {t("fieldHeight")}
-          <input
-            type="number"
-            step="any"
-            value={heightDisplay}
-            onChange={(e) => setHeightText(e.target.value)}
-            onBlur={() => void commitHeight()}
-            onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-            className="w-20 rounded-sm border border-border bg-bg-white px-2 py-1 text-xs text-text-body focus:border-primary focus:outline-none"
-          />
-          {unit}
-        </label>
-      </div>
+          {/* Floor · Room tag */}
+          <span className="whitespace-nowrap rounded-pill border border-primary-soft bg-primary-softer px-2.5 py-0.5 text-[11px] font-semibold text-primary-dark">
+            {floorLabel} · {roomLabel}
+          </span>
+          {/* Panel count tag — updates live as panels are added/removed/split/united */}
+          <span className="whitespace-nowrap rounded-pill border border-primary-soft bg-primary-softer px-2.5 py-0.5 text-[11px] font-semibold text-primary-dark">
+            {t("panelsCount", { count: panels.length })}
+          </span>
+        </div>
 
-      {/* Canvas + edge profiles — background click clears selection, mirrors
-          design-step-poc.html's `canvasWrap` click listener. */}
-      <div
-        onClick={() => onSelectionChange(null)}
-        className="flex flex-col items-center gap-2"
-      >
-        <div
-          className="grid w-full max-w-lg items-center justify-items-center gap-2"
-          style={{ gridTemplateColumns: "auto 1fr auto", gridTemplateAreas: '". top ." "left wall right" ". bottom ."' }}
-        >
-          <div style={{ gridArea: "top" }} className="w-full">
-            <EdgeProfile
-              side="top"
-              stops={partition.design?.stops}
-              selections={selections}
-              selection={selection}
-              onClick={() => selectEdge("top")}
-            />
-          </div>
-          <div style={{ gridArea: "left" }}>
-            <EdgeProfile
-              side="left"
-              stops={partition.design?.stops}
-              selections={selections}
-              selection={selection}
-              onClick={() => selectEdge("left")}
-            />
-          </div>
-          <div style={{ gridArea: "wall" }} className="w-full">
-            <WallCanvas
-              heightMm={partition.heightMm}
-              panels={panels}
-              selections={selections}
-              selection={selection}
-              onSelectPanel={selectPanel}
-              onDoorHeightCommit={commitDoorHeight}
-            />
-          </div>
-          <div style={{ gridArea: "right" }}>
-            <EdgeProfile
-              side="right"
-              stops={partition.design?.stops}
-              selections={selections}
-              selection={selection}
-              onClick={() => selectEdge("right")}
-            />
-          </div>
-          <div style={{ gridArea: "bottom" }} className="w-full">
-            <EdgeProfile
-              side="bottom"
-              stops={partition.design?.stops}
-              selections={selections}
-              selection={selection}
-              onClick={() => selectEdge("bottom")}
-            />
-          </div>
+        {/*
+          Stat card — Width / Height — pinned to the right edge of the header row.
+          Mirrors mockup .wall-stats (lines 314-327, 1546-1575).
+          Unit toggle NOT rendered (D-4 deviation).
+        */}
+        <div className="ml-auto flex shrink-0 items-center gap-3.5 rounded-[10px] border border-[--color-border-strong] bg-bg-white px-4 py-[6px] shadow-[0_1px_3px_-1px_rgba(27,40,30,.10)]">
+          {/* Width stat */}
+          <label className="flex cursor-pointer flex-col gap-[3px]">
+            <span className="text-[9.5px] font-bold uppercase tracking-[.04em] text-text-muted">
+              {t("fieldWidth")}
+            </span>
+            <span className="flex items-baseline gap-[3px]">
+              <input
+                type="number"
+                step="any"
+                value={widthDisplay}
+                onChange={(e) => setWidthText(e.target.value)}
+                onBlur={commitWidth}
+                onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                aria-label="Partition width"
+                className="w-[50px] border-none bg-transparent p-0 text-[13.5px] font-bold text-text-heading focus:outline-none"
+              />
+              <span className="text-[10.5px] font-semibold text-text-muted">{unit}</span>
+            </span>
+          </label>
+
+          {/* Divider */}
+          <div className="w-px self-stretch bg-[--color-border-strong]" />
+
+          {/* Height stat */}
+          <label className="flex cursor-pointer flex-col gap-[3px]">
+            <span className="text-[9.5px] font-bold uppercase tracking-[.04em] text-text-muted">
+              {t("fieldHeight")}
+            </span>
+            <span className="flex items-baseline gap-[3px]">
+              <input
+                type="number"
+                step="any"
+                value={heightDisplay}
+                onChange={(e) => setHeightText(e.target.value)}
+                onBlur={commitHeight}
+                onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                aria-label="Partition height"
+                className="w-[50px] border-none bg-transparent p-0 text-[13.5px] font-bold text-text-heading focus:outline-none"
+              />
+              <span className="text-[10.5px] font-semibold text-text-muted">{unit}</span>
+            </span>
+          </label>
         </div>
       </div>
 
-      {/* Panel toolbar */}
-      <div className="flex flex-wrap gap-2">
+      {/*
+        Canvas wrap — mirrors .canvas-wrap (lines 363-367, 1577-1584).
+        Clicking the wrap (not a panel) clears selection — panels stopPropagation.
+      */}
+      <div
+        className="flex shrink-0 items-center justify-center rounded-[8px] border border-[--color-border-strong] bg-bg-white px-[26px] py-[20px] shadow-[0_2px_10px_-4px_rgba(27,40,30,.10)]"
+        onClick={() => handleSelectionChange(null)}
+      >
+        <WallCanvas
+          heightMm={partition.heightMm}
+          panels={panels}
+          selections={selections}
+          selection={selection}
+          onSelectionChange={handleSelectionChange}
+          onPanelContextMenu={openPanelMenu}
+          onDoorContextMenu={openDoorMenu}
+        />
+      </div>
+
+      {/*
+        Canvas toolbar — mirrors .canvas-toolbar (lines 422-428, 1586-1619).
+        stopPropagation: Split selects the new panel; don't let the outer click
+        handler immediately clear that selection.
+      */}
+      <div
+        className="flex shrink-0 gap-2"
+        onClick={(e) => e.stopPropagation()}
+      >
         <button
           type="button"
           onClick={addPanel}
-          className="rounded-sm border border-border bg-bg-white px-3 py-1.5 text-xs font-bold text-text-body hover:border-primary"
+          className="rounded-[6px] border border-border bg-bg-white px-3 py-[7px] text-[12px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark"
         >
           {t("addPanel")}
         </button>
         <button
           type="button"
-          onClick={removeSelectedPanel}
+          onClick={removeSelectedPanels}
           disabled={removeDisabled}
-          className="rounded-sm border border-border bg-bg-white px-3 py-1.5 text-xs font-bold text-text-body hover:border-primary disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-[6px] border border-border bg-bg-white px-3 py-[7px] text-[12px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t("removePanel")}
         </button>
@@ -395,15 +340,35 @@ export function ConfigureMode({
           type="button"
           onClick={splitSelectedPanel}
           disabled={splitDisabled}
-          className="rounded-sm border border-border bg-bg-white px-3 py-1.5 text-xs font-bold text-text-body hover:border-primary disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-[6px] border border-border bg-bg-white px-3 py-[7px] text-[12px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t("splitPanel")}
         </button>
       </div>
 
-      <p className="text-center text-[10.5px] text-text-muted">{hint}</p>
+      {/* Hint text — mirrors mockup lines 1665-1670 */}
+      <p className="shrink-0 text-center text-[10.5px] text-text-muted">{hint}</p>
 
-      <PanelList panels={panels} selections={selections} selection={selection} onSelectPanel={selectPanel} />
+      {/*
+        Context menus (D3/D4) — rendered as fixed-position overlays; position
+        in the DOM tree doesn't matter since they use position:fixed.
+      */}
+      {panelMenu && (
+        <PanelContextMenu
+          panelId={panelMenu.panelId}
+          x={panelMenu.x}
+          y={panelMenu.y}
+          onClose={() => setPanelMenu(null)}
+        />
+      )}
+      {doorMenu && (
+        <DoorContextMenu
+          panelId={doorMenu.panelId}
+          x={doorMenu.x}
+          y={doorMenu.y}
+          onClose={() => setDoorMenu(null)}
+        />
+      )}
     </div>
   );
 }

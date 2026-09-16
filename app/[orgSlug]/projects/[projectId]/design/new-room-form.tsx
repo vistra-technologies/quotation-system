@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { LoadingOverlay } from "@/components/loading-overlay";
 import { redirectToLogin } from "./login-redirect";
 import type { RoomRow } from "./types";
 
@@ -16,11 +15,23 @@ interface NewRoomFormProps {
 }
 
 /**
- * Inline "New Room" form — mirrors design-step-poc.html's inline
- * add-room form (no `window.prompt()`). Client `fetch()` instead of
- * `useActionState` + `redirect()` (plan-item7.md flag 6 / architect
- * conditional approval): view/selection state stays purely client-side, no
- * page nav, so the newly created room appears instantly.
+ * S21-A4: Inline "+ Add Room" form.
+ *
+ * Matches design-step-poc.html's renderAddRoomZone inline-add-form pattern:
+ * one flex row — input + Add button + ✕ cancel button. Enter submits,
+ * Escape cancels. An empty name is rejected inline (no submit).
+ *
+ * Used in two places:
+ *   1. Left-rail add-room zone (room-list.tsx) — shown in place of the
+ *      "+ Add Room" button when the user clicks it.
+ *   2. Center-panel empty state (design-workspace.tsx) — same component,
+ *      same props, same behaviour.
+ *
+ * Track B / A4↔B1 wiring note: the prop name used by callers that want to
+ * programmatically open the left-rail form is `onOpenAddRoom: () => void` on
+ * RoomList (see room-list.tsx). Track B's B1 CTA should call that prop.
+ * The design-workspace.tsx empty state already manages its own `addingRoomForEmptyState`
+ * state independently (frozen workspace — not changed here).
  */
 export function NewRoomForm({
   orgSlug,
@@ -36,7 +47,10 @@ export function NewRoomForm({
 
   async function submit() {
     const trimmed = label.trim();
-    if (!trimmed) return;
+    if (!trimmed) {
+      setError("Room name cannot be empty.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -64,10 +78,10 @@ export function NewRoomForm({
   }
 
   return (
-    <div className="relative mt-1 rounded-sm border border-dashed border-border bg-bg-white p-3">
-      <LoadingOverlay visible={submitting} />
-      {error && <p className="mb-2 text-xs text-red-700 dark:text-red-400">{error}</p>}
-      <div className="flex flex-col gap-2">
+    <div className="mb-3">
+      {error && <p className="mb-1 text-[11px] text-red-700">{error}</p>}
+      {/* inline-add-form: one row — input + Add + cancel (mirrors mockup) */}
+      <div className="flex items-center gap-1.5">
         <input
           type="text"
           autoFocus
@@ -78,25 +92,23 @@ export function NewRoomForm({
             else if (e.key === "Escape") onCancel();
           }}
           placeholder={t("fieldRoomPlaceholder")}
-          className="rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs text-text-body placeholder:text-text-placeholder focus:border-primary focus:outline-none"
+          className="min-w-0 flex-1 rounded-sm border border-primary-soft bg-bg-white px-2.5 py-1.5 text-[12.5px] text-text-heading placeholder:text-text-placeholder focus:border-primary focus:outline-none"
         />
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => void submit()}
-            disabled={submitting}
-            className="flex-1 rounded-sm bg-primary px-2.5 py-1.5 text-xs font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
-          >
-            {t("createRoom")}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-sm border border-border px-2.5 py-1.5 text-xs text-text-body hover:bg-primary-softer"
-          >
-            {t("cancel")}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={submitting}
+          className="shrink-0 rounded-sm bg-primary px-2.5 py-1.5 text-[11.5px] font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
+        >
+          {t("createRoom")}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="shrink-0 rounded-sm border border-border bg-bg-white px-2 py-1.5 text-[11.5px] text-text-body hover:border-[#b9c2ae]"
+        >
+          ✕
+        </button>
       </div>
     </div>
   );
