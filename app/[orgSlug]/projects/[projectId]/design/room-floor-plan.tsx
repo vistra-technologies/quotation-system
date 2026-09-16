@@ -107,8 +107,18 @@ export function sideName(index: number, n: number): string {
 /**
  * CSS transform string for the tooltip `<div>` so it renders outside the
  * edge it belongs to (not always above). Mirrors design-page.html lines
- * 503-506 (top/bottom/left/right tooltip offsets). Derived from the edge
- * midpoint relative to the viewBox center so it works for any N.
+ * 503-506 (top/bottom/left/right tooltip offsets) for the top/bottom case.
+ * Derived from the edge midpoint relative to the viewBox center so it works
+ * for any N.
+ *
+ * Left/right deliberately do NOT mirror the mockup's outward offset
+ * (bugs-1.md B-1): the mockup's page has no clipping ancestor around the
+ * floor-plan card, but this app's center-column wrapper is `overflow-hidden`
+ * (needed for Configure mode's wall-canvas border-radius), so an outward
+ * left/right tooltip gets ~2/3 clipped. Rendering inward — over the room
+ * interior — keeps the tooltip within the SVG's own box, which always sits
+ * inside the card's visible bounds (the `p-6` padding around it), while
+ * top/bottom keep the mockup's outward behavior since it doesn't clip there.
  */
 function tooltipTransform(x: number, y: number): string {
   const dx = x - VIEWBOX / 2;
@@ -119,10 +129,11 @@ function tooltipTransform(x: number, y: number): string {
       ? "translate(-50%, -100%)" // top  — show above
       : "translate(-50%, 0%)"; //  bottom — show below
   }
-  // Vertical edge (left or right)
+  // Vertical edge (left or right) — render inward, over the room interior,
+  // so the tooltip stays inside the card's overflow-hidden bounds.
   return dx <= 0
-    ? "translate(-100%, -50%)" // left  — show to the left
-    : "translate(0%, -50%)"; //  right — show to the right
+    ? "translate(0%, -50%)" // left  — show to the right (inward)
+    : "translate(-100%, -50%)"; //  right — show to the left (inward)
 }
 
 /**

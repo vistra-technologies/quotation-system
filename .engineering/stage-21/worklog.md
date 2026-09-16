@@ -129,4 +129,45 @@ tracks' anticipated actions per their task files.
   `floor-bar.tsx` claims `design-workspace.tsx` doesn't wire `onFloorRenamed`/`onFloorDeleted`, though the
   integration-wiring pass added both. All test-created project records (`e2e-tester-stage21-*`,
   `e2e-stage21-*`) were deleted; confirmed zero remain via a final `GET /projects` sweep. No local dev
-  server was started at any point (all verification against the deployed preview).
+  server was started at any point (all verification against the deployed preview). Regression suite left
+  uncommitted in the working tree at this point — flagged for the fix pass to pick up. Human approved a
+  fix pass on `feature/s21-fix-b1-b2-test-findings` (off `release/stage-21`).
+  clipped by center-column `overflow-hidden` ancestor) / 1 MINOR (B-2: stale `floor-bar.tsx` comment). See
+  `.engineering/stage-21/bugs-1.md`. Regression suite `tests/e2e/stage21-design.spec.ts` written (6 passed,
+  1 `test.skip()`'d for B-1) but left uncommitted in the working tree — flagged for the fix pass to pick up.
+  Human approved a fix pass on `feature/s21-fix-b1-b2-test-findings` (off `release/stage-21`).
+- 2026-09-16 — developer (fix pass, B-1/B-2): both findings fixed, commit `7f8ec42` pushed to
+  `feature/s21-fix-b1-b2-test-findings`. See `.engineering/stage-21/item-fix-b1-b2.md` and
+  `plan-fix-b1-b2.md` for full detail. B-1: `room-floor-plan.tsx`'s `tooltipTransform()` now renders
+  left/right tooltips inward (over the room interior) instead of outward past the SVG's own box, so they
+  stay inside the center card's `overflow-hidden` bounds — top/bottom untouched (already correct). Chose
+  flip-direction over a `ContextMenu`-style portal (rationale in plan file). B-2: `floor-bar.tsx`'s
+  `onFloorRenamed`/`onFloorDeleted` JSDoc updated to reflect `design-workspace.tsx` now wires both.
+  Also committed `tests/e2e/stage21-design.spec.ts` (previously uncommitted tester artifact) with the B-1
+  case un-skipped. `npx tsc --noEmit` clean; `npm run lint` 0 errors (same 6 pre-existing warnings,
+  none in touched files). Per the hard no-local-testing rule, full e2e verification needs to run against
+  this branch's own Vercel preview — I don't have Vercel MCP tools this session, so I couldn't poll
+  deployment READY or discover the preview URL myself (an alias-guess attempt didn't resolve). Asked
+  orchestrator to confirm READY for commit `7f8ec42` and share the URL so `npm run test:e2e` can target it
+  via `PLAYWRIGHT_BASE_URL`. Status: DONE_WITH_CONCERNS pending that confirmation.
+- 2026-09-16 — developer (fix pass, verification): orchestrator confirmed deployment READY at
+  `https://quotation-system-3p4imydju-vistra-indias-projects.vercel.app`. Ran
+  `PLAYWRIGHT_BASE_URL=<preview> npx playwright test tests/e2e/stage21-design.spec.ts` — **7/7 passed**,
+  including the un-skipped B-1 regression case. Also ran an ad-hoc manual sanity check (temp spec file,
+  deleted after use, not committed) hovering the left and right wall bars at 1440px and 1180px viewports:
+  tooltip bounding box stayed fully inside the floor-plan card at both widths in both cases (e.g. 1440px
+  right tooltip right-edge 991 vs card right-edge 1062; 1180px left tooltip left-edge 559 vs card left-edge
+  534), confirmed both by geometry assertions and by reading the screenshots. Verified no leftover test
+  data: a second temp script (deleted after use) signed in as `admin`/vistra and listed
+  `GET /api/v1/orgs/vistra/projects` — zero `e2e-stage21-*` or `manual-b1-check-*` projects remained (the
+  manual-check test's own inline delete + the suite's `afterAll` hooks both fired correctly). No shared
+  credentials or seeded records were touched. Working tree is clean except the (gitignored)
+  `.engineering/stage-21/worklog.md` update. Status: DONE.
+- 2026-09-16 — reviewer (fix pass, B-1/B-2): APPROVE-WITH-NITS. 0 CRITICAL / 0 IMPORTANT / 5 MINOR. See
+  `.engineering/stage-21/review-fix-b1-b2.md`. B-1 fix verified correct at the geometry level (all four
+  edge cases traced; top/bottom untouched), B-2 comment verified accurate against
+  `design-workspace.tsx:367-368`, un-skipped e2e case verified non-vacuous (card locator unambiguous,
+  polygon index correct, boundingBox is unclipped so it really fails pre-fix). Diff hygiene clean —
+  3 files, no scope creep. `tsc --noEmit` and `npm run lint` re-run locally: clean / 6 pre-existing
+  warnings. Nits are the dev's discretion; the one worth taking is recording the inward-tooltip mockup
+  deviation in stage-21.md's Deviations register (recorded as D-6 by the orchestrator).
