@@ -42,18 +42,11 @@ export default async function QuotationPage({
   }
   const t = await getTranslations("wizard");
 
+  // Page heading removed — its copy now shows as a hover tooltip on the
+  // "Quotation" pill in the wizard breadcrumb (project-wizard-breadcrumb.tsx),
+  // matching Design, which never had an on-page heading either.
   return (
     <div className="py-8">
-      {/* Page heading */}
-      <div className="mb-6 text-center">
-        <h1 className="text-3xl font-extrabold text-text-heading">
-          {t("step5")}
-        </h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Review your priced quotation before placing an order
-        </p>
-      </div>
-
       {/* Content card */}
       <div className="mb-6 rounded-md border border-border bg-bg-card shadow-card">
         {/* Inert placeholder */}

@@ -78,16 +78,11 @@ export default async function ProjectDetailPage({
       : `#${project.inquiry.inquiryNumber}`
     : null;
 
+  // Page heading removed — its copy now shows as a hover tooltip on the
+  // "Project Details" pill in the wizard breadcrumb (project-wizard-breadcrumb.tsx),
+  // matching Design, which never had an on-page heading either.
   return (
     <div className="py-8">
-      {/* Page heading */}
-      <div className="mb-6 text-center">
-        <h1 className="text-3xl font-extrabold text-text-heading">Project Details</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Review your project information to continue
-        </p>
-      </div>
-
       {/* ── Card 1: Project Information ───────────────────────────────────── */}
       <div className="mb-5 rounded-md border border-border bg-bg-card shadow-card overflow-hidden">
         <div className="bg-primary-softer px-5 py-3.5">
