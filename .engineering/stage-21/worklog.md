@@ -153,4 +153,15 @@ tracks' anticipated actions per their task files.
   polygon index correct, boundingBox is unclipped so it really fails pre-fix). Diff hygiene clean —
   3 files, no scope creep. `tsc --noEmit` and `npm run lint` re-run locally: clean / 6 pre-existing
   warnings. Nits are the dev's discretion; the one worth taking is recording the inward-tooltip mockup
-  deviation in stage-21.md's Deviations register.
+  deviation in stage-21.md's Deviations register (recorded as D-6 by the orchestrator).
+
+- 2026-09-16 — tester (re-test, fix-batch verification): PASS. 0 CRITICAL / 0 IMPORTANT / 0 MINOR. See
+  `.engineering/stage-21/bugs-2.md`. Tested against `test.easeetool.com` / `vistra.test.easeetool.com`
+  (`1591ee9`). B-1 confirmed fixed: committed suite (`tests/e2e/stage21-design.spec.ts`, 7/7 passing incl.
+  the un-skipped tooltip-bounds case) plus an independent manual geometry+screenshot check at 1440px/1180px
+  (both left/right wall tooltips fully inside the card at both widths). B-2 confirmed fixed via code read
+  (`floor-bar.tsx` JSDoc no longer stale). Spot-checked the now-inward tooltip for new overlap against room
+  header/legend/right-rail — none found. Lightweight regression pass (draft isolation, Save/Discard,
+  multi-select make-equal/unite, sum invariant, tenancy, Layout-mode heading) all green via the same suite
+  run. All test-created records deleted (temp project + suite's own `e2e-stage21-*`); confirmed zero
+  leftover via `GET /projects`. No local dev server used.
