@@ -126,6 +126,11 @@ function DesignWorkspaceInner({
   const [layoutSideSelection, setLayoutSideSelection] = useState<number | null>(null);
   const [addingRoomForEmptyState, setAddingRoomForEmptyState] = useState(false);
   const [selectedRoomPartitions, setSelectedRoomPartitions] = useState<PartitionRow[]>([]);
+  // Stage 21 QA bug #18: the left-rail RoomList caches partitions locally and
+  // only fetches when not already cached, so a Configure-mode save (new
+  // panels/doors) didn't show up there until a full page refresh. Bumping
+  // this after every successful save lets RoomList patch its cache in place.
+  const [lastSavedPartition, setLastSavedPartition] = useState<PartitionRow | null>(null);
 
   // Unsaved-changes modal state — shown when Back is clicked while isDirty.
   const [unsavedModal, setUnsavedModal] = useState<{
@@ -217,6 +222,7 @@ function DesignWorkspaceInner({
               : p,
           ),
         );
+        setLastSavedPartition(result.partition);
         result.updatedRooms.forEach(handleRoomRenamed);
         setUnsavedModal(null);
         resumeAction();
@@ -296,6 +302,7 @@ function DesignWorkspaceInner({
           : p,
       ),
     );
+    setLastSavedPartition(result.partition);
     result.updatedRooms.forEach(handleRoomRenamed);
   }
 
@@ -383,7 +390,10 @@ function DesignWorkspaceInner({
           : f,
       ),
     );
-    setLayoutSideSelection(null);
+    // Stage 21 QA bug #12: keep the just-converted wall selected (its side
+    // index is unchanged by the conversion) instead of clearing back to the
+    // "click a wall" placeholder — the human's call was to select it in Room
+    // Layout only, not auto-jump into Configure mode.
   }
 
   function handleRoomRenamed(updatedRoom: RoomRow) {
@@ -452,6 +462,7 @@ function DesignWorkspaceInner({
                   onRoomDeleted={handleRoomDeleted}
                   onSelectPartition={enterConfigureMode}
                   selectedPartitionId={viewMode === "configure" ? state.partitionId : null}
+                  lastSavedPartition={lastSavedPartition}
                 />
               ) : null}
             </>
@@ -464,21 +475,27 @@ function DesignWorkspaceInner({
             {submitDesignError && (
               <p className="mb-2 text-[11px] text-red-700 dark:text-red-400">{submitDesignError}</p>
             )}
-            {designSubmittedAt ? (
-              <p className="rounded-sm border border-primary-soft bg-primary-softer px-3 py-2 text-center text-[11.5px] font-bold text-primary-dark">
-                {t("designSubmitted")}
-              </p>
-            ) : (
-              <button
-                type="button"
-                disabled={totalPartitionCount === 0 || submittingDesign}
-                onClick={() => void handleSubmitDesign()}
-                title={totalPartitionCount === 0 ? t("submitDesignDisabledHint") : undefined}
-                className="w-full rounded-sm bg-primary px-3 py-2 text-[12.5px] font-bold text-text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {submittingDesign ? t("submitting") : t("submitDesign")}
-              </button>
-            )}
+            {/*
+              Stage 21 QA bug #21: this used to swap to a static "Design
+              submitted" paragraph once designSubmittedAt was set, locking the
+              button out — even after further edits. The button must always
+              stay clickable; re-submitting after edits just re-runs the same
+              (idempotent) submit and refreshes the timestamp. Only the label
+              reflects submitted state, never the disabled-ness.
+            */}
+            <button
+              type="button"
+              disabled={totalPartitionCount === 0 || submittingDesign}
+              onClick={() => void handleSubmitDesign()}
+              title={totalPartitionCount === 0 ? t("submitDesignDisabledHint") : undefined}
+              className="w-full rounded-sm bg-primary px-3 py-2 text-[12.5px] font-bold text-text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submittingDesign
+                ? t("submitting")
+                : designSubmittedAt
+                  ? t("designSubmitted")
+                  : t("submitDesign")}
+            </button>
           </div>
         </aside>
 

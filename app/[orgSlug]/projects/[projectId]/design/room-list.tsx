@@ -46,6 +46,14 @@ interface RoomListProps {
    */
   selectedPartitionId?: string | null;
   /**
+   * The partition most recently saved from Configure mode, if any. RoomList's
+   * partitionsByRoom cache is otherwise only populated on first expand and
+   * never invalidated — without this, a save (new panels/doors) wouldn't show
+   * up in the left rail's per-partition preview until a full page reload
+   * (Stage 21 QA bug #18).
+   */
+  lastSavedPartition?: PartitionRow | null;
+  /**
    * A4↔B1 wiring note (for reviewers):
    * Track B's B1 empty-state CTA triggers `addingRoomForEmptyState` state in
    * design-workspace.tsx (already implemented, frozen). That shows the
@@ -79,6 +87,7 @@ export function RoomList({
   onRoomDeleted,
   onSelectPartition,
   selectedPartitionId,
+  lastSavedPartition,
 }: RoomListProps) {
   const t = useTranslations("design");
 
@@ -136,6 +145,36 @@ export function RoomList({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- rooms changes per render; re-running on rooms/expandedRoomIds/partitionsByRoom changes is intentional.
   }, [rooms, expandedRoomIds, orgSlug, isSubdomain]);
+
+  // Patch the cache in place whenever a Configure-mode save reports a fresh
+  // partition (bug #18) — replaces the stale cached row wherever it appears,
+  // instead of waiting for the "not fully covered" refetch check above (which
+  // never re-fires for a partition it already has, however stale). Compared
+  // by reference during render (matches this file's prevPartitionId pattern
+  // elsewhere) rather than in a useEffect, since design-workspace.tsx hands
+  // down a new PartitionRow object on every successful save.
+  const [appliedSavedPartition, setAppliedSavedPartition] = useState<PartitionRow | null>(null);
+  if (lastSavedPartition && lastSavedPartition !== appliedSavedPartition) {
+    setAppliedSavedPartition(lastSavedPartition);
+    setPartitionsByRoom((prev) => {
+      let changed = false;
+      const next: typeof prev = {};
+      for (const [roomId, partitions] of Object.entries(prev)) {
+        const idx = partitions.findIndex((p) => p.id === lastSavedPartition.id);
+        if (idx === -1) {
+          next[roomId] = partitions;
+          continue;
+        }
+        changed = true;
+        next[roomId] = [
+          ...partitions.slice(0, idx),
+          lastSavedPartition,
+          ...partitions.slice(idx + 1),
+        ];
+      }
+      return changed ? next : prev;
+    });
+  }
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
