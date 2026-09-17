@@ -204,9 +204,12 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
       };
       return mutatePanels(state, (ps) => {
         const resized = ps.map((p) => ({ ...p, widthMm: base }));
-        const assignedTotal = base * ps.length;
-        const remainder = existingTotal - assignedTotal;
-        return [...resized, { ...newPanel, widthMm: Math.max(1, base + remainder) }];
+        // The new panel gets whatever's left after the other (newCount - 1)
+        // panels take `base` each — NOT base + that remainder, which would
+        // double-count its own share and grow the total (the bug this was
+        // meant to fix in the first place).
+        const remainder = existingTotal - base * ps.length;
+        return [...resized, { ...newPanel, widthMm: Math.max(1, remainder) }];
       });
     }
 
