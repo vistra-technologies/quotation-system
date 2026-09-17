@@ -65,6 +65,7 @@ export default async function ProjectWizardLayout({
       isSubdomain={isSubdomain}
       selectionCount={project.selectionCount}
       partitionCount={project.partitionCount}
+      designSubmittedAt={project.designSubmittedAt}
     >
       {children}
     </WizardPageShell>

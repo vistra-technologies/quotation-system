@@ -374,6 +374,12 @@ model Project {
   endClientCity            String?
   endClientState           String?
   endClientGstNumber       String?   // required for India, optional for UAE — form-layer only
+  // Set when the user clicks "Submit Design" (Design page left rail). Stands
+  // in for "a Summary exists" until the real BOQ/Summary pipeline is built —
+  // Summary/Quotation step-gating checks this instead of partitionCount>0 so
+  // reaching those steps is a deliberate action, not automatic. Null = not
+  // yet submitted (locked); non-null = submitted (unlocked).
+  designSubmittedAt    DateTime?
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   // Stage 6 relations

@@ -9,6 +9,7 @@ interface WizardPageShellProps {
   isSubdomain: boolean;
   selectionCount: number;
   partitionCount: number;
+  designSubmittedAt: string | null;
   children: React.ReactNode;
 }
 
@@ -31,6 +32,7 @@ export function WizardPageShell({
   isSubdomain,
   selectionCount,
   partitionCount,
+  designSubmittedAt,
   children,
 }: WizardPageShellProps) {
   const pathname = usePathname();
@@ -50,6 +52,7 @@ export function WizardPageShell({
         isSubdomain={isSubdomain}
         selectionCount={selectionCount}
         partitionCount={partitionCount}
+        designSubmittedAt={designSubmittedAt}
       />
       <div className={isDesign ? "flex min-h-0 flex-1 flex-col" : undefined}>
         {children}
