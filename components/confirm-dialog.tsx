@@ -16,6 +16,13 @@ interface ConfirmDialogProps {
   isOpen: boolean;
   title: string;
   message: string;
+  /**
+   * Optional inline error to render as a red alert between the message and the
+   * button row — e.g. a blocked-delete "still in use" response. Keeps the
+   * dialog open and shows the reason right where the user is looking, instead
+   * of the caller rendering an error somewhere else on the page behind it.
+   */
+  errorMessage?: string | null;
   /** Label for the primary confirm button. Defaults to "Confirm". */
   confirmLabel?: string;
   /** Label for the cancel button. Defaults to "Cancel". */
@@ -71,6 +78,7 @@ export function ConfirmDialog({
   isOpen,
   title,
   message,
+  errorMessage,
   confirmLabel = "Confirm",
   cancelLabel = "Cancel",
   thirdAction,
@@ -129,10 +137,16 @@ export function ConfirmDialog({
         </h2>
         <p
           id="confirm-dialog-message"
-          className="mb-6 text-sm text-text-body"
+          className="mb-4 text-sm text-text-body"
         >
           {message}
         </p>
+
+        {errorMessage && (
+          <div className="mb-4 rounded-sm border border-[--color-danger-border] bg-[--color-danger-bg] px-3.5 py-2.5 text-sm font-semibold text-[--color-status-failed-text]">
+            {errorMessage}
+          </div>
+        )}
 
         {/* Button group — column layout only when a thirdAction is present;
             otherwise row (Cancel left, Confirm right) matching the original layout. */}
@@ -148,15 +162,17 @@ export function ConfirmDialog({
             </button>
           )}
 
-          {/* Primary action */}
+          {/* Primary action — disabled once a blocking error is shown; retrying
+              without addressing the reason (e.g. still-in-use) can't succeed. */}
           <button
             ref={confirmRef}
             type="button"
             onClick={onConfirm}
+            disabled={Boolean(errorMessage)}
             className={
               confirmVariant === "primary"
-                ? "rounded-sm border border-primary-dark bg-primary px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-dark"
-                : "rounded-sm border border-red-700 bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700"
+                ? "rounded-sm border border-primary-dark bg-primary px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-primary"
+                : "rounded-sm border border-red-700 bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-red-600"
             }
           >
             {confirmLabel}
