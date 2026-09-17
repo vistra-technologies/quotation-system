@@ -16,7 +16,7 @@
  */
 
 import { useTranslations } from "next-intl";
-import { ContextMenu, type ContextMenuEntry } from "@/components/context-menu";
+import { ContextMenu, ApplyWidthSlot, type ContextMenuEntry } from "@/components/context-menu";
 import { useDraftContext } from "./design-draft-context";
 
 interface DoorContextMenuProps {
@@ -42,6 +42,7 @@ export function DoorContextMenu({
   if (!panel?.door) return null;
 
   const currentHinge = panel.door.hinging ?? "left";
+  const currentHeightMm = panel.door.outerFrame?.h ?? panel.heightMm;
 
   const items: ContextMenuEntry[] = [
     {
@@ -55,6 +56,21 @@ export function DoorContextMenu({
       icon: "⇥",
       label: t("ctxHingeRight") + (currentHinge === "right" ? " ✓" : ""),
       onClick: () => dispatch({ type: "SET_DOOR_HINGE", panelId, hinging: "right" }),
+    },
+    { type: "divider" },
+    // Stage 21 QA bug #15: the door's height defaulted to the full panel
+    // height on creation (already correct) but had no way to adjust it
+    // afterward — this slot fills that gap, mirroring the panel context
+    // menu's Apply Width row.
+    {
+      type: "custom",
+      content: (
+        <ApplyWidthSlot
+          label={t("ctxDoorHeight")}
+          initialValue={currentHeightMm}
+          onApply={(h) => dispatch({ type: "SET_DOOR_HEIGHT", panelId, heightMm: h })}
+        />
+      ),
     },
   ];
 

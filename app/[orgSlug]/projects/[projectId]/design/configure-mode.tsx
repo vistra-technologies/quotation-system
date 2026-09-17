@@ -56,8 +56,12 @@ export function ConfigureMode({
   const selection = state.selection;
 
   const [nameValue, setNameValue] = useState(partition?.label ?? "");
-  const [widthText, setWidthText] = useState("");
-  const [heightText, setHeightText] = useState("");
+  // null = "not being edited, show the computed value"; "" = "user cleared the
+  // field and is about to type a new value, show it empty." Stage 21 QA bug
+  // #14: using "" for both meanings made the input snap back to the old value
+  // the instant it was backspaced to empty, before a new digit could be typed.
+  const [widthText, setWidthText] = useState<string | null>(null);
+  const [heightText, setHeightText] = useState<string | null>(null);
 
   // Context-menu anchor state — only one can be open at a time.
   const [panelMenu, setPanelMenu] = useState<{
@@ -76,16 +80,16 @@ export function ConfigureMode({
   if (prevPartitionId !== (partition?.id ?? null)) {
     setPrevPartitionId(partition?.id ?? null);
     setNameValue(partition?.label ?? "");
-    setWidthText("");
-    setHeightText("");
+    setWidthText(null);
+    setHeightText(null);
   }
 
   // Unit change: clear raw text mirrors to prevent stale-digit reinterpretation.
   const [prevUnit, setPrevUnit] = useState(unit);
   if (prevUnit !== unit) {
     setPrevUnit(unit);
-    setWidthText("");
-    setHeightText("");
+    setWidthText(null);
+    setHeightText(null);
   }
 
   if (!partition) return <p className="text-xs text-text-muted">{t("loadingPartition")}</p>;
@@ -111,24 +115,24 @@ export function ConfigureMode({
 
   function commitWidth() {
     const parsed = Number(widthText);
-    if (widthText === "" || isNaN(parsed) || parsed <= 0) {
-      setWidthText("");
+    if (!widthText || isNaN(parsed) || parsed <= 0) {
+      setWidthText(null);
       return;
     }
     // fromDisplay converts from the current display unit back to mm; round to integer mm.
     const newTotalMm = Math.max(1, Math.round(fromDisplay(parsed)));
-    setWidthText("");
+    setWidthText(null);
     dispatch({ type: "SET_PARTITION_WIDTH", widthMm: newTotalMm });
   }
 
   function commitHeight() {
     const parsed = Number(heightText);
-    if (heightText === "" || isNaN(parsed) || parsed <= 0) {
-      setHeightText("");
+    if (!heightText || isNaN(parsed) || parsed <= 0) {
+      setHeightText(null);
       return;
     }
     const newHeightMm = Math.max(1, Math.round(fromDisplay(parsed)));
-    setHeightText("");
+    setHeightText(null);
     dispatch({ type: "SET_PARTITION_HEIGHT", heightMm: newHeightMm });
   }
 
@@ -168,9 +172,9 @@ export function ConfigureMode({
   // Width display uses sum of panel widths (authoritative client-side value).
   // partition.widthMm may lag the live sum until Save (server re-derives it).
   const panelWidthSum = panels.reduce((s, p) => s + p.widthMm, 0);
-  const widthDisplay = widthText !== "" ? widthText : String(toDisplay(panelWidthSum));
+  const widthDisplay = widthText !== null ? widthText : String(toDisplay(panelWidthSum));
   const heightDisplay =
-    heightText !== "" ? heightText : String(toDisplay(partition.heightMm));
+    heightText !== null ? heightText : String(toDisplay(partition.heightMm));
 
   // ── Context menu open handlers ─────────────────────────────────────────────
 

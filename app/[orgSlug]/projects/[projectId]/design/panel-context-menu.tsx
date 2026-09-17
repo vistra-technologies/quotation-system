@@ -200,7 +200,7 @@ export function PanelContextMenu({
       type: "item",
       icon: "⊞",
       label: t("ctxMakeEqualWidth"),
-      onClick: () => dispatch({ type: "MAKE_EQUAL_WIDTH" }),
+      onClick: () => dispatch({ type: "MAKE_EQUAL_WIDTH", panelIds: targetIds }),
     },
     {
       type: "item",
