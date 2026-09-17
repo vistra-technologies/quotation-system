@@ -6,6 +6,7 @@ import { NewRoomForm } from "./new-room-form";
 import { PartitionPreview } from "./partition-preview";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { redirectToLogin } from "./login-redirect";
+import { useDraftContext } from "./design-draft-context";
 import type { PartitionRow, RoomRow } from "./types";
 
 interface RoomListProps {
@@ -90,6 +91,10 @@ export function RoomList({
   lastSavedPartition,
 }: RoomListProps) {
   const t = useTranslations("design");
+
+  // R-8c: read pending room renames from the draft context so the left rail
+  // shows the in-progress name immediately (before the user hits Save).
+  const { state: draftState } = useDraftContext();
 
   // ── Local state ────────────────────────────────────────────────────────────
 
@@ -308,7 +313,8 @@ export function RoomList({
                         ›
                       </span>
                       <span className="min-w-0 flex-1 truncate text-[12.5px] font-bold text-text-heading">
-                        {room.label}
+                        {/* R-8c: show pending rename if present, else saved label */}
+                        {draftState.pendingRoomNameEdits[room.id] ?? room.label}
                       </span>
                       <span className="shrink-0 text-[11px] text-text-muted">
                         {t("convertedWalls", { converted: partitionCount, total: totalSides })}

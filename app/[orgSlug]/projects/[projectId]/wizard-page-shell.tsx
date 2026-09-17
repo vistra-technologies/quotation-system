@@ -37,13 +37,20 @@ export function WizardPageShell({
 }: WizardPageShellProps) {
   const pathname = usePathname();
   const isDesign = pathname?.endsWith("/design") ?? false;
+  // R-1: Configuration needs the same flex/min-h-0/flex-1 height chain as
+  // Design so its inner columns can scroll independently without the whole page
+  // overflowing. The max-w-[1180px] and horizontal padding are kept (Design uses
+  // its own full-width layout, Configuration caps at 1180px per the mockup).
+  const isConfiguration = pathname?.endsWith("/configuration") ?? false;
 
   return (
     <div
       className={
         isDesign
           ? "flex h-full min-h-0 w-full flex-1 flex-col"
-          : "mx-auto flex h-full w-full max-w-[1180px] flex-col px-8 pb-4 pt-7"
+          : isConfiguration
+            ? "mx-auto flex h-full min-h-0 w-full max-w-[1180px] flex-1 flex-col px-8 pb-4 pt-7"
+            : "mx-auto flex h-full w-full max-w-[1180px] flex-col px-8 pb-4 pt-7"
       }
     >
       <ProjectWizardBreadcrumb
@@ -54,7 +61,7 @@ export function WizardPageShell({
         partitionCount={partitionCount}
         designSubmittedAt={designSubmittedAt}
       />
-      <div className={isDesign ? "flex min-h-0 flex-1 flex-col" : undefined}>
+      <div className={isDesign || isConfiguration ? "flex min-h-0 flex-1 flex-col" : undefined}>
         {children}
       </div>
     </div>

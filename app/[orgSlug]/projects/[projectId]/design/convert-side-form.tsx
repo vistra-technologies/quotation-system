@@ -12,13 +12,12 @@ interface ConvertSideFormProps {
   isSubdomain: boolean;
   floorId: string;
   roomId: string;
-  /** Display title shown above the form — typically "{Room} {Side} Wall". */
-  wallTitle: string;
   /**
    * Auto-generated partition label — shown as the editable name field's
    * default value. Bug 8a: the user can edit this before converting.
-   * Derived from the room and side names by the parent (kebab-case format,
-   * bug 8b) and recomputed from the room's *current* name on every render.
+   * Derived from the room and side names by the parent (R-8b: human-readable
+   * "{Room Name} - {Side} Wall" format) and recomputed from the room's
+   * *current effective* name on every render (R-8c).
    */
   autoLabel: string;
   /** Array index of the PLAIN side being converted — identity is by array
@@ -55,7 +54,6 @@ export function ConvertSideForm({
   isSubdomain,
   floorId,
   roomId,
-  wallTitle,
   autoLabel,
   sideIndex,
   onCancel,
@@ -219,9 +217,9 @@ export function ConvertSideForm({
   return (
     <div className="relative mt-4 border-t border-border pt-3.5">
       <LoadingOverlay visible={submitting} />
-      {/* Title — mirrors mockup's wall-details-title (room + side name) */}
-      <p className="mb-0.5 text-sm font-bold text-text-heading">{wallTitle}</p>
-      <p className="mb-4 text-[11.5px] text-text-muted">{t("notYetPartition")}</p>
+      {/* R-8a: the redundant room-name / "not yet a partition" block has been
+          removed. The WALL DETAILS panel header already names the selected wall;
+          repeating it here added noise without adding information. */}
       {error && <p className="mb-2 text-xs text-red-700 dark:text-red-400">{error}</p>}
 
       {/* Bug 8a: editable partition name field — pre-filled with the kebab-case
