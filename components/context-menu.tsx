@@ -119,7 +119,7 @@ export function ContextMenu({ anchorX, anchorY, items, onClose }: ContextMenuPro
       role="menu"
       aria-label="Context menu"
       style={{ position: "fixed", left, top, width: MENU_WIDTH, zIndex: 100 }}
-      className="rounded-[12px] border border-[--color-border-strong] bg-bg-white py-1.5 shadow-[0_16px_34px_-12px_rgba(27,40,30,.32)]"
+      className="rounded-[12px] border border-[var(--color-border-strong)] bg-bg-white py-1.5 shadow-[0_16px_34px_-12px_rgba(27,40,30,.32)]"
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -219,7 +219,7 @@ export function ApplyWidthSlot({ label, initialValue, onApply }: ApplyWidthSlotP
           }
         }}
         onBlur={commit}
-        className="w-[60px] rounded-[6px] border border-[--color-border-strong] px-[7px] py-[5px] text-right text-[12.5px] text-text-heading focus:border-primary focus:outline-none"
+        className="w-[60px] rounded-[6px] border border-[var(--color-border-strong)] px-[7px] py-[5px] text-right text-[12.5px] text-text-heading focus:border-primary focus:outline-none"
       />
     </div>
   );

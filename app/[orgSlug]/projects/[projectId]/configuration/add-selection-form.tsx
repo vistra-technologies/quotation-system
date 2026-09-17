@@ -337,8 +337,10 @@ export function AddSelectionForm({
           </p>
           {/* Scrolls independently once the org has enough component types to
               overflow — keeps the center form's Add/Save button reachable
-              without the whole page growing to fit this column's height. */}
-          <div className="flex max-h-[70vh] flex-col gap-3.5 overflow-y-auto pr-1">
+              without the whole page growing to fit this column's height.
+              max-h-[420px] (not a viewport-relative cap) so the boundary is
+              visually obvious and testable regardless of screen height. */}
+          <div className="flex max-h-[420px] flex-col gap-3.5 overflow-y-auto pr-1">
             {componentTypes.map((ct) => {
               const isSelected = ct.id === selectedTypeId;
               const isLocked = editingSelectionId !== null && !isSelected;
@@ -698,9 +700,9 @@ function SelectionGroup({ title, group, editingSelectionId, onEdit, onDelete }: 
               </button>
 
               {/* Delete icon button — separate from the click-to-edit area above.
-                  Solid flat trash glyph (not the emoji/outline glyph) with a
-                  visible default color and a red hover fill, so it reads as
-                  clickable rather than disabled. */}
+                  Matches the approved mockup's .icon-btn.enabled-clear exactly:
+                  a permanently-visible bordered red chip (not just a hover
+                  effect on a bare icon), darkening to solid red on hover. */}
               <button
                 type="button"
                 title="Remove component"
@@ -708,7 +710,7 @@ function SelectionGroup({ title, group, editingSelectionId, onEdit, onDelete }: 
                   e.stopPropagation();
                   onDelete(sel);
                 }}
-                className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-sm text-text-body transition-colors hover:bg-[--color-danger-bg] hover:text-[--color-status-failed-text]"
+                className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[6px] border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] text-[var(--color-status-failed-text)] transition-colors hover:border-[var(--color-status-failed-text)] hover:bg-[var(--color-status-failed-text)] hover:text-white"
               >
                 <TrashIcon />
               </button>

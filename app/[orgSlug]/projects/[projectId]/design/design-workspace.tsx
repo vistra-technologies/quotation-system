@@ -45,8 +45,6 @@ interface DesignWorkspaceProps {
   initialFloors: FloorWithRooms[];
   selections: SelectionRow[];
   initialOpenRoomId: string | null;
-  /** Set once "Submit Design" has been clicked — gates Summary/Quotation. */
-  initialDesignSubmittedAt: string | null;
 }
 
 /**
@@ -60,14 +58,12 @@ function DesignWorkspaceInner({
   initialFloors,
   selections,
   initialOpenRoomId,
-  initialDesignSubmittedAt,
 }: DesignWorkspaceProps) {
   const t = useTranslations("design");
   const router = useRouter();
   const { state, dispatch, save, discard } = useDraftContext();
 
   const [floors, setFloors] = useState<FloorWithRooms[]>(initialFloors);
-  const [designSubmittedAt, setDesignSubmittedAt] = useState(initialDesignSubmittedAt);
   const [submittingDesign, setSubmittingDesign] = useState(false);
   const [submitDesignError, setSubmitDesignError] = useState<string | null>(null);
 
@@ -95,10 +91,10 @@ function DesignWorkspaceInner({
         setSubmitDesignError(body.error ?? "Could not submit the design — please try again.");
         return;
       }
-      const { project } = (await res.json()) as { project: { designSubmittedAt: string } };
-      setDesignSubmittedAt(project.designSubmittedAt);
       // Re-render the server-rendered wizard breadcrumb so Summary/Quotation
-      // reflect the unlock immediately, without a manual page reload.
+      // reflect the unlock immediately, without a manual page reload. The
+      // response body isn't otherwise consumed — the button's own label
+      // never reflects submitted state (bug #21).
       router.refresh();
     } catch {
       setSubmitDesignError("Network error — please try again.");
@@ -478,10 +474,11 @@ function DesignWorkspaceInner({
             {/*
               Stage 21 QA bug #21: this used to swap to a static "Design
               submitted" paragraph once designSubmittedAt was set, locking the
-              button out — even after further edits. The button must always
-              stay clickable; re-submitting after edits just re-runs the same
-              (idempotent) submit and refreshes the timestamp. Only the label
-              reflects submitted state, never the disabled-ness.
+              button out — even after further edits. Per the approved mockup
+              (section 21, "After"), the button's label never changes either —
+              it always reads "Submit Design" (only "Submitting…" is a
+              legitimate transient label); designSubmittedAt no longer affects
+              anything about this button's rendering.
             */}
             <button
               type="button"
@@ -490,11 +487,7 @@ function DesignWorkspaceInner({
               title={totalPartitionCount === 0 ? t("submitDesignDisabledHint") : undefined}
               className="w-full rounded-sm bg-primary px-3 py-2 text-[12.5px] font-bold text-text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {submittingDesign
-                ? t("submitting")
-                : designSubmittedAt
-                  ? t("designSubmitted")
-                  : t("submitDesign")}
+              {submittingDesign ? t("submitting") : t("submitDesign")}
             </button>
           </div>
         </aside>
@@ -550,7 +543,7 @@ function DesignWorkspaceInner({
               {/* Canvas card — mirrors mockup .canvas-wrap so the floor plan sits
                   inside a bordered/shadowed white card instead of floating
                   directly on the page background. */}
-              <div className="flex min-h-0 flex-1 items-center justify-center rounded-[8px] border border-[--color-border-strong] bg-bg-white px-[26px] py-[20px] shadow-[0_2px_10px_-4px_rgba(27,40,30,.10)]">
+              <div className="flex min-h-0 flex-1 items-center justify-center rounded-[8px] border border-[var(--color-border-strong)] bg-bg-white px-[26px] py-[20px] shadow-[0_2px_10px_-4px_rgba(27,40,30,.10)]">
                 <RoomFloorPlan
                   room={selectedRoom}
                   partitions={selectedRoomPartitions}

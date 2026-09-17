@@ -113,7 +113,6 @@ export default async function DesignPage({
       initialFloors={floorsWithRooms}
       selections={selections}
       initialOpenRoomId={sp.openRoom ?? null}
-      initialDesignSubmittedAt={project.designSubmittedAt}
     />
   );
 }
