@@ -259,3 +259,37 @@ Branch: `feature/s21-fix-batch-3` off `staging` @ `9ca45dc`. Spec: `.engineering
 5. **Bug 11**: edit/confirm icons use `✎` / `✓` characters inside a 18px circle button, consistent with existing pencil/checkmark patterns in the app. Name field (Bug 8) stays direct-edit per the user's explicit distinction.
 
 ### Status: DONE — stop after commit, report back (per task instructions)
+
+---
+
+## bugs-4 fix pass — 2026-09-18
+
+- **developer** · commit `6b1938e` on `feature/s21-fix-batch-3`
+- `npx tsc --noEmit` → clean (0 errors)
+- `npm run lint` → 0 errors, 6 pre-existing warnings (none in touched files)
+- Vercel preview READY: `https://quotation-system-n7827ve9d-vistra-indias-projects.vercel.app`
+- Branch alias: `https://quotation-system-git-feature-s21-43b6db-vistra-indias-projects.vercel.app`
+- `/api/health` → `{"status":"ok","database":"connected"}`
+
+### Files changed
+
+| File | Findings |
+|---|---|
+| `wizard-page-shell.tsx` | R-1 (add isConfiguration to height chain) |
+| `configuration/page.tsx` | R-1 (card flex-1 min-h-0 flex-col; footer shrink-0) |
+| `configuration/add-selection-form.tsx` | R-1 (grid: replace min-h-[calc(100vh-160px)] with min-h-[420px] flex-1, items-stretch); R-2 (right column: heading pinned shrink-0, list body flex-1 min-h-0 overflow-y-auto) |
+| `design/room-floor-plan.tsx` | R-5 (remove max-w-[340px] cap; SVG fills container with aspect-square) |
+| `design/design-draft-context.tsx` | R-8c (add useEffectiveRoomName hook) |
+| `design/layout-mode-panel.tsx` | R-8a (remove wallTitle); R-8b (autoLabel uses sideName + effectiveRoomName); R-8c (call useEffectiveRoomName at top level) |
+| `design/convert-side-form.tsx` | R-8a (remove wallTitle prop + display block) |
+| `design/room-list.tsx` | R-8c (read pendingRoomNameEdits from context; use in room row label) |
+| `design/configure-mode.tsx` | R-11 (onMouseDown preventDefault on width + height buttons) |
+| `design/wall-canvas.tsx` | R-12 (label divs wrapped in relative z-[1] pointer-events-none) |
+
+### Decisions taken
+- R-8c write path untouched — persist-on-Save stays (user decision 2026-09-18; read-only fix only)
+- R-5 viewBox margin (`-6 -6 212 212`) kept from batch-3 — only max-w cap removed
+- R-12 door height default kept from batch-3 — z-index fix only, no height change
+- R-8b `wallTitle` prop/JSX deleted entirely (no orphan prop left in convert-side-form.tsx)
+
+### Status: DONE — preview built and health-checked; human review before staging merge
