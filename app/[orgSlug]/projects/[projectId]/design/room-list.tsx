@@ -310,7 +310,7 @@ export function RoomList({
                       type="button"
                       title={t("deleteRoom")}
                       onClick={(e) => { e.stopPropagation(); setConfirmDeleteRoom(room); }}
-                      className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[13px] text-text-muted hover:bg-[--color-danger-bg] hover:text-[--color-status-failed-text]"
+                      className="mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[13px] text-text-muted hover:bg-[var(--color-danger-bg)] hover:text-[var(--color-status-failed-text)]"
                     >
                       🗑
                     </button>

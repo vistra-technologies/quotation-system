@@ -279,7 +279,7 @@ export function FloorBar({
           className={[
             "flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-sm border transition-colors",
             hasFloors
-              ? "border-border bg-bg-white text-text-body hover:border-[--color-danger-border] hover:bg-[--color-danger-bg] hover:text-[--color-status-failed-text]"
+              ? "border-border bg-bg-white text-text-body hover:border-[var(--color-danger-border)] hover:bg-[var(--color-danger-bg)] hover:text-[var(--color-status-failed-text)]"
               : "cursor-not-allowed border-border bg-bg-white text-text-placeholder opacity-40",
           ].join(" ")}
         >
