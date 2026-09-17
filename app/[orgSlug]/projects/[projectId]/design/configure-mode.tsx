@@ -232,7 +232,7 @@ export function ConfigureMode({
           Mirrors mockup .wall-stats (lines 314-327, 1546-1575).
           Unit toggle NOT rendered (D-4 deviation).
         */}
-        <div className="ml-auto flex shrink-0 items-center gap-3.5 rounded-[10px] border border-[--color-border-strong] bg-bg-white px-4 py-[6px] shadow-[0_1px_3px_-1px_rgba(27,40,30,.10)]">
+        <div className="ml-auto flex shrink-0 items-center gap-3.5 rounded-[10px] border border-[var(--color-border-strong)] bg-bg-white px-4 py-[6px] shadow-[0_1px_3px_-1px_rgba(27,40,30,.10)]">
           {/* Width stat */}
           <label className="flex cursor-pointer flex-col gap-[3px]">
             <span className="text-[9.5px] font-bold uppercase tracking-[.04em] text-text-muted">
@@ -254,7 +254,7 @@ export function ConfigureMode({
           </label>
 
           {/* Divider */}
-          <div className="w-px self-stretch bg-[--color-border-strong]" />
+          <div className="w-px self-stretch bg-[var(--color-border-strong)]" />
 
           {/* Height stat */}
           <label className="flex cursor-pointer flex-col gap-[3px]">
@@ -283,7 +283,7 @@ export function ConfigureMode({
         Clicking the wrap (not a panel) clears selection — panels stopPropagation.
       */}
       <div
-        className="flex flex-1 min-h-0 items-center justify-center rounded-[8px] border border-[--color-border-strong] bg-bg-white px-[26px] py-[20px] shadow-[0_2px_10px_-4px_rgba(27,40,30,.10)]"
+        className="flex flex-1 min-h-0 items-center justify-center rounded-[8px] border border-[var(--color-border-strong)] bg-bg-white px-[26px] py-[20px] shadow-[0_2px_10px_-4px_rgba(27,40,30,.10)]"
         onClick={() => handleSelectionChange(null)}
       >
         <WallCanvas

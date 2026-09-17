@@ -143,7 +143,7 @@ export function ConfirmDialog({
         </p>
 
         {errorMessage && (
-          <div className="mb-4 rounded-sm border border-[--color-danger-border] bg-[--color-danger-bg] px-3.5 py-2.5 text-sm font-semibold text-[--color-status-failed-text]">
+          <div className="mb-4 rounded-sm border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3.5 py-2.5 text-sm font-semibold text-[var(--color-status-failed-text)]">
             {errorMessage}
           </div>
         )}
@@ -185,7 +185,7 @@ export function ConfirmDialog({
               onClick={thirdAction.onClick}
               className={
                 thirdAction.variant === "danger"
-                  ? "rounded-sm border border-[--color-danger-border] bg-bg-white px-4 py-2.5 text-sm font-bold text-[--color-status-failed-text] hover:bg-[--color-danger-bg]"
+                  ? "rounded-sm border border-[var(--color-danger-border)] bg-bg-white px-4 py-2.5 text-sm font-bold text-[var(--color-status-failed-text)] hover:bg-[var(--color-danger-bg)]"
                   : "rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:border-[#b9c2ae]"
               }
             >

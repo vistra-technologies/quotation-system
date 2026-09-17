@@ -136,12 +136,27 @@ function PartitionSummaryPanel({
 
   // Keep nameValue in sync if partition prop changes (e.g. parent reloads).
   // React reconciles this during render — not a useEffect.
+  //
+  // Stage 21 QA bug #12: on a freshly-converted wall, `partition` starts out
+  // null here (the parent's partitions list hasn't finished re-fetching yet)
+  // while `partitionId` is already set and never changes again for this side
+  // — so the old guard (keyed only on partitionId) synced nameValue to ""
+  // once and then never again, leaving the label permanently blank even
+  // after the real partition data arrived. Track whether we've synced a
+  // *loaded* partition's label separately, so the very first time `partition`
+  // stops being null for this id, we sync once — without re-fighting the
+  // user's own in-progress edits on every subsequent render.
   const [prevPartitionId, setPrevPartitionId] = useState(partitionId);
+  const [hasSyncedLabel, setHasSyncedLabel] = useState(partition !== null);
   if (prevPartitionId !== partitionId) {
     setPrevPartitionId(partitionId);
     setNameValue(partition?.label ?? "");
+    setHasSyncedLabel(partition !== null);
     setConfirmingRemove(false);
     setRemoveError(null);
+  } else if (!hasSyncedLabel && partition) {
+    setHasSyncedLabel(true);
+    setNameValue(partition.label);
   }
 
   async function handleNameBlur() {
