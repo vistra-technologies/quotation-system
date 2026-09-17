@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { redirectToLogin } from "./login-redirect";
 import { SelectField } from "@/components/select-field";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { TrashIcon } from "@/components/trash-icon";
 import type { FloorRow } from "./types";
 
 interface FloorBarProps {
@@ -223,7 +224,10 @@ export function FloorBar({
 
   // ── Render: normal (SelectField + icon buttons) ───────────────────────────
 
-  const canDelete = visibleFloors.length > 1;
+  // Delete is allowed down to zero floors — the project can end up with none,
+  // matching the human's call on bug #9 (previously blocked at 1 remaining).
+  // Rename and the dropdown itself only need a floor to act on at all.
+  const hasFloors = visibleFloors.length > 0;
 
   return (
     <>
@@ -235,7 +239,8 @@ export function FloorBar({
             value={selectedFloorId ?? ""}
             onChange={(e) => onSelectFloor(e.target.value)}
             title={currentFloor?.label ?? ""}
-            className="w-full truncate rounded-sm border border-border bg-bg-white px-2 py-1.5 text-[12.5px] font-bold text-text-heading focus:border-primary focus:outline-none"
+            disabled={!hasFloors}
+            className="w-full truncate rounded-sm border border-border bg-bg-white px-2 py-1.5 text-[12.5px] font-bold text-text-heading focus:border-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
           >
             {visibleFloors.map((f) => (
               <option key={f.id} value={f.id} title={f.label}>
@@ -245,34 +250,40 @@ export function FloorBar({
           </SelectField>
         </div>
 
-        {/* Rename icon button (✎) */}
+        {/* Rename icon button (✎) — disabled when there's no floor to rename */}
         <button
           type="button"
           title={t("renameFloor")}
+          disabled={!hasFloors}
           onClick={() => {
             setInputValue(currentFloor?.label ?? "");
             setMode("renaming");
             setError(null);
           }}
-          className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-sm border border-border bg-bg-white text-[12px] text-text-muted hover:border-primary hover:text-primary-dark"
+          className={[
+            "flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-sm border text-[12px]",
+            hasFloors
+              ? "border-border bg-bg-white text-text-body hover:border-primary hover:text-primary-dark"
+              : "cursor-not-allowed border-border bg-bg-white text-text-placeholder opacity-40",
+          ].join(" ")}
         >
           ✎
         </button>
 
-        {/* Delete icon button (🗑) — disabled when only one floor remains */}
+        {/* Delete icon button — disabled only when there's no floor to delete */}
         <button
           type="button"
           title={t("deleteFloor")}
-          disabled={!canDelete}
+          disabled={!hasFloors}
           onClick={() => setConfirmingDelete(true)}
           className={[
-            "flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-sm border text-[12px]",
-            canDelete
-              ? "border-border bg-bg-white text-text-muted hover:border-[--color-danger-border] hover:bg-[--color-danger-bg] hover:text-[--color-status-failed-text]"
-              : "cursor-not-allowed border-border bg-bg-white text-text-muted opacity-40",
+            "flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-sm border transition-colors",
+            hasFloors
+              ? "border-border bg-bg-white text-text-body hover:border-[--color-danger-border] hover:bg-[--color-danger-bg] hover:text-[--color-status-failed-text]"
+              : "cursor-not-allowed border-border bg-bg-white text-text-placeholder opacity-40",
           ].join(" ")}
         >
-          🗑
+          <TrashIcon />
         </button>
 
         {/* Add-floor button (＋) */}
