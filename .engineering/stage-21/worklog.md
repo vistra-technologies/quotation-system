@@ -225,3 +225,37 @@ Branch: `feature/s21-fix-batch-3` off `staging` @ `9ca45dc`. Spec: `.engineering
 ### Not changing
 - `configure-constants.ts`: `MIN_DOOR_HEIGHT_MM` / `DEFAULT_DOOR_HEIGHT_RATIO` kept (bug 12 changes the *usage* of these, not the constants themselves — they may still be valid for other callers)
 - Slider `min` for door height: changed inline in `saved-components-rail.tsx` from `{MIN_DOOR_HEIGHT_MM}` to `{0}`
+
+---
+
+## Batch 3 implementation — completed
+
+- **developer** · commit `1bc454b` on `feature/s21-fix-batch-3`
+- `npm run lint` → 0 errors, 6 pre-existing warnings (none in touched files)
+- `npx tsc --noEmit` → clean
+
+### Files changed
+| File | Bugs |
+|---|---|
+| `configuration/add-selection-form.tsx` | 1, 2 |
+| `design/room-list.tsx` | 3 |
+| `design/design-workspace.tsx` | 3 (h2 removal), 7, 9, 13 |
+| `design/new-room-form.tsx` | 4 |
+| `design/room-floor-plan.tsx` | 5 |
+| `design/layout-mode-panel.tsx` | 6, 8b |
+| `design/convert-side-form.tsx` | 8a |
+| `design/saved-components-rail.tsx` | 10, 12 |
+| `design/configure-mode.tsx` | 11 |
+| `design/types.ts` | 10 (added `config?` to SelectionRow) |
+| `app/globals.css` | 13 (@keyframes toast-slide-in) |
+| `components/toast.tsx` | 13 (slide animation + variant prop + show(msg) API) |
+| `.engineering/stage-21/worklog.md` | plan |
+
+### Judgment calls / deviations
+1. **Bug 10 surface**: confirmed via code read that `add-selection-form.tsx`'s `SelectionGroup` has NO pencil icon — its entire row IS the edit action (functional, intentional). Fix applied to `saved-components-rail.tsx` only.
+2. **Bug 10 info popup**: uses inline `SelectionRow.config` key-value pairs (added `config?` to design `SelectionRow` type; API already returns this field). Keys formatted by converting camelCase/snake_case → spaced words. Fields with null/empty/false values filtered out.
+3. **Bug 9 auto-glass**: auto-assigning glass makes the draft immediately dirty (isDirty=true) on enter. This is intentional — the user's verbatim ask is "No partition panel should ever start with no glass." Only assigns if panels are actually missing a selectionId (no-op if glass already set).
+4. **Bug 12 door height min**: changed slider `min` to `0` directly in `saved-components-rail.tsx`; `MIN_DOOR_HEIGHT_MM` constant kept in `configure-constants.ts` (other callers may still need it).
+5. **Bug 11**: edit/confirm icons use `✎` / `✓` characters inside a 18px circle button, consistent with existing pencil/checkmark patterns in the app. Name field (Bug 8) stays direct-edit per the user's explicit distinction.
+
+### Status: DONE — stop after commit, report back (per task instructions)
