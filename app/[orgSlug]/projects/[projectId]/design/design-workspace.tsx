@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { UnitProvider } from "./unit-context";
 import { DraftProvider, useDraftContext } from "./design-draft-context";
@@ -44,6 +45,8 @@ interface DesignWorkspaceProps {
   initialFloors: FloorWithRooms[];
   selections: SelectionRow[];
   initialOpenRoomId: string | null;
+  /** Set once "Submit Design" has been clicked — gates Summary/Quotation. */
+  initialDesignSubmittedAt: string | null;
 }
 
 /**
@@ -57,11 +60,52 @@ function DesignWorkspaceInner({
   initialFloors,
   selections,
   initialOpenRoomId,
+  initialDesignSubmittedAt,
 }: DesignWorkspaceProps) {
   const t = useTranslations("design");
+  const router = useRouter();
   const { state, dispatch, save, discard } = useDraftContext();
 
   const [floors, setFloors] = useState<FloorWithRooms[]>(initialFloors);
+  const [designSubmittedAt, setDesignSubmittedAt] = useState(initialDesignSubmittedAt);
+  const [submittingDesign, setSubmittingDesign] = useState(false);
+  const [submitDesignError, setSubmitDesignError] = useState<string | null>(null);
+
+  // Derived live from floors state (not a static prop) so it stays correct as
+  // walls are converted/reverted in this session without waiting for a reload.
+  const totalPartitionCount = floors
+    .flatMap((f) => f.rooms)
+    .flatMap((r) => r.sides)
+    .filter((s) => s.kind === "PARTITION").length;
+
+  async function handleSubmitDesign() {
+    setSubmitDesignError(null);
+    setSubmittingDesign(true);
+    try {
+      const res = await fetch(
+        `/api/v1/orgs/${orgSlug}/projects/${projectId}/submit-design`,
+        { method: "POST" },
+      );
+      if (res.status === 401 || res.status === 403) {
+        redirectToLogin(orgSlug, isSubdomain);
+        return;
+      }
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setSubmitDesignError(body.error ?? "Could not submit the design — please try again.");
+        return;
+      }
+      const { project } = (await res.json()) as { project: { designSubmittedAt: string } };
+      setDesignSubmittedAt(project.designSubmittedAt);
+      // Re-render the server-rendered wizard breadcrumb so Summary/Quotation
+      // reflect the unlock immediately, without a manual page reload.
+      router.refresh();
+    } catch {
+      setSubmitDesignError("Network error — please try again.");
+    } finally {
+      setSubmittingDesign(false);
+    }
+  }
   const [selectedFloorId, setSelectedFloorId] = useState<string | null>(() => {
     if (initialOpenRoomId) {
       const owner = initialFloors.find((f) =>
@@ -146,8 +190,52 @@ function DesignWorkspaceInner({
     return () => { cancelled = true; };
   }, [orgSlug, isSubdomain, selectedRoom]);
 
+  /**
+   * Guard any navigation away from a dirty Configure-mode session — not just
+   * the explicit Back button, but also jumping straight to a different room,
+   * floor, or partition from the left rail while unsaved edits are pending.
+   * When clean (or not in Configure mode), runs `resumeAction` immediately;
+   * otherwise shows the unsaved-changes modal and runs it after Save/Discard.
+   */
+  function runWithUnsavedGuard(resumeAction: () => void) {
+    if (viewMode !== "configure" || !state.isDirty) {
+      resumeAction();
+      return;
+    }
+    setUnsavedModal({
+      onSave: async () => {
+        setSaveError(null);
+        const result = await save(orgSlug, isSubdomain);
+        if (!result.ok) {
+          setSaveError(result.error);
+          setUnsavedModal(null);
+          return;
+        }
+        setSelectedRoomPartitions((prev) =>
+          prev.map((p) =>
+            p.id === result.partition.id
+              ? { id: result.partition.id, label: result.partition.label, heightMm: result.partition.heightMm, widthMm: result.partition.widthMm }
+              : p,
+          ),
+        );
+        result.updatedRooms.forEach(handleRoomRenamed);
+        setUnsavedModal(null);
+        resumeAction();
+      },
+      onDiscard: async () => {
+        setUnsavedModal(null);
+        await discard(orgSlug, isSubdomain);
+        resumeAction();
+      },
+    });
+  }
+
   /** Enter Configure mode: fetch partition → LOAD_PARTITION → switch view. */
-  async function enterConfigureMode(partitionId: string, sideIndex: number) {
+  function enterConfigureMode(partitionId: string, sideIndex: number) {
+    runWithUnsavedGuard(() => void doEnterConfigureMode(partitionId, sideIndex));
+  }
+
+  async function doEnterConfigureMode(partitionId: string, sideIndex: number) {
     // Cancel any previous in-flight fetch so a rapid double-click between partitions
     // doesn't let the earlier response overwrite the later one.
     fetchCancelRef.current.cancelled = true;
@@ -164,6 +252,15 @@ function DesignWorkspaceInner({
       const { partition } = (await res.json()) as { partition: PartitionRow };
       if (token.cancelled) return;
       dispatch({ type: "LOAD_PARTITION", partition });
+      // Pre-select the first panel so Configure mode opens ready to edit
+      // (assign a door/material) instead of requiring an explicit click first.
+      const firstPanel = partition.design?.panels?.[0];
+      if (firstPanel) {
+        dispatch({
+          type: "SET_SELECTION",
+          selection: { type: "panel", panelIds: [firstPanel.id] },
+        });
+      }
     } catch {
       return;
     }
@@ -174,14 +271,7 @@ function DesignWorkspaceInner({
 
   /** Navigate back from Configure mode — guards against unsaved changes. */
   function requestBackFromConfigureMode() {
-    if (state.isDirty) {
-      setUnsavedModal({
-        onSave: handleSaveAndGoBack,
-        onDiscard: handleDiscardAndGoBack,
-      });
-    } else {
-      doBackFromConfigureMode();
-    }
+    runWithUnsavedGuard(doBackFromConfigureMode);
   }
 
   function doBackFromConfigureMode() {
@@ -190,31 +280,6 @@ function DesignWorkspaceInner({
     setConfigureFromSideIndex(null);
     setSaveError(null);
     setUnsavedModal(null);
-  }
-
-  async function handleSaveAndGoBack() {
-    setSaveError(null);
-    const result = await save(orgSlug, isSubdomain);
-    if (!result.ok) {
-      setSaveError(result.error);
-      setUnsavedModal(null);
-      return;
-    }
-    setSelectedRoomPartitions((prev) =>
-      prev.map((p) =>
-        p.id === result.partition.id
-          ? { id: result.partition.id, label: result.partition.label, heightMm: result.partition.heightMm, widthMm: result.partition.widthMm }
-          : p,
-      ),
-    );
-    result.updatedRooms.forEach(handleRoomRenamed);
-    doBackFromConfigureMode();
-  }
-
-  async function handleDiscardAndGoBack() {
-    setUnsavedModal(null);
-    await discard(orgSlug, isSubdomain);
-    doBackFromConfigureMode();
   }
 
   /** Save from the Save button in Configure mode (no navigation). */
@@ -236,12 +301,14 @@ function DesignWorkspaceInner({
   }
 
   function selectFloor(floorId: string) {
-    setSelectedFloorId(floorId);
-    const floor = floors.find((f) => f.id === floorId);
-    const firstRoom = floor?.rooms[0] ?? null;
-    setSelectedRoomId(firstRoom?.id ?? null);
-    setViewMode(firstRoom ? "layout" : "empty");
-    setLayoutSideSelection(null);
+    runWithUnsavedGuard(() => {
+      setSelectedFloorId(floorId);
+      const floor = floors.find((f) => f.id === floorId);
+      const firstRoom = floor?.rooms[0] ?? null;
+      setSelectedRoomId(firstRoom?.id ?? null);
+      setViewMode(firstRoom ? "layout" : "empty");
+      setLayoutSideSelection(null);
+    });
   }
 
   function handleFloorCreated(floor: FloorRow) {
@@ -268,9 +335,11 @@ function DesignWorkspaceInner({
   }
 
   function selectRoom(room: RoomRow) {
-    setSelectedRoomId(room.id);
-    setViewMode("layout");
-    setLayoutSideSelection(null);
+    runWithUnsavedGuard(() => {
+      setSelectedRoomId(room.id);
+      setViewMode("layout");
+      setLayoutSideSelection(null);
+    });
   }
 
   function handleRoomCreated(room: RoomRow) {
@@ -388,6 +457,30 @@ function DesignWorkspaceInner({
               ) : null}
             </>
           )}
+
+          {/* Submit Design — unlocks Summary/Quotation (previously auto-unlocked
+              at partitionCount>0; now a deliberate action). Pinned to the
+              bottom of the left rail via mt-auto. */}
+          <div className="mt-auto shrink-0 pt-3">
+            {submitDesignError && (
+              <p className="mb-2 text-[11px] text-red-700 dark:text-red-400">{submitDesignError}</p>
+            )}
+            {designSubmittedAt ? (
+              <p className="rounded-sm border border-primary-soft bg-primary-softer px-3 py-2 text-center text-[11.5px] font-bold text-primary-dark">
+                {t("designSubmitted")}
+              </p>
+            ) : (
+              <button
+                type="button"
+                disabled={totalPartitionCount === 0 || submittingDesign}
+                onClick={() => void handleSubmitDesign()}
+                title={totalPartitionCount === 0 ? t("submitDesignDisabledHint") : undefined}
+                className="w-full rounded-sm bg-primary px-3 py-2 text-[12.5px] font-bold text-text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submittingDesign ? t("submitting") : t("submitDesign")}
+              </button>
+            )}
+          </div>
         </aside>
 
         {/* Column 2: center — empty / layout / configure */}
@@ -401,31 +494,15 @@ function DesignWorkspaceInner({
 
           {viewMode === "configure" && state.partitionId ? (
             <div
-              className="flex flex-1 flex-col gap-3 overflow-y-auto p-[14px_18px]"
+              className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-[14px_18px]"
               onClick={(e) => e.stopPropagation()}
             >
               <ConfigureMode
                 selections={selections}
-                floorLabel={selectedFloor?.label ?? ""}
-                roomLabel={selectedRoom?.label ?? ""}
                 onBack={requestBackFromConfigureMode}
+                isDirty={isDirty}
+                onSave={() => void handleSave()}
               />
-              {/* Configure mode footer: Save button */}
-              <div className="mt-auto flex shrink-0 justify-end border-t border-border pt-[10px]">
-                <button
-                  type="button"
-                  disabled={!isDirty}
-                  onClick={() => void handleSave()}
-                  className={[
-                    "rounded-pill border px-5 py-2.5 text-[12.5px] font-bold transition-colors",
-                    isDirty
-                      ? "border-primary-dark bg-primary text-white hover:bg-primary-dark"
-                      : "cursor-default border-text-muted bg-text-muted text-white opacity-55",
-                  ].join(" ")}
-                >
-                  {isDirty ? t("saveChanges") : t("saved")}
-                </button>
-              </div>
             </div>
           ) : viewMode === "layout" && selectedRoom ? (
             <div
@@ -439,25 +516,32 @@ function DesignWorkspaceInner({
                   room={selectedRoom}
                   onRenamed={handleRoomRenamed}
                 />
-                {selectedFloor && (
+                <div className="ml-auto flex shrink-0 items-center gap-2">
+                  {selectedFloor && (
+                    <span className="rounded-pill border border-primary-soft bg-primary-softer px-2.5 py-0.5 text-[11px] font-semibold text-primary-dark">
+                      {selectedFloor.label}
+                    </span>
+                  )}
                   <span className="rounded-pill border border-primary-soft bg-primary-softer px-2.5 py-0.5 text-[11px] font-semibold text-primary-dark">
-                    {selectedFloor.label}
+                    {t("convertedWalls", {
+                      converted: selectedRoom.sides.filter((s) => s.kind === "PARTITION").length,
+                      total: selectedRoom.sides.length,
+                    })}
                   </span>
-                )}
-                <span className="rounded-pill border border-primary-soft bg-primary-softer px-2.5 py-0.5 text-[11px] font-semibold text-primary-dark">
-                  {t("convertedWalls", {
-                    converted: selectedRoom.sides.filter((s) => s.kind === "PARTITION").length,
-                    total: selectedRoom.sides.length,
-                  })}
-                </span>
+                </div>
               </div>
 
-              <RoomFloorPlan
-                room={selectedRoom}
-                partitions={selectedRoomPartitions}
-                selectedIndex={layoutSideSelection}
-                onSelectSide={setLayoutSideSelection}
-              />
+              {/* Canvas card — mirrors mockup .canvas-wrap so the floor plan sits
+                  inside a bordered/shadowed white card instead of floating
+                  directly on the page background. */}
+              <div className="flex min-h-0 flex-1 items-center justify-center rounded-[8px] border border-[--color-border-strong] bg-bg-white px-[26px] py-[20px] shadow-[0_2px_10px_-4px_rgba(27,40,30,.10)]">
+                <RoomFloorPlan
+                  room={selectedRoom}
+                  partitions={selectedRoomPartitions}
+                  selectedIndex={layoutSideSelection}
+                  onSelectSide={setLayoutSideSelection}
+                />
+              </div>
             </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -544,10 +628,10 @@ function DesignWorkspaceInner({
           disableOverlayClose={true}
           thirdAction={{
             label: t("discardChanges"),
-            onClick: () => void handleDiscardAndGoBack(),
+            onClick: () => unsavedModal.onDiscard(),
             variant: "danger",
           }}
-          onConfirm={() => void handleSaveAndGoBack()}
+          onConfirm={() => unsavedModal.onSave()}
           onCancel={() => setUnsavedModal(null)}
         />
       )}

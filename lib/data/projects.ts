@@ -398,6 +398,39 @@ export async function updateProject(
 }
 
 /**
+ * Mark a Project's design as submitted — the gate that unlocks the Summary
+ * and Quotation wizard steps (previously auto-unlocked at partitionCount>0;
+ * now a deliberate action). Stands in for "a Summary exists" until the real
+ * BOQ/Summary pipeline is built.
+ *
+ * Requires at least one Partition — submitting an empty design isn't
+ * meaningful, and would leave Summary/Quotation unlocked with nothing to show.
+ *
+ * Returns null if the project doesn't exist or belongs to a different org.
+ * Returns { noPartitions: true } if the project has zero Partitions.
+ */
+export async function submitDesign(session: SessionData, projectId: string) {
+  const existing = await prisma.project.findFirst({
+    where: { id: projectId, organizationId: session.organizationId },
+    select: { id: true },
+  });
+  if (!existing) return null;
+
+  const partitionCount = await prisma.partition.count({
+    where: { room: { floor: { projectId, project: { organizationId: session.organizationId } } } },
+  });
+  if (partitionCount === 0) return { noPartitions: true as const };
+
+  const updated = await prisma.project.update({
+    where: { id: projectId },
+    data: { designSubmittedAt: new Date() },
+    select: { id: true, designSubmittedAt: true },
+  });
+
+  return { project: updated };
+}
+
+/**
  * Delete a DRAFT Project and all its children in a FK-safe transaction.
  *
  * Guards:

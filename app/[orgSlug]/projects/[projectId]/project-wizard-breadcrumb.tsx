@@ -17,6 +17,8 @@ interface ProjectWizardBreadcrumbProps {
    * Summary (step 3) and Quotation (step 4) are locked when partitionCount === 0. */
   selectionCount: number;
   partitionCount: number;
+  /** Set once "Submit Design" is clicked on the Design page — gates Summary/Quotation. */
+  designSubmittedAt: string | null;
 }
 
 /**
@@ -32,7 +34,7 @@ interface ProjectWizardBreadcrumbProps {
  *
  * namespace: "wizard" — wired in app/[orgSlug]/projects/layout.tsx clientMessages.
  */
-export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain, selectionCount, partitionCount }: ProjectWizardBreadcrumbProps) {
+export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain, selectionCount, partitionCount, designSubmittedAt }: ProjectWizardBreadcrumbProps) {
   const t = useTranslations("wizard");
   const pathname = usePathname();
 
@@ -88,13 +90,17 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain, selec
   // Configuration (step 1) is always accessible — it is the page where the user
   // ADDS the first Selection, so it cannot gate on selectionCount === 0.
   // Design (step 2) requires ≥1 Selection to have useful content to design.
-  // Summary and Quotation (steps 3–4) require ≥1 Partition.
+  // Summary and Quotation (steps 3–4) require the design to have been
+  // explicitly submitted (Design page's "Submit Design" button) — no longer
+  // auto-unlocked at partitionCount>0 alone, though a partition is still a
+  // prerequisite for submitting in the first place.
+  const summaryQuotationLocked = partitionCount === 0 || !designSubmittedAt;
   const locked = [
-    false,                   // step 0: Project Details — always unlocked
-    false,                   // step 1: Configuration — always unlocked (add Selections here)
-    selectionCount === 0,    // step 2: Design
-    partitionCount === 0,    // step 3: Summary
-    partitionCount === 0,    // step 4: Quotation
+    false,                     // step 0: Project Details — always unlocked
+    false,                     // step 1: Configuration — always unlocked (add Selections here)
+    selectionCount === 0,      // step 2: Design
+    summaryQuotationLocked,    // step 3: Summary
+    summaryQuotationLocked,    // step 4: Quotation
   ];
 
   // Derive the active index so earlier steps can be shown as "done".

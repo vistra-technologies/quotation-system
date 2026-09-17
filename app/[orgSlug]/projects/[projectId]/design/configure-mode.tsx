@@ -4,13 +4,16 @@
  * Configure mode — the wall/panel editor.
  *
  * S21-D1: rebuilt to mockup parity (design-page.html lines 295-341, 1483-1646).
- *   - One consolidated header row: back button, editable partition name, floor·room
- *     tag, panel-count tag, and a right-aligned Width/Height stat card.
+ *   - One consolidated header row: back button, editable partition name, and a
+ *     right-aligned Width/Height stat card. (Floor·room and panel-count pills
+ *     removed per human feedback — redundant with the left rail.)
  *   - Width change dispatches SET_PARTITION_WIDTH (proportional rescale, last-panel
  *     absorbs remainder — sum === new total exactly).
  *   - Height change dispatches SET_PARTITION_HEIGHT.
  *   - Back button calls onBack (design-workspace.tsx guards unsaved changes).
- *   - Save footer rendered in design-workspace.tsx (frozen file) — not duplicated here.
+ *   - Save button rendered in the toolbar row here (isDirty/onSave passed down
+ *     from design-workspace.tsx) instead of a separate footer, to reclaim
+ *     vertical space for the canvas.
  * S21-D2: WallCanvas wired with door graphic + multi-select.
  * S21-D3: PanelContextMenu state + wiring.
  * S21-D4: DoorContextMenu state + wiring.
@@ -34,16 +37,16 @@ import type { SelectionRow } from "./types";
 
 interface ConfigureModeProps {
   selections: SelectionRow[];
-  floorLabel: string;
-  roomLabel: string;
   onBack: () => void;
+  isDirty: boolean;
+  onSave: () => void;
 }
 
 export function ConfigureMode({
   selections,
-  floorLabel,
-  roomLabel,
   onBack,
+  isDirty,
+  onSave,
 }: ConfigureModeProps) {
   const t = useTranslations("design");
   const { toDisplay, fromDisplay, unit } = useUnit();
@@ -169,18 +172,6 @@ export function ConfigureMode({
   const heightDisplay =
     heightText !== "" ? heightText : String(toDisplay(partition.heightMm));
 
-  // ── Hint text (D2/D3) ─────────────────────────────────────────────────────
-
-  const selectedPanelIds = selection?.type === "panel" ? selection.panelIds : [];
-  let hint: string;
-  if (selectedPanelIds.length > 1) {
-    hint = t("hintMultiPanel", { count: selectedPanelIds.length });
-  } else if (selectedPanelIds.length === 1) {
-    hint = t("hintPanelD");
-  } else {
-    hint = t("hintNoneD");
-  }
-
   // ── Context menu open handlers ─────────────────────────────────────────────
 
   function openPanelMenu(panelId: string, x: number, y: number) {
@@ -196,7 +187,7 @@ export function ConfigureMode({
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex w-full flex-col gap-3">
+    <div className="flex h-full min-h-0 w-full flex-col gap-3">
       {/*
         Header row — mirrors mockup .wall-toolbar-row (lines 294-341, 1498-1553).
         stopPropagation: toolbar row clicks must not bubble to the outer card's
@@ -217,30 +208,20 @@ export function ConfigureMode({
           ←
         </button>
 
-        {/* Name + floor·room tag + panel-count tag — mirrors .wall-head */}
-        <div className="flex min-w-0 shrink-0 flex-wrap items-center gap-2">
-          <input
-            type="text"
-            value={nameValue}
-            onChange={(e) => setNameValue(e.target.value)}
-            onBlur={commitName}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") e.currentTarget.blur();
-              else if (e.key === "Escape") setNameValue(partition.label);
-            }}
-            title={nameValue}
-            aria-label="Partition name"
-            className="min-w-0 rounded-[6px] border border-transparent bg-transparent px-[5px] py-[3px] text-[16px] font-extrabold text-text-heading hover:border-border hover:bg-[#fafaf6] focus:border-primary focus:bg-[#fafaf6] focus:outline-none"
-          />
-          {/* Floor · Room tag */}
-          <span className="whitespace-nowrap rounded-pill border border-primary-soft bg-primary-softer px-2.5 py-0.5 text-[11px] font-semibold text-primary-dark">
-            {floorLabel} · {roomLabel}
-          </span>
-          {/* Panel count tag — updates live as panels are added/removed/split/united */}
-          <span className="whitespace-nowrap rounded-pill border border-primary-soft bg-primary-softer px-2.5 py-0.5 text-[11px] font-semibold text-primary-dark">
-            {t("panelsCount", { count: panels.length })}
-          </span>
-        </div>
+        {/* Name — mirrors .wall-head (floor·room and panel-count pills removed) */}
+        <input
+          type="text"
+          value={nameValue}
+          onChange={(e) => setNameValue(e.target.value)}
+          onBlur={commitName}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+            else if (e.key === "Escape") setNameValue(partition.label);
+          }}
+          title={nameValue}
+          aria-label="Partition name"
+          className="min-w-0 shrink-0 rounded-[6px] border border-transparent bg-transparent px-[5px] py-[3px] text-[16px] font-extrabold text-text-heading hover:border-border hover:bg-[#fafaf6] focus:border-primary focus:bg-[#fafaf6] focus:outline-none"
+        />
 
         {/*
           Stat card — Width / Height — pinned to the right edge of the header row.
@@ -298,7 +279,7 @@ export function ConfigureMode({
         Clicking the wrap (not a panel) clears selection — panels stopPropagation.
       */}
       <div
-        className="flex shrink-0 items-center justify-center rounded-[8px] border border-[--color-border-strong] bg-bg-white px-[26px] py-[20px] shadow-[0_2px_10px_-4px_rgba(27,40,30,.10)]"
+        className="flex flex-1 min-h-0 items-center justify-center rounded-[8px] border border-[--color-border-strong] bg-bg-white px-[26px] py-[20px] shadow-[0_2px_10px_-4px_rgba(27,40,30,.10)]"
         onClick={() => handleSelectionChange(null)}
       >
         <WallCanvas
@@ -313,12 +294,15 @@ export function ConfigureMode({
       </div>
 
       {/*
-        Canvas toolbar — mirrors .canvas-toolbar (lines 422-428, 1586-1619).
+        Canvas toolbar — mirrors .canvas-toolbar (lines 422-428, 1586-1619),
+        plus the Save button (moved up from a separate footer row per human
+        feedback — ml-auto pins it to the right edge, reclaiming the vertical
+        space the old footer + hint text used to take).
         stopPropagation: Split selects the new panel; don't let the outer click
         handler immediately clear that selection.
       */}
       <div
-        className="flex shrink-0 gap-2"
+        className="flex shrink-0 items-center gap-2"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -344,10 +328,20 @@ export function ConfigureMode({
         >
           {t("splitPanel")}
         </button>
+        <button
+          type="button"
+          disabled={!isDirty}
+          onClick={onSave}
+          className={[
+            "ml-auto rounded-pill border px-5 py-2.5 text-[12.5px] font-bold transition-colors",
+            isDirty
+              ? "border-primary-dark bg-primary text-white hover:bg-primary-dark"
+              : "cursor-default border-text-muted bg-text-muted text-white opacity-55",
+          ].join(" ")}
+        >
+          {isDirty ? t("saveChanges") : t("saved")}
+        </button>
       </div>
-
-      {/* Hint text — mirrors mockup lines 1665-1670 */}
-      <p className="shrink-0 text-center text-[10.5px] text-text-muted">{hint}</p>
 
       {/*
         Context menus (D3/D4) — rendered as fixed-position overlays; position

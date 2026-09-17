@@ -37,15 +37,6 @@ interface WallCanvasProps {
   onDoorContextMenu?: (panelId: string, x: number, y: number) => void;
 }
 
-/**
- * Pixel canvas height from heightMm — mirrors mockup's
- * `wallPixelHeight(h) = Math.max(150, Math.min(300, Math.round(h * 2.4)))`
- * where h is in inches, so: px = round(heightMm / 25.4 * 2.4).
- */
-function wallPixelHeight(heightMm: number): number {
-  return Math.max(150, Math.min(300, Math.round((heightMm / 25.4) * 2.4)));
-}
-
 export function WallCanvas({
   heightMm,
   panels,
@@ -58,24 +49,23 @@ export function WallCanvas({
   const { formatLen } = useUnit();
 
   const totalWidthMm = panels.reduce((sum, p) => sum + p.widthMm, 0) || 1;
-  const canvasHeightPx = wallPixelHeight(heightMm);
 
   const selectedPanelIds: string[] =
     selection?.type === "panel" ? selection.panelIds : [];
 
   return (
-    // .wall-frame — flex, centers wall-box, max-width 780px (mockup line 370)
-    <div className="flex w-full max-w-[780px] items-stretch justify-center">
-      {/* .wall-box — relative wrapper, full width (mockup line 372) */}
-      <div className="relative w-full">
+    // .wall-frame — flex, centers wall-box, max-width 780px, fills the
+    // canvas-wrap's height (mockup line 370: height: 100%) instead of a
+    // JS-computed pixel cap, so the canvas actually uses the available
+    // vertical space rather than topping out around 300px.
+    <div className="flex h-full w-full max-w-[780px] items-stretch justify-center">
+      {/* .wall-box — relative wrapper, full width/height (mockup line 372) */}
+      <div className="relative h-full min-h-0 w-full">
         {/*
           .wall-canvas — 2px green border, border-radius: 6px, overflow hidden.
-          minHeight forces the canvas taller than the CSS minimum (mockup line 375).
+          min-h-[150px] keeps a sane floor; h-full lets it grow with the parent.
         */}
-        <div
-          className="flex w-full overflow-hidden rounded-[6px] border-2 border-primary bg-bg-white"
-          style={{ minHeight: canvasHeightPx }}
-        >
+        <div className="flex h-full min-h-[150px] w-full overflow-hidden rounded-[6px] border-2 border-primary bg-bg-white">
           {/* .panel-row — flex:1 */}
           <div className="flex flex-1">
             {panels.map((panel, index) => {

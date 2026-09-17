@@ -36,8 +36,9 @@ export default async function QuotationPage({
 
   if (!project) notFound();
 
-  // Step-gating: Quotation requires ≥1 Partition to have content to price.
-  if (project.partitionCount === 0) {
+  // Step-gating: Quotation requires the design to have been explicitly
+  // submitted (Design page's "Submit Design" button), not just partitionCount>0.
+  if (project.partitionCount === 0 || !project.designSubmittedAt) {
     redirect(await orgHref(orgSlug, `/projects/${projectId}`));
   }
   const t = await getTranslations("wizard");
