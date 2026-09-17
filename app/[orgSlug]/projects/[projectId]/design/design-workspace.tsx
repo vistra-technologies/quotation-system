@@ -21,7 +21,7 @@ import { UnitProvider } from "./unit-context";
 import { DraftProvider, useDraftContext } from "./design-draft-context";
 import { FloorBar } from "./floor-bar";
 import { RoomList } from "./room-list";
-import { RoomFloorPlan, sideName } from "./room-floor-plan";
+import { RoomFloorPlan, RoomFloorPlanLegend, sideName } from "./room-floor-plan";
 import { LayoutModePanel } from "./layout-mode-panel";
 import { ConfigureMode } from "./configure-mode";
 import { SavedComponentsRail } from "./saved-components-rail";
@@ -124,7 +124,6 @@ function DesignWorkspaceInner({
     selectedRoomId ? "layout" : "empty",
   );
   const [layoutSideSelection, setLayoutSideSelection] = useState<number | null>(null);
-  const [configureFromSideIndex, setConfigureFromSideIndex] = useState<number | null>(null);
   const [addingRoomForEmptyState, setAddingRoomForEmptyState] = useState(false);
   const [selectedRoomPartitions, setSelectedRoomPartitions] = useState<PartitionRow[]>([]);
 
@@ -231,11 +230,11 @@ function DesignWorkspaceInner({
   }
 
   /** Enter Configure mode: fetch partition → LOAD_PARTITION → switch view. */
-  function enterConfigureMode(partitionId: string, sideIndex: number) {
-    runWithUnsavedGuard(() => void doEnterConfigureMode(partitionId, sideIndex));
+  function enterConfigureMode(partitionId: string) {
+    runWithUnsavedGuard(() => void doEnterConfigureMode(partitionId));
   }
 
-  async function doEnterConfigureMode(partitionId: string, sideIndex: number) {
+  async function doEnterConfigureMode(partitionId: string) {
     // Cancel any previous in-flight fetch so a rapid double-click between partitions
     // doesn't let the earlier response overwrite the later one.
     fetchCancelRef.current.cancelled = true;
@@ -264,7 +263,6 @@ function DesignWorkspaceInner({
     } catch {
       return;
     }
-    setConfigureFromSideIndex(sideIndex);
     setViewMode("configure");
     setLayoutSideSelection(null);
   }
@@ -276,8 +274,9 @@ function DesignWorkspaceInner({
 
   function doBackFromConfigureMode() {
     setViewMode("layout");
-    setLayoutSideSelection(configureFromSideIndex);
-    setConfigureFromSideIndex(null);
+    // No wall preselected on return — land on the plain "click a wall" state
+    // instead of re-highlighting the wall just converted/configured.
+    setLayoutSideSelection(null);
     setSaveError(null);
     setUnsavedModal(null);
   }
@@ -542,6 +541,10 @@ function DesignWorkspaceInner({
                   onSelectSide={setLayoutSideSelection}
                 />
               </div>
+
+              {/* Legend — sibling BELOW the canvas card, not nested inside it
+                  (matches the mockup: it sits on the page background). */}
+              <RoomFloorPlanLegend />
             </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">

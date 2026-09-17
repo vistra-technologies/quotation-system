@@ -124,3 +124,58 @@ export async function updateSelection(
     },
   });
 }
+
+/** Shape of the fields inside Partition.design that can reference a Selection —
+ * duplicated (not imported) from lib/data/partitions.ts's PartitionDesign to
+ * avoid a cross-module type dependency for a single read-only scan. */
+interface DesignRefsShape {
+  panels?: { selectionId?: string | null; door?: { selectionId?: string | null } | null }[];
+  stops?: Record<string, string | null | undefined>;
+}
+
+/**
+ * Delete a Selection, refusing if it's still referenced by any Partition's
+ * design (a panel's glass, a panel's door, or an edge profile stop) anywhere
+ * in the project — deleting out from under an in-use component would leave
+ * the Design page pointing at a component that no longer exists.
+ *
+ * Tenancy guard: verifies the selection belongs to the session's org before
+ * deleting. Returns null if not found (caller translates to 404).
+ * Returns { inUseCount: number } if the selection is still referenced
+ * (caller translates to 409) instead of deleting.
+ */
+export async function deleteSelection(session: SessionData, id: string) {
+  const existing = await prisma.selection.findFirst({
+    where: { id, organizationId: session.organizationId },
+    select: { id: true, projectId: true },
+  });
+  if (!existing) return null;
+
+  // Scan every Partition in this project's design JSON for a reference to
+  // this selectionId. Small N per project — a JS scan is simpler and just as
+  // correct as a JSON-path query for a shape with several differently-keyed
+  // reference sites (panels[].selectionId, panels[].door.selectionId,
+  // stops.{top,bottom,left,right}).
+  const partitions = await prisma.partition.findMany({
+    where: {
+      organizationId: session.organizationId,
+      room: { floor: { projectId: existing.projectId } },
+    },
+    select: { design: true },
+  });
+
+  let inUseCount = 0;
+  for (const p of partitions) {
+    const design = p.design as DesignRefsShape | null;
+    if (!design) continue;
+    const panelHits = (design.panels ?? []).filter(
+      (panel) => panel.selectionId === id || panel.door?.selectionId === id,
+    ).length;
+    const stopHits = Object.values(design.stops ?? {}).filter((v) => v === id).length;
+    inUseCount += panelHits + stopHits;
+  }
+  if (inUseCount > 0) return { inUseCount };
+
+  await prisma.selection.delete({ where: { id } });
+  return { deleted: true as const };
+}

@@ -296,7 +296,17 @@
     "stepPickType": "Component Type",
     "stepConfigure": "Configure fields",
     "advancedFields": "Advanced fields",
-    "backToProject": "← Back to Projects"
+    "backToProject": "← Back to Projects",
+    "sectionPartitions": "Partitions",
+    "sectionDoors": "Doors",
+    "sectionProfiles": "Profiles",
+    "sectionOther": "Other",
+    "deleteComponent": "Remove component",
+    "deleteConfirmTitle": "Remove this component?",
+    "deleteConfirmMsg": "\"{name}\" will be permanently removed from this project's saved components.",
+    "deleteInUseError": "\"{name}\" is used on {count, plural, =1 {1 wall/panel} other {# walls/panels}} in Design — remove those assignments first.",
+    "confirmDelete": "Remove",
+    "cancel": "Cancel"
   },
   "design": {
     "pageTitle": "Wall Design",
