@@ -334,7 +334,10 @@ export function AddSelectionForm({
           <p className="mb-3.5 text-[11px] font-bold uppercase tracking-[0.06em] text-text-muted">
             Components
           </p>
-          <div className="flex flex-col gap-3.5">
+          {/* Scrolls independently once the org has enough component types to
+              overflow — keeps the center form's Add/Save button reachable
+              without the whole page growing to fit this column's height. */}
+          <div className="flex max-h-[70vh] flex-col gap-3.5 overflow-y-auto pr-1">
             {componentTypes.map((ct) => {
               const isSelected = ct.id === selectedTypeId;
               const isLocked = editingSelectionId !== null && !isSelected;
@@ -611,26 +614,22 @@ export function AddSelectionForm({
         </div>
 
         {confirmDeleteSelection && (
-          <>
-            {deleteError && (
-              <p className="mt-1 text-[11px] text-red-700 dark:text-red-400">{deleteError}</p>
-            )}
-            <ConfirmDialog
-              isOpen={true}
-              title={t("deleteConfirmTitle")}
-              message={t("deleteConfirmMsg", { name: confirmDeleteSelection.label })}
-              confirmLabel={t("confirmDelete")}
-              confirmVariant="danger"
-              cancelLabel={t("cancel")}
-              onConfirm={() => void handleConfirmDelete()}
-              onCancel={() => {
-                if (!deleteSubmitting) {
-                  setConfirmDeleteSelection(null);
-                  setDeleteError(null);
-                }
-              }}
-            />
-          </>
+          <ConfirmDialog
+            isOpen={true}
+            title={t("deleteConfirmTitle")}
+            message={t("deleteConfirmMsg", { name: confirmDeleteSelection.label })}
+            errorMessage={deleteError}
+            confirmLabel={t("confirmDelete")}
+            confirmVariant="danger"
+            cancelLabel={t("cancel")}
+            onConfirm={() => void handleConfirmDelete()}
+            onCancel={() => {
+              if (!deleteSubmitting) {
+                setConfirmDeleteSelection(null);
+                setDeleteError(null);
+              }
+            }}
+          />
         )}
       </div>
     </>
@@ -695,14 +694,12 @@ function SelectionGroup({ title, group, editingSelectionId, onEdit, onDelete }: 
                     {sel.componentType.name}
                   </p>
                 </div>
-
-                {/* Chevron */}
-                <span className="shrink-0 text-text-placeholder" aria-hidden="true">
-                  ›
-                </span>
               </button>
 
-              {/* Delete icon button — separate from the click-to-edit area above */}
+              {/* Delete icon button — separate from the click-to-edit area above.
+                  Solid flat trash glyph (not the emoji/outline glyph) with a
+                  visible default color and a red hover fill, so it reads as
+                  clickable rather than disabled. */}
               <button
                 type="button"
                 title="Remove component"
@@ -710,9 +707,17 @@ function SelectionGroup({ title, group, editingSelectionId, onEdit, onDelete }: 
                   e.stopPropagation();
                   onDelete(sel);
                 }}
-                className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-sm text-[13px] text-text-muted hover:bg-[--color-danger-bg] hover:text-[--color-status-failed-text]"
+                className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-sm text-text-body transition-colors hover:bg-[--color-danger-bg] hover:text-[--color-status-failed-text]"
               >
-                🗑
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  aria-hidden="true"
+                >
+                  <path d="M9 3a1 1 0 0 0-1 1v1H4v2h16V5h-4V4a1 1 0 0 0-1-1H9zm-3 6 1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12H6z" />
+                </svg>
               </button>
             </div>
           );
