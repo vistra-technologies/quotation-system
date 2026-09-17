@@ -75,7 +75,7 @@ export default async function NewProjectPage({
   const t = await getTranslations("projects");
 
   return (
-    <div>
+    <div className="mx-auto flex h-full w-full max-w-[1180px] flex-col px-8 pb-4 pt-7">
       {/* Back link */}
       <Link
         href={`${base}/projects`}

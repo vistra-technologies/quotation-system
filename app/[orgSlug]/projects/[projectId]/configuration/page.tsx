@@ -127,16 +127,14 @@ export default async function ConfigurationPage({
   // Only active ComponentTypes are offered in the picker.
   const activeComponentTypes = allComponentTypes.filter((ct) => ct.active);
 
+  // Page heading removed — its copy now shows as a hover tooltip on the
+  // "Configuration" pill in the wizard breadcrumb (project-wizard-breadcrumb.tsx),
+  // matching Design, which never had an on-page heading either.
   return (
-    <div>
-      {/* Page heading */}
-      <div className="mb-6 text-center">
-        <h1 className="text-3xl font-extrabold text-text-heading">Configuration</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Add and configure the components for this project
-        </p>
-      </div>
-
+    // R-1: flex-1 min-h-0 propagates the bounded height from WizardPageShell
+    // down into the card so the grid columns can scroll independently instead
+    // of pushing the whole page taller than the viewport.
+    <div className="flex min-h-0 flex-1 flex-col py-8">
       {activeComponentTypes.length === 0 ? (
         <div className="rounded-md border border-border bg-bg-card p-8 shadow-card text-center">
           <p className="text-sm text-text-muted">
@@ -144,7 +142,9 @@ export default async function ConfigurationPage({
           </p>
         </div>
       ) : (
-        <div className="rounded-md border border-border bg-bg-card shadow-card">
+        // R-1: card is now a flex column so the grid (flex-1) fills available
+        // space and the footer (shrink-0) stays pinned at the bottom.
+        <div className="flex min-h-0 flex-1 flex-col rounded-md border border-border bg-bg-card shadow-card">
           <AddSelectionForm
             orgSlug={orgSlug}
             projectId={projectId}
@@ -153,7 +153,7 @@ export default async function ConfigurationPage({
             selections={selections}
           />
           {/* Card footer — Back / Continue to Design (Step 3 of the wizard, 5d) */}
-          <div className="flex items-center justify-between border-t border-border px-7 py-5">
+          <div className="flex shrink-0 items-center justify-between border-t border-border px-7 py-5">
             <Link
               href={`${base}/projects/${projectId}`}
               className="rounded-sm border border-border bg-bg-white px-5 py-2.5 text-sm font-bold text-text-body transition-colors hover:bg-primary-softer hover:text-text-heading"

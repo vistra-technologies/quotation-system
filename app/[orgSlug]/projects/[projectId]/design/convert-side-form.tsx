@@ -12,6 +12,14 @@ interface ConvertSideFormProps {
   isSubdomain: boolean;
   floorId: string;
   roomId: string;
+  /**
+   * Auto-generated partition label — shown as the editable name field's
+   * default value. Bug 8a: the user can edit this before converting.
+   * Derived from the room and side names by the parent (R-8b: human-readable
+   * "{Room Name} - {Side} Wall" format) and recomputed from the room's
+   * *current effective* name on every render (R-8c).
+   */
+  autoLabel: string;
   /** Array index of the PLAIN side being converted — identity is by array
    * index, not side.id (PLAIN side ids are not stable across reorders, per
    * review-item2-round2.md finding 9). */
@@ -23,61 +31,69 @@ interface ConvertSideFormProps {
 
 /**
  * "Convert to Partition" form — mirrors design-step-poc.html's
- * `renderWallDetails` plain-side branch. Client `fetch()`
- * (plan-item7.md flag 6), but per architect-review-item7.md's binding
- * condition on that flag: this is a full-array `sides` PATCH, so it
- * RE-READS the room's current sides fresh via GET immediately before
- * building the payload — never trusts a stale prop/cache, matching
+ * `renderWallDetails` plain-side branch (lines 1262-1336). Width + height
+ * inputs only; label is auto-generated from the room/side name (no user
+ * input for partition name at conversion time, matching the mockup).
+ *
+ * Client `fetch()` (plan-item7.md flag 6), but per architect-review-item7.md's
+ * binding condition on that flag: this is a full-array `sides` PATCH, so it
+ * RE-READS the room's current sides fresh via GET immediately before building
+ * the payload — never trusts a stale prop/cache, matching
  * lib/data/rooms.ts replaceSides()'s own "never trust the client for array
- * state" posture (same rule the now-removed convertSideAction followed).
+ * state" posture.
+ *
+ * Auth/tenancy: the PATCH /rooms/[id]/sides endpoint enforces
+ * getApiSession (401/403 → redirect), organizationId row-level isolation,
+ * and the InvalidSidesError guards inside replaceSides(). These checks are
+ * inherited by this component via the API call — no duplicated guard needed
+ * here (the retired add-wall server action also delegated to the same API
+ * path for tenancy enforcement).
  */
 export function ConvertSideForm({
   orgSlug,
   isSubdomain,
   floorId,
   roomId,
+  autoLabel,
   sideIndex,
   onCancel,
   onConverted,
 }: ConvertSideFormProps) {
   const t = useTranslations("design");
   const { unit, toDisplay, fromDisplay } = useUnit();
-  const [label, setLabel] = useState("");
-  // Canonical mm is the source of truth (never a free-floating display
-  // string) — the displayed value is derived from it via toDisplay() on
-  // every render, so switching the unit toggle mid-form re-interprets the
-  // *same* canonical number through the new unit instead of silently
-  // reinterpreting stale digits through fromDisplay() at submit time (the
-  // 900mm-typed/then-toggled-to-m/then-submitted-as-900m bug). Mirrors the
-  // mockup's renderAll() rebuilding every input from toDisplay() whenever
-  // the unit changes (design-step-poc.html:939,946,563-567).
+
+  // Canonical mm is the source of truth — the displayed value is derived from
+  // it via toDisplay() on every render, so switching the unit toggle mid-form
+  // re-interprets the *same* canonical number through the new unit instead of
+  // silently reinterpreting stale digits. Mirrors the mockup's renderAll()
+  // rebuilding every input from toDisplay() whenever the unit changes.
+  // Bug 8a: editable label field — pre-filled with autoLabel (the kebab-case
+  // default, bug 8b), but the user can change it before submitting.
+  const [labelValue, setLabelValue] = useState(autoLabel);
+
+  // Keep the label in sync if the room is renamed while this form is open
+  // (autoLabel re-derives from room.label on every render in the parent;
+  // only sync when the user hasn't touched the field yet — tracked via
+  // a "label is still the default" check rather than a separate dirty flag).
+  const [prevAutoLabel, setPrevAutoLabel] = useState(autoLabel);
+  if (prevAutoLabel !== autoLabel && labelValue === prevAutoLabel) {
+    // autoLabel changed AND user hasn't deviated from the default — track.
+    setPrevAutoLabel(autoLabel);
+    setLabelValue(autoLabel);
+  } else if (prevAutoLabel !== autoLabel) {
+    setPrevAutoLabel(autoLabel);
+  }
+
   const [heightMm, setHeightMm] = useState<number | null>(null);
   const [widthMm, setWidthMm] = useState<number | null>(null);
-  // Raw text mirrors of the two fields — `heightText`/`widthText` hold
-  // exactly what the user typed, so a keystroke never gets clobbered by a
-  // derived-from-mm re-render. They're cleared when the unit changes (see
-  // below), not on every keystroke; `type="number"` inputs already report
-  // an empty string for an in-progress "-"/"1." to `handleChange`, so those
-  // intermediate states never need special-casing here. (Previously this
-  // comment claimed a divergence-based clear that the code doesn't have —
-  // review-item7-piece1-round2.md MINOR 2, fixed since Piece 2's
-  // configure-mode.tsx copies this exact pattern.)
-  // Note (Stage 20 B5): the mm/in/m unit toggle was removed; unit is now
-  // always "mm", so the prevUnit guard below is dead code that can't fire.
-  // The structure is kept intact for safety rather than deleted.
+  // Raw text mirrors — hold exactly what the user typed.
   const [heightText, setHeightText] = useState("");
   const [widthText, setWidthText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // If the unit ever changes (dead code since Stage 20 B5 removed the toggle),
-  // the raw text mirrors go stale relative to the new unit — clear them so
-  // the display falls back to re-deriving from canonical mm through the new
-  // unit's toDisplay(). Canonical mm itself is untouched, so no precision is
-  // lost and nothing is silently reinterpreted. Done during render (React's
-  // "adjusting state when a prop/derived value changes" pattern) rather
-  // than in a useEffect, to avoid the extra render pass + set-state-in-effect
-  // lint rule.
+  // If the unit changes (dead code since Stage 20 B5 removed the toggle),
+  // clear raw text mirrors so the display re-derives from canonical mm.
   const [prevUnit, setPrevUnit] = useState(unit);
   if (prevUnit !== unit) {
     setPrevUnit(unit);
@@ -100,11 +116,7 @@ export function ConvertSideForm({
   }
 
   async function submit() {
-    const trimmedLabel = label.trim();
-    if (!trimmedLabel) {
-      setError("Label is required.");
-      return;
-    }
+    const finalLabel = labelValue.trim() || autoLabel;
     if (heightMm === null || heightMm <= 0) {
       setError("Height must be a positive number.");
       return;
@@ -153,7 +165,7 @@ export function ConvertSideForm({
           return {
             kind: "PARTITION" as const,
             turnDegrees: side.turnDegrees,
-            label: trimmedLabel,
+            label: finalLabel,
             heightMm: finalHeightMm,
             widthMm: finalWidthMm,
           };
@@ -203,68 +215,74 @@ export function ConvertSideForm({
   }
 
   return (
-    <div className="relative rounded-md border border-border bg-bg-card p-3.5">
+    <div className="relative mt-4 border-t border-border pt-3.5">
       <LoadingOverlay visible={submitting} />
-      <h4 className="mb-2.5 text-xs font-bold text-text-heading">
-        {t("convertPanelTitle")}
-      </h4>
+      {/* R-8a: the redundant room-name / "not yet a partition" block has been
+          removed. The WALL DETAILS panel header already names the selected wall;
+          repeating it here added noise without adding information. */}
       {error && <p className="mb-2 text-xs text-red-700 dark:text-red-400">{error}</p>}
-      <div className="flex flex-col gap-2.5">
-        <div className="flex flex-col gap-1">
-          <label className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
-            {t("fieldLocation")}
-          </label>
+
+      {/* Bug 8a: editable partition name field — pre-filled with the kebab-case
+          auto-label (bug 8b), derived from the room's *current* name, editable
+          before converting so the user isn't locked into the auto-generated value. */}
+      <div className="mb-4">
+        <label className="mb-1 block text-[10.5px] font-bold uppercase tracking-[.03em] text-text-muted">
+          Partition Name
+        </label>
+        <input
+          type="text"
+          value={labelValue}
+          onChange={(e) => setLabelValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+          placeholder={autoLabel}
+          className="block w-full border-0 border-b border-b-border bg-transparent px-0.5 py-1 text-sm font-bold text-text-heading focus:border-b-primary focus:outline-none"
+        />
+      </div>
+
+      {/* convert-row: width + height side by side */}
+      <div className="mb-4 flex gap-[22px]">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[10.5px] font-bold uppercase tracking-[.03em] text-text-muted">
+            {t("fieldWidth")} ({unit})
+          </span>
           <input
-            type="text"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            autoComplete="off"
-            className="rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs text-text-body placeholder:text-text-placeholder focus:border-primary focus:outline-none"
+            type="number"
+            step="any"
+            value={widthDisplay}
+            onChange={(e) => handleWidthChange(e.target.value)}
+            className="w-[72px] border-0 border-b border-b-border bg-transparent px-0.5 py-0.5 text-[13.5px] font-bold text-text-heading focus:border-b-primary focus:outline-none"
           />
-        </div>
-        <div className="flex gap-3">
-          <label className="flex flex-1 flex-col gap-1">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
-              {t("fieldWidth")} ({unit})
-            </span>
-            <input
-              type="number"
-              step="any"
-              value={widthDisplay}
-              onChange={(e) => handleWidthChange(e.target.value)}
-              className="rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs text-text-body focus:border-primary focus:outline-none"
-            />
-          </label>
-          <label className="flex flex-1 flex-col gap-1">
-            <span className="text-[10px] font-bold uppercase tracking-wide text-text-muted">
-              {t("fieldHeight")} ({unit})
-            </span>
-            <input
-              type="number"
-              step="any"
-              value={heightDisplay}
-              onChange={(e) => handleHeightChange(e.target.value)}
-              className="rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs text-text-body focus:border-primary focus:outline-none"
-            />
-          </label>
-        </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => void submit()}
-            disabled={submitting}
-            className="flex-1 rounded-sm bg-primary px-2.5 py-1.5 text-xs font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
-          >
-            {t("convertToPartition")}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-sm border border-border px-2.5 py-1.5 text-xs text-text-body hover:bg-primary-softer"
-          >
-            {t("cancel")}
-          </button>
-        </div>
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[10.5px] font-bold uppercase tracking-[.03em] text-text-muted">
+            {t("fieldHeight")} ({unit})
+          </span>
+          <input
+            type="number"
+            step="any"
+            value={heightDisplay}
+            onChange={(e) => handleHeightChange(e.target.value)}
+            className="w-[72px] border-0 border-b border-b-border bg-transparent px-0.5 py-0.5 text-[13.5px] font-bold text-text-heading focus:border-b-primary focus:outline-none"
+          />
+        </label>
+      </div>
+      {/* convert-actions: primary + muted cancel */}
+      <div className="flex flex-wrap items-center gap-4">
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={submitting}
+          className="rounded-full bg-primary px-[18px] py-2 text-xs font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
+        >
+          {t("convertToPartition")}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-xs font-bold text-text-muted hover:text-text-heading hover:underline"
+        >
+          {t("cancel")}
+        </button>
       </div>
     </div>
   );

@@ -93,6 +93,50 @@ function innerVertex(
 }
 
 /**
+ * Human-readable label for a side index — matches design-page.html's
+ * `cap(side)` for the standard 4-sided case; falls back to "Side N" for
+ * arbitrary N (D-1: no N≠4 polish required, but must not crash).
+ */
+export function sideName(index: number, n: number): string {
+  if (n === 4) {
+    return (["Top", "Right", "Bottom", "Left"] as const)[index] ?? `Side ${index + 1}`;
+  }
+  return `Side ${index + 1}`;
+}
+
+/**
+ * CSS transform string for the tooltip `<div>` so it renders outside the
+ * edge it belongs to (not always above). Mirrors design-page.html lines
+ * 503-506 (top/bottom/left/right tooltip offsets) for the top/bottom case.
+ * Derived from the edge midpoint relative to the viewBox center so it works
+ * for any N.
+ *
+ * Left/right deliberately do NOT mirror the mockup's outward offset
+ * (bugs-1.md B-1): the mockup's page has no clipping ancestor around the
+ * floor-plan card, but this app's center-column wrapper is `overflow-hidden`
+ * (needed for Configure mode's wall-canvas border-radius), so an outward
+ * left/right tooltip gets ~2/3 clipped. Rendering inward — over the room
+ * interior — keeps the tooltip within the SVG's own box, which always sits
+ * inside the card's visible bounds (the `p-6` padding around it), while
+ * top/bottom keep the mockup's outward behavior since it doesn't clip there.
+ */
+function tooltipTransform(x: number, y: number): string {
+  const dx = x - VIEWBOX / 2;
+  const dy = y - VIEWBOX / 2;
+  if (Math.abs(dy) >= Math.abs(dx)) {
+    // Horizontal edge (top or bottom)
+    return dy <= 0
+      ? "translate(-50%, -100%)" // top  — show above
+      : "translate(-50%, 0%)"; //  bottom — show below
+  }
+  // Vertical edge (left or right) — render inward, over the room interior,
+  // so the tooltip stays inside the card's overflow-hidden bounds.
+  return dx <= 0
+    ? "translate(0%, -50%)" // left  — show to the right (inward)
+    : "translate(-100%, -50%)"; //  right — show to the left (inward)
+}
+
+/**
  * Outer vertices for an N-sided room, generic over N (never a named
  * top/left/right/bottom lookup) — per architect-review-item7.md's ruling:
  * N===4 uses the drawing square's own 4 corners (reproduces the mockup's
@@ -161,14 +205,24 @@ export function RoomFloorPlan({
 
   function tipFor(index: number): string {
     const side = room.sides[index];
+    // Positional prefix mirrors design-page.html's cap(side) — "Top — ",
+    // "Right — ", etc. for N=4; "Side N — " for other N (D-1).
+    const prefix = `${sideName(index, n)} — `;
     if (side.kind === "PARTITION") {
       const p = partitions.find((row) => row.id === side.partitionId);
       if (p) {
-        return `${p.label} — ${formatLen(p.widthMm)} × ${formatLen(p.heightMm)}`;
+        // Panel count from design.panels[] — available because
+        // listPartitionsByRoom returns the full Partition row including
+        // the design JSONB field (no select restriction in the DAL).
+        const panelCount = p.design?.panels?.length ?? 0;
+        const panelLabel = panelCount === 1 ? "1 panel" : `${panelCount} panels`;
+        // Separator is · (U+00B7) per design-page.html line 1247.
+        return `${prefix}${p.label} · ${formatLen(p.widthMm)} × ${formatLen(p.heightMm)} · ${panelLabel}`;
       }
-      return t("partitionTip");
+      return `${prefix}${t("partitionTip")}`;
     }
-    return side.label ? `${side.label} — ${t("plainWallTip")}` : t("plainWallTip");
+    // PLAIN wall — design-page.html line 1249: "plain wall (click to convert)".
+    return `${prefix}${t("plainWallTip")}`;
   }
 
   const hovered = hoveredIndex !== null ? segmentIndices.includes(hoveredIndex) : false;
@@ -181,12 +235,22 @@ export function RoomFloorPlan({
   }
 
   return (
-    <div className="flex flex-col items-center gap-3">
-      <div className="relative mx-auto w-full max-w-[340px]">
+    // R-5: the old max-w-[340px] hard-cap prevented the floor plan from
+    // using the full card width and made it appear at a fixed size regardless
+    // of viewport width or browser zoom. Replacing it with a proportional
+    // container: the SVG fills available width/height while preserving the 1:1
+    // aspect ratio and never overflowing its container. The batch-3 viewBox
+    // margin (-6 -6 212 212) is kept — it was a separate, correct fix for
+    // stroke clipping at the polygon edges.
+    <div className="flex h-full w-full items-center justify-center p-4">
+      <div
+        className="relative"
+        style={{ aspectRatio: "1 / 1", maxHeight: "100%", maxWidth: "100%", width: "100%" }}
+      >
         <svg
-          viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
-          className="w-full"
-          style={{ aspectRatio: "1 / 1" }}
+          viewBox={`-6 -6 ${VIEWBOX + 12} ${VIEWBOX + 12}`}
+          className="h-full w-full"
+          style={{ display: "block" }}
           onClick={() => onSelectSide(null)}
         >
           <defs>
@@ -242,17 +306,33 @@ export function RoomFloorPlan({
 
         {tooltip && (
           <div
-            className="pointer-events-none absolute z-20 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-sm bg-text-heading px-2.5 py-1.5 text-[10.5px] font-semibold text-bg-white shadow-md"
+            className="pointer-events-none absolute z-20 whitespace-nowrap rounded-sm bg-text-heading px-2.5 py-1.5 text-[10.5px] font-semibold text-bg-white shadow-md"
             style={{
               left: `${(tooltip.x / VIEWBOX) * 100}%`,
               top: `${(tooltip.y / VIEWBOX) * 100}%`,
+              // Direction-aware transform — mirrors design-page.html lines
+              // 503-506 (top/bottom/left/right ::after positioning).
+              transform: tooltipTransform(tooltip.x, tooltip.y),
             }}
           >
             {tooltip.text}
           </div>
         )}
       </div>
+    </div>
+  );
+}
 
+/**
+ * Wall/Partition legend — mirrors mockup lines ~513-520. Rendered as a
+ * sibling BELOW the canvas-wrap card (not nested inside it, matching the
+ * mockup: the legend sits on the page background, outside the bordered
+ * floor-plan card) — see design-workspace.tsx's layout-mode render.
+ */
+export function RoomFloorPlanLegend() {
+  const t = useTranslations("design");
+  return (
+    <div className="flex items-center justify-center">
       <div className="flex items-center justify-center gap-4 rounded-pill border border-border bg-bg-white px-4 py-1.5 text-[10.5px] text-text-muted">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-3 rounded-[2px] border border-[#C7CBBA] bg-[#DFE2D4]" />
@@ -262,7 +342,10 @@ export function RoomFloorPlan({
           <span
             className="inline-block h-3 w-3 rounded-[2px] border"
             style={{
-              backgroundColor: "var(--color-primary)",
+              // Diagonal stripe matching the is-partition wall-bar fill and
+              // design-page.html line 518's .legend-swatch.partition rule.
+              backgroundImage:
+                "repeating-linear-gradient(45deg, var(--color-primary), var(--color-primary) 3px, var(--color-primary-dark) 3px, var(--color-primary-dark) 6px)",
               borderColor: "var(--color-primary-dark)",
             }}
           />

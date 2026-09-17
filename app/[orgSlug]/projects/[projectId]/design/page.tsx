@@ -1,6 +1,4 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getTranslations } from "next-intl/server";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref, detectIsSubdomain } from "@/lib/orgHref";
 import { fetchProjectDetail } from "../_project-fetch";
@@ -26,9 +24,9 @@ export const dynamic = "force-dynamic";
  * this page redirects to login on either. 404 -> notFound() on a missing/
  * cross-org project (tenancy guard).
  *
- * ?openRoom=<id> is still read once, on initial load — it's set by
- * add-wall/actions.ts's server-side redirect (a genuine top-level entry
- * point, unchanged), not by any in-page mutation anymore.
+ * ?openRoom=<id> is read once on initial load for backward-compat with any
+ * existing links that included it; the add-wall route that set it is retired
+ * (S21-C1) but the query-param support is harmless to keep.
  */
 export default async function DesignPage({
   params,
@@ -39,20 +37,17 @@ export default async function DesignPage({
 }) {
   const { orgSlug, projectId } = await params;
   const sp = await searchParams;
-  const base = await orgHref(orgSlug, "");
 
   const [
     { status: projectStatus, project },
     floorsRes,
     selectionsRes,
     isSubdomain,
-    t,
   ] = await Promise.all([
     fetchProjectDetail(orgSlug, projectId),
     internalFetch(`/api/v1/orgs/${orgSlug}/floors?projectId=${projectId}`),
     internalFetch(`/api/v1/orgs/${orgSlug}/selections?projectId=${projectId}`),
     detectIsSubdomain(orgSlug),
-    getTranslations("design"),
   ]);
 
   if (
@@ -101,40 +96,23 @@ export default async function DesignPage({
     }),
   );
 
+  // S21 padding fix (round 2): the mockup (design-step-poc.html) has NO
+  // page-level title bar above the 3-column grid at all — it goes straight
+  // from the wizard-steps breadcrumb into the grid. The room name renders
+  // inside the center card itself (DesignWorkspace's layout-mode heading).
+  // The previous "Back to Project | Wall Design — ..." strip (even trimmed)
+  // was still a deviation from the mockup's structure, not just its sizing.
+  // Removed entirely to match 1:1; back-navigation is still reachable via
+  // the "Project Details" wizard-step pill. Design-page-local change only —
+  // other wizard steps keep their own page-level headers untouched.
   return (
-    <div className="flex h-full flex-col">
-      {/* Page header */}
-      <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-6 py-4">
-        <div>
-          <Link
-            href={`${base}/projects/${projectId}`}
-            className="mb-2 inline-block text-sm text-text-muted hover:text-text-heading"
-          >
-            {t("backToProject")}
-          </Link>
-          <h1 className="text-xl font-extrabold tracking-tight text-text-heading">
-            {t("pageTitle")} — #{project.projectNumber} {project.name}
-          </h1>
-        </div>
-        {/* B4 (Stage 20): was bg-primary filled style (old UI); restyled to
-            secondary/outline to match the Configure/Add pattern used throughout
-            the Stage 17–19 rework (same visual weight as sidebar action buttons). */}
-        <Link
-          href={`${base}/projects/${projectId}/design/add-wall`}
-          className="shrink-0 inline-flex items-center rounded-sm border border-border bg-bg-white px-4 py-2 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
-        >
-          {t("addWall")}
-        </Link>
-      </div>
-
-      <DesignWorkspace
-        orgSlug={orgSlug}
-        projectId={projectId}
-        isSubdomain={isSubdomain}
-        initialFloors={floorsWithRooms}
-        selections={selections}
-        initialOpenRoomId={sp.openRoom ?? null}
-      />
-    </div>
+    <DesignWorkspace
+      orgSlug={orgSlug}
+      projectId={projectId}
+      isSubdomain={isSubdomain}
+      initialFloors={floorsWithRooms}
+      selections={selections}
+      initialOpenRoomId={sp.openRoom ?? null}
+    />
   );
 }

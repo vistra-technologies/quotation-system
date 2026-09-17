@@ -93,6 +93,14 @@ export interface SelectionRow {
   id: string;
   label: string;
   componentType: { name: string; code?: string };
+  /**
+   * Bug 10 (bugs-3.md): added so the info popover in saved-components-rail.tsx
+   * can display the saved configuration for a component. The API already returns
+   * this field (listSelections includes the full Selection row); only the
+   * TypeScript interface needed updating. Mirrors the shape in
+   * configuration/add-selection-form.tsx's local SelectionRow interface.
+   */
+  config?: Record<string, string | boolean | number | null>;
 }
 
 /**
@@ -104,10 +112,19 @@ export type ViewMode = "empty" | "layout" | "configure";
  * arbitrary-N sides), matching `design.stops`'s own shape. */
 export type EdgeSide = "top" | "left" | "right" | "bottom";
 
-/** Configure mode's local selection state — mirrors the mockup's
- * `selection`. */
+/**
+ * Configure mode's selection state.
+ *
+ * S21-0.4: updated to use `panelIds: string[]` (always an array) to support
+ * multi-select (Ctrl/Cmd-click). Single-select uses a length-1 array.
+ * Previously `panelId: string` (singular) — renamed to `panelIds` to match
+ * the mockup's `selection.panelIds` shape and the draft reducer contract.
+ *
+ * Re-exported from design-draft-context.tsx as `DraftSelection`; both names
+ * refer to the same type shape.
+ */
 export type ConfigureSelection =
-  | { type: "panel"; panelId: string }
+  | { type: "panel"; panelIds: string[] }
   | { type: "edge"; side: EdgeSide }
   | null;
 

@@ -4,6 +4,8 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { SelectField } from "@/components/select-field";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { TrashIcon } from "@/components/trash-icon";
 import { ComponentIcon } from "@/lib/component-icons";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import {
@@ -14,8 +16,10 @@ import {
 import {
   createSelection,
   updateSelection,
+  deleteSelection,
   type CreateSelectionState,
   type UpdateSelectionState,
+  type DeleteSelectionState,
 } from "./actions";
 
 // ─── Local type definitions ─────────────────────────────────────────────────
@@ -64,6 +68,7 @@ interface AddSelectionFormProps {
 
 const initialCreateState: CreateSelectionState = { error: null };
 const initialUpdateState: UpdateSelectionState = { error: null };
+const initialDeleteState: DeleteSelectionState = { error: null };
 
 // ─── Field pairing helper ────────────────────────────────────────────────────
 
@@ -143,8 +148,33 @@ export function AddSelectionForm({
     updateSelection,
     initialUpdateState,
   );
-
   const isPending = isCreatePending || isUpdatePending;
+
+  // ── Delete confirm dialog state ─────────────────────────────────────────────
+  // Calls the deleteSelection server action directly (not via useActionState/
+  // <form action>) so success/failure can be handled inline — closing the
+  // dialog on success, keeping it open with an error message on failure
+  // (including the 409 "still in use" case) — without a page redirect.
+  const [confirmDeleteSelection, setConfirmDeleteSelection] = useState<SelectionRow | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleConfirmDelete() {
+    if (!confirmDeleteSelection) return;
+    setDeleteSubmitting(true);
+    setDeleteError(null);
+    const formData = new FormData();
+    formData.set("orgSlug", orgSlug);
+    formData.set("projectId", projectId);
+    formData.set("selectionId", confirmDeleteSelection.id);
+    const result = await deleteSelection(initialDeleteState, formData);
+    setDeleteSubmitting(false);
+    if (result.error) {
+      setDeleteError(result.error);
+      return;
+    }
+    setConfirmDeleteSelection(null);
+  }
 
   // ── Configurator gating (Stage 20 Batch 4, decision #5) ─────────────────────
   // Whole-ComponentType gate: a type is selectable only if every dropdown/radio field on it
@@ -297,15 +327,25 @@ export function AddSelectionForm({
     <>
       <LoadingOverlay visible={isPending} />
 
-      {/* 3-column grid layout matching the finalized mockup */}
-      <div className="grid grid-cols-[200px_1fr_300px] gap-6 p-7">
+      {/* 3-column grid layout matching the finalized mockup.
+          R-1: flex-1 min-h-0 lets the grid fill the card's bounded height
+          (established by WizardPageShell + configuration/page.tsx) rather than
+          forcing a vh-relative minimum that always exceeded the viewport.
+          R-2: items-stretch lets each column fill the row so the right column
+          can scroll its own content independently (see below). */}
+      <div className="grid min-h-[420px] flex-1 grid-cols-[200px_1fr_300px] items-stretch gap-6 p-7">
 
         {/* ── Left: ComponentType sidebar (5d — vertical icon-over-label tiles) ── */}
         <div>
           <p className="mb-3.5 text-[11px] font-bold uppercase tracking-[0.06em] text-text-muted">
             Components
           </p>
-          <div className="flex flex-col gap-3.5">
+          {/* Scrolls independently once the org has enough component types to
+              overflow — keeps the center form's Add/Save button reachable
+              without the whole page growing to fit this column's height.
+              max-h-[420px] (not a viewport-relative cap) so the boundary is
+              visually obvious and testable regardless of screen height. */}
+          <div className="flex max-h-[420px] flex-col gap-3.5 overflow-y-auto pr-1">
             {componentTypes.map((ct) => {
               const isSelected = ct.id === selectedTypeId;
               const isLocked = editingSelectionId !== null && !isSelected;
@@ -509,10 +549,16 @@ export function AddSelectionForm({
         </div>
 
         {/* ── Right: Saved Components list (5d — icon chip + name + type + chevron) ── */}
-        <div>
-          <p className="mb-3.5 text-[11px] font-bold uppercase tracking-[0.06em] text-text-muted">
+        {/* R-2: the whole-column sticky + vh max-h is replaced with a flex
+            column: the "SAVED COMPONENTS" heading is pinned (shrink-0) and
+            only the list body scrolls (flex-1 min-h-0 overflow-y-auto).
+            No sticky/viewport-relative sizing needed once the grid itself has
+            a bounded height (R-1). */}
+        <div className="flex min-h-0 flex-col">
+          <p className="mb-3.5 shrink-0 text-[11px] font-bold uppercase tracking-[0.06em] text-text-muted">
             Saved Components
           </p>
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
 
           {selections.length === 0 ? (
             <div className="rounded-md border border-dashed border-border px-4 py-8 text-center">
@@ -541,55 +587,150 @@ export function AddSelectionForm({
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-2.5">
-              {selections.map((sel) => {
-                const isEditing = sel.id === editingSelectionId;
+            <div className="flex flex-col gap-4">
+              {(
+                [
+                  { code: "GLASS", title: t("sectionPartitions") },
+                  { code: "DOOR", title: t("sectionDoors") },
+                  { code: "PROFILE_STOP", title: t("sectionProfiles") },
+                ] as const
+              ).map(({ code, title }) => {
+                const group = selections.filter((s) => s.componentType.code === code);
+                if (group.length === 0) return null;
                 return (
-                  <button
-                    key={sel.id}
-                    type="button"
-                    onClick={() => handleEditSelection(sel)}
-                    className={[
-                      "flex w-full items-center gap-3 rounded-sm border px-3.5 py-3 text-left transition-colors",
-                      isEditing
-                        ? "border-primary bg-primary-softer"
-                        : "border-border bg-bg-white hover:border-primary-soft hover:bg-primary-softer",
-                    ].join(" ")}
-                  >
-                    {/* Icon chip (5d) — filled primary when editing */}
-                    <span
-                      className={[
-                        "flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[8px]",
-                        isEditing
-                          ? "bg-primary text-text-on-primary"
-                          : "bg-primary-softer text-primary",
-                      ].join(" ")}
-                    >
-                      <ComponentIcon code={sel.componentType.code} className="h-4 w-4" />
-                    </span>
-
-                    {/* Name + type subtitle */}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold leading-tight text-text-heading">
-                        {sel.label}
-                      </p>
-                      <p className="mt-0.5 text-xs text-text-muted">
-                        {sel.componentType.name}
-                      </p>
-                    </div>
-
-                    {/* Chevron */}
-                    <span className="shrink-0 text-text-placeholder" aria-hidden="true">
-                      ›
-                    </span>
-                  </button>
+                  <SelectionGroup
+                    key={code}
+                    title={title}
+                    group={group}
+                    editingSelectionId={editingSelectionId}
+                    onEdit={handleEditSelection}
+                    onDelete={setConfirmDeleteSelection}
+                  />
                 );
               })}
+              {(() => {
+                const other = selections.filter(
+                  (s) => !["GLASS", "DOOR", "PROFILE_STOP"].includes(s.componentType.code),
+                );
+                if (other.length === 0) return null;
+                return (
+                  <SelectionGroup
+                    title={t("sectionOther")}
+                    group={other}
+                    editingSelectionId={editingSelectionId}
+                    onEdit={handleEditSelection}
+                    onDelete={setConfirmDeleteSelection}
+                  />
+                );
+              })()}
             </div>
           )}
+          </div>{/* end scrollable body */}
         </div>
+
+        {confirmDeleteSelection && (
+          <ConfirmDialog
+            isOpen={true}
+            title={t("deleteConfirmTitle")}
+            message={t("deleteConfirmMsg", { name: confirmDeleteSelection.label })}
+            errorMessage={deleteError}
+            confirmLabel={t("confirmDelete")}
+            confirmVariant="danger"
+            cancelLabel={t("cancel")}
+            onConfirm={() => void handleConfirmDelete()}
+            onCancel={() => {
+              if (!deleteSubmitting) {
+                setConfirmDeleteSelection(null);
+                setDeleteError(null);
+              }
+            }}
+          />
+        )}
       </div>
     </>
+  );
+}
+
+// ─── Saved Components — grouped-by-type row list ────────────────────────────
+
+interface SelectionGroupProps {
+  title: string;
+  group: SelectionRow[];
+  editingSelectionId: string | null;
+  onEdit: (sel: SelectionRow) => void;
+  onDelete: (sel: SelectionRow) => void;
+}
+
+/** One "Partitions" / "Doors" / "Profiles" / "Other" group of saved-component
+ * rows — mirrors the Design page's Saved Components rail grouping so the
+ * same components read consistently on both pages. */
+function SelectionGroup({ title, group, editingSelectionId, onEdit, onDelete }: SelectionGroupProps) {
+  return (
+    <div>
+      <h3 className="mb-2 text-[10.5px] font-bold uppercase tracking-[.04em] text-text-muted">
+        {title}
+      </h3>
+      <div className="flex flex-col gap-2.5">
+        {group.map((sel) => {
+          const isEditing = sel.id === editingSelectionId;
+          return (
+            <div
+              key={sel.id}
+              className={[
+                "flex w-full items-center gap-3 rounded-sm border px-3.5 py-3 transition-colors",
+                isEditing
+                  ? "border-primary bg-primary-softer"
+                  : "border-border bg-bg-white hover:border-primary-soft hover:bg-primary-softer",
+              ].join(" ")}
+            >
+              <button
+                type="button"
+                onClick={() => onEdit(sel)}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              >
+                {/* Icon chip (5d) — filled primary when editing */}
+                <span
+                  className={[
+                    "flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[8px]",
+                    isEditing
+                      ? "bg-primary text-text-on-primary"
+                      : "bg-primary-softer text-primary",
+                  ].join(" ")}
+                >
+                  <ComponentIcon code={sel.componentType.code} className="h-4 w-4" />
+                </span>
+
+                {/* Name + type subtitle */}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold leading-tight text-text-heading">
+                    {sel.label}
+                  </p>
+                  <p className="mt-0.5 text-xs text-text-muted">
+                    {sel.componentType.name}
+                  </p>
+                </div>
+              </button>
+
+              {/* Delete icon button — separate from the click-to-edit area above.
+                  Matches the approved mockup's .icon-btn.enabled-clear exactly:
+                  a permanently-visible bordered red chip (not just a hover
+                  effect on a bare icon), darkening to solid red on hover. */}
+              <button
+                type="button"
+                title="Remove component"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(sel);
+                }}
+                className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[6px] border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] text-[var(--color-status-failed-text)] transition-colors hover:border-[var(--color-status-failed-text)] hover:bg-[var(--color-status-failed-text)] hover:text-white"
+              >
+                <TrashIcon />
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

@@ -459,23 +459,28 @@ export async function replaceSides(
             widthMm: incoming.widthMm,
             organizationId: session.organizationId,
           });
-          // Seed one full-width panel on conversion — mirrors
-          // design-step-poc.html's "Convert to Partition" behavior
-          // (single panel spanning the entered width). Without this,
+          // Seed three equal-width panels on conversion (S21 design-page
+          // parity fix) instead of one full-width panel — matches the
+          // finalized mockup's default Convert-to-Partition state
+          // (design-page.html) and gives the user a realistic starting
+          // point instead of an empty-looking single pane. Without this,
           // Configure mode opens empty and the first "+ Add Panel"
           // (fixed-default width) would silently shrink the partition's
           // widthMm below what the user just entered (review-item7-piece2
-          // IMPORTANT 1).
+          // IMPORTANT 1) — so the seeded widths must still sum exactly to
+          // incoming.widthMm (last panel absorbs the remainder, same
+          // split rule as the MAKE_EQUAL_WIDTH draft action).
+          const seedWidthMm = incoming.widthMm;
+          const seedHeightMm = incoming.heightMm;
+          const basePanelWidth = Math.floor(seedWidthMm / 3);
           const seedDesign: PartitionDesign = {
-            panels: [
-              {
-                id: crypto.randomUUID(),
-                type: "glass",
-                widthMm: incoming.widthMm,
-                heightMm: incoming.heightMm,
-                selectionId: null,
-              },
-            ],
+            panels: [0, 1, 2].map((i) => ({
+              id: crypto.randomUUID(),
+              type: "glass",
+              widthMm: i === 2 ? seedWidthMm - basePanelWidth * 2 : basePanelWidth,
+              heightMm: seedHeightMm,
+              selectionId: null,
+            })),
           };
           await tx.partition.update({
             where: { id: partition.id },

@@ -39,6 +39,14 @@
   --color-status-refunded-bg:   #EDE6E1;
   --color-status-refunded-text: #6B645D;
 
+  /* Design-page tokens — added S21-0.1 to match the mockup's :root vars that
+     had no prior equivalent in this theme block. */
+  --color-bg-hover:       #EFF2E8;   /* --hover-bg: subtle row-hover/highlight tint */
+  --color-danger-bg:      #FDECEA;   /* --danger-bg: destructive-action well background */
+  --color-danger-border:  #E3B3AE;   /* --danger-border: destructive-action well border */
+  --color-border-strong:  #C7CCB6;   /* --border-strong: canvas frame, panel context menu border */
+  --color-panel-label:    #B8863D;   /* --panel-label: warm amber for P1/P2/P3 index labels */
+
   /* Shape — overrides Tailwind built-in --radius-sm / --radius-md intentionally */
   --radius-sm:   8px;
   --radius-md:   14px;
@@ -74,4 +82,12 @@ body {
   background: var(--color-bg-page);
   color: var(--color-text-body);
   font-family: var(--font-sans), 'Nunito Sans', system-ui, sans-serif;
+}
+
+/* Bug 13 (bugs-3.md): slide-in-from-right keyframe for the Toast component.
+   Entrance: slides in from the right edge of the screen.
+   Exit is handled by removing the element (unmount on dismiss). */
+@keyframes toast-slide-in {
+  from { transform: translateX(calc(100% + 1.5rem)); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
 }

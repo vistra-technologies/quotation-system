@@ -37,25 +37,18 @@ export default async function SummaryPage({
 
   if (!project) notFound();
 
-  // Step-gating: Summary requires ≥1 Partition to have content to display.
-  if (project.partitionCount === 0) {
+  // Step-gating: Summary requires the design to have been explicitly
+  // submitted (Design page's "Submit Design" button), not just partitionCount>0.
+  if (project.partitionCount === 0 || !project.designSubmittedAt) {
     redirect(await orgHref(orgSlug, `/projects/${projectId}`));
   }
   const t = await getTranslations("wizard");
 
+  // Page heading removed — its copy now shows as a hover tooltip on the
+  // "Summary" pill in the wizard breadcrumb (project-wizard-breadcrumb.tsx),
+  // matching Design, which never had an on-page heading either.
   return (
-    <div>
-      {/* Page heading */}
-      <div className="mb-6 text-center">
-        <h1 className="text-3xl font-extrabold text-text-heading">
-          {t("step4")}
-        </h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Shop drawing and cut list for every partition, grouped by floor — for
-          print and factory use
-        </p>
-      </div>
-
+    <div className="py-8">
       {/* Content card */}
       <div className="mb-6 rounded-md border border-border bg-bg-card shadow-card">
         {/* Inert placeholder — matches empty-state from mockup JS fallback */}
