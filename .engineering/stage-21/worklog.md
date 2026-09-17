@@ -182,3 +182,46 @@ tracks' anticipated actions per their task files.
   multi-select make-equal/unite, sum invariant, tenancy, Layout-mode heading) all green via the same suite
   run. All test-created records deleted (temp project + suite's own `e2e-stage21-*`); confirmed zero
   leftover via `GET /projects`. No local dev server used.
+
+---
+
+## Batch 3 Bug Fixes — implementation plan (feature/s21-fix-batch-3)
+
+Branch: `feature/s21-fix-batch-3` off `staging` @ `9ca45dc`. Spec: `.engineering/stage-21/bugs-3.md`.
+
+### Overlap-pair grouping
+
+| Pair | Bugs | Files |
+|---|---|---|
+| A | 1 & 2 | `configuration/add-selection-form.tsx` |
+| B | 3 & 4 | `design/room-list.tsx` (3), `design/new-room-form.tsx` (4), `design/design-workspace.tsx` (3 - remove h2) |
+| C | 7 & 9 | `design/design-workspace.tsx` (both) |
+| D | 8 & 11 | `design/convert-side-form.tsx` (8a), `design/layout-mode-panel.tsx` (8b), `design/configure-mode.tsx` (11) |
+| E | 2 & 10 | `saved-components-rail.tsx` — Bug 10 removes pencil icon from Design rail; Bug 2 is config-page scroll (separate file); no shared component confirmed |
+| F | 6 (standalone) | `design/layout-mode-panel.tsx` — inline confirm → ConfirmDialog |
+
+### Per-bug changes
+
+| Bug | File(s) | Change |
+|---|---|---|
+| 1 | `add-selection-form.tsx` | Add `min-h-[calc(100vh-160px)]` to outer grid div |
+| 2 | `add-selection-form.tsx` | Right column: `overflow-y-auto max-h-[calc(100vh-180px)]` for independent scroll |
+| 3 | `room-list.tsx` + `design-workspace.tsx` | Move "+ Add Room" zone ABOVE "Rooms" h2 — reorder in room-list.tsx; remove h2 from workspace, move into room-list |
+| 4 | `new-room-form.tsx` | Submit button = icon-only small square matching cancel × button; input `flex-1` |
+| 5 | `room-floor-plan.tsx` | viewBox `-6 -6 212 212` so outer polygon corners don't touch SVG clip boundary |
+| 6 | `layout-mode-panel.tsx` | Replace inline confirmingRemove row with `ConfirmDialog` (same pattern as delete-room in room-list.tsx) |
+| 7 | `design-workspace.tsx` | `handleSideConverted`: detect if converted side is now PLAIN → clear `layoutSideSelection` |
+| 8a | `convert-side-form.tsx` | Add editable label field (initialized from `autoLabel`); pass user-entered label to server |
+| 8b | `layout-mode-panel.tsx` | `autoLabel` format: slugify to `{room}-{side}-wall` kebab-case |
+| 9 | `design-workspace.tsx` | `doEnterConfigureMode`: after LOAD_PARTITION, if panels have no glass, dispatch `SET_GLASS` with first glass selection |
+| 10 | `saved-components-rail.tsx` | Remove `✎` pencil from ComponentSection; add info/eye icon button with config popover (config: Record<string,value> from SelectionRow) |
+| 11 | `configure-mode.tsx` | Width/Height stat card: read-only display + edit-icon toggle → confirm-icon; `editingDimension: "width" \| "height" \| null` state |
+| 12 | `saved-components-rail.tsx` | `toggleDoor`: default height = `wallHeightMm` (was `0.85 * wallHeightMm`); slider `min={0}` (was `MIN_DOOR_HEIGHT_MM`) |
+| 13 | `components/toast.tsx` + `design-workspace.tsx` | Enhance Toast with slide-in-from-right animation; `useToast()` in workspace, show on `handleSubmitDesign` success |
+
+### Bug 10 surface check
+`design/saved-components-rail.tsx` is NOT shared with `configuration/add-selection-form.tsx` — the config page uses its own `SelectionGroup` subcomponent that has no pencil icon (the entire row IS the edit action, which is functional and intentional). Bug 10 fix is `saved-components-rail.tsx` only.
+
+### Not changing
+- `configure-constants.ts`: `MIN_DOOR_HEIGHT_MM` / `DEFAULT_DOOR_HEIGHT_RATIO` kept (bug 12 changes the *usage* of these, not the constants themselves — they may still be valid for other callers)
+- Slider `min` for door height: changed inline in `saved-components-rail.tsx` from `{MIN_DOOR_HEIGHT_MM}` to `{0}`

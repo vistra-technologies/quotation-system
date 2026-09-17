@@ -62,6 +62,10 @@ export function ConfigureMode({
   // the instant it was backspaced to empty, before a new digit could be typed.
   const [widthText, setWidthText] = useState<string | null>(null);
   const [heightText, setHeightText] = useState<string | null>(null);
+  // Bug 11 (bugs-3.md): width/height are NOT directly editable by default.
+  // A small edit-icon activates editing; a checkmark/confirm-icon locks in
+  // the new value and fires commitWidth/commitHeight. "width" | "height" | null.
+  const [editingDimension, setEditingDimension] = useState<"width" | "height" | null>(null);
 
   // Context-menu anchor state — only one can be open at a time.
   const [panelMenu, setPanelMenu] = useState<{
@@ -82,6 +86,7 @@ export function ConfigureMode({
     setNameValue(partition?.label ?? "");
     setWidthText(null);
     setHeightText(null);
+    setEditingDimension(null);
   }
 
   // Unit change: clear raw text mirrors to prevent stale-digit reinterpretation.
@@ -90,6 +95,7 @@ export function ConfigureMode({
     setPrevUnit(unit);
     setWidthText(null);
     setHeightText(null);
+    setEditingDimension(null);
   }
 
   if (!partition) return <p className="text-xs text-text-muted">{t("loadingPartition")}</p>;
@@ -117,11 +123,13 @@ export function ConfigureMode({
     const parsed = Number(widthText);
     if (!widthText || isNaN(parsed) || parsed <= 0) {
       setWidthText(null);
+      setEditingDimension(null);
       return;
     }
     // fromDisplay converts from the current display unit back to mm; round to integer mm.
     const newTotalMm = Math.max(1, Math.round(fromDisplay(parsed)));
     setWidthText(null);
+    setEditingDimension(null);
     dispatch({ type: "SET_PARTITION_WIDTH", widthMm: newTotalMm });
   }
 
@@ -129,10 +137,12 @@ export function ConfigureMode({
     const parsed = Number(heightText);
     if (!heightText || isNaN(parsed) || parsed <= 0) {
       setHeightText(null);
+      setEditingDimension(null);
       return;
     }
     const newHeightMm = Math.max(1, Math.round(fromDisplay(parsed)));
     setHeightText(null);
+    setEditingDimension(null);
     dispatch({ type: "SET_PARTITION_HEIGHT", heightMm: newHeightMm });
   }
 
@@ -231,50 +241,98 @@ export function ConfigureMode({
           Stat card — Width / Height — pinned to the right edge of the header row.
           Mirrors mockup .wall-stats (lines 314-327, 1546-1575).
           Unit toggle NOT rendered (D-4 deviation).
+
+          Bug 11 (bugs-3.md): Width and Height are NOT directly editable by
+          default. Each field shows a read-only value with a small circular
+          edit icon. Clicking the edit icon activates that field; the icon
+          becomes a checkmark. Clicking the checkmark commits the change —
+          this is when SET_PARTITION_WIDTH / SET_PARTITION_HEIGHT fires, NOT
+          on every keystroke. The name field (Bug 8) uses a different pattern
+          (direct inline editing) per the user's explicit distinction.
         */}
         <div className="ml-auto flex shrink-0 items-center gap-3.5 rounded-[10px] border border-[var(--color-border-strong)] bg-bg-white px-4 py-[6px] shadow-[0_1px_3px_-1px_rgba(27,40,30,.10)]">
           {/* Width stat */}
-          <label className="flex cursor-pointer flex-col gap-[3px]">
+          <div className="flex flex-col gap-[3px]">
             <span className="text-[9.5px] font-bold uppercase tracking-[.04em] text-text-muted">
               {t("fieldWidth")}
             </span>
-            <span className="flex items-baseline gap-[3px]">
-              <input
-                type="number"
-                step="any"
-                value={widthDisplay}
-                onChange={(e) => setWidthText(e.target.value)}
-                onBlur={commitWidth}
-                onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-                aria-label="Partition width"
-                className="w-[50px] border-none bg-transparent p-0 text-[13.5px] font-bold text-text-heading focus:outline-none"
-              />
+            <div className="flex items-baseline gap-[3px]">
+              {editingDimension === "width" ? (
+                <input
+                  type="number"
+                  step="any"
+                  value={widthDisplay}
+                  autoFocus
+                  onChange={(e) => setWidthText(e.target.value)}
+                  onBlur={commitWidth}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                    if (e.key === "Escape") { setWidthText(null); setEditingDimension(null); }
+                  }}
+                  aria-label="Partition width"
+                  className="w-[50px] border-none bg-transparent p-0 text-[13.5px] font-bold text-text-heading focus:outline-none"
+                />
+              ) : (
+                <span className="text-[13.5px] font-bold text-text-heading">{widthDisplay}</span>
+              )}
               <span className="text-[10.5px] font-semibold text-text-muted">{unit}</span>
-            </span>
-          </label>
+              {/* Edit/confirm icon button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (editingDimension === "width") { commitWidth(); }
+                  else { setEditingDimension("width"); }
+                }}
+                title={editingDimension === "width" ? "Confirm width" : "Edit width"}
+                className="ml-1 flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-full border border-border bg-bg-white text-[10px] text-text-muted hover:border-primary hover:text-primary-dark"
+              >
+                {editingDimension === "width" ? "✓" : "✎"}
+              </button>
+            </div>
+          </div>
 
           {/* Divider */}
           <div className="w-px self-stretch bg-[var(--color-border-strong)]" />
 
           {/* Height stat */}
-          <label className="flex cursor-pointer flex-col gap-[3px]">
+          <div className="flex flex-col gap-[3px]">
             <span className="text-[9.5px] font-bold uppercase tracking-[.04em] text-text-muted">
               {t("fieldHeight")}
             </span>
-            <span className="flex items-baseline gap-[3px]">
-              <input
-                type="number"
-                step="any"
-                value={heightDisplay}
-                onChange={(e) => setHeightText(e.target.value)}
-                onBlur={commitHeight}
-                onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
-                aria-label="Partition height"
-                className="w-[50px] border-none bg-transparent p-0 text-[13.5px] font-bold text-text-heading focus:outline-none"
-              />
+            <div className="flex items-baseline gap-[3px]">
+              {editingDimension === "height" ? (
+                <input
+                  type="number"
+                  step="any"
+                  value={heightDisplay}
+                  autoFocus
+                  onChange={(e) => setHeightText(e.target.value)}
+                  onBlur={commitHeight}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                    if (e.key === "Escape") { setHeightText(null); setEditingDimension(null); }
+                  }}
+                  aria-label="Partition height"
+                  className="w-[50px] border-none bg-transparent p-0 text-[13.5px] font-bold text-text-heading focus:outline-none"
+                />
+              ) : (
+                <span className="text-[13.5px] font-bold text-text-heading">{heightDisplay}</span>
+              )}
               <span className="text-[10.5px] font-semibold text-text-muted">{unit}</span>
-            </span>
-          </label>
+              {/* Edit/confirm icon button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (editingDimension === "height") { commitHeight(); }
+                  else { setEditingDimension("height"); }
+                }}
+                title={editingDimension === "height" ? "Confirm height" : "Edit height"}
+                className="ml-1 flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-full border border-border bg-bg-white text-[10px] text-text-muted hover:border-primary hover:text-primary-dark"
+              >
+                {editingDimension === "height" ? "✓" : "✎"}
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 

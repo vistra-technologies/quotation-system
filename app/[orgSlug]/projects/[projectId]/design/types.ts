@@ -93,6 +93,14 @@ export interface SelectionRow {
   id: string;
   label: string;
   componentType: { name: string; code?: string };
+  /**
+   * Bug 10 (bugs-3.md): added so the info popover in saved-components-rail.tsx
+   * can display the saved configuration for a component. The API already returns
+   * this field (listSelections includes the full Selection row); only the
+   * TypeScript interface needed updating. Mirrors the shape in
+   * configuration/add-selection-form.tsx's local SelectionRow interface.
+   */
+  config?: Record<string, string | boolean | number | null>;
 }
 
 /**

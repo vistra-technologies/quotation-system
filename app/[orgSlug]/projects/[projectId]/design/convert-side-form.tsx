@@ -15,9 +15,10 @@ interface ConvertSideFormProps {
   /** Display title shown above the form — typically "{Room} {Side} Wall". */
   wallTitle: string;
   /**
-   * Auto-generated partition label used when submitting — derived from the
-   * room and side names by the parent. Never shown as an input (the mockup
-   * auto-generates the name without user input).
+   * Auto-generated partition label — shown as the editable name field's
+   * default value. Bug 8a: the user can edit this before converting.
+   * Derived from the room and side names by the parent (kebab-case format,
+   * bug 8b) and recomputed from the room's *current* name on every render.
    */
   autoLabel: string;
   /** Array index of the PLAIN side being converted — identity is by array
@@ -68,6 +69,23 @@ export function ConvertSideForm({
   // re-interprets the *same* canonical number through the new unit instead of
   // silently reinterpreting stale digits. Mirrors the mockup's renderAll()
   // rebuilding every input from toDisplay() whenever the unit changes.
+  // Bug 8a: editable label field — pre-filled with autoLabel (the kebab-case
+  // default, bug 8b), but the user can change it before submitting.
+  const [labelValue, setLabelValue] = useState(autoLabel);
+
+  // Keep the label in sync if the room is renamed while this form is open
+  // (autoLabel re-derives from room.label on every render in the parent;
+  // only sync when the user hasn't touched the field yet — tracked via
+  // a "label is still the default" check rather than a separate dirty flag).
+  const [prevAutoLabel, setPrevAutoLabel] = useState(autoLabel);
+  if (prevAutoLabel !== autoLabel && labelValue === prevAutoLabel) {
+    // autoLabel changed AND user hasn't deviated from the default — track.
+    setPrevAutoLabel(autoLabel);
+    setLabelValue(autoLabel);
+  } else if (prevAutoLabel !== autoLabel) {
+    setPrevAutoLabel(autoLabel);
+  }
+
   const [heightMm, setHeightMm] = useState<number | null>(null);
   const [widthMm, setWidthMm] = useState<number | null>(null);
   // Raw text mirrors — hold exactly what the user typed.
@@ -100,6 +118,7 @@ export function ConvertSideForm({
   }
 
   async function submit() {
+    const finalLabel = labelValue.trim() || autoLabel;
     if (heightMm === null || heightMm <= 0) {
       setError("Height must be a positive number.");
       return;
@@ -148,7 +167,7 @@ export function ConvertSideForm({
           return {
             kind: "PARTITION" as const,
             turnDegrees: side.turnDegrees,
-            label: autoLabel,
+            label: finalLabel,
             heightMm: finalHeightMm,
             widthMm: finalWidthMm,
           };
@@ -204,6 +223,24 @@ export function ConvertSideForm({
       <p className="mb-0.5 text-sm font-bold text-text-heading">{wallTitle}</p>
       <p className="mb-4 text-[11.5px] text-text-muted">{t("notYetPartition")}</p>
       {error && <p className="mb-2 text-xs text-red-700 dark:text-red-400">{error}</p>}
+
+      {/* Bug 8a: editable partition name field — pre-filled with the kebab-case
+          auto-label (bug 8b), derived from the room's *current* name, editable
+          before converting so the user isn't locked into the auto-generated value. */}
+      <div className="mb-4">
+        <label className="mb-1 block text-[10.5px] font-bold uppercase tracking-[.03em] text-text-muted">
+          Partition Name
+        </label>
+        <input
+          type="text"
+          value={labelValue}
+          onChange={(e) => setLabelValue(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+          placeholder={autoLabel}
+          className="block w-full border-0 border-b border-b-border bg-transparent px-0.5 py-1 text-sm font-bold text-text-heading focus:border-b-primary focus:outline-none"
+        />
+      </div>
+
       {/* convert-row: width + height side by side */}
       <div className="mb-4 flex gap-[22px]">
         <label className="flex flex-col gap-1.5">

@@ -94,18 +94,21 @@ export function NewRoomForm({
           placeholder={t("fieldRoomPlaceholder")}
           className="min-w-0 flex-1 rounded-sm border border-primary-soft bg-bg-white px-2.5 py-1.5 text-[12.5px] text-text-heading placeholder:text-text-placeholder focus:border-primary focus:outline-none"
         />
+        {/* Bug 4: submit button is icon-only (same width as the × cancel button)
+            so the text input gets maximum available width. */}
         <button
           type="button"
           onClick={() => void submit()}
           disabled={submitting}
-          className="shrink-0 rounded-sm bg-primary px-2.5 py-1.5 text-[11.5px] font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
+          title={t("createRoom")}
+          className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-sm bg-primary text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
         >
-          {t("createRoom")}
+          ✓
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="shrink-0 rounded-sm border border-border bg-bg-white px-2 py-1.5 text-[11.5px] text-text-body hover:border-[#b9c2ae]"
+          className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-sm border border-border bg-bg-white text-[11.5px] text-text-body hover:border-[#b9c2ae]"
         >
           ✕
         </button>

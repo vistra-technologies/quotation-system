@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ConvertSideForm } from "./convert-side-form";
 import { redirectToLogin } from "./login-redirect";
 import { useUnit } from "./unit-context";
@@ -44,14 +45,18 @@ export function LayoutModePanel({
   const side = room.sides[sideIndex];
 
   if (side.kind === "PLAIN") {
-    // Auto-generate the partition label from room name + side label (matches
-    // mockup: room.name + ' ' + cap(side) + ' Wall Partition').
     const wallTitle = side.label
       ? `${room.label} ${side.label} Wall`
       : room.label;
+    // Bug 8b: default partition label uses the room's *current* name (not a
+    // cached/stale value) and formats as kebab-case so a room renamed to
+    // "Lobby - Test Change" + right wall → "lobby-test-change-right-wall",
+    // matching the user's expectation from the bugs-3.md transcript at 11:39.
+    const slugify = (s: string) =>
+      s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
     const autoLabel = side.label
-      ? `${room.label} ${side.label} Wall Partition`
-      : `${room.label} Partition`;
+      ? `${slugify(room.label)}-${slugify(side.label)}-wall`
+      : slugify(room.label);
 
     return (
       <ConvertSideForm
@@ -130,7 +135,10 @@ function PartitionSummaryPanel({
   const { formatLen } = useUnit();
 
   const [nameValue, setNameValue] = useState(partition?.label ?? "");
-  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  // Bug 6: confirmRemoveOpen replaces the old inline `confirmingRemove` flag —
+  // removal now uses the app's shared ConfirmDialog (same modal used for
+  // "Delete floor?" and "Delete room?") instead of a compact inline text row.
+  const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
 
@@ -152,7 +160,7 @@ function PartitionSummaryPanel({
     setPrevPartitionId(partitionId);
     setNameValue(partition?.label ?? "");
     setHasSyncedLabel(partition !== null);
-    setConfirmingRemove(false);
+    setConfirmRemoveOpen(false);
     setRemoveError(null);
   } else if (!hasSyncedLabel && partition) {
     setHasSyncedLabel(true);
@@ -321,51 +329,52 @@ function PartitionSummaryPanel({
         <p className="mb-2 text-xs text-red-700 dark:text-red-400">{removeError}</p>
       )}
 
-      {/* convert-actions: Configure (primary) + Remove (danger) + Cancel */}
-      {confirmingRemove ? (
-        <div className="flex flex-wrap items-center gap-4">
-          <span className="text-xs text-text-muted">{t("confirmRemovePartition")}</span>
-          <button
-            type="button"
-            onClick={() => void handleRemove()}
-            disabled={removing}
-            className="text-xs font-bold text-red-600 hover:underline disabled:opacity-50"
-          >
-            {t("removePartition")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirmingRemove(false)}
-            className="text-xs font-bold text-text-muted hover:text-text-heading hover:underline"
-          >
-            {t("cancel")}
-          </button>
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-4">
-          <button
-            type="button"
-            onClick={() => onConfigure(partitionId, sideIndex)}
-            className="rounded-full bg-primary px-[18px] py-2 text-xs font-bold text-text-on-primary hover:bg-primary-dark"
-          >
-            {t("configurePartition")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirmingRemove(true)}
-            className="text-xs font-bold text-red-600 hover:underline"
-          >
-            {t("removePartition")}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            className="text-xs font-bold text-text-muted hover:text-text-heading hover:underline"
-          >
-            {t("cancel")}
-          </button>
-        </div>
-      )}
+      {/* convert-actions: Configure (primary) + Remove (danger) + Cancel.
+          Bug 6: "Remove Partition" now opens the app's shared ConfirmDialog
+          (same pattern as "Delete floor?" and "Delete room?") instead of the
+          old inline compact text row — consistent with the rest of the app. */}
+      <div className="flex flex-wrap items-center gap-4">
+        <button
+          type="button"
+          onClick={() => onConfigure(partitionId, sideIndex)}
+          className="rounded-full bg-primary px-[18px] py-2 text-xs font-bold text-text-on-primary hover:bg-primary-dark"
+        >
+          {t("configurePartition")}
+        </button>
+        <button
+          type="button"
+          onClick={() => setConfirmRemoveOpen(true)}
+          className="text-xs font-bold text-red-600 hover:underline"
+        >
+          {t("removePartition")}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="text-xs font-bold text-text-muted hover:text-text-heading hover:underline"
+        >
+          {t("cancel")}
+        </button>
+      </div>
+
+      {/* Bug 6: Shared ConfirmDialog for remove-partition confirmation.
+          errorMessage is cleared on re-open by the partitionId-change guard above. */}
+      <ConfirmDialog
+        isOpen={confirmRemoveOpen}
+        title={t("removePartition")}
+        message={t("confirmRemovePartition")}
+        errorMessage={removeError}
+        confirmLabel={t("removePartition")}
+        confirmVariant="danger"
+        cancelLabel={t("cancel")}
+        onConfirm={() => void handleRemove()}
+        onCancel={() => {
+          if (!removing) {
+            setConfirmRemoveOpen(false);
+            setRemoveError(null);
+          }
+        }}
+      />
     </div>
   );
 }

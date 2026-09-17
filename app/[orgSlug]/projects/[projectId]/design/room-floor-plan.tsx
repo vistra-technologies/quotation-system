@@ -237,8 +237,14 @@ export function RoomFloorPlan({
   return (
     <div className="flex w-full items-center justify-center">
       <div className="relative mx-auto w-full max-w-[340px]">
+        {/* Bug 5: outer polygon corners sit exactly at viewBox edges (0,0)-(200,200).
+            strokeWidth is in user-space units, so half the stroke width falls
+            outside the viewBox and is clipped — visually the room shape touches
+            the SVG boundary, especially at high browser zoom. Adding a 6-unit
+            margin on all four sides by expanding the viewBox keeps the outer
+            edges visually inside the white canvas with consistent padding. */}
         <svg
-          viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
+          viewBox={`-6 -6 ${VIEWBOX + 12} ${VIEWBOX + 12}`}
           className="w-full"
           style={{ aspectRatio: "1 / 1" }}
           onClick={() => onSelectSide(null)}
