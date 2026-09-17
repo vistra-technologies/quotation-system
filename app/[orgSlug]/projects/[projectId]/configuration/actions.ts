@@ -157,3 +157,55 @@ export async function updateSelection(
     RedirectType.replace,
   );
 }
+
+// ---------------------------------------------------------------------------
+// deleteSelection
+// ---------------------------------------------------------------------------
+
+export type DeleteSelectionState = { error: string | null };
+
+/**
+ * Delete a saved component (Selection) from the Configuration page.
+ *
+ * Thin marshaler — delegates to DELETE /api/v1/orgs/[orgSlug]/selections/[id]
+ * via internalFetch. No redirect (unlike create/update) — the caller stays on
+ * the Configuration page; revalidatePath refreshes the list in place.
+ *
+ * Returns { error } on failure — including the 409 "still in use" case from
+ * the route handler — so the client can show it inline without a redirect.
+ */
+export async function deleteSelection(
+  prevState: DeleteSelectionState,
+  formData: FormData,
+): Promise<DeleteSelectionState> {
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
+  const projectId = (formData.get("projectId") as string | null)?.trim();
+  const selectionId = (formData.get("selectionId") as string | null)?.trim();
+
+  if (!selectionId) {
+    return { error: "Selection ID is required." };
+  }
+
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/selections/${selectionId}`,
+    { method: "DELETE" },
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    return { error: errorMessage };
+  }
+
+  revalidatePath(`/${orgSlug}/projects/${projectId}/configuration`);
+  return { error: null };
+}
