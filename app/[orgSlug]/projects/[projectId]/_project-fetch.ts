@@ -33,6 +33,8 @@ export interface ProjectDetail {
   /** Step-gating counts, added Stage 19 Batch 4. */
   selectionCount: number;
   partitionCount: number;
+  /** Set by the Design page's "Submit Design" button — gates Summary/Quotation. */
+  designSubmittedAt: string | null;
   // Stage 14 Batch C — extended intake fields (all nullable)
   submissionDate: string | null;
   projectDeadline: string | null;

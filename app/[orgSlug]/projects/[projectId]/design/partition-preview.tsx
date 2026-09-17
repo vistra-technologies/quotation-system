@@ -25,7 +25,7 @@ export function PartitionPreview({ partition }: PartitionPreviewProps) {
     // No panels yet (new partition, empty design) — flat-colour fallback.
     return (
       <div
-        className="mt-1 h-[38px] w-full overflow-hidden rounded-[3px] border border-border bg-bg-white"
+        className="mt-1 h-[38px] w-full overflow-hidden rounded-[3px] border border-border bg-primary-softer"
         aria-hidden="true"
       />
     );
@@ -34,8 +34,11 @@ export function PartitionPreview({ partition }: PartitionPreviewProps) {
   const totalWidth = panels.reduce((s, p) => s + p.widthMm, 0) || 1;
 
   return (
+    // bg-primary-softer tints the whole swatch (mirrors the mockup's
+    // GLASS_PREVIEW_COLOR fallback) — individual panels stay transparent so
+    // the tint shows through, divided only by their borders.
     <div
-      className="mt-1 flex h-[38px] w-full overflow-hidden rounded-[3px] border-[1.5px] border-border bg-bg-white"
+      className="mt-1 flex h-[38px] w-full overflow-hidden rounded-[3px] border-[1.5px] border-border bg-primary-softer"
       aria-hidden="true"
     >
       {panels.map((panel) => (
