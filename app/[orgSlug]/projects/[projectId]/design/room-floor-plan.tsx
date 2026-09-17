@@ -235,7 +235,7 @@ export function RoomFloorPlan({
   }
 
   return (
-    <div className="flex flex-col items-center gap-3">
+    <div className="flex w-full items-center justify-center">
       <div className="relative mx-auto w-full max-w-[340px]">
         <svg
           viewBox={`0 0 ${VIEWBOX} ${VIEWBOX}`}
@@ -309,7 +309,20 @@ export function RoomFloorPlan({
           </div>
         )}
       </div>
+    </div>
+  );
+}
 
+/**
+ * Wall/Partition legend — mirrors mockup lines ~513-520. Rendered as a
+ * sibling BELOW the canvas-wrap card (not nested inside it, matching the
+ * mockup: the legend sits on the page background, outside the bordered
+ * floor-plan card) — see design-workspace.tsx's layout-mode render.
+ */
+export function RoomFloorPlanLegend() {
+  const t = useTranslations("design");
+  return (
+    <div className="flex items-center justify-center">
       <div className="flex items-center justify-center gap-4 rounded-pill border border-border bg-bg-white px-4 py-1.5 text-[10.5px] text-text-muted">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-3 w-3 rounded-[2px] border border-[#C7CBBA] bg-[#DFE2D4]" />

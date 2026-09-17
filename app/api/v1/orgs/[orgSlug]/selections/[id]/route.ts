@@ -5,9 +5,10 @@ import {
   apiForbidden,
   apiNotFound,
   apiBadRequest,
+  apiConflict,
   apiServerError,
 } from "@/lib/api-error";
-import { updateSelection } from "@/lib/data/selections";
+import { updateSelection, deleteSelection } from "@/lib/data/selections";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -77,6 +78,58 @@ export async function PATCH(
   } catch (err) {
     console.error(
       "[PATCH /api/v1/orgs/[orgSlug]/selections/[id]] updateSelection",
+      err,
+    );
+    return apiServerError();
+  }
+}
+
+// ─── DELETE /api/v1/orgs/[orgSlug]/selections/[id] ───────────────────────────
+
+/**
+ * Delete a saved component (Selection) from the Configuration page.
+ *
+ * Auth: any authenticated org member (matches the PATCH gate on this route).
+ * Tenancy: enforced by getApiSession() and deleteSelection() (org-scoped lookup).
+ *
+ * Returns 409 if the component is still assigned to a panel/edge in any
+ * Partition's design elsewhere in the project — refuses rather than silently
+ * orphaning the reference.
+ * Returns 404 if the selection does not exist or belongs to a different org.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ orgSlug: string; id: string }> },
+) {
+  const { orgSlug, id } = await params;
+
+  let session;
+  try {
+    session = await getApiSession(request, orgSlug);
+  } catch (err) {
+    if (err instanceof ApiAuthError) {
+      if (err.status === 401) return apiUnauthorized(err.message);
+      if (err.status === 403) return apiForbidden(err.message);
+      if (err.status === 404) return apiNotFound(err.message);
+    }
+    console.error("[DELETE /api/v1/orgs/[orgSlug]/selections/[id]]", err);
+    return apiServerError();
+  }
+
+  try {
+    const result = await deleteSelection(session, id);
+    if (result === null) {
+      return apiNotFound("Selection not found or access denied");
+    }
+    if ("inUseCount" in result) {
+      return apiConflict(
+        `This component is used on ${result.inUseCount} wall/panel(s) in Design — remove those assignments first.`,
+      );
+    }
+    return NextResponse.json({ id });
+  } catch (err) {
+    console.error(
+      "[DELETE /api/v1/orgs/[orgSlug]/selections/[id]] deleteSelection",
       err,
     );
     return apiServerError();
