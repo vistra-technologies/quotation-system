@@ -583,3 +583,18 @@ export function useDraftContext(): DraftContextValue {
   if (!ctx) throw new Error("useDraftContext must be used inside <DraftProvider>");
   return ctx;
 }
+
+// ─── Shared room-name selector (R-8c) ────────────────────────────────────────
+//
+// Returns the effective display name for a room: any pending (unsaved) rename
+// takes precedence over the server-saved room.label. Every component that shows
+// a room name for display purposes should use this instead of reading room.label
+// directly — otherwise a rename entered in the canvas header won't propagate
+// until the user hits Save.
+//
+// Design decision (2026-09-18): the rename stays draft-only (SET_ROOM_NAME →
+// pendingRoomNameEdits). This is a *read* helper only — no write-path changes.
+export function useEffectiveRoomName(room: { id: string; label: string }): string {
+  const { state } = useDraftContext();
+  return state.pendingRoomNameEdits[room.id] ?? room.label;
+}

@@ -7,6 +7,8 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { ConvertSideForm } from "./convert-side-form";
 import { redirectToLogin } from "./login-redirect";
 import { useUnit } from "./unit-context";
+import { useEffectiveRoomName } from "./design-draft-context";
+import { sideName } from "./room-floor-plan";
 import type { PartitionRow, RoomRow } from "./types";
 
 interface LayoutModePanelProps {
@@ -44,19 +46,17 @@ export function LayoutModePanel({
 }: LayoutModePanelProps) {
   const side = room.sides[sideIndex];
 
+  // R-8c: read the effective room name (pending rename ?? saved label) at the
+  // top level — hooks must not be called inside conditionals.
+  const effectiveRoomName = useEffectiveRoomName(room);
+
   if (side.kind === "PLAIN") {
-    const wallTitle = side.label
-      ? `${room.label} ${side.label} Wall`
-      : room.label;
-    // Bug 8b: default partition label uses the room's *current* name (not a
-    // cached/stale value) and formats as kebab-case so a room renamed to
-    // "Lobby - Test Change" + right wall → "lobby-test-change-right-wall",
-    // matching the user's expectation from the bugs-3.md transcript at 11:39.
-    const slugify = (s: string) =>
-      s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-    const autoLabel = side.label
-      ? `${slugify(room.label)}-${slugify(side.label)}-wall`
-      : slugify(room.label);
+    // R-8b: human-readable "{Room Name} - {Side} Wall" format (title case,
+    // space-hyphen-space). Side name comes from its *index* via sideName()
+    // because side.label is null for every seeded side; the old slugify branch
+    // fell through to the room-name-only fallback and produced lowercase output.
+    const sideLabel = side.label ?? sideName(sideIndex, room.sides.length);
+    const autoLabel = `${effectiveRoomName} - ${sideLabel} Wall`;
 
     return (
       <ConvertSideForm
@@ -64,7 +64,6 @@ export function LayoutModePanel({
         isSubdomain={isSubdomain}
         floorId={floorId}
         roomId={room.id}
-        wallTitle={wallTitle}
         autoLabel={autoLabel}
         sideIndex={sideIndex}
         onCancel={onCancel}

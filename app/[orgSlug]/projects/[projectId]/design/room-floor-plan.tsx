@@ -235,18 +235,22 @@ export function RoomFloorPlan({
   }
 
   return (
-    <div className="flex w-full items-center justify-center">
-      <div className="relative mx-auto w-full max-w-[340px]">
-        {/* Bug 5: outer polygon corners sit exactly at viewBox edges (0,0)-(200,200).
-            strokeWidth is in user-space units, so half the stroke width falls
-            outside the viewBox and is clipped — visually the room shape touches
-            the SVG boundary, especially at high browser zoom. Adding a 6-unit
-            margin on all four sides by expanding the viewBox keeps the outer
-            edges visually inside the white canvas with consistent padding. */}
+    // R-5: the old max-w-[340px] hard-cap prevented the floor plan from
+    // using the full card width and made it appear at a fixed size regardless
+    // of viewport width or browser zoom. Replacing it with a proportional
+    // container: the SVG fills available width/height while preserving the 1:1
+    // aspect ratio and never overflowing its container. The batch-3 viewBox
+    // margin (-6 -6 212 212) is kept — it was a separate, correct fix for
+    // stroke clipping at the polygon edges.
+    <div className="flex h-full w-full items-center justify-center p-4">
+      <div
+        className="relative"
+        style={{ aspectRatio: "1 / 1", maxHeight: "100%", maxWidth: "100%", width: "100%" }}
+      >
         <svg
           viewBox={`-6 -6 ${VIEWBOX + 12} ${VIEWBOX + 12}`}
-          className="w-full"
-          style={{ aspectRatio: "1 / 1" }}
+          className="h-full w-full"
+          style={{ display: "block" }}
           onClick={() => onSelectSide(null)}
         >
           <defs>

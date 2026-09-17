@@ -328,10 +328,12 @@ export function AddSelectionForm({
       <LoadingOverlay visible={isPending} />
 
       {/* 3-column grid layout matching the finalized mockup.
-          Bug 1: min-h ensures the dialog stays at least viewport-tall regardless of
-          which component category is selected (Door has fewer fields → smaller form).
-          Bug 2: the right column gets independent scroll (see below). */}
-      <div className="grid min-h-[calc(100vh-160px)] grid-cols-[200px_1fr_300px] items-start gap-6 p-7">
+          R-1: flex-1 min-h-0 lets the grid fill the card's bounded height
+          (established by WizardPageShell + configuration/page.tsx) rather than
+          forcing a vh-relative minimum that always exceeded the viewport.
+          R-2: items-stretch lets each column fill the row so the right column
+          can scroll its own content independently (see below). */}
+      <div className="grid min-h-[420px] flex-1 grid-cols-[200px_1fr_300px] items-stretch gap-6 p-7">
 
         {/* ── Left: ComponentType sidebar (5d — vertical icon-over-label tiles) ── */}
         <div>
@@ -547,14 +549,16 @@ export function AddSelectionForm({
         </div>
 
         {/* ── Right: Saved Components list (5d — icon chip + name + type + chevron) ── */}
-        {/* Bug 2: sticky top + max-h + overflow-y-auto makes this column scroll
-            independently of the form column — the list grows longer than the page
-            while the form/buttons stay fixed and accessible. sticky top-7 offsets
-            by the grid's own p-7 padding so it pins flush with the grid top. */}
-        <div className="sticky top-7 max-h-[calc(100vh-180px)] overflow-y-auto pr-1">
-          <p className="mb-3.5 text-[11px] font-bold uppercase tracking-[0.06em] text-text-muted">
+        {/* R-2: the whole-column sticky + vh max-h is replaced with a flex
+            column: the "SAVED COMPONENTS" heading is pinned (shrink-0) and
+            only the list body scrolls (flex-1 min-h-0 overflow-y-auto).
+            No sticky/viewport-relative sizing needed once the grid itself has
+            a bounded height (R-1). */}
+        <div className="flex min-h-0 flex-col">
+          <p className="mb-3.5 shrink-0 text-[11px] font-bold uppercase tracking-[0.06em] text-text-muted">
             Saved Components
           </p>
+          <div className="min-h-0 flex-1 overflow-y-auto pr-1">
 
           {selections.length === 0 ? (
             <div className="rounded-md border border-dashed border-border px-4 py-8 text-center">
@@ -621,6 +625,7 @@ export function AddSelectionForm({
               })()}
             </div>
           )}
+          </div>{/* end scrollable body */}
         </div>
 
         {confirmDeleteSelection && (

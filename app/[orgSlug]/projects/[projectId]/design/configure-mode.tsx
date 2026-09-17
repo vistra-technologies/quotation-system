@@ -276,9 +276,14 @@ export function ConfigureMode({
                 <span className="text-[13.5px] font-bold text-text-heading">{widthDisplay}</span>
               )}
               <span className="text-[10.5px] font-semibold text-text-muted">{unit}</span>
-              {/* Edit/confirm icon button */}
+              {/* Edit/confirm icon button — R-11: onMouseDown preventDefault stops
+                  the button from stealing focus from the input. Without it the input
+                  fires onBlur (running commitWidth + setEditingDimension(null)) before
+                  the onClick fires, which then sees editingDimension===null and
+                  re-enters edit mode — the lock visually never sticks. */}
               <button
                 type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   if (editingDimension === "width") { commitWidth(); }
                   else { setEditingDimension("width"); }
@@ -319,9 +324,10 @@ export function ConfigureMode({
                 <span className="text-[13.5px] font-bold text-text-heading">{heightDisplay}</span>
               )}
               <span className="text-[10.5px] font-semibold text-text-muted">{unit}</span>
-              {/* Edit/confirm icon button */}
+              {/* Edit/confirm icon button — R-11: same onMouseDown fix as width button */}
               <button
                 type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={() => {
                   if (editingDimension === "height") { commitHeight(); }
                   else { setEditingDimension("height"); }

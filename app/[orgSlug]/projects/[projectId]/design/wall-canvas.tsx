@@ -151,17 +151,24 @@ export function WallCanvas({
                     }
                   }}
                 >
-                  {/* .panel-label: P{n} · {width} — mockup line 1699 */}
-                  <div
-                    className="text-[11.5px] font-bold"
-                    style={{ color: "var(--color-panel-label)" }}
-                  >
-                    P{index + 1} · {formatLen(panel.widthMm)}
-                  </div>
+                  {/* R-12: wrap the two label divs in a relative z-[1] container
+                      so they render above the door's absolute fill (which is at
+                      the default z-index / 0). pointer-events-none so the door's
+                      right-click context menu (hinge toggle) is not blocked.
+                      The selected-panel ring is z-[2] and still wins over both. */}
+                  <div className="relative z-[1] pointer-events-none">
+                    {/* .panel-label: P{n} · {width} — mockup line 1699 */}
+                    <div
+                      className="text-[11.5px] font-bold"
+                      style={{ color: "var(--color-panel-label)" }}
+                    >
+                      P{index + 1} · {formatLen(panel.widthMm)}
+                    </div>
 
-                  {/* .panel-material: glass type name — mockup line 1704 */}
-                  <div className="mt-[2px] text-[9px] tracking-[.02em] text-[#93998a]">
-                    {glass ? glass.label : ""}
+                    {/* .panel-material: glass type name — mockup line 1704 */}
+                    <div className="mt-[2px] text-[9px] tracking-[.02em] text-[#93998a]">
+                      {glass ? glass.label : ""}
+                    </div>
                   </div>
 
                   {/*
