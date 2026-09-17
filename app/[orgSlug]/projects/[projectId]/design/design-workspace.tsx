@@ -29,6 +29,7 @@ import { NewRoomForm } from "./new-room-form";
 import { RoomNameInput } from "./room-name-input";
 import { redirectToLogin } from "./login-redirect";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Toast, useToast } from "@/components/toast";
 import type {
   FloorRow,
   FloorWithRooms,
@@ -62,6 +63,8 @@ function DesignWorkspaceInner({
   const t = useTranslations("design");
   const router = useRouter();
   const { state, dispatch, save, discard } = useDraftContext();
+  // Bug 13: toast for Submit Design feedback.
+  const submitToast = useToast();
 
   const [floors, setFloors] = useState<FloorWithRooms[]>(initialFloors);
   const [submittingDesign, setSubmittingDesign] = useState(false);
@@ -91,6 +94,8 @@ function DesignWorkspaceInner({
         setSubmitDesignError(body.error ?? "Could not submit the design — please try again.");
         return;
       }
+      // Bug 13: show translucent slide-in toast confirming submission.
+      submitToast.show(t("designSubmitted"));
       // Re-render the server-rendered wizard breadcrumb so Summary/Quotation
       // reflect the unlock immediately, without a manual page reload. The
       // response body isn't otherwise consumed — the button's own label
@@ -262,6 +267,23 @@ function DesignWorkspaceInner({
           selection: { type: "panel", panelIds: [firstPanel.id] },
         });
       }
+      // Bug 9 (bugs-3.md): "No partition panel should ever start with no glass."
+      // If any panels have no glass selection, auto-assign the first available
+      // glass selection so the user always lands on a configured state.
+      // This makes the partition immediately dirty (isDirty=true) — intentional,
+      // since the user explicitly asked for glass to always be pre-assigned.
+      const panels = partition.design?.panels ?? [];
+      const hasUnglazedPanel = panels.some((p) => !p.selectionId);
+      if (hasUnglazedPanel && panels.length > 0) {
+        const firstGlass = selections.find((s) => s.componentType.code === "GLASS");
+        if (firstGlass) {
+          dispatch({
+            type: "SET_GLASS",
+            panelIds: panels.map((p) => p.id),
+            selectionId: firstGlass.id,
+          });
+        }
+      }
     } catch {
       return;
     }
@@ -386,10 +408,23 @@ function DesignWorkspaceInner({
           : f,
       ),
     );
-    // Stage 21 QA bug #12: keep the just-converted wall selected (its side
-    // index is unchanged by the conversion) instead of clearing back to the
-    // "click a wall" placeholder — the human's call was to select it in Room
-    // Layout only, not auto-jump into Configure mode.
+    // Stage 21 QA bug #12: keep the just-converted wall selected when converting
+    // PLAIN → PARTITION so the detail panel remains visible immediately after.
+    //
+    // Bug 7 (bugs-3.md): when REMOVING a partition (PARTITION → PLAIN), the side
+    // that was selected no longer has a partition — the right rail would show a
+    // stale "wall still selected" state.  Detect the direction by checking whether
+    // the updated side at layoutSideSelection is now PLAIN, and if so, clear the
+    // selection back to "nothing selected" (same as the initial layout state).
+    setLayoutSideSelection((prev) => {
+      if (prev === null) return prev;
+      const updatedSide = updatedRoom.sides[prev];
+      if (!updatedSide) return null; // side index no longer valid
+      // If the side is now PLAIN, this was a removal — clear selection.
+      if (updatedSide.kind === "PLAIN") return null;
+      // PARTITION — conversion case, keep selected (QA bug #12 intent).
+      return prev;
+    });
   }
 
   function handleRoomRenamed(updatedRoom: RoomRow) {
@@ -445,7 +480,8 @@ function DesignWorkspaceInner({
             <p className="text-sm text-text-muted">{t("noWalls")}</p>
           ) : (
             <>
-              <h2 className="mb-1 text-xs font-bold text-text-heading">{t("wallsTitle")}</h2>
+              {/* Bug 3: "Rooms" h2 label moved into RoomList so it appears
+                  below the "+ Add Room" button. No h2 here any more. */}
               {selectedFloor ? (
                 <RoomList
                   orgSlug={orgSlug}
@@ -648,6 +684,11 @@ function DesignWorkspaceInner({
           onCancel={() => setUnsavedModal(null)}
         />
       )}
+
+      {/* Bug 13: slide-in toast for Submit Design feedback — bottom-right,
+          translucent, auto-dismisses after 3 seconds. Reusable component;
+          message is set at call-site so the component has no hardcoded copy. */}
+      <Toast {...submitToast} />
     </>
   );
 }

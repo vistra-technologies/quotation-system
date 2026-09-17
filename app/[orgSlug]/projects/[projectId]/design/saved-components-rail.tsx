@@ -17,8 +17,11 @@
  * updates live while dragging; numeric readout updates alongside the thumb.
  */
 
+import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { MIN_DOOR_HEIGHT_MM, DEFAULT_DOOR_HEIGHT_RATIO } from "./configure-constants";
+// MIN_DOOR_HEIGHT_MM / DEFAULT_DOOR_HEIGHT_RATIO removed from import — Bug 12
+// changed the door default to full wall height and slider min to 0, making
+// both constants unused in this file. configure-constants.ts is unchanged.
 import { useDraftContext } from "./design-draft-context";
 import { useUnit } from "./unit-context";
 import type { DesignPanel, SelectionRow } from "./types";
@@ -86,9 +89,12 @@ export function SavedComponentsRail({ selections }: SavedComponentsRailProps) {
     if (!soloPanelId) return;
     const wallHeightMm = partition!.heightMm;
     const existingHeight = selectedPanel?.door?.outerFrame?.h;
+    // Bug 12: new door defaults to FULL wall height (bugs-3.md: "the default
+    // should be fully occupied"). Previously defaulted to 0.85 * wallHeight.
+    // existingHeight path unchanged — preserves the height when switching doors.
     const heightMm = existingHeight
       ? Math.min(existingHeight, wallHeightMm)
-      : Math.max(MIN_DOOR_HEIGHT_MM, Math.round(wallHeightMm * DEFAULT_DOOR_HEIGHT_RATIO));
+      : wallHeightMm;
     if (selectedPanel?.door && selectedPanel.door.selectionId === componentId) {
       // Same door already active — toggle off (remove).
       dispatch({ type: "TOGGLE_DOOR", panelId: soloPanelId, selectionId: componentId });
@@ -152,9 +158,12 @@ export function SavedComponentsRail({ selections }: SavedComponentsRailProps) {
               {t("sectionDoorHeight")}
             </h3>
             <div className="flex items-center gap-2.5">
+              {/* Bug 12: min={0} — user must be able to slide all the way to zero.
+                  Previously MIN_DOOR_HEIGHT_MM (914mm) was the floor, preventing
+                  low-door configurations. */}
               <input
                 type="range"
-                min={MIN_DOOR_HEIGHT_MM}
+                min={0}
                 max={wallHeightMm}
                 value={currentDoorHeightMm}
                 // Dispatch on every input event so the canvas door graphic
@@ -227,8 +236,30 @@ interface ComponentSectionProps {
 /**
  * A list of component cards — mirrors renderCompList (lines 1964-1993) and
  * the comp-item / comp-icon / comp-text / comp-edit structure (lines 567-581).
+ *
+ * Bug 10: The ✎ pencil icon is replaced with an ⓘ info icon.
+ *   Clicking it opens a small popover listing the saved config key-value pairs
+ *   so the user can inspect what's configured without triggering any edit action.
+ *   Info icon has the same hover treatment as a delete/action icon (visual
+ *   feedback on hover) per the user's request: "same thing over here" referencing
+ *   the delete icon's hover state at bugs-3.md timestamp 14:26.
  */
 function ComponentSection({ title, note, comps, enabled, isActive, onClick }: ComponentSectionProps) {
+  const [openInfoId, setOpenInfoId] = useState<string | null>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Close the popover when the user clicks outside it.
+  useEffect(() => {
+    if (!openInfoId) return;
+    function handleClick(e: MouseEvent) {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        setOpenInfoId(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [openInfoId]);
+
   return (
     <section className="mb-4 last:mb-1">
       <h3 className="mb-0.5 text-[10.5px] font-bold uppercase tracking-[.04em] text-text-muted">
@@ -238,40 +269,98 @@ function ComponentSection({ title, note, comps, enabled, isActive, onClick }: Co
       <div className="flex flex-col gap-1.5">
         {comps.map((comp) => {
           const active = enabled && isActive(comp.id);
-          // comp-icon: first character of the label as a small placeholder
-          // (the mockup uses emoji icons from static COMPONENT_LIBRARY data;
-          // our SelectionRow has no icon field — use a letter badge instead).
           const iconChar = comp.label.charAt(0).toUpperCase();
+          const isInfoOpen = openInfoId === comp.id;
+
+          // Format a config key as a human-readable label (camelCase / snake_case → words).
+          const formatKey = (k: string) =>
+            k.replace(/([A-Z])/g, " $1").replace(/_/g, " ").replace(/^\w/, (c) => c.toUpperCase()).trim();
+
+          const configEntries = Object.entries(comp.config ?? {}).filter(
+            ([, v]) => v !== null && v !== "" && v !== false,
+          );
+
           return (
-            <button
-              key={comp.id}
-              type="button"
-              disabled={!enabled}
-              onClick={() => onClick(comp.id)}
-              className={
-                "flex items-center gap-2.5 rounded-[7px] border px-2.5 py-2 text-left transition-colors duration-150 " +
-                (active
-                  ? "border-primary bg-primary-softer"
-                  : enabled
-                  ? "border-border bg-bg-white hover:border-primary hover:bg-[#f7fbf7]"
-                  : "border-border bg-bg-white") +
-                (!enabled ? " cursor-not-allowed opacity-35" : "")
-              }
-            >
-              {/* comp-icon */}
-              <span className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[6px] border border-[#d8dcd0] bg-[#fbfcf9] text-xs">
-                {iconChar}
-              </span>
-              {/* comp-text */}
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate text-xs font-bold text-text-heading">{comp.label}</span>
-                <span className="truncate text-[10.5px] text-text-muted">
-                  {comp.componentType.name}
-                </span>
-              </span>
-              {/* comp-edit pencil indicator */}
-              <span className="text-[#b7bcae] text-xs" aria-hidden="true">✎</span>
-            </button>
+            <div key={comp.id} className="relative">
+              <div
+                className={
+                  "flex items-center gap-2.5 rounded-[7px] border px-2.5 py-2 transition-colors duration-150 " +
+                  (active
+                    ? "border-primary bg-primary-softer"
+                    : enabled
+                    ? "border-border bg-bg-white hover:border-primary hover:bg-[#f7fbf7]"
+                    : "border-border bg-bg-white") +
+                  (!enabled ? " opacity-35" : "")
+                }
+              >
+                {/* Clickable area: icon + name (assigns the component) */}
+                <button
+                  type="button"
+                  disabled={!enabled}
+                  onClick={() => onClick(comp.id)}
+                  className={"flex min-w-0 flex-1 items-center gap-2.5 text-left" + (!enabled ? " cursor-not-allowed" : "")}
+                >
+                  {/* comp-icon */}
+                  <span className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-[6px] border border-[#d8dcd0] bg-[#fbfcf9] text-xs">
+                    {iconChar}
+                  </span>
+                  {/* comp-text */}
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate text-xs font-bold text-text-heading">{comp.label}</span>
+                    <span className="truncate text-[10.5px] text-text-muted">
+                      {comp.componentType.name}
+                    </span>
+                  </span>
+                </button>
+
+                {/* Bug 10: info/eye icon — replaces the non-functional ✎ pencil.
+                    Opens a read-only config popover. Hover state mirrors the
+                    delete icon's hover treatment: color shift on :hover. */}
+                <button
+                  type="button"
+                  title="View configuration"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOpenInfoId(isInfoOpen ? null : comp.id);
+                  }}
+                  className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-[5px] text-[#b7bcae] transition-colors hover:bg-primary-softer hover:text-primary-dark"
+                >
+                  {/* Eye/info SVG icon */}
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="8" x2="12" y2="8" strokeWidth="2.5" />
+                    <line x1="12" y1="12" x2="12" y2="16" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Read-only config popover */}
+              {isInfoOpen && (
+                <div
+                  ref={popoverRef}
+                  className="absolute right-0 top-[calc(100%+4px)] z-30 min-w-[180px] max-w-[240px] rounded-md border border-border bg-bg-white p-3 shadow-[0_8px_24px_-8px_rgba(27,40,30,0.22)]"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-[.06em] text-text-muted">
+                    {comp.label}
+                  </p>
+                  {configEntries.length === 0 ? (
+                    <p className="text-[10.5px] text-text-muted italic">No configuration saved.</p>
+                  ) : (
+                    <dl className="flex flex-col gap-1">
+                      {configEntries.map(([k, v]) => (
+                        <div key={k} className="flex items-baseline gap-1.5">
+                          <dt className="shrink-0 text-[10px] text-text-muted">{formatKey(k)}:</dt>
+                          <dd className="min-w-0 truncate text-[10.5px] font-semibold text-text-heading">
+                            {String(v)}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
+                </div>
+              )}
+            </div>
           );
         })}
       </div>

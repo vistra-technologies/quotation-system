@@ -327,8 +327,11 @@ export function AddSelectionForm({
     <>
       <LoadingOverlay visible={isPending} />
 
-      {/* 3-column grid layout matching the finalized mockup */}
-      <div className="grid grid-cols-[200px_1fr_300px] gap-6 p-7">
+      {/* 3-column grid layout matching the finalized mockup.
+          Bug 1: min-h ensures the dialog stays at least viewport-tall regardless of
+          which component category is selected (Door has fewer fields → smaller form).
+          Bug 2: the right column gets independent scroll (see below). */}
+      <div className="grid min-h-[calc(100vh-160px)] grid-cols-[200px_1fr_300px] items-start gap-6 p-7">
 
         {/* ── Left: ComponentType sidebar (5d — vertical icon-over-label tiles) ── */}
         <div>
@@ -544,7 +547,11 @@ export function AddSelectionForm({
         </div>
 
         {/* ── Right: Saved Components list (5d — icon chip + name + type + chevron) ── */}
-        <div>
+        {/* Bug 2: sticky top + max-h + overflow-y-auto makes this column scroll
+            independently of the form column — the list grows longer than the page
+            while the form/buttons stay fixed and accessible. sticky top-7 offsets
+            by the grid's own p-7 padding so it pins flush with the grid top. */}
+        <div className="sticky top-7 max-h-[calc(100vh-180px)] overflow-y-auto pr-1">
           <p className="mb-3.5 text-[11px] font-bold uppercase tracking-[0.06em] text-text-muted">
             Saved Components
           </p>

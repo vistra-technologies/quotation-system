@@ -230,12 +230,12 @@ export function RoomList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Rooms-count summary (mockup: #roomsCount) */}
-      <p className="mb-3 shrink-0 text-[11.5px] text-text-muted">
-        {t("roomsSummary", { rooms: visibleRooms.length, partitions: totalPartitions })}
-      </p>
+      {/* Bug 3: "+ Add Room" zone moved ABOVE the "Rooms" section label — the
+          user's explicit request (bugs-3.md Bug 3). The h2 label previously
+          lived in design-workspace.tsx above <RoomList>; it now lives here
+          so both elements are ordered correctly within the same component. */}
 
-      {/* S21-A4: Add-room zone — always above the room list (mockup: #addRoomZone) */}
+      {/* S21-A4: Add-room zone — above the Rooms section label */}
       {addingRoom ? (
         <NewRoomForm
           orgSlug={orgSlug}
@@ -257,6 +257,16 @@ export function RoomList({
           {t("newRoom")}
         </button>
       )}
+
+      {/* "Rooms" section label — below Add Room zone, above count + list */}
+      <h2 className="mb-1 shrink-0 text-xs font-bold text-text-heading">
+        {t("wallsTitle")}
+      </h2>
+
+      {/* Rooms-count summary (mockup: #roomsCount) */}
+      <p className="mb-3 shrink-0 text-[11.5px] text-text-muted">
+        {t("roomsSummary", { rooms: visibleRooms.length, partitions: totalPartitions })}
+      </p>
 
       {/* Room list with vertical scroll */}
       <div className="min-h-0 flex-1 overflow-y-auto">
