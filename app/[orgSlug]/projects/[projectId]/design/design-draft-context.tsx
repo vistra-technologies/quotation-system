@@ -21,7 +21,6 @@
 
 import React, { createContext, useContext, useReducer } from "react";
 import { redirectToLogin } from "./login-redirect";
-import { DEFAULT_PANEL_WIDTH_MM } from "./configure-constants";
 import type {
   DesignDoor,
   DesignPanel,
@@ -81,19 +80,20 @@ export type DraftAction =
   | { type: "SET_SELECTION"; selection: DraftSelection }
 
   // ── Panel structural mutations ─────────────────────────────────────────────
-  // ADD_PANEL: append a new glass panel at DEFAULT_PANEL_WIDTH_MM.
-  // NOTE: draft.widthMm is NOT updated here because widthMm is a derived value:
-  // the server recomputes it as sum(panels[].widthMm) whenever patch.design.panels
-  // is present (lib/data/partitions.ts line 284). Adding a panel increases the
-  // logical total client-side; the server normalises it on Save.
+  // ADD_PANEL: append a new glass panel, redividing the existing total width
+  // evenly across all panels (including the new one) — the total is locked,
+  // not grown (Stage 21 QA bug #16/#20).
   | { type: "ADD_PANEL" }
   // REMOVE_PANELS: caller ensures panelIds.length < total panels.
   | { type: "REMOVE_PANELS"; panelIds: string[] }
   // SPLIT_PANEL: caller ensures panel widthMm >= MIN_SPLIT_WIDTH_MM.
   | { type: "SPLIT_PANEL"; panelId: string }
-  // MAKE_EQUAL_WIDTH: floor(total/n) per panel; last panel absorbs the remainder
-  // so sum is preserved exactly.
-  | { type: "MAKE_EQUAL_WIDTH" }
+  // MAKE_EQUAL_WIDTH: floor(subtotal/n) per targeted panel; last targeted panel
+  // absorbs the remainder so the targeted subtotal is preserved exactly.
+  // panelIds scopes the operation — panels not listed are left untouched
+  // (Stage 21 QA bug #17: this used to silently equalize every panel in the
+  // partition regardless of what was selected).
+  | { type: "MAKE_EQUAL_WIDTH"; panelIds: string[] }
   // UNITE_PANELS: caller ensures panelIds are contiguous; merged width = sum of targets.
   | { type: "UNITE_PANELS"; panelIds: string[] }
 
@@ -184,26 +184,54 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
     case "ADD_PANEL": {
       if (!state.draft) return state;
       const panels = state.draft.design?.panels ?? [];
-      // draft.widthMm is intentionally NOT updated — the server derives it from
-      // sum(panels[].widthMm) on every Save (lib/data/partitions.ts line 284).
+      // Stage 21 QA bug #16/#20: the total partition width is locked — adding a
+      // panel must redivide the EXISTING total across the new panel count, not
+      // append a flat DEFAULT_PANEL_WIDTH_MM on top of it (which grew the total
+      // and misassigned the remaining space). Same last-absorbs-remainder
+      // pattern as SET_PARTITION_WIDTH so the sum is preserved exactly.
+      const existingTotal = panels.reduce((s, p) => s + p.widthMm, 0);
+      const newCount = panels.length + 1;
+      const base = Math.max(1, Math.floor(existingTotal / newCount));
       const newPanel: DesignPanel = {
         id: crypto.randomUUID(),
         type: "glass",
-        widthMm: DEFAULT_PANEL_WIDTH_MM,
+        widthMm: base,
         heightMm: state.draft.heightMm,
         selectionId:
           panels.length > 0 && panels.every((p) => p.selectionId === panels[0].selectionId)
             ? panels[0].selectionId
             : null,
       };
-      return mutatePanels(state, (ps) => [...ps, newPanel]);
+      return mutatePanels(state, (ps) => {
+        const resized = ps.map((p) => ({ ...p, widthMm: base }));
+        const assignedTotal = base * ps.length;
+        const remainder = existingTotal - assignedTotal;
+        return [...resized, { ...newPanel, widthMm: Math.max(1, base + remainder) }];
+      });
     }
 
-    case "REMOVE_PANELS":
-      return mutatePanels(
-        { ...state, selection: null },
-        (ps) => ps.filter((p) => !action.panelIds.includes(p.id)),
+    case "REMOVE_PANELS": {
+      if (!state.draft) return state;
+      const panels = state.draft.design?.panels ?? [];
+      const survivors = panels.filter((p) => !action.panelIds.includes(p.id));
+      if (survivors.length === 0) {
+        return mutatePanels({ ...state, selection: null }, () => survivors);
+      }
+      // Stage 21 QA bug #16: removing panels must redistribute the partition's
+      // existing total across the surviving panels, not just drop the removed
+      // panels' width and shrink the total.
+      const total = panels.reduce((s, p) => s + p.widthMm, 0);
+      const base = Math.max(1, Math.floor(total / survivors.length));
+      return mutatePanels({ ...state, selection: null }, () =>
+        survivors.map((p, i) => ({
+          ...p,
+          widthMm:
+            i === survivors.length - 1
+              ? Math.max(1, total - base * (survivors.length - 1))
+              : base,
+        })),
       );
+    }
 
     case "SPLIT_PANEL": {
       if (!state.draft) return state;
@@ -227,14 +255,27 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
     case "MAKE_EQUAL_WIDTH": {
       if (!state.draft) return state;
       const panels = state.draft.design?.panels ?? [];
-      if (panels.length === 0) return state;
-      const total = panels.reduce((s, p) => s + p.widthMm, 0);
-      const base = Math.floor(total / panels.length);
+      // Only equalize the targeted panels — fall back to all panels when
+      // nothing specific was targeted (e.g. a single-panel right-click with no
+      // multi-selection). Panels outside panelIds are left untouched.
+      const targets = action.panelIds.length > 0
+        ? panels.filter((p) => action.panelIds.includes(p.id))
+        : panels;
+      if (targets.length < 2) return state;
+      const subtotal = targets.reduce((s, p) => s + p.widthMm, 0);
+      const base = Math.floor(subtotal / targets.length);
+      const targetIdSet = new Set(targets.map((p) => p.id));
+      let seen = 0;
       return mutatePanels(state, (ps) =>
-        ps.map((p, i) => ({
-          ...p,
-          widthMm: i === ps.length - 1 ? total - base * (ps.length - 1) : base,
-        })),
+        ps.map((p) => {
+          if (!targetIdSet.has(p.id)) return p;
+          seen += 1;
+          const isLastTarget = seen === targets.length;
+          return {
+            ...p,
+            widthMm: isLastTarget ? subtotal - base * (targets.length - 1) : base,
+          };
+        }),
       );
     }
 
@@ -437,6 +478,20 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
   async function save(orgSlug: string, isSubdomain: boolean): Promise<SaveResult> {
     if (!state.partitionId || !state.draft) {
       return { ok: false, error: "No active partition." };
+    }
+
+    // Stage 21 QA bug #13: a partition must never persist with a glass panel
+    // that has no glass type assigned — checked client-side before the PATCH
+    // so the user gets an immediate, specific error instead of a silently
+    // incomplete save.
+    const unassignedGlassPanels = (state.draft.design?.panels ?? []).filter(
+      (p) => p.type === "glass" && !p.selectionId,
+    );
+    if (unassignedGlassPanels.length > 0) {
+      return {
+        ok: false,
+        error: `${unassignedGlassPanels.length} panel(s) still need a glass type assigned before saving.`,
+      };
     }
 
     const patchBody: PartitionPatch = {

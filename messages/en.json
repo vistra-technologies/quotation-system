@@ -387,6 +387,7 @@
     "ctxStandardWidth": "Apply standard width",
     "ctxHingeLeft": "Left hinge",
     "ctxHingeRight": "Right hinge",
+    "ctxDoorHeight": "Door height",
     "ctxOnlyAdjacentUnite": "Only adjacent panels can be united",
     "saveChanges": "Save changes",
     "saved": "Saved",
