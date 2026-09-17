@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { SelectField } from "@/components/select-field";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { TrashIcon } from "@/components/trash-icon";
 import { ComponentIcon } from "@/lib/component-icons";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import {
@@ -709,15 +710,7 @@ function SelectionGroup({ title, group, editingSelectionId, onEdit, onDelete }: 
                 }}
                 className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-sm text-text-body transition-colors hover:bg-[--color-danger-bg] hover:text-[--color-status-failed-text]"
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path d="M9 3a1 1 0 0 0-1 1v1H4v2h16V5h-4V4a1 1 0 0 0-1-1H9zm-3 6 1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12H6z" />
-                </svg>
+                <TrashIcon />
               </button>
             </div>
           );
