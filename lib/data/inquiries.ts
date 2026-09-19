@@ -486,6 +486,8 @@ export async function convertInquiryToProject(
 
       // Step 4: create the Project populated from the Inquiry's fields
       const project = await tx.project.create({
+        // Never echo the snapshot in the create response (Stage 22 B3).
+        omit: { configSnapshot: true },
         data: {
           organizationId: session.organizationId,
           createdByUserId: session.userId,

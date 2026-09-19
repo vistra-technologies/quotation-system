@@ -63,6 +63,8 @@ export async function listProjects(session: SessionData) {
   return prisma.project.findMany({
     where: { organizationId: session.organizationId },
     orderBy: { createdAt: "desc" },
+    // configSnapshot is 3-30 KB/row and never needed in lists (Stage 22 B3, D-10).
+    omit: { configSnapshot: true },
     include: {
       externalCompany: { select: { id: true, name: true } },
     },
@@ -146,6 +148,8 @@ export async function listProjectsPaginated(
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
+      // configSnapshot is 3-30 KB/row and never needed in lists (Stage 22 B3, D-10).
+      omit: { configSnapshot: true },
       include: {
         externalCompany: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true, username: true } },
@@ -166,10 +170,18 @@ export async function listProjectsPaginated(
  * session.organizationId by the findFirst, so the Partition→Room→Floor→Project
  * traversal cannot reach a different org's data.
  */
-export async function getProjectById(session: SessionData, projectId: string) {
+export async function getProjectById(
+  session: SessionData,
+  projectId: string,
+  // Stage 22 B3 (D-10): configSnapshot is omitted by default; only the callers
+  // that read the snapshot (Configuration page, B5) opt in.
+  options: { includeConfigSnapshot?: boolean } = {},
+) {
   const [project, selectionCount, partitionCount] = await Promise.all([
     prisma.project.findFirst({
       where: { id: projectId, organizationId: session.organizationId },
+      // configSnapshot: true only when asked for — needed for Configuration page snapshot reads.
+      omit: { configSnapshot: !options.includeConfigSnapshot },
       include: {
         externalCompany: { select: { id: true, name: true, country: true } },
         createdBy: { select: { id: true, username: true } },
@@ -285,6 +297,8 @@ export async function createProject(
       }
 
       return tx.project.create({
+        // Never echo the snapshot in the create response (Stage 22 B3).
+        omit: { configSnapshot: true },
         data: {
           organizationId: session.organizationId,
           createdByUserId: session.userId,
@@ -388,6 +402,8 @@ export async function updateProject(
       ...(input.endClientState !== undefined ? { endClientState: input.endClientState } : {}),
       ...(input.endClientGstNumber !== undefined ? { endClientGstNumber: input.endClientGstNumber } : {}),
     },
+    // Never echo the snapshot in the update response (Stage 22 B3).
+    omit: { configSnapshot: true },
     include: {
       externalCompany: { select: { id: true, name: true } },
       createdBy: { select: { id: true, username: true } },
