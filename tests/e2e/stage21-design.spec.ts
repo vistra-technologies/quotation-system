@@ -149,6 +149,60 @@ async function convertFirstSideToPartition(
   return partitionSide!.partitionId as string;
 }
 
+/**
+ * Create a GLASS Selection for the project and assign it to every cell of the (freshly converted)
+ * partition via the API, before the UI is opened. The convert seed's cells carry no selectionId, and
+ * the Design page's client Save guard (design-draft-context.tsx, Stage 21 bug #13) refuses to save
+ * a glass panel with no glass type — so without this the UI Save can never fire its PATCH.
+ * Every seeded panel gets the SAME selection, which the reducer then carries through Add Panel
+ * (copies it when all panels share one), Split (spreads orig) and Unite (spreads the first target),
+ * so the post-Unite single panel is glazed at Save time too. Returns the selection id.
+ */
+async function assignGlassToPartition(
+  page: Page,
+  orgSlug: string,
+  projectId: string,
+  partitionId: string,
+  tag: string,
+): Promise<string> {
+  const typesRes = await page.request.get(apiUrl(orgSlug, `/api/v1/orgs/${orgSlug}/component-types`));
+  expect(typesRes.status()).toBe(200);
+  const { componentTypes } = (await typesRes.json()) as { componentTypes: { id: string; code: string }[] };
+  const glassType = componentTypes.find((c) => c.code === "GLASS");
+  if (!glassType) throw new Error(`No seeded GLASS ComponentType in ${orgSlug}`);
+
+  const selRes = await page.request.post(apiUrl(orgSlug, `/api/v1/orgs/${orgSlug}/selections`), {
+    data: {
+      projectId,
+      componentTypeId: glassType.id,
+      label: `e2e-stage21-${tag}-glass-${RUN}`,
+      config: {},
+      orderIndex: 0,
+    },
+  });
+  expect(selRes.status()).toBe(201);
+  const { selection } = (await selRes.json()) as { selection: { id: string } };
+
+  const getRes = await page.request.get(apiUrl(orgSlug, `/api/v1/orgs/${orgSlug}/partitions/${partitionId}`));
+  expect(getRes.status()).toBe(200);
+  const { partition } = (await getRes.json()) as {
+    partition: { design: { sections: { cells: { selectionId: string | null }[] }[] } };
+  };
+  const design = {
+    ...partition.design,
+    sections: partition.design.sections.map((sec) => ({
+      ...sec,
+      cells: sec.cells.map((c) => ({ ...c, selectionId: selection.id })),
+    })),
+  };
+  const patchRes = await page.request.patch(
+    apiUrl(orgSlug, `/api/v1/orgs/${orgSlug}/partitions/${partitionId}`),
+    { data: { design } },
+  );
+  expect(patchRes.status()).toBe(200);
+  return selection.id;
+}
+
 async function deleteProject(page: Page, orgSlug: string, projectId: string) {
   await page.request.delete(apiUrl(orgSlug, `/api/v1/orgs/${orgSlug}/projects/${projectId}`)).catch(() => {});
 }
@@ -269,6 +323,8 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
     // after Add Panel redivides the locked total (4 x 600) — Split is disabled below that, and a
     // 1200mm wall's 300mm panels could never be split.
     partitionId = await convertFirstSideToPartition(page, ORG, room, 2400, 2400);
+    // Glaze the seeded panels via the API so the UI Save guard (glass panels need a selection) passes.
+    const glassSelectionId = await assignGlassToPartition(page, ORG, projectId, partitionId, "invariant");
 
     await page.goto(orgUrl(ORG, `/projects/${projectId}/design`));
     await enterWallConfigure(page);
@@ -324,13 +380,31 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
     // The button flips to a disabled "Saved" once the PATCH round-trip completes.
     await expect(page.getByRole("button", { name: "Saved", exact: true })).toBeVisible({ timeout: 15_000 });
 
+    // Persisted v2 document (GET partition): section widths sum to the wall, and every cell still
+    // carries the glass selection through the UI's panelsToV2 Save path.
     const res = await page.request.get(apiUrl(ORG, `/api/v1/orgs/${ORG}/partitions/${partitionId}`));
     const { partition } = (await res.json()) as {
-      partition: { widthMm: number; design: { sections: { widthMm: number }[] } };
+      partition: {
+        widthMm: number;
+        design: {
+          schemaVersion: number;
+          panels?: unknown;
+          sections: { widthMm: number; cells: { heightMm: number; selectionId: string | null }[] }[];
+        };
+      };
     };
+    expect(partition.design.schemaVersion).toBe(2);
+    expect(partition.design.panels).toBeUndefined();
+    expect(partition.design.sections).toHaveLength(1); // post-Unite: one section
     const persistedSum = partition.design.sections.reduce((s, p) => s + p.widthMm, 0);
     expect(persistedSum).toBe(finalWidth);
     expect(partition.widthMm).toBe(finalWidth);
+    expect(finalWidth).toBe(2400); // the locked wall total survived every operation
+    for (const sec of partition.design.sections) {
+      expect(sec.cells.length).toBeGreaterThan(0);
+      expect(sec.cells.reduce((h, c) => h + c.heightMm, 0)).toBe(2400);
+      for (const c of sec.cells) expect(c.selectionId).toBe(glassSelectionId);
+    }
   });
 
   test("Discard Changes reverts an in-progress edit and does not persist it", async ({ page }) => {
