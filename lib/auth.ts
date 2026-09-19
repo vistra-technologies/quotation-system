@@ -73,12 +73,21 @@ export const auth = betterAuth({
     // browser treats acme-glass.easeetool.com and vistra.easeetool.com as
     // independent cookie jars and cannot share a single-signon session.
     //
-    // `enabled` is conditional: when BETTER_AUTH_URL does NOT target easeetool.com
-    // (localhost dev, *.vercel.app ad-hoc preview), the Domain attribute is omitted
-    // entirely — browsers would reject a ".easeetool.com" Domain on those hosts
-    // (RFC 6265 §5.3 host-match failure) and drop the session cookie silently.
+    // `enabled` is driven by a per-branch Vercel env var, NOT a BETTER_AUTH_URL
+    // heuristic.  The prior heuristic (BETTER_AUTH_URL.includes("easeetool.com"))
+    // broke ad-hoc preview builds: Vercel's Preview tier shares BETTER_AUTH_URL
+    // between the staging branch AND every ad-hoc *.vercel.app branch preview.
+    // Result: cross-subdomain cookies fired on *.vercel.app hosts where browsers
+    // reject a Domain=.easeetool.com cookie (RFC 6265 §5.3 host-match failure),
+    // silently dropping the session token → auth redirect loop on every preview URL.
+    //
+    // Fix: CROSS_SUBDOMAIN_COOKIES_ENABLED is set to "true" only for:
+    //   - Production (easeetool.com)  — Vercel Production target env var
+    //   - staging branch previews     — Vercel Preview env var scoped to gitBranch=staging
+    // All other Preview builds (ad-hoc feature/hotfix branches) get no value → false.
+    // Local dev also gets no value → false (path-based routing, no subdomains anyway).
     crossSubDomainCookies: {
-      enabled: (process.env.BETTER_AUTH_URL ?? "").includes("easeetool.com"),
+      enabled: process.env.CROSS_SUBDOMAIN_COOKIES_ENABLED === "true",
       domain: ".easeetool.com",
     },
   },
