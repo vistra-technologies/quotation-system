@@ -333,7 +333,7 @@ export function AddSelectionForm({
           forcing a vh-relative minimum that always exceeded the viewport.
           R-2: items-stretch lets each column fill the row so the right column
           can scroll its own content independently (see below). */}
-      <div className="grid min-h-[420px] flex-1 grid-cols-[200px_1fr_300px] items-stretch gap-6 p-7">
+      <div className="relative grid min-h-0 flex-1 grid-cols-[200px_1fr_300px] grid-rows-[minmax(0,1fr)] items-stretch gap-6 p-7">
 
         {/* ── Left: ComponentType sidebar (5d — vertical icon-over-label tiles) ── */}
         <div>
@@ -388,7 +388,7 @@ export function AddSelectionForm({
         </div>
 
         {/* ── Center: Add / Edit form ──────────────────────────────────────── */}
-        <div>
+        <div className="min-h-0 overflow-y-auto">
           {/* Stage 20 Batch 4, decision #5 — the per-field configure form is never opened for a
               type that isn't fully configured; a plain notice takes its place instead. */}
           {!canShowForm ? (
@@ -480,7 +480,7 @@ export function AddSelectionForm({
             {/* Only rendered when advanced fields exist. Popover is absolute-positioned so   */}
             {/* it doesn't push the Save button or right-column saved list down.              */}
             {selectedType && advancedFields.length > 0 && (
-              <div ref={panelRef} className="relative">
+              <div ref={panelRef}>
                 <button
                   type="button"
                   onClick={() => setShowAdvanced((prev) => !prev)}
@@ -490,7 +490,7 @@ export function AddSelectionForm({
                 </button>
 
                 {showAdvanced && (
-                  <div className="absolute left-full top-0 z-20 ml-6 flex w-[300px] flex-col gap-4 rounded-md border border-border bg-bg-white p-4 shadow-[0_16px_34px_-12px_rgba(27,40,30,0.28)]">
+                  <div className="absolute bottom-4 right-4 top-4 z-20 flex w-[300px] flex-col gap-4 overflow-y-auto rounded-md border border-border bg-bg-white p-4 shadow-[0_16px_34px_-12px_rgba(27,40,30,0.28)]">
                     <p className="text-xs font-bold uppercase tracking-wider text-text-placeholder">
                       {t("advancedFields")}
                     </p>
