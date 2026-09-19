@@ -134,7 +134,7 @@ export default async function ConfigurationPage({
     // R-1: flex-1 min-h-0 propagates the bounded height from WizardPageShell
     // down into the card so the grid columns can scroll independently instead
     // of pushing the whole page taller than the viewport.
-    <div className="flex min-h-0 flex-1 flex-col py-8">
+    <div className="flex flex-1 flex-col py-8">
       {activeComponentTypes.length === 0 ? (
         <div className="rounded-md border border-border bg-bg-card p-8 shadow-card text-center">
           <p className="text-sm text-text-muted">
@@ -144,7 +144,7 @@ export default async function ConfigurationPage({
       ) : (
         // R-1: card is now a flex column so the grid (flex-1) fills available
         // space and the footer (shrink-0) stays pinned at the bottom.
-        <div className="flex min-h-0 flex-1 flex-col rounded-md border border-border bg-bg-card shadow-card">
+        <div className="flex flex-1 flex-col rounded-md border border-border bg-bg-card shadow-card">
           <AddSelectionForm
             orgSlug={orgSlug}
             projectId={projectId}
