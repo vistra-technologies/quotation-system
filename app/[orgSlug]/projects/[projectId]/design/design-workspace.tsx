@@ -28,6 +28,7 @@ import { SavedComponentsRail } from "./saved-components-rail";
 import { NewRoomForm } from "./new-room-form";
 import { RoomNameInput } from "./room-name-input";
 import { redirectToLogin } from "./login-redirect";
+import { makeDoorResolver, toPanelViewRow, toPanelViewRows } from "./partition-view";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Toast, useToast } from "@/components/toast";
 import type {
@@ -185,7 +186,9 @@ function DesignWorkspaceInner({
         const data = (res.ok ? await res.json() : { partitions: [] }) as {
           partitions: PartitionRow[];
         };
-        if (!cancelled) setSelectedRoomPartitions(data.partitions);
+        if (!cancelled) {
+          setSelectedRoomPartitions(toPanelViewRows(data.partitions, makeDoorResolver(selections)));
+        }
       } catch {
         if (!cancelled) setSelectedRoomPartitions([]);
       }
@@ -193,6 +196,7 @@ function DesignWorkspaceInner({
 
     void run();
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `selections` is stable page props; adding it would refetch on every parent render.
   }, [orgSlug, isSubdomain, selectedRoom]);
 
   /**
@@ -255,8 +259,11 @@ function DesignWorkspaceInner({
         return;
       }
       if (!res.ok) return;
-      const { partition } = (await res.json()) as { partition: PartitionRow };
+      const { partition: rawPartition } = (await res.json()) as { partition: PartitionRow };
       if (token.cancelled) return;
+      // Stage 22 (D-6): stored v1/v2 design -> panel view, once, at this boundary. Throws on a
+      // malformed stored document -> caught below, Configure mode simply doesn't open.
+      const partition = toPanelViewRow(rawPartition, makeDoorResolver(selections));
       dispatch({ type: "LOAD_PARTITION", partition });
       // Pre-select the first panel so Configure mode opens ready to edit
       // (assign a door/material) instead of requiring an explicit click first.
@@ -495,6 +502,7 @@ function DesignWorkspaceInner({
                   onSelectPartition={enterConfigureMode}
                   selectedPartitionId={viewMode === "configure" ? state.partitionId : null}
                   lastSavedPartition={lastSavedPartition}
+                  selections={selections}
                 />
               ) : null}
             </>
@@ -704,7 +712,7 @@ export function DesignWorkspace(props: DesignWorkspaceProps) {
       {/* UnitProvider is kept even though the unit toggle was removed (Stage 20 B5)
           — child components still call useUnit() and the provider is the correct
           boundary for that hook, permanently fixed to "mm". */}
-      <DraftProvider>
+      <DraftProvider selections={props.selections}>
         <DesignWorkspaceInner {...props} />
       </DraftProvider>
     </UnitProvider>

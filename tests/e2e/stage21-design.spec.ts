@@ -204,8 +204,8 @@ test.describe("Configure mode draft isolation", () => {
 
     // Confirm at the API level too — never trust only the re-rendered DOM.
     const res = await page.request.get(apiUrl(ORG, `/api/v1/orgs/${ORG}/partitions/${partitionId}`));
-    const { partition } = (await res.json()) as { partition: { design: { panels: unknown[] } } };
-    expect(partition.design.panels).toHaveLength(1);
+    const { partition } = (await res.json()) as { partition: { design: { sections: unknown[] } } };
+    expect(partition.design.sections).toHaveLength(1);
   });
 
   test.afterAll(async ({ browser }) => {
@@ -292,9 +292,9 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
 
     const res = await page.request.get(apiUrl(ORG, `/api/v1/orgs/${ORG}/partitions/${partitionId}`));
     const { partition } = (await res.json()) as {
-      partition: { widthMm: number; design: { panels: { widthMm: number }[] } };
+      partition: { widthMm: number; design: { sections: { widthMm: number }[] } };
     };
-    const persistedSum = partition.design.panels.reduce((s, p) => s + p.widthMm, 0);
+    const persistedSum = partition.design.sections.reduce((s, p) => s + p.widthMm, 0);
     expect(persistedSum).toBe(finalWidth);
     expect(partition.widthMm).toBe(finalWidth);
   });
@@ -305,7 +305,7 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
     await enterWallConfigure(page);
 
     const beforeRes = await page.request.get(apiUrl(ORG, `/api/v1/orgs/${ORG}/partitions/${partitionId}`));
-    const { partition: before } = (await beforeRes.json()) as { partition: { design: { panels: unknown[] } } };
+    const { partition: before } = (await beforeRes.json()) as { partition: { design: { sections: unknown[] } } };
 
     await page.getByRole("button", { name: "+ Add Panel" }).click();
     await expect(page.getByText(/2 panels/)).toBeVisible();
@@ -315,8 +315,8 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
     await page.getByRole("button", { name: "Discard Changes" }).click();
 
     const afterRes = await page.request.get(apiUrl(ORG, `/api/v1/orgs/${ORG}/partitions/${partitionId}`));
-    const { partition: after } = (await afterRes.json()) as { partition: { design: { panels: unknown[] } } };
-    expect(after.design.panels).toHaveLength(before.design.panels.length);
+    const { partition: after } = (await afterRes.json()) as { partition: { design: { sections: unknown[] } } };
+    expect(after.design.sections).toHaveLength(before.design.sections.length);
   });
 
   test.afterAll(async ({ browser }) => {
