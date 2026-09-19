@@ -531,7 +531,7 @@ export async function deleteProject(session: SessionData, projectId: string) {
     });
 
     // 4. Project itself
-    await tx.project.delete({ where: { id: projectId } });
+    await tx.project.delete({ where: { id: projectId }, select: { id: true } });
   });
 
   if (!found) return null;

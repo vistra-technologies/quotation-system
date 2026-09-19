@@ -293,3 +293,24 @@ Branch: `feature/s21-fix-batch-3` off `staging` @ `9ca45dc`. Spec: `.engineering
 - R-8b `wallTitle` prop/JSX deleted entirely (no orphan prop left in convert-side-form.tsx)
 
 ### Status: DONE — preview built and health-checked; human review before staging merge
+
+---
+
+## Hotfix regression check — 2026-09-19
+
+- **tester** · FAIL · 1 CRITICAL · 0 MAJOR · 0 MINOR
+- Commit under test: `a17365f` (Merge hotfix/preview-url-routing into staging)
+- Hotfix change: `lib/auth.ts` `crossSubDomainCookies.enabled` now reads `CROSS_SUBDOMAIN_COOKIES_ENABLED` env var instead of `BETTER_AUTH_URL.includes("easeetool.com")`
+- **Build result**: staging deployment `dpl_9m8xB7s6aZvNarwL69wfMe3qxunC` ERRORED — P1002 Neon advisory lock timeout during `prisma migrate deploy` (transient cold-start failure)
+- **Currently serving** on `test.easeetool.com`: commit `b78bab8` (deployment `dpl_7QiXQ5D31NEjbNuRAQSMtz783AqZ`, 2d old)
+- Pre-hotfix staging app tested as functional: health 200, login works, cookie Domain=.easeetool.com, cross-org redirect/notice confirmed
+- **Blocker**: hotfix code itself is unverified — cannot gate production merge until staging build succeeds
+- Required action: trigger a redeploy of the `staging` branch; retry will likely succeed (no new migrations in hotfix, failure is transient)
+- **tester** · 2026-09-19 · FAIL (build failure, not code regression) · bugs-5.md
+  - Retrigger commit `ea7a6c2` was verified on GitHub as HEAD of `staging`.
+  - Vercel deployment `dpl_9uJcu5BPGvmeLqdRdNkEyNDvtRXk` ERRORED — same P1002 advisory-lock timeout (10s window, acquired at 10:48:11Z UTC) during `prisma migrate deploy`. Second consecutive P1002 failure.
+  - `test.easeetool.com` health check: 200 + `database: connected`, but serving pre-hotfix `b78bab8fae` (not the hotfix commit).
+  - Functional verification (cookie domain, cross-org notice, login, /projects) deferred — hotfix not live.
+  - Recommended: push a third retrigger (allow ~5–10 min for the Neon dev branch to fully warm before the build runs). If a third attempt also fails, inspect Neon `ep-dark-term-ai0ufj4k` for held advisory locks.
+
+- 2026-09-19 — tester (hotfix regression check, third retrigger): PASS · 0 CRITICAL · 0 MAJOR · 0 MINOR · See `.engineering/stage-21/bugs-6.md`. Commit `25eee92` on `staging`, deployment `dpl_8oYqURNgrtknfAbRz3uiQXXs2j9g` READY. All 6 checks confirmed: health 200+connected, login clean (no redirect loop), cookie `Domain=.easeetool.com` verified in Set-Cookie header, cross-org notice renders correctly on `acme-glass.test.easeetool.com`, /projects renders with sidebar+empty state. Runtime "error" log entries are pre-existing pg SSL deprecation warnings (stderr), not application errors. Clear for human approval of staging → master production merge.
