@@ -333,7 +333,7 @@ export function AddSelectionForm({
           forcing a vh-relative minimum that always exceeded the viewport.
           R-2: items-stretch lets each column fill the row so the right column
           can scroll its own content independently (see below). */}
-      <div className="grid min-h-[420px] flex-1 grid-cols-[200px_1fr_300px] items-stretch gap-6 p-7">
+      <div className="relative grid min-h-[420px] flex-1 grid-cols-[200px_1fr_300px] items-stretch gap-6 p-7">
 
         {/* ── Left: ComponentType sidebar (5d — vertical icon-over-label tiles) ── */}
         <div>
@@ -480,7 +480,7 @@ export function AddSelectionForm({
             {/* Only rendered when advanced fields exist. Popover is absolute-positioned so   */}
             {/* it doesn't push the Save button or right-column saved list down.              */}
             {selectedType && advancedFields.length > 0 && (
-              <div ref={panelRef} className="relative">
+              <div ref={panelRef}>
                 <button
                   type="button"
                   onClick={() => setShowAdvanced((prev) => !prev)}
@@ -490,34 +490,19 @@ export function AddSelectionForm({
                 </button>
 
                 {showAdvanced && (
-                  <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 flex flex-col gap-4 rounded-md border border-border bg-bg-white p-4 shadow-[0_16px_34px_-12px_rgba(27,40,30,0.28)]">
+                  <div className="absolute bottom-4 right-4 top-4 z-20 flex w-[300px] flex-col gap-4 overflow-y-auto rounded-md border border-border bg-bg-white p-4 shadow-[0_16px_34px_-12px_rgba(27,40,30,0.28)]">
                     <p className="text-xs font-bold uppercase tracking-wider text-text-placeholder">
                       {t("advancedFields")}
                     </p>
-                    {/* Advanced fields — same 2-column pairing as basic fields (5d) */}
-                    {pairFields(advancedFields).map((row) =>
-                      row.length === 2 ? (
-                        <div key={row[0].key} className="grid grid-cols-2 gap-4">
-                          {row.map((field) => (
-                            <FieldInput
-                              key={field.key}
-                              field={field}
-                              value={fieldValues[field.key]}
-                              onChange={(val) => updateField(field.key, val)}
-                              options={optionsFor(field)}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <FieldInput
-                          key={row[0].key}
-                          field={row[0]}
-                          value={fieldValues[row[0].key]}
-                          onChange={(val) => updateField(row[0].key, val)}
-                          options={optionsFor(row[0])}
-                        />
-                      ),
-                    )}
+                    {advancedFields.map((field) => (
+                      <FieldInput
+                        key={field.key}
+                        field={field}
+                        value={fieldValues[field.key]}
+                        onChange={(val) => updateField(field.key, val)}
+                        options={optionsFor(field)}
+                      />
+                    ))}
                   </div>
                 )}
               </div>
@@ -554,7 +539,8 @@ export function AddSelectionForm({
             only the list body scrolls (flex-1 min-h-0 overflow-y-auto).
             No sticky/viewport-relative sizing needed once the grid itself has
             a bounded height (R-1). */}
-        <div className="flex min-h-0 flex-col">
+        <div className="relative min-h-0">
+         <div className="absolute inset-0 flex flex-col">
           <p className="mb-3.5 shrink-0 text-[11px] font-bold uppercase tracking-[0.06em] text-text-muted">
             Saved Components
           </p>
@@ -626,6 +612,7 @@ export function AddSelectionForm({
             </div>
           )}
           </div>{/* end scrollable body */}
+         </div>
         </div>
 
         {confirmDeleteSelection && (
