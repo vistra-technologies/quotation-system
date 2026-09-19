@@ -333,7 +333,7 @@ export function AddSelectionForm({
           forcing a vh-relative minimum that always exceeded the viewport.
           R-2: items-stretch lets each column fill the row so the right column
           can scroll its own content independently (see below). */}
-      <div className="relative grid min-h-0 flex-1 grid-cols-[200px_1fr_300px] grid-rows-[minmax(0,1fr)] items-stretch gap-6 p-7">
+      <div className="relative grid min-h-[420px] flex-1 grid-cols-[200px_1fr_300px] items-stretch gap-6 p-7">
 
         {/* ── Left: ComponentType sidebar (5d — vertical icon-over-label tiles) ── */}
         <div>
@@ -388,7 +388,7 @@ export function AddSelectionForm({
         </div>
 
         {/* ── Center: Add / Edit form ──────────────────────────────────────── */}
-        <div className="min-h-0 overflow-y-auto">
+        <div>
           {/* Stage 20 Batch 4, decision #5 — the per-field configure form is never opened for a
               type that isn't fully configured; a plain notice takes its place instead. */}
           {!canShowForm ? (
@@ -539,7 +539,8 @@ export function AddSelectionForm({
             only the list body scrolls (flex-1 min-h-0 overflow-y-auto).
             No sticky/viewport-relative sizing needed once the grid itself has
             a bounded height (R-1). */}
-        <div className="flex min-h-0 flex-col">
+        <div className="relative min-h-0">
+         <div className="absolute inset-0 flex flex-col">
           <p className="mb-3.5 shrink-0 text-[11px] font-bold uppercase tracking-[0.06em] text-text-muted">
             Saved Components
           </p>
@@ -611,6 +612,7 @@ export function AddSelectionForm({
             </div>
           )}
           </div>{/* end scrollable body */}
+         </div>
         </div>
 
         {confirmDeleteSelection && (

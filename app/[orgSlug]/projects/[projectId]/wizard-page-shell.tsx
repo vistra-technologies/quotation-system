@@ -49,7 +49,7 @@ export function WizardPageShell({
         isDesign
           ? "flex h-full min-h-0 w-full flex-1 flex-col"
           : isConfiguration
-            ? "mx-auto flex h-full min-h-0 w-full max-w-[1180px] flex-1 flex-col px-8 pb-4 pt-7"
+            ? "mx-auto flex w-full max-w-[1180px] flex-1 flex-col px-8 pb-4 pt-7"
             : "mx-auto flex h-full w-full max-w-[1180px] flex-col px-8 pb-4 pt-7"
       }
     >
@@ -61,7 +61,15 @@ export function WizardPageShell({
         partitionCount={partitionCount}
         designSubmittedAt={designSubmittedAt}
       />
-      <div className={isDesign || isConfiguration ? "flex min-h-0 flex-1 flex-col" : undefined}>
+      <div
+        className={
+          isDesign
+            ? "flex min-h-0 flex-1 flex-col"
+            : isConfiguration
+              ? "flex flex-1 flex-col"
+              : undefined
+        }
+      >
         {children}
       </div>
     </div>
