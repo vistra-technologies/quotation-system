@@ -490,34 +490,19 @@ export function AddSelectionForm({
                 </button>
 
                 {showAdvanced && (
-                  <div className="absolute left-0 right-0 top-[calc(100%+4px)] z-20 flex flex-col gap-4 rounded-md border border-border bg-bg-white p-4 shadow-[0_16px_34px_-12px_rgba(27,40,30,0.28)]">
+                  <div className="absolute left-full top-0 z-20 ml-6 flex w-[300px] flex-col gap-4 rounded-md border border-border bg-bg-white p-4 shadow-[0_16px_34px_-12px_rgba(27,40,30,0.28)]">
                     <p className="text-xs font-bold uppercase tracking-wider text-text-placeholder">
                       {t("advancedFields")}
                     </p>
-                    {/* Advanced fields — same 2-column pairing as basic fields (5d) */}
-                    {pairFields(advancedFields).map((row) =>
-                      row.length === 2 ? (
-                        <div key={row[0].key} className="grid grid-cols-2 gap-4">
-                          {row.map((field) => (
-                            <FieldInput
-                              key={field.key}
-                              field={field}
-                              value={fieldValues[field.key]}
-                              onChange={(val) => updateField(field.key, val)}
-                              options={optionsFor(field)}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <FieldInput
-                          key={row[0].key}
-                          field={row[0]}
-                          value={fieldValues[row[0].key]}
-                          onChange={(val) => updateField(row[0].key, val)}
-                          options={optionsFor(row[0])}
-                        />
-                      ),
-                    )}
+                    {advancedFields.map((field) => (
+                      <FieldInput
+                        key={field.key}
+                        field={field}
+                        value={fieldValues[field.key]}
+                        onChange={(val) => updateField(field.key, val)}
+                        options={optionsFor(field)}
+                      />
+                    ))}
                   </div>
                 )}
               </div>
