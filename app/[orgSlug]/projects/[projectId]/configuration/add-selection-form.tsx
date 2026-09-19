@@ -759,6 +759,23 @@ function FieldInput({ field, value, onChange, options }: FieldInputProps) {
   // Selection whose type has since become unconfigured (the "Add Component" palette otherwise
   // never opens the form for one) — still handled defensively rather than assumed unreachable.
   const needsParentSelection = Boolean(field.dependsOn) && options.length === 0;
+
+  // Auto-select and lock when exactly one option is available (after optional parent filtering).
+  // Fires when `options` changes — covers both the initial render and the case where a parent
+  // dropdown selection filters this dependent field down to a single choice.
+  // Clearing when options ≠ 1: handled upstream by updateField + collectDescendants, which
+  // deletes this field's value from fieldValues whenever its parent's value changes — so a
+  // previously auto-selected value is never left stale after a parent change.
+  useEffect(() => {
+    if (field.type !== "dropdown" && field.type !== "radio") return;
+    if (options.length === 1 && (value as string) !== options[0]) {
+      onChange(options[0]);
+    }
+    // `onChange` omitted from deps intentionally: it is a new closure each render but is
+    // semantically stable (always updates the same field key). Including it would cause the
+    // effect to re-run on every parent re-render, which is harmless but unnecessary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [field.type, options, value]);
   if ((field.type === "radio" || field.type === "dropdown") && options.length === 0 && !field.dependsOn) {
     return (
       <div className="flex flex-col gap-1">
@@ -797,7 +814,7 @@ function FieldInput({ field, value, onChange, options }: FieldInputProps) {
           onChange={(e) => onChange(e.target.value)}
           className={inputClass}
           placeholder="Select"
-          disabled={needsParentSelection}
+          disabled={needsParentSelection || options.length === 1}
         >
           {options.map((opt) => (
             <option key={opt} value={opt}>
