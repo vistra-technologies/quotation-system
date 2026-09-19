@@ -194,9 +194,17 @@ test.describe("Configure mode draft isolation", () => {
     await enterWallConfigure(page);
 
     // Make a dirty, unsaved change.
+    // The convert seed is 3 sections (lib/data/rooms.ts), so one Add Panel -> 4 panel chips in the
+    // Configure canvas. The left-rail "N panels" label is NOT draft-reactive (it renders the
+    // fetched partition and is only patched after a Save — lastSavedPartition), so it must still
+    // read 3 here; the original "/2 panels/" assertion was stale since the 3-panel convert seed
+    // (810b368) and never matched anything draft-driven.
+    const panelChips = page.locator("[role='button'][aria-selected]");
+    await expect(panelChips).toHaveCount(3);
     await page.getByRole("button", { name: "+ Add Panel" }).click();
-    // The convert seed is 3 sections (lib/data/rooms.ts), so one Add Panel -> 4.
-    await expect(page.getByText(/4 panels/)).toBeVisible();
+    await expect(panelChips).toHaveCount(4);
+    await expect(page.getByText(/4 panels/)).toHaveCount(0);
+    await expect(page.getByText(/3 panels$/).first()).toBeVisible();
 
     // Reload without saving — the draft must be discarded server-side (never written).
     await page.goto(orgUrl(ORG, `/projects/${projectId}/design`));
@@ -308,8 +316,12 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
     const beforeRes = await page.request.get(apiUrl(ORG, `/api/v1/orgs/${ORG}/partitions/${partitionId}`));
     const { partition: before } = (await beforeRes.json()) as { partition: { design: { sections: unknown[] } } };
 
+    // Count Configure-canvas panel chips (draft state) — the left-rail "N panels" label only
+    // reflects persisted data, so it can't be used to observe an unsaved Add Panel.
+    const chips = page.locator("[role='button'][aria-selected]");
+    const chipsBefore = await chips.count();
     await page.getByRole("button", { name: "+ Add Panel" }).click();
-    await expect(page.getByText(/2 panels/)).toBeVisible();
+    await expect(chips).toHaveCount(chipsBefore + 1);
 
     await page.locator("button", { hasText: "←" }).first().click();
     await expect(page.getByRole("button", { name: "Discard Changes" })).toBeVisible({ timeout: 5_000 });
