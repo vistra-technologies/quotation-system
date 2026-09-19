@@ -195,17 +195,18 @@ test.describe("Configure mode draft isolation", () => {
 
     // Make a dirty, unsaved change.
     await page.getByRole("button", { name: "+ Add Panel" }).click();
-    await expect(page.getByText(/2 panels/)).toBeVisible();
+    // The convert seed is 3 sections (lib/data/rooms.ts), so one Add Panel -> 4.
+    await expect(page.getByText(/4 panels/)).toBeVisible();
 
     // Reload without saving — the draft must be discarded server-side (never written).
     await page.goto(orgUrl(ORG, `/projects/${projectId}/design`));
     await enterWallConfigure(page);
-    await expect(page.getByText(/1 panel$/).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/3 panels$/).first()).toBeVisible({ timeout: 15_000 });
 
     // Confirm at the API level too — never trust only the re-rendered DOM.
     const res = await page.request.get(apiUrl(ORG, `/api/v1/orgs/${ORG}/partitions/${partitionId}`));
     const { partition } = (await res.json()) as { partition: { design: { sections: unknown[] } } };
-    expect(partition.design.sections).toHaveLength(1);
+    expect(partition.design.sections).toHaveLength(3);
   });
 
   test.afterAll(async ({ browser }) => {

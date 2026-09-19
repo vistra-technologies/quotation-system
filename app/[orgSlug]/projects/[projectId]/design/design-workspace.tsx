@@ -279,19 +279,27 @@ function DesignWorkspaceInner({
       // glass selection so the user always lands on a configured state.
       // This makes the partition immediately dirty (isDirty=true) — intentional,
       // since the user explicitly asked for glass to always be pre-assigned.
+      // Stage 22: only panels that own a glass cell count — a glass panel, or a door panel with a
+      // transom (door height < wall height). A full-height door has no glass cell in v2, so its
+      // null panel.selectionId is normal and must not mark the partition dirty on open.
       const panels = partition.design?.panels ?? [];
-      const hasUnglazedPanel = panels.some((p) => !p.selectionId);
-      if (hasUnglazedPanel && panels.length > 0) {
+      const needsGlass = (p: (typeof panels)[number]) =>
+        !p.selectionId &&
+        (p.type === "glass" ||
+          (p.door ? (p.door.outerFrame?.h ?? partition.heightMm) < partition.heightMm : false));
+      const unglazedIds = panels.filter(needsGlass).map((p) => p.id);
+      if (unglazedIds.length > 0) {
         const firstGlass = selections.find((s) => s.componentType.code === "GLASS");
         if (firstGlass) {
           dispatch({
             type: "SET_GLASS",
-            panelIds: panels.map((p) => p.id),
+            panelIds: unglazedIds,
             selectionId: firstGlass.id,
           });
         }
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to open partition in Configure mode", err);
       return;
     }
     setViewMode("configure");

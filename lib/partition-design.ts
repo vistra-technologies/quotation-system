@@ -200,6 +200,8 @@ export function parseDesignPatch(raw: unknown): PartitionDesignPatch | undefined
   if (raw.schemaVersion !== undefined) {
     if (raw.schemaVersion !== 2) fail("design.schemaVersion, if provided, must be 2");
     design.schemaVersion = 2;
+    // A version stamp with no geometry would be stored as an unreadable doc (parseStoredDesign throws).
+    if (raw.sections === undefined) fail("design.schemaVersion: 2 requires design.sections");
   }
   if (raw.measurements !== undefined) design.measurements = raw.measurements;
   if (raw.distribution !== undefined) design.distribution = raw.distribution;
@@ -328,6 +330,10 @@ function sectionToPanel(sec: DesignSectionV2, opts: ParseStoredOptions): DesignP
   }
   if (sec.cells.length === 2) {
     // [transom, door] by convention (top -> bottom) — matches the v1 -> v2 migration rule.
+    const bottom = sec.cells[1].selectionId;
+    if (bottom && !opts.isDoorSelection(bottom)) {
+      fail(`design section "${sec.id}": bottom cell is not a door selection; cannot map to a door panel`);
+    }
     return doorOf(sec.cells[1], sec.cells[0].selectionId);
   }
   return fail(`design section "${sec.id}" has ${sec.cells.length} cells; the editor supports 1 or 2`);
