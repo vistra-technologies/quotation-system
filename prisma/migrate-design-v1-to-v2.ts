@@ -11,20 +11,26 @@
  * -> null. A null transom selection is valid v2 (written as null, never an error).
  *
  * Safety:
- *   - `--dry-run`  reads and validates everything, prints the report, writes NOTHING.
- *   - Refuses to run when DATABASE_URL contains the production Neon host (ep-little-paper-aipm0o0i).
- *     NEVER run this against production.
- *   - Idempotent: rows already v2 are skipped without modification; malformed rows and rows failing the
- *     width-sum / per-section height-sum invariants are logged with their id and never written.
+ *   - DRY RUN IS THE DEFAULT. Rows are written only when `--write` is passed; `--dry-run` and npm's own
+ *     `--dry-run` config (npm swallows it without forwarding) always win. npm also swallows unknown flags
+ *     placed before `--`, so `--write` must come after it.
+ *   - Fail-closed destination allowlist: DATABASE_URL must resolve to the dev Neon endpoint
+ *     (ep-dark-term-ai0ufj4k). Unset / unparseable / any other host aborts. NEVER run against production.
+ *   - Env precedence matches Next: process env > .env.local > .env. The target endpoint is printed first.
+ *   - Each write is conditional on the row still equalling what was read (updateMany); a row edited
+ *     mid-run is reported as skipped (concurrent edit) and picked up by a re-run.
+ *   - Idempotent: rows already v2 are skipped without modification; malformed rows, rows failing the
+ *     width-sum / per-section height-sum invariants, and v1 geometry inconsistent with the partition
+ *     are logged with their id and never written.
  *
  * Usage (from quotation-system/):
- *   npm run migrate:design-v2 -- --dry-run     # report only
- *   npm run migrate:design-v2                  # real run (dev DB only, with human go-ahead)
+ *   npm run migrate:design-v2                    # dry run (default): report only
+ *   npm run migrate:design-v2 -- --write         # real run (dev DB only, with human go-ahead)
  *
  * Cell ids: converted cells get ids derived from the v1 panel id (`<panelId>-c` / `-t` / `-d`, the same
  * scheme the Design page's save uses). Ids only need to be unique within one document.
  */
-import "dotenv/config";
+import dotenv from "dotenv";
 import type { Prisma } from "../app/generated/prisma/client";
 import {
   PartitionDesignError,
@@ -35,7 +41,23 @@ import {
   type DesignSectionV2,
 } from "../lib/partition-design";
 
-const PROD_BRANCH_HOSTNAME = "ep-little-paper-aipm0o0i";
+// Same precedence as Next: real env > .env.local > .env (dotenv never overrides an already-set var).
+dotenv.config({ path: ".env.local", quiet: true });
+dotenv.config({ path: ".env", quiet: true });
+
+/** The only endpoint this script may touch (the persistent dev Neon branch). */
+const ALLOWED_ENDPOINT = "ep-dark-term-ai0ufj4k";
+
+/** Neon endpoint id from a connection string (drops any `-pooler` suffix), or null if unparseable. */
+export function endpointOf(url: string): string | null {
+  try {
+    const host = new URL(url).hostname;
+    if (!host) return null;
+    return host.split(".")[0].replace(/-pooler$/, "");
+  } catch {
+    return null;
+  }
+}
 
 export type Classification =
   | { kind: "v2" }
@@ -94,6 +116,23 @@ export function convertV1ToV2(
     if (p.type === "door" && !p.door) {
       throw new PartitionDesignError(`panels[${i}] is a door panel with no door`);
     }
+    // Anomalous v1 geometry is a validation failure (task step 6), not something to repair silently.
+    if (p.type === "glass" && p.heightMm !== partition.heightMm) {
+      throw new PartitionDesignError(
+        `panels[${i}].heightMm ${p.heightMm}mm != Partition.heightMm ${partition.heightMm}mm`,
+      );
+    }
+    if (p.type === "door" && p.door) {
+      if (typeof p.door.selectionId !== "string" || !p.door.selectionId) {
+        throw new PartitionDesignError(`panels[${i}].door.selectionId is missing`);
+      }
+      const h = p.door.outerFrame?.h;
+      if (h !== undefined && (typeof h !== "number" || !(h > 0) || h > partition.heightMm)) {
+        throw new PartitionDesignError(
+          `panels[${i}].door.outerFrame.h ${String(h)} is not within 1..${partition.heightMm}mm (wall height)`,
+        );
+      }
+    }
   });
 
   const converted = panelsToV2(view, partition.heightMm);
@@ -121,22 +160,44 @@ export function convertV1ToV2(
 
 async function main() {
   const url = process.env.DATABASE_URL ?? "";
-  if (!url) {
-    console.error("ABORT: DATABASE_URL is not set.");
+  const endpoint = url ? endpointOf(url) : null;
+  if (!endpoint) {
+    console.error("ABORT: DATABASE_URL is not set or its host cannot be parsed.");
     process.exit(1);
   }
-  if (url.includes(PROD_BRANCH_HOSTNAME)) {
-    console.error("FATAL: DATABASE_URL points at the PRODUCTION Neon branch — refusing to run.");
+  if (endpoint !== ALLOWED_ENDPOINT) {
+    console.error(
+      `ABORT: DATABASE_URL targets endpoint "${endpoint}", not the dev branch (${ALLOWED_ENDPOINT}) — refusing to run.`,
+    );
     process.exit(1);
   }
-  const dryRun = process.argv.includes("--dry-run");
+  // Dry run unless --write is given; --dry-run (or npm's swallowed --dry-run config) always wins.
+  const dryRun =
+    !process.argv.includes("--write") ||
+    process.argv.includes("--dry-run") ||
+    process.env.npm_config_dry_run === "true";
 
   // Loaded only after the guard, so a refused run never constructs a client.
   const { PrismaClient } = await import("../app/generated/prisma/client");
   const { PrismaPg } = await import("@prisma/adapter-pg");
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
 
-  console.log(dryRun ? "DRY RUN — nothing will be written." : "REAL RUN — converted rows will be written.");
+  console.log(`Target DB endpoint: ${endpoint}`);
+  console.log(
+    dryRun
+      ? "DRY RUN — nothing will be written. (Pass `-- --write` to write.)"
+      : "REAL RUN (--write) — converted rows will be written.",
+  );
+
+  let total = 0;
+  let converted = 0;
+  let alreadyV2 = 0;
+  let noGeometry = 0;
+  let nullTransoms = 0;
+  const failures: string[] = [];
+  const malformed: string[] = [];
+  const skippedConcurrent: string[] = [];
+  let aborted = false;
 
   try {
     const rows = await prisma.partition.findMany({
@@ -145,13 +206,7 @@ async function main() {
     });
     // Rows with no design at all are ignored (filtered here; Prisma's Json? null filter is awkward).
     const withDesign = rows.filter((r) => r.design !== null);
-
-    let converted = 0;
-    let alreadyV2 = 0;
-    let noGeometry = 0;
-    let nullTransoms = 0;
-    const failures: string[] = [];
-    const malformed: string[] = [];
+    total = withDesign.length;
 
     for (const row of withDesign) {
       const cls = classifyDesign(row.design);
@@ -170,10 +225,15 @@ async function main() {
       try {
         const result = convertV1ToV2(row.design as Record<string, unknown>, row);
         if (!dryRun) {
-          await prisma.partition.update({
-            where: { id: row.id },
+          // Conditional write: only if the row still equals what we read (dev DB is shared with previews/test).
+          const res = await prisma.partition.updateMany({
+            where: { id: row.id, design: { equals: row.design as Prisma.InputJsonValue } },
             data: { design: result.design as Prisma.InputJsonValue },
           });
+          if (res.count === 0) {
+            skippedConcurrent.push(row.id);
+            continue;
+          }
         }
         converted++;
         nullTransoms += result.nullTransomCells;
@@ -181,22 +241,25 @@ async function main() {
         if (err instanceof PartitionDesignError) {
           failures.push(`${row.id}: ${err.message}`);
         } else {
+          aborted = true;
           throw err;
         }
       }
     }
-
+  } finally {
     const list = (items: string[]) => (items.length ? "\n  " + items.join("\n  ") : "");
     console.log("\n──── Partition.design v1 -> v2 report ────");
-    console.log(`Rows with a design:                ${withDesign.length}`);
+    console.log(`Target DB endpoint: ${endpoint}${dryRun ? " (dry run)" : ""}`);
+    if (aborted) console.log("!! RUN ABORTED by an unexpected error — counts below are PARTIAL. Re-run is safe (idempotent).");
+    console.log(`Rows with a design:                ${total}`);
     console.log(`${dryRun ? "Would convert" : "Converted"}: ${converted}`);
     console.log(`Already v2 (skipped): ${alreadyV2}`);
     console.log(`No geometry, e.g. stops only (skipped): ${noGeometry}`);
     console.log(`Validation failures (not written): ${failures.length}${list(failures)}`);
     console.log(`Malformed (not written): ${malformed.length}${list(malformed)}`);
+    console.log(`Skipped, edited concurrently (re-run to pick up): ${skippedConcurrent.length}${list(skippedConcurrent)}`);
     console.log(`Transom cells with null selectionId (valid; Stage 23 flags as incomplete): ${nullTransoms}`);
-    if (failures.length || malformed.length) process.exitCode = 1;
-  } finally {
+    if (failures.length || malformed.length || skippedConcurrent.length) process.exitCode = 1;
     await prisma.$disconnect();
   }
 }
