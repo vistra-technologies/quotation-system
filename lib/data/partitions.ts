@@ -190,6 +190,13 @@ export async function createPartition(input: CreatePartitionInput) {
  *
  * Tenancy guard: verifies the partition belongs to the session's org before
  * updating. Returns null if not found (caller -> 404).
+ *
+ * Stage 22 Batch 6 (D-14): if the project's `designSubmittedAt` is set and
+ * this PATCH carries `design` or `heightMm` (a geometry-affecting edit,
+ * as opposed to a label-only rename), it's cleared back to null in the same
+ * transaction as the partition write — re-locking the Summary/Quotation
+ * wizard steps until Submit Design is clicked again. No `ProjectCalculation`
+ * deletion here; that table doesn't exist yet (Stage 23).
  */
 export async function updatePartition(
   session: SessionData,
@@ -198,7 +205,18 @@ export async function updatePartition(
 ) {
   const existing = await prisma.partition.findFirst({
     where: { id, organizationId: session.organizationId },
-    include: { room: { include: { floor: { select: { projectId: true } } } } },
+    include: {
+      room: {
+        include: {
+          floor: {
+            select: {
+              projectId: true,
+              project: { select: { designSubmittedAt: true } },
+            },
+          },
+        },
+      },
+    },
   });
   if (!existing) return null;
 
@@ -274,6 +292,26 @@ export async function updatePartition(
       data.widthMm = sumSectionWidths(patch.design.sections);
     }
     data.design = nextDesign as unknown as Prisma.InputJsonValue;
+  }
+
+  // Stage 22 D-14: a PATCH that carries `design` or `heightMm` is a
+  // geometry-affecting edit — it invalidates any prior Summary/Quotation
+  // calculation, so a submitted design must be re-submitted. Label-only
+  // edits don't touch geometry and leave the flag alone. No query is issued
+  // when the flag is already null.
+  const projectId = existing.room.floor.projectId;
+  const designSubmittedAt = existing.room.floor.project.designSubmittedAt;
+  const geometryChanged = patch.design !== undefined || patch.heightMm !== undefined;
+
+  if (designSubmittedAt !== null && geometryChanged) {
+    const [updated] = await prisma.$transaction([
+      prisma.partition.update({ where: { id }, data }),
+      prisma.project.update({
+        where: { id: projectId },
+        data: { designSubmittedAt: null },
+      }),
+    ]);
+    return updated;
   }
 
   return prisma.partition.update({ where: { id }, data });
