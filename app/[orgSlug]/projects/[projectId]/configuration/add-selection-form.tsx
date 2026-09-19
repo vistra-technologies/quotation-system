@@ -42,7 +42,9 @@ interface ComponentTypeOption {
   id: string;
   name: string;
   code: string;
-  category: { id: string; name: string };
+  // Stage 22 B5: optional — the snapshot-sourced path (the normal case) doesn't carry
+  // `category` (Decision #6's shape), and it was never read here anyway.
+  category?: { id: string; name: string };
   fieldsSchema: FieldEntry[];
   active: boolean;
   // Stage 20 Batch 4: org-level dropdown/radio value config, folded into the list route.
@@ -64,6 +66,13 @@ interface AddSelectionFormProps {
   orderIndex: number;
   componentTypes: ComponentTypeOption[];
   selections: SelectionRow[];
+  /**
+   * Stage 22 B5 — true when `componentTypes` came from the project's frozen
+   * `configSnapshot` (the normal case); false on the null-guard fallback (live
+   * read), where showing the notice would be misleading since options there
+   * ARE live. Drives the inline "captured at creation" notice below.
+   */
+  snapshotNotice: boolean;
 }
 
 const initialCreateState: CreateSelectionState = { error: null };
@@ -138,6 +147,7 @@ export function AddSelectionForm({
   orderIndex,
   componentTypes,
   selections,
+  snapshotNotice,
 }: AddSelectionFormProps) {
   const t = useTranslations("selections");
   const [createState, createFormAction, isCreatePending] = useActionState(
@@ -326,6 +336,16 @@ export function AddSelectionForm({
   return (
     <>
       <LoadingOverlay visible={isPending} />
+
+      {/* Stage 22 B5 — inline notice: options were frozen at project creation (configSnapshot).
+          Shown only on the snapshot path; the null-guard fallback reads live data, so showing
+          it there would be misleading. */}
+      {snapshotNotice && (
+        <div className="mx-7 mt-5 rounded-sm border border-primary-soft bg-primary-softer px-4 py-2.5 text-xs text-text-body">
+          Component options were captured when this project was created. Options added since
+          then will not appear here.
+        </div>
+      )}
 
       {/* 3-column grid layout matching the finalized mockup.
           R-1: flex-1 min-h-0 lets the grid fill the card's bounded height

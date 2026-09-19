@@ -10,6 +10,10 @@ import {
   RESERVED_COMPONENT_TYPE_CODES,
   ReservedComponentTypeCodeError,
 } from "@/lib/component-catalog-seed";
+import {
+  parseFieldsSchema,
+  parseFieldOptionsConfig,
+} from "@/lib/parse-field-config";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -50,73 +54,13 @@ export type FieldOptionsEntry = _FieldOptionsEntry;
 export type FieldOptionsConfig = _FieldOptionsConfig;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Parse the stored JSONB to a typed FieldEntry array (defensive). */
-function parseFieldsSchema(raw: unknown): FieldEntry[] {
-  if (!Array.isArray(raw)) return [];
-  const validTypes = new Set(["field", "radio", "dropdown", "checkbox"]);
-  return (raw as unknown[])
-    .map((item) => {
-      if (typeof item !== "object" || item === null) return null;
-      const obj = item as Record<string, unknown>;
-      const type = (validTypes.has(obj.type as string) ? obj.type : "field") as FieldEntry["type"];
-      const entry: FieldEntry = {
-        key: String(obj.key ?? ""),
-        label: String(obj.label ?? ""),
-        type,
-        required: Boolean(obj.required),
-        // `basic` defaults to true when absent (backwards-compat with old rows)
-        basic: obj.basic !== undefined ? Boolean(obj.basic) : true,
-      };
-      // options: conditionally included for radio/dropdown.
-      // Reads are intentionally lenient here (empty options → options: []) because
-      // the write-path in actions.ts throws if options are missing, so well-formed data
-      // never reaches the DB. Area 3 renderers should guard defensively on options.length
-      // rather than trusting type alone.
-      if (type === "radio" || type === "dropdown") {
-        entry.options = Array.isArray(obj.options)
-          ? (obj.options as unknown[]).map(String).filter(Boolean)
-          : [];
-      }
-      if (obj.hint) {
-        entry.hint = String(obj.hint);
-      }
-      // Stage 20: pass through dependsOn if present (SuperAdmin-authored wiring).
-      if (obj.dependsOn && typeof obj.dependsOn === "string") {
-        entry.dependsOn = obj.dependsOn;
-      }
-      return entry;
-    })
-    .filter((x): x is FieldEntry => x !== null);
-}
-
-/**
- * Parse the stored JSONB fieldOptionsConfig into a typed FieldOptionsConfig map.
- * Defensive: unknown shapes are dropped; only entries with an `options` array or
- * a `valueMap` object are preserved.
- * Stage 20 Batch 1.
- */
-function parseFieldOptionsConfig(raw: unknown): FieldOptionsConfig {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const obj = raw as Record<string, unknown>;
-  const result: FieldOptionsConfig = {};
-  for (const [key, entry] of Object.entries(obj)) {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
-    const e = entry as Record<string, unknown>;
-    if (Array.isArray(e.options)) {
-      result[key] = { options: (e.options as unknown[]).map(String).filter(Boolean) };
-    } else if (e.valueMap && typeof e.valueMap === "object" && !Array.isArray(e.valueMap)) {
-      const valueMap: Record<string, string[]> = {};
-      for (const [parentVal, vals] of Object.entries(e.valueMap as Record<string, unknown>)) {
-        if (Array.isArray(vals)) {
-          valueMap[parentVal] = (vals as unknown[]).map(String).filter(Boolean);
-        }
-      }
-      result[key] = { valueMap };
-    }
-  }
-  return result;
-}
+//
+// parseFieldsSchema / parseFieldOptionsConfig moved to lib/parse-field-config.ts
+// (Stage 22 B5) — same pattern as the FieldEntry/FieldOptionsConfig type extraction
+// above: org-scoped app/[orgSlug]/** code (the Configuration page, parsing
+// Project.configSnapshot's raw JSON) can't import lib/data/* (Stage 12 layer
+// separation, eslint-enforced), so the pure parsers live outside this DAL file and
+// are imported here too, to keep exactly one implementation.
 
 // ─── Read functions ───────────────────────────────────────────────────────────
 

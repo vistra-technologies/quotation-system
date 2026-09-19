@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { internalFetch } from "@/lib/internal-fetch";
+import type { ConfigSnapshot } from "@/lib/config-snapshot";
 
 /**
  * Shape returned by GET /api/v1/orgs/[orgSlug]/projects/[projectId].
@@ -35,6 +36,14 @@ export interface ProjectDetail {
   partitionCount: number;
   /** Set by the Design page's "Submit Design" button — gates Summary/Quotation. */
   designSubmittedAt: string | null;
+  /**
+   * Org ComponentType config frozen at project creation (Stage 22 B3/B4/B5).
+   * Null for projects created before Stage 22 or in the pre-backfill window —
+   * consumers must null-guard and fall back to a live ComponentType read.
+   * Only the Configuration page reads this; every other page ignores it, and
+   * it is never spread into a client component's props unparsed.
+   */
+  configSnapshot: ConfigSnapshot | null;
   // Stage 14 Batch C — extended intake fields (all nullable)
   submissionDate: string | null;
   projectDeadline: string | null;
