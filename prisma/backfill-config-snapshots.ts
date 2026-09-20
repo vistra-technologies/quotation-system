@@ -31,8 +31,10 @@
  *   - `--project=<id>` MUST come after `--` (same as `--write`). If it's placed before `--`, npm swallows
  *     it into `npm_config_project` instead of forwarding it, and argv would otherwise look like "no
  *     filter" was given at all — this case is detected and aborts rather than silently falling through to
- *     an org-wide run. (A misspelled flag name, e.g. `--projects=`, is a separate, narrower risk not
- *     covered by this check — see review-10.md IMPORTANT 1.)
+ *     an org-wide run. A misspelled flag name (e.g. `--projects=`) is NOT caught by this check — npm
+ *     derives the env var from the flag as typed, so it lands in `npm_config_projects`, which this guard
+ *     never looks at — and still silently widens to an org-wide run (bounded blast radius: dev-only,
+ *     NULL-conditional, idempotent). See review-11.md MINOR 1/2.
  *
  * Usage (from quotation-system/):
  *   npm run backfill:config-snapshot                                    # dry run, all projects (default)
@@ -99,10 +101,11 @@ async function main() {
   // touches the DB. Bare `--project` / `--project=` (empty value) is a usage error, not "all projects".
   const projectFlag = parseProjectFlag(process.argv);
   // npm swallows `--project=<id>` into its own `npm_config_project` env var when the flag is placed before
-  // `--` (or misspelled, e.g. `--projects=`), the same way it swallows `--dry-run`/`--write`. Unlike those,
-  // a swallowed `--project` has no way to fail closed on its own: argv would just look like "no filter", and
-  // the run would silently widen from one project to every project. So detect the mismatch explicitly and
-  // abort rather than fail open.
+  // `--`, the same way it swallows `--dry-run`/`--write`. Unlike those, a swallowed `--project` has no way
+  // to fail closed on its own: argv would just look like "no filter", and the run would silently widen
+  // from one project to every project. So detect the mismatch explicitly and abort rather than fail open.
+  // NOTE: a misspelled flag (`--projects=`) is NOT caught here — npm would swallow it into
+  // `npm_config_projects`, a different env var this check never reads — see the header comment.
   if (process.env.npm_config_project && process.env.npm_config_project !== projectFlag.id) {
     console.error(
       `ABORT: npm swallowed --project=${process.env.npm_config_project} (it must come after \`--\`). ` +
