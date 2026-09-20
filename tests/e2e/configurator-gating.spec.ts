@@ -267,9 +267,17 @@ test.describe("server-side configuredness gate on Selection creation", () => {
     );
     expect(putRes.status()).toBe(200);
 
+    // Stage 22 decision #11: the guard validates against the project's FROZEN configSnapshot, so a
+    // project created before the type was configured keeps rejecting it. Use a project created after.
+    const freshRes = await acmePage.request.post(apiUrl(ACME, `/api/v1/orgs/${ACME}/projects`), {
+      data: { name: `Stage20 B4 Gating Configured ${RUN}`, currency: "AED" },
+    });
+    expect(freshRes.status()).toBe(201);
+    const freshProjectId = ((await freshRes.json()) as { project: { id: string } }).project.id;
+
     const res = await acmePage.request.post(apiUrl(ACME, `/api/v1/orgs/${ACME}/selections`), {
       data: {
-        projectId,
+        projectId: freshProjectId,
         componentTypeId: unconfiguredTypeId,
         label: `Gate Test Configured ${RUN}`,
         config: { [unconfiguredKey]: "A" },
@@ -277,5 +285,6 @@ test.describe("server-side configuredness gate on Selection creation", () => {
       },
     });
     expect(res.status()).toBe(201);
+    await acmePage.request.delete(apiUrl(ACME, `/api/v1/orgs/${ACME}/projects/${freshProjectId}`)).catch(() => {});
   });
 });

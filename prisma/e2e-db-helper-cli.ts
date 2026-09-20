@@ -106,6 +106,14 @@ async function main() {
         // against (E6 only reads component-types lists / snapshots, never creates a Selection
         // referencing it) — a direct delete cannot leave a dangling FK.
         const { componentTypeId } = input as { componentTypeId: string };
+        // Guard: only ever delete test-coded types; also remove the 1:1 ComponentTypeOrgConfig row
+        // (created by any field-values PUT) first, otherwise the FK blocks the delete.
+        const ct = await db.componentType.findUnique({ where: { id: componentTypeId }, select: { code: true } });
+        if (!ct) return null;
+        if (!ct.code.startsWith("E2E_")) {
+          throw new Error(`deleteComponentType refused: ${ct.code} is not an E2E_-coded type`);
+        }
+        await db.componentTypeOrgConfig.deleteMany({ where: { componentTypeId } });
         await db.componentType.delete({ where: { id: componentTypeId } });
         return null;
       }

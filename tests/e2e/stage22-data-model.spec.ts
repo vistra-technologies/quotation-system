@@ -104,6 +104,10 @@ let acmeCategoryId: string;
 // db-helpers.deleteComponentType doc comment for why that's FK-safe).
 let e6ComponentTypeId: string | undefined;
 
+// Projects created by this suite — deleted in afterAll (tester pass: the suite previously left
+// every "Stage22 ..." project behind on the shared dev DB).
+const createdProjects: { orgSlug: string; page: Page; id: string }[] = [];
+
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(120_000);
   acmeCtx = await browser.newContext();
@@ -122,6 +126,9 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
+  for (const p of createdProjects) {
+    await p.page.request.delete(apiUrl(p.orgSlug, `/api/v1/orgs/${p.orgSlug}/projects/${p.id}`)).catch(() => {});
+  }
   if (e6ComponentTypeId) {
     await deleteComponentType(e6ComponentTypeId);
   }
@@ -149,6 +156,7 @@ async function createProject(
   });
   expect(res.status()).toBe(201);
   const { project } = (await res.json()) as { project: { id: string } };
+  createdProjects.push({ orgSlug, page, id: project.id });
   return project.id;
 }
 
