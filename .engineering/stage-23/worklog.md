@@ -2,10 +2,12 @@
 
 ## Status
 
-- **Phase:** implement — starting
-- **Branch:** `release/stage-23` (cut fresh from `origin/master` @ cf130ca, 2026-09-21)
-- **Active work item:** none yet — about to dispatch developer for the implementation plan
-- **Latest artifacts:** `profile.md` (stage-prep, 2026-09-20)
+- **Phase:** implement — Batch 1 done, awaiting review
+- **Branch:** `release/stage-23` (cut fresh from `origin/master` @ cf130ca, 2026-09-21) @ `48563e5`
+- **Active work item:** Batch 1 (schema + migration) implemented and merged. Reviewer dispatch next; then
+  Batch 2 (starter-catalog swap + seed + backfill).
+- **Latest artifacts:** `plan.md` (local, untracked per `.gitignore` convention — regenerate by reading
+  worklog history if a fresh checkout is missing it), `diff-b1.patch` (local, untracked).
 - **Stage target:** `quotation-system-docs/development-cycles/stage-23.md` — Formula Set engine + data model
 - **Tier:** near-serial, substantial (per profile.md: 1 → 2 → 4 → 3 → 6 → 5 → 7, batches 3∥4 and 6∥3–5)
 - **Gate:** RESOLVED 2026-09-21. A1 (door aggregation) is locked as **D-40**: `doors[]` hangs off the
@@ -14,8 +16,7 @@
   `design-docs/mockups/summary-poc.html` (which implements per-wall doors); human ruled for the mockup.
   Docs repo commit `5531121` (pushed) fixes `stage-23.md`, `stage-24.md`, `04-data-model.md`,
   `03-subsystems.md`, `07-roadmap-open-questions.md`, `development-cycles/README.md`, and
-  `08-decisions-and-changelog.md`. **`plan.md`'s Batch 4/5 sections still describe the old per-room
-  shape and need a small revision before Batch 4 starts** — next dispatch.
+  `08-decisions-and-changelog.md`. `plan.md` corrected to match (`feature/s23-plan`, merged).
 
 ## Activity log
 
