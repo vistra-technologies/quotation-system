@@ -110,3 +110,24 @@
 
 - developer · docs-only follow-up (`b3ab56b` on feature/s22-backfill-single-project): corrected the header comment (and the inline guard comment) that falsely claimed the npm-swallowed-`--project` abort also catches a misspelled `--projects=` flag — it does not (npm derives a different env var name from the flag as typed), per review-11.md MINOR 1/2. tsc/eslint clean. No behavior change.
 - (orchestrator) Merged feature/s22-backfill-single-project into release/stage-22 (non-ff, branches had diverged after B7) alongside feature/s22-b7-tests-docs (already merged ff-only earlier). All Stage 22 implement-phase work (B1-B7 + the backfill filter follow-up) is now on release/stage-22. Remaining before handoff to engineering:test: the two human-gated real `-- --write` runs above, and naming a target project for the single-project backfill test.
+
+- devops · B4 backfill single-project run (2026-09-20) — branch release/stage-22 @ 993e64b (clean), dev DB endpoint `ep-dark-term-ai0ufj4k` (confirmed in both .env and .env.local; production endpoint absent). Target project: `449ec773-864b-4829-a4d4-da5c12635de0` (org `vistra` / `ab23d299-d4f3-4cb1-a349-ac0a2caba1cc`). Before-state: `configSnapshot IS NULL` = true; global non-null count = 6. **Dry run** (`npm run backfill:config-snapshot -- --project=449ec773-864b-4829-a4d4-da5c12635de0`): exit 0, Would backfill: 1, scope restricted to this project, 0 failures. **Real write** (`-- --write`): exit 0, Backfilled: 1, 0 failures. After-state SQL checks: `has_snapshot=true`, `takenAt="2026-09-20T06:07:31.654Z"` (fresh ISO), `ct_count=3`, snapshot keys `{takenAt, componentTypes}` only, snapshot IDs/codes match vistra org's live ComponentTypes exactly (DOOR/GLASS/PROFILE_STOP — IDs byte-for-byte; no cross-org data; organizationId intentionally absent from snapshot shape per B4 design), global non-null count = 7 (+1 exactly). Full report: `.engineering/stage-22/backfill-run-449ec773.md`. **Safe to proceed with the full-org-wide `-- --write` run when human gives the go-ahead.**
+
+---
+
+## 2026-09-20 — Door panel "unselected dropdowns" investigation
+
+**Task:** Determine whether the "Select" placeholder on Door Type and Glass Variant in the "Edit Door" panel for selection `e2e-stage21-domlabels-selection-1789847476812` (project `449ec773-864b-4829-a4d4-da5c12635de0`, org vistra) is a real UI pre-select bug or expected behavior.
+
+**Result:** EXPECTED — pre-existing e2e test litter. No bug.
+
+**Key facts (read-only SQL against dev DB `ep-dark-term-ai0ufj4k` confirmed):**
+- `Selection.config` for this row is `{}` — completely empty. No `doorType`, no `glassVariant`, no field values at all.
+- Label `e2e-stage21-domlabels-{timestamp}` is unambiguous Stage 21 e2e DOM-label test fixture; the test created the Selection to exercise label-text rendering only, never filling form values.
+- This is the only Selection in the project; the entire project is test litter.
+- `handleEditSelection` in `add-selection-form.tsx` initializes `fieldValues` from `sel.config`. With `config: {}`, it sets `fieldValues = {}` — the "Select" placeholder is correct behavior.
+- configSnapshot backfill was verified intact: DOOR entry has `fieldOptionsConfig.doorType.options` (3 items) and `fieldOptionsConfig.glassVariant.options` (2 items), explaining why dropdowns DO populate on click.
+
+**Findings file:** `.engineering/stage-22/investigate-door-select.md`
+
+- devops · B4 backfill org-wide run (2026-09-20) — branch release/stage-22 @ 993e64b (clean), dev DB endpoint `ep-dark-term-ai0ufj4k` (confirmed; production endpoint absent). **Dry run** (org-wide, no --write): 571 total projects, 564 NULL configSnapshot, 0 failures, 7 already had snapshot (includes the 449ec773 single-project run). Count 564 vs prior 563 is expected drift — ballpark sane. **Real write** (`-- --write`, human-authorized): ran ~12 min (12:08–12:20 IST); Backfilled: 564, 0 failures, exit 0. **SQL verification** (read-only Prisma script): 571/571 NOT NULL, 0 NULL; 4 distinct orgs covered (ab23d299/vistra 87, f74551ab/acme-glass 460, 38cf3f25 4, f024afd5 20); snapshot shape `{takenAt, componentTypes: [{id, code, name, active, fieldsSchema, fieldOptionsConfig}]}` correct; tenancy verified for all 3 checked orgs (snapshot CT ids match live org exactly). **Idempotency dry run**: Would backfill: 0 — confirmed script is safe to leave in repo. **0 failures throughout.** Full report: `.engineering/stage-22/backfill-run-orgwide.md`. Dev DB is now fully backfilled; 0 projects remain with NULL configSnapshot.
