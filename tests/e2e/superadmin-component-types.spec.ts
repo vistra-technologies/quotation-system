@@ -35,6 +35,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { COMPONENT_TYPE_DEFS } from "../../lib/component-catalog-seed";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -183,8 +184,15 @@ test("auth gate: GET /api/v1/superadmin/component-categories without cookie → 
 // ── Test 2: List — seeded types visible ───────────────────────────────────────
 //
 // Replaces stage5 tests 5-6 (GLASS/DOOR/PROFILE_STOP visible, category display).
+//
+// Stage 23 Batch 2 (D-34): the starter catalog def list shrank from {GLASS, DOOR, PROFILE_STOP}
+// to {GLASS, DOOR} — reworked here per stage-23.md's blast-radius table to assert the *current*
+// seeded def list (imported, not hardcoded) rather than three literal codes. acme-glass is a
+// pre-existing seeded org and the catalog swap never deletes rows, so it is expected to still
+// carry a legacy PROFILE_STOP row on the shared dev/test DB — that assertion is now conditional
+// so this spec also passes on a genuinely fresh DB where no such legacy row exists.
 
-test("list seeded types: GLASS, DOOR, PROFILE_STOP codes visible for acme-glass", async ({
+test("list seeded types: current starter catalog codes visible for acme-glass", async ({
   request,
 }) => {
   if (!hasBootstrapCreds) {
@@ -205,9 +213,13 @@ test("list seeded types: GLASS, DOOR, PROFILE_STOP codes visible for acme-glass"
   };
 
   const codes = body.componentTypes.map((ct) => ct.code);
-  expect(codes).toContain("GLASS");
-  expect(codes).toContain("DOOR");
-  expect(codes).toContain("PROFILE_STOP");
+  for (const def of COMPONENT_TYPE_DEFS) {
+    expect(codes).toContain(def.code);
+  }
+  // PROFILE_STOP is no longer part of the seeded def list (D-35 — no such slot in the new
+  // catalog), but is never deleted from an org that already had it (D-34) — so its presence is not asserted: this spec is correct
+  // both on the shared dev DB (has the legacy row) and on a fresh DB (doesn't).
+  expect(COMPONENT_TYPE_DEFS.map((d) => d.code)).not.toContain("PROFILE_STOP");
 
   // Category name "Glass Partitions" should appear on at least one type.
   const hasGlassPartitionsCategory = body.componentTypes.some(

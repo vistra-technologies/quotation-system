@@ -9,6 +9,8 @@ import {
   COMPONENT_TYPE_ORG_CONFIG_DEFS,
   SEEDED_CATALOG_CATEGORY_NAME,
 } from "@/lib/component-catalog-seed";
+import { seedFormulaSets } from "./seed-formula-sets";
+import { ACTIVE_FORMULA_SET_NAME } from "../lib/formula-sets";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -316,13 +318,16 @@ async function main() {
       // Stage 20 Batch 1: upsert the starter option values into ComponentTypeOrgConfig.
       // The migration backfill already created these rows for existing orgs, but the
       // seed is idempotent and must also handle fresh installs.
-      // update: {} — create-only semantics. fieldOptionsConfig is org-owned data; re-running
-      // the seed must never clobber values an org admin has configured via the Catalog screen.
+      // Stage 23 Batch 2 (D-34, amended): the update path OVERWRITES fieldOptionsConfig with the
+      // new defaults for the seeded GLASS/DOOR, in step with the fieldsSchema overwrite above, so
+      // schema and config never disagree (a new-shape schema with an old-shape config would leave
+      // the type permanently "not fully configured"). Org-authored option values on these two
+      // types are intentionally replaced. Nothing is deleted; other types/configs are untouched.
       const fieldOptionsConfig = configByCode.get(ct.code);
       if (fieldOptionsConfig) {
         await prisma.componentTypeOrgConfig.upsert({
           where: { componentTypeId: ct.id },
-          update: {}, // intentionally empty — never overwrite org-authored values on reseed
+          update: { fieldOptionsConfig: fieldOptionsConfig as object },
           create: {
             organizationId: org.id,
             componentTypeId: ct.id,
@@ -338,8 +343,34 @@ async function main() {
   console.log(
     `ComponentCategories: ${totalComponentCategories}  (1×${allOrgs.length}=${allOrgs.length} expected)`,
   );
+  // Stage 23 Batch 2 (D-34): informational only, not an "expected" equality check. Orgs seeded
+  // before the catalog swap keep their PROFILE_STOP row (never deleted), so the real count is
+  // COMPONENT_TYPE_DEFS.length×orgs PLUS one legacy PROFILE_STOP per pre-existing org — there is
+  // no single formula that always matches.
   console.log(
-    `ComponentTypes:     ${totalComponentTypes}  (${COMPONENT_TYPE_DEFS.length}×${allOrgs.length}=${COMPONENT_TYPE_DEFS.length * allOrgs.length} expected)`,
+    `ComponentTypes:     ${totalComponentTypes}  (informational — currently ${COMPONENT_TYPE_DEFS.length} seeded codes × ${allOrgs.length} orgs, plus any legacy codes like PROFILE_STOP an org already had)`,
+  );
+
+  // ── 4b. Formula sets (Stage 23 Batch 2, D-34/D-38) ──────────────────────────
+  // Seed the slots-only v1 set, then pin every org's activeFormulaSetId (create-only per org —
+  // an org that already has a pin, e.g. one repointed to a later version, is left alone).
+  console.log("\nSeeding FormulaSets…");
+  const formulaSetsByName = await seedFormulaSets(prisma);
+  const activeSet = formulaSetsByName.get(ACTIVE_FORMULA_SET_NAME);
+  if (!activeSet) {
+    throw new Error(`seedFormulaSets() did not produce a "${ACTIVE_FORMULA_SET_NAME}" set`);
+  }
+  for (const org of allOrgs) {
+    await prisma.organization.updateMany({
+      where: { id: org.id, activeFormulaSetId: null },
+      data: { activeFormulaSetId: activeSet.id },
+    });
+  }
+  const orgsWithActiveSet = await prisma.organization.count({
+    where: { activeFormulaSetId: { not: null } },
+  });
+  console.log(
+    `Organizations with activeFormulaSetId set: ${orgsWithActiveSet} / ${allOrgs.length}`,
   );
 
   // ── 5. Catalog items and prices ─────────────────────────────────────────────
@@ -547,7 +578,7 @@ async function main() {
     `Item prices:        ${totalItemPrices}  (${priceDefs.length * catalogItemDefs.length}×${allOrgs.length}=${priceDefs.length * catalogItemDefs.length * allOrgs.length} expected)`,
   );
   console.log(
-    `Component types:    ${totalComponentTypesCount}  (${COMPONENT_TYPE_DEFS.length}×${allOrgs.length}=${COMPONENT_TYPE_DEFS.length * allOrgs.length} expected)`,
+    `Component types:    ${totalComponentTypesCount}  (informational — see the note above; legacy codes on pre-existing orgs make a fixed "expected" figure meaningless)`,
   );
   const totalSuperAdmins = await prisma.superAdmin.count();
   console.log(`SuperAdmins:        ${totalSuperAdmins}  (3 expected when env vars are set)`);
