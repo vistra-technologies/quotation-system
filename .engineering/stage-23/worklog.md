@@ -2,12 +2,15 @@
 
 ## Status
 
-- **Phase:** implement — Batch 2 merged (reviews: review-2 CHANGES-NEEDED -> fixed -> review-3 APPROVE-WITH-NITS)
-- **Branch:** `release/stage-23` @ `d50b70e`
-- **Active work item:** Batch 2 code merged. **Next: devops runs `npx prisma db seed` on dev DB, then backfill
-  dry-run/--write and the verification checklist (fresh org via /controls, guard, e2e on a preview).** Then
-  Batch 4 (summary builder). D-34 amended by human 2026-09-21: seed overwrites existing orgs' GLASS/DOOR
-  (schema + option config); deletes nothing.
+- **Phase:** implement — Batches 1, 2, 4 merged. Next: Batch 3 (creation wiring + invalidation), then 6, 5, 7.
+- **Branch:** `release/stage-23` @ `8aa410b`
+- **Active work item:** Batch 3 (`lib/formula-compat.ts`, createProject/convertInquiry pin + 409, invalidation
+  helper in partitions/rooms/floors/selections, delete cascades, org creation sets activeFormulaSetId).
+- **Carry-forwards:** (a) review-4 MINOR: KPI rounding drift (entries can sum 1e-4 off `totalPartitionSqm`) -
+  Batch 7 adds a Known-limitations note to stage-23.md. (b) review-4: a partition with `design: null` makes
+  the builder return FAILED - Batch 5's 13b submit check must catch it first as a legible 400/422.
+  (c) Batch 2 leftover unverified: fresh-org /controls check + e2e on a preview (needs SuperAdmin creds) -
+  fold into the Batch 7 e2e/preview pass.
 - **Latest artifacts:** `plan.md` (local, untracked per `.gitignore` convention — regenerate by reading
   worklog history if a fresh checkout is missing it), `diff-b1.patch` (local, untracked).
 - **Stage target:** `quotation-system-docs/development-cycles/stage-23.md` — Formula Set engine + data model
