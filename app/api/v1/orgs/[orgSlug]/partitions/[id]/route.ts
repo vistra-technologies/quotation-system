@@ -12,7 +12,7 @@ import {
   updatePartition,
   InvalidDesignError,
 } from "@/lib/data/partitions";
-import { parseDesignPatch, PartitionDesignError } from "@/lib/partition-design";
+import { parseDesignPatch, PartitionDesignError, MAX_DESIGN_MM } from "@/lib/partition-design";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -118,11 +118,11 @@ export async function PATCH(
     return apiBadRequest("label, if provided, must be a non-empty string");
   }
   const heightMm =
-    typeof body.heightMm === "number" && body.heightMm > 0
+    typeof body.heightMm === "number" && Number.isInteger(body.heightMm) && body.heightMm > 0 && body.heightMm <= MAX_DESIGN_MM
       ? body.heightMm
       : undefined;
   if (body.heightMm !== undefined && heightMm === undefined) {
-    return apiBadRequest("heightMm, if provided, must be a positive number");
+    return apiBadRequest("heightMm, if provided, must be a positive integer (mm) of at most 100000");
   }
 
   let design;

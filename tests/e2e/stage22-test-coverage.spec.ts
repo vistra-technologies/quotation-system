@@ -432,6 +432,64 @@ test("a project whose configSnapshot is NULL still serves detail + Configuration
   await expect(acme.getByText("Components", { exact: true }).first()).toBeVisible({ timeout: 30_000 });
 });
 
+// M-1 (decision #11): Selection create validates against the project's FROZEN configSnapshot, not live rows.
+test("selection create validates against the project's configSnapshot: live type emptied/deactivated after creation still works; type not in snapshot is rejected", async () => {
+  const key = `m${RUN}`;
+  const create = await acme.request.post(A("/component-types"), {
+    data: {
+      code: `E2E_S22_M1_${RUN}`,
+      name: `${PREFIX} m1 type`,
+      categoryId,
+      fieldsSchema: [{ key, label: "Opt", type: "dropdown", required: false, basic: true }],
+    },
+  });
+  expect(create.status()).toBe(201);
+  const typeId = ((await create.json()) as { componentType: { id: string } }).componentType.id;
+  typesToDelete.push(typeId);
+  const put = (options: string[]) =>
+    acme.request.put(A(`/component-types/${typeId}/field-values`), {
+      data: { fieldOptionsConfig: { [key]: { options } } },
+    });
+  expect((await put(["A", "B"])).status()).toBe(200);
+
+  const projectId = await newProject(acme, ACME, "m1");
+
+  // Live type becomes unconfigured AND inactive after the project froze its snapshot.
+  expect((await put([])).status()).toBe(200);
+  const deact = await acme.request.patch(A(`/component-types/${typeId}`), { data: { active: false } });
+  expect(deact.status()).toBe(200);
+
+  const ok = await acme.request.post(A("/selections"), {
+    data: { projectId, componentTypeId: typeId, label: `${PREFIX} sel`, config: { [key]: "A" }, orderIndex: 0 },
+  });
+  expect(ok.status(), await ok.text()).toBe(201);
+
+  // A type created AFTER the project is not in its snapshot -> rejected, even though live it is fully configured.
+  const key2 = `n${RUN}`;
+  const create2 = await acme.request.post(A("/component-types"), {
+    data: {
+      code: `E2E_S22_M1B_${RUN}`,
+      name: `${PREFIX} m1 late type`,
+      categoryId,
+      fieldsSchema: [{ key: key2, label: "Opt", type: "dropdown", required: false, basic: true }],
+    },
+  });
+  expect(create2.status()).toBe(201);
+  const lateId = ((await create2.json()) as { componentType: { id: string } }).componentType.id;
+  typesToDelete.push(lateId);
+  expect(
+    (
+      await acme.request.put(A(`/component-types/${lateId}/field-values`), {
+        data: { fieldOptionsConfig: { [key2]: { options: ["X"] } } },
+      })
+    ).status(),
+  ).toBe(200);
+  const rejected = await acme.request.post(A("/selections"), {
+    data: { projectId, componentTypeId: lateId, label: `${PREFIX} late`, config: { [key2]: "X" }, orderIndex: 1 },
+  });
+  expect(rejected.status()).toBe(400);
+});
+
 // Kept LAST: serial mode skips everything after a failure, and this one documents a known defect (bugs-1.md #1).
 test("integer-overflow / fractional inputs are rejected with 400, never 500", async () => {
   const { partitionId } = await newWall("overflow", 2000, 2400);

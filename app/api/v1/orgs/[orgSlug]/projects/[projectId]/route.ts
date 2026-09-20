@@ -48,9 +48,10 @@ export async function GET(
   try {
     // Stage 22 B5: this route backs fetchProjectDetail(), the single project-detail
     // fetch shared (via React.cache()) by every page under /projects/[projectId]/* —
-    // including the Configuration page, which needs configSnapshot. Fetched only
-    // server-to-server (internalFetch); the raw snapshot never reaches the browser —
-    // only Configuration page parses it and forwards typed props to its client component.
+    // including the Configuration page, which needs configSnapshot. The route returns the raw
+    // snapshot to any authenticated org member (it is the org's own config, already readable via
+    // /component-types); the Configuration page parses it and forwards typed props to its client
+    // component. Only list payloads omit it.
     const project = await getProjectById(session, projectId, {
       includeConfigSnapshot: true,
     });
