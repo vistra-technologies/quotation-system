@@ -4,8 +4,10 @@
 
 - **Phase:** implement — Batch 1 done, awaiting review
 - **Branch:** `release/stage-23` (cut fresh from `origin/master` @ cf130ca, 2026-09-21) @ `48563e5`
-- **Active work item:** Batch 1 (schema + migration) implemented and merged. Reviewer dispatch next; then
-  Batch 2 (starter-catalog swap + seed + backfill).
+- **Active work item:** Batch 1 reviewed — APPROVE-WITH-NITS (0 critical/important, 3 minor, see
+  `review-1.md`). Next: devops applies the migration to the dev Neon DB out-of-band (via
+  `prisma migrate deploy` on `DATABASE_URL_UNPOOLED`, per review-1.md's MINOR-3 — not pasted SQL, so
+  `_prisma_migrations` gets the row), then Batch 2 (starter-catalog swap + seed + backfill).
 - **Latest artifacts:** `plan.md` (local, untracked per `.gitignore` convention — regenerate by reading
   worklog history if a fresh checkout is missing it), `diff-b1.patch` (local, untracked).
 - **Stage target:** `quotation-system-docs/development-cycles/stage-23.md` — Formula Set engine + data model
@@ -70,3 +72,13 @@
   - Committed `4c954d6` on `feature/s23-b1-schema-migration`, pushed.
   Status: DONE_WITH_CONCERNS (see "no live DB" caveat above — matches the dispatch's own expectation, not a
   new concern, but flagging per the return contract).
+
+- **reviewer · Batch 1 review round 1 (2026-09-21).** Reviewed `4c954d6` (schema + migration) against
+  `plan.md` Batch 1 and `stage-23.md` Batch 1 / D-20 / D-37. **Verdict: APPROVE-WITH-NITS** —
+  0 CRITICAL, 0 IMPORTANT, 3 MINOR. Independently ran `prisma validate`/`generate`, `tsc --noEmit`,
+  `npm run lint`, `npm run test:unit` (39/39) and verified the hand-written SQL byte-matches
+  `prisma migrate diff --from-empty --to-schema --script` output. Minors: (1) `updatedAt` DB default Prisma
+  wouldn't emit — matches the Stage 20 migration's precedent, leave as-is; (2) use `migrate diff` (DB-free)
+  to mechanically verify future hand-written migrations; (3) the out-of-band dev apply must go through
+  `prisma migrate deploy` on `DATABASE_URL_UNPOOLED`, and the migration file must not be edited afterwards
+  (checksum). No blockers — Batch 2 may proceed. See `review-1.md`.
