@@ -150,6 +150,12 @@ async function arm(projectId: string, opts: { submitted?: boolean } = {}) {
   expect(s.designSubmittedAt !== null).toBe(submitted);
 }
 
+/** A one-section v2 design (2400mm wide) whose single cell is `h` tall — geometry-affecting PATCH body. */
+const v2 = (h: number) => ({
+  schemaVersion: 2,
+  sections: [{ id: "s1", widthMm: 2400, cells: [{ id: "s1-c0", heightMm: h, selectionId: null }] }],
+});
+
 const NO_CALC = { calcCount: 0, designSubmittedAt: null };
 
 // ── creation ───────────────────────────────────────────────────────────────
@@ -213,13 +219,13 @@ test("partition PATCH: geometry deletes calc + clears designSubmittedAt; label-o
   expect(s.calcCount).toBe(1);
   expect(s.designSubmittedAt).not.toBeNull();
 
-  const geo = await acme.request.patch(A(`/partitions/${partitionId}`), { data: { heightMm: 2500 } });
+  const geo = await acme.request.patch(A(`/partitions/${partitionId}`), { data: { heightMm: 2500, design: v2(2500) } });
   expect(geo.status(), await geo.text()).toBe(200);
   expect(await readProjectState(projectId)).toMatchObject(NO_CALC);
 
   // D-17: a calculation with a NULL designSubmittedAt (post-Recompute state) is still deleted.
   await arm(projectId, { submitted: false });
-  const geo2 = await acme.request.patch(A(`/partitions/${partitionId}`), { data: { heightMm: 2400 } });
+  const geo2 = await acme.request.patch(A(`/partitions/${partitionId}`), { data: { heightMm: 2400, design: v2(2400) } });
   expect(geo2.status(), await geo2.text()).toBe(200);
   expect(await readProjectState(projectId)).toMatchObject(NO_CALC);
 });
