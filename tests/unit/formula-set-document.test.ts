@@ -10,7 +10,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import formulaSetDoc from "../../prisma/formula-sets/glass-partition-standard-v1.json";
-import { COMPONENT_TYPE_DEFS } from "../../lib/component-catalog-seed";
+import { COMPONENT_TYPE_DEFS, COMPONENT_TYPE_ORG_CONFIG_DEFS } from "../../lib/component-catalog-seed";
+import { isComponentTypeFullyConfigured } from "../../lib/configurator-gating";
+import type { FieldEntry } from "../../lib/types/field-entry";
+import type { FieldOptionsConfig } from "../../lib/types/field-options-config";
 import { loadFormulaSetDocs, stableHash } from "../../prisma/seed-formula-sets";
 
 type Slot = {
@@ -127,5 +130,35 @@ describe("seed-formula-sets.ts", () => {
     const c = { x: 1, y: 3 };
     assert.equal(stableHash(a), stableHash(b));
     assert.notEqual(stableHash(a), stableHash(c));
+  });
+});
+
+describe("starter catalog: seeded config is consistent with fieldsSchema (D-34 amended)", () => {
+  test("every def has a config, and it satisfies isComponentTypeFullyConfigured against its own schema", () => {
+    for (const def of COMPONENT_TYPE_DEFS) {
+      const cfg = COMPONENT_TYPE_ORG_CONFIG_DEFS.find((c) => c.code === def.code);
+      assert.ok(cfg, `${def.code} has no COMPONENT_TYPE_ORG_CONFIG_DEFS entry`);
+      assert.ok(
+        isComponentTypeFullyConfigured(def.fieldsSchema as FieldEntry[], cfg.fieldOptionsConfig as FieldOptionsConfig),
+        `${def.code}: seeded config leaves the type not fully configured`,
+      );
+    }
+  });
+
+  test("config keys are exactly the schema's dropdown/radio keys (no orphaned or missing entries)", () => {
+    for (const def of COMPONENT_TYPE_DEFS) {
+      const cfg = COMPONENT_TYPE_ORG_CONFIG_DEFS.find((c) => c.code === def.code)!;
+      const choiceKeys = def.fieldsSchema
+        .filter((f) => f.type === "dropdown" || f.type === "radio")
+        .map((f) => f.key)
+        .sort();
+      assert.deepEqual(Object.keys(cfg.fieldOptionsConfig).sort(), choiceKeys, def.code);
+    }
+  });
+
+  test("the check is real: a stale old-shape config fails against the new schema", () => {
+    const glass = COMPONENT_TYPE_DEFS.find((d) => d.code === "GLASS")!;
+    const stale = { glassType: { options: ["Clear", "Frosted", "Tinted"] } } as FieldOptionsConfig;
+    assert.equal(isComponentTypeFullyConfigured(glass.fieldsSchema as FieldEntry[], stale), false);
   });
 });

@@ -13,7 +13,7 @@ import {
   COMPONENT_TYPE_ORG_CONFIG_DEFS,
   SEEDED_CATALOG_CATEGORY_NAME,
 } from "@/lib/component-catalog-seed";
-import { ACTIVE_FORMULA_SET_NAME } from "@/prisma/seed-formula-sets";
+import { ACTIVE_FORMULA_SET_NAME } from "@/lib/formula-sets";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

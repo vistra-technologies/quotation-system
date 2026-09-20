@@ -217,12 +217,9 @@ test("list seeded types: current starter catalog codes visible for acme-glass", 
     expect(codes).toContain(def.code);
   }
   // PROFILE_STOP is no longer part of the seeded def list (D-35 — no such slot in the new
-  // catalog), but is never deleted from an org that already had it (D-34) — assert its presence
-  // only conditionally, so this spec is correct both on the shared dev DB (has the legacy row)
-  // and on a fresh DB (doesn't).
-  if (codes.includes("PROFILE_STOP")) {
-    expect(codes).toContain("PROFILE_STOP");
-  }
+  // catalog), but is never deleted from an org that already had it (D-34) — so its presence is not asserted: this spec is correct
+  // both on the shared dev DB (has the legacy row) and on a fresh DB (doesn't).
+  expect(COMPONENT_TYPE_DEFS.map((d) => d.code)).not.toContain("PROFILE_STOP");
 
   // Category name "Glass Partitions" should appear on at least one type.
   const hasGlassPartitionsCategory = body.componentTypes.some(

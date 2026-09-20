@@ -53,7 +53,7 @@
  */
 import dotenv from "dotenv";
 import { describeTarget, endpointOf, enforceDbTarget } from "./db-target-guard";
-import { ACTIVE_FORMULA_SET_NAME } from "./seed-formula-sets";
+import { ACTIVE_FORMULA_SET_NAME } from "../lib/formula-sets";
 
 // Same precedence as Next: real env > .env.local > .env (dotenv never overrides an already-set var).
 dotenv.config({ path: ".env.local", quiet: true });
@@ -106,7 +106,10 @@ async function main() {
       ? "DRY RUN — nothing will be written. (Pass `-- --write` to write.)"
       : "REAL RUN (--write) — pins will be written.",
   );
-  if (targetProjectId) console.log(`Project pass restricted to single project: ${targetProjectId}`);
+  if (targetProjectId) {
+    console.log(`Project pass restricted to single project: ${targetProjectId}`);
+    console.log("Org pass is ALWAYS org-wide (pins every org with a NULL activeFormulaSetId), regardless of --project.");
+  }
 
   // Pass (a) counters
   let orgCandidates = 0;

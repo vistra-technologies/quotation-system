@@ -401,13 +401,16 @@ test("project wizard: all 5 breadcrumb steps navigate with clean subdomain URLs"
   // covered separately in stage19.spec.ts).
   const ctRes = await page.request.get(`${BASE}/api/v1/orgs/vistra/component-types`);
   expect(ctRes.status()).toBe(200);
-  const { componentTypes } = (await ctRes.json()) as { componentTypes: { id: string }[] };
-  expect(componentTypes.length).toBeGreaterThan(0);
+  const { componentTypes } = (await ctRes.json()) as { componentTypes: { id: string; code: string }[] };
+  // Stage 23 D-34: pick GLASS ("Partition") explicitly — the seeded starter catalog is GLASS + DOOR,
+  // both fully configured after a reseed, so the selection-create configuredness gate passes.
+  const glassType = componentTypes.find((c) => c.code === "GLASS");
+  expect(glassType).toBeDefined();
 
   const selRes = await page.request.post(`${BASE}/api/v1/orgs/vistra/selections`, {
     data: {
       projectId: pid,
-      componentTypeId: componentTypes[0].id,
+      componentTypeId: glassType!.id,
       label: "Wizard breadcrumb selection",
       config: {},
       orderIndex: 0,

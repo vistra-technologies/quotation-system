@@ -23,10 +23,12 @@
  * `summaryParams` name (prisma/formula-sets/glass-partition-standard-v1.json) — the two land
  * together so the set's referenced keys are always real fieldsSchema keys.
  *
- * IMPORTANT — existing orgs are never affected by this swap: prisma/seed.ts upserts by
- * (organizationId, code) and only ever adds/updates rows for the codes listed below; it never
- * deletes a ComponentType or a ComponentTypeOrgConfig row. An org seeded before this change keeps
- * its PROFILE_STOP type and its old GLASS/DOOR field values untouched.
+ * IMPORTANT — re-seeding OVERWRITES existing orgs' GLASS and DOOR (D-34, amended): prisma/seed.ts
+ * upserts by (organizationId, code) and rewrites both `fieldsSchema` AND
+ * `ComponentTypeOrgConfig.fieldOptionsConfig` for the codes listed below, so schema and config stay
+ * consistent. Org-authored option values on those two types are replaced with the defaults below.
+ * The seed still deletes nothing: an org's PROFILE_STOP type (and its config) and any other type
+ * not listed below are left untouched.
  */
 
 /** The ComponentCategory name created alongside these types. */

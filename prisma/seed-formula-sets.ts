@@ -51,6 +51,16 @@ export function loadFormulaSetDocs(): FormulaSetDoc[] {
   ];
 }
 
+/** The active set for a name is its HIGHEST version — same rule as createOrganizationWithDefaults()
+ *  and the backfill (orderBy version desc), independent of doc array order. */
+function setIfHigher(
+  byName: Map<string, { id: string; name: string; version: number }>,
+  row: { id: string; name: string; version: number },
+): void {
+  const cur = byName.get(row.name);
+  if (!cur || row.version > cur.version) byName.set(row.name, row);
+}
+
 /**
  * Upserts every known formula-set doc: creates a missing (name, version); for an existing row,
  * verifies the body hash matches and logs+skips (never writes) on a mismatch — see the immutability
@@ -78,7 +88,7 @@ export async function seedFormulaSets(
             "immutable per version, leaving it untouched. Ship a new version instead of editing this one.",
         );
       }
-      byName.set(doc.name, { id: existing.id, name: existing.name, version: existing.version });
+      setIfHigher(byName, { id: existing.id, name: existing.name, version: existing.version });
       continue;
     }
 
@@ -92,12 +102,8 @@ export async function seedFormulaSets(
       select: { id: true, name: true, version: true },
     });
     console.log(`  Created FormulaSet ${created.name}@${created.version}`);
-    byName.set(doc.name, created);
+    setIfHigher(byName, created);
   }
 
   return byName;
 }
-
-/** The (name) the platform currently activates for every seeded/new org. Kept as a single
- *  constant so seed.ts and createOrganizationWithDefaults() name the exact same set. */
-export const ACTIVE_FORMULA_SET_NAME = "glass-partition-standard";

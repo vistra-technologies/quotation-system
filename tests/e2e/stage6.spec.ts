@@ -227,20 +227,29 @@ test("Selection round-trip: create project → add selection → selection appea
   // Fill the Add Component form
   await page.locator("input#sel-label").fill(selectionLabel);
 
-  // Pick the GLASS component type (seeded for every org)
-  const typeSelect = page.locator("select#sel-type");
-  await expect(typeSelect).toBeVisible({ timeout: 10_000 });
-  await typeSelect.selectOption({ label: "Glass" });
+  // Pick the GLASS component type — seeded as "Partition" since Stage 23 (D-34). The palette is a
+  // column of tile buttons (Stage 17 restyle), not a <select>.
+  await page.getByRole("button", { name: /Partition/ }).click();
 
-  // Wait for dynamic fields to appear — GLASS has a required "Thickness (mm)" field
-  const thicknessInput = page.locator("input[type='text']").nth(1); // second text input (first is label)
-  await expect(thicknessInput).toBeVisible({ timeout: 5_000 });
+  // The basic fields are a category -> glassType -> thickness cascade of SelectField comboboxes
+  // (D-34 catalog). They are the only comboboxes in the form while Configure is closed.
+  const combos = page.locator("form").filter({ has: page.locator("input#sel-label") }).getByRole("combobox");
+  const pick = async (index: number, value: string) => {
+    await combos.nth(index).click();
+    await page.getByRole("option", { name: value, exact: true }).click();
+  };
 
-  // Fill required text field (thickness)
-  await thicknessInput.fill("10");
-
-  // Select Glass Type radio (required) — pick "Clear"
-  await page.getByLabel("Clear").check();
+  // glassType/thickness stay disabled until their parent is chosen
+  await expect(combos.nth(1)).toBeDisabled();
+  await pick(0, "Single");
+  await expect(combos.nth(1)).toBeEnabled();
+  await pick(1, "ID1");
+  // thickness options follow glassType: ID1 -> 12 / 12.76
+  await expect(combos.nth(2)).toBeEnabled();
+  await combos.nth(2).click();
+  await expect(page.getByRole("option", { name: "12.76", exact: true })).toBeVisible();
+  await expect(page.getByRole("option", { name: "10", exact: true })).toHaveCount(0);
+  await page.getByRole("option", { name: "12", exact: true }).click();
 
   // Submit the selection — Stage 9: redirect goes back to /configuration, not project detail
   await Promise.all([
@@ -250,8 +259,8 @@ test("Selection round-trip: create project → add selection → selection appea
 
   // The selection must now appear in the table
   await expect(page.getByText(selectionLabel)).toBeVisible({ timeout: 15_000 });
-  // The component type name must appear (exact match avoids collision with the selection label)
-  await expect(page.getByRole("cell", { name: "Glass", exact: true })).toBeVisible({
+  // The saved row's type subtitle is the ComponentType name — "Partition" (was "Glass" pre-Stage 23)
+  await expect(page.getByText("Partition", { exact: true }).last()).toBeVisible({
     timeout: 10_000,
   });
 });

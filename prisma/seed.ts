@@ -9,7 +9,8 @@ import {
   COMPONENT_TYPE_ORG_CONFIG_DEFS,
   SEEDED_CATALOG_CATEGORY_NAME,
 } from "@/lib/component-catalog-seed";
-import { seedFormulaSets, ACTIVE_FORMULA_SET_NAME } from "./seed-formula-sets";
+import { seedFormulaSets } from "./seed-formula-sets";
+import { ACTIVE_FORMULA_SET_NAME } from "../lib/formula-sets";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -317,13 +318,16 @@ async function main() {
       // Stage 20 Batch 1: upsert the starter option values into ComponentTypeOrgConfig.
       // The migration backfill already created these rows for existing orgs, but the
       // seed is idempotent and must also handle fresh installs.
-      // update: {} — create-only semantics. fieldOptionsConfig is org-owned data; re-running
-      // the seed must never clobber values an org admin has configured via the Catalog screen.
+      // Stage 23 Batch 2 (D-34, amended): the update path OVERWRITES fieldOptionsConfig with the
+      // new defaults for the seeded GLASS/DOOR, in step with the fieldsSchema overwrite above, so
+      // schema and config never disagree (a new-shape schema with an old-shape config would leave
+      // the type permanently "not fully configured"). Org-authored option values on these two
+      // types are intentionally replaced. Nothing is deleted; other types/configs are untouched.
       const fieldOptionsConfig = configByCode.get(ct.code);
       if (fieldOptionsConfig) {
         await prisma.componentTypeOrgConfig.upsert({
           where: { componentTypeId: ct.id },
-          update: {}, // intentionally empty — never overwrite org-authored values on reseed
+          update: { fieldOptionsConfig: fieldOptionsConfig as object },
           create: {
             organizationId: org.id,
             componentTypeId: ct.id,
