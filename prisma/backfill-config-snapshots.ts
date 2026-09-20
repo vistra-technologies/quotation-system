@@ -18,9 +18,29 @@
  *   - One row failing does not stop the run; failures are listed and the exit code is non-zero.
  *   - Idempotent: a second run finds no NULL rows and writes nothing.
  *
+ * Single-project filter (`--project=<projectId>`):
+ *   - Restricts BOTH the dry-run report and the real write to that one project id — every other guard
+ *     above still applies unchanged (dry-run default, --write required, endpoint allowlist, conditional
+ *     per-row write, finally-report).
+ *   - Still gated by `configSnapshot IS NULL`: if the given project already has a snapshot, it is reported
+ *     as already-set and left untouched (never overwritten).
+ *   - The id is validated as a non-empty string; an empty `--project=` aborts before touching the DB. If
+ *     the id doesn't match any project at all, the report says so clearly (`not found`) rather than
+ *     silently backfilling nothing.
+ *   - No flag = current behavior (all NULL-snapshot projects), unchanged.
+ *   - `--project=<id>` MUST come after `--` (same as `--write`). If it's placed before `--`, npm swallows
+ *     it into `npm_config_project` instead of forwarding it, and argv would otherwise look like "no
+ *     filter" was given at all — this case is detected and aborts rather than silently falling through to
+ *     an org-wide run. A misspelled flag name (e.g. `--projects=`) is NOT caught by this check — npm
+ *     derives the env var from the flag as typed, so it lands in `npm_config_projects`, which this guard
+ *     never looks at — and still silently widens to an org-wide run (bounded blast radius: dev-only,
+ *     NULL-conditional, idempotent). See review-11.md MINOR 1/2.
+ *
  * Usage (from quotation-system/):
- *   npm run backfill:config-snapshot                 # dry run (default): report only
- *   npm run backfill:config-snapshot -- --write      # real run (dev DB only, with human go-ahead)
+ *   npm run backfill:config-snapshot                                    # dry run, all projects (default)
+ *   npm run backfill:config-snapshot -- --write                         # real run, all projects (dev DB only, with human go-ahead)
+ *   npm run backfill:config-snapshot -- --project=<projectId>            # dry run, one project only
+ *   npm run backfill:config-snapshot -- --project=<projectId> --write   # real run, one project only (dev DB only, with human go-ahead)
  */
 import dotenv from "dotenv";
 import type { Prisma } from "../app/generated/prisma/client";
@@ -44,6 +64,20 @@ export function endpointOf(url: string): string | null {
   }
 }
 
+/**
+ * Parses `--project=<projectId>` from argv, the same convention as `--write` (must come after `--` when
+ * invoked via `npm run`, since npm swallows unknown flags placed before it).
+ *   - No `--project=` present: `{ present: false, id: null }` — unchanged, all-projects behavior.
+ *   - `--project=` with a non-empty value: `{ present: true, id: "<value>" }`.
+ *   - `--project=` with an empty value (or bare `--project`): `{ present: true, id: null }` — invalid.
+ */
+export function parseProjectFlag(argv: string[]): { present: boolean; id: string | null } {
+  const arg = argv.find((a) => a === "--project" || a.startsWith("--project="));
+  if (!arg) return { present: false, id: null };
+  const value = arg.includes("=") ? arg.slice(arg.indexOf("=") + 1).trim() : "";
+  return { present: true, id: value.length > 0 ? value : null };
+}
+
 async function main() {
   const url = process.env.DATABASE_URL ?? "";
   const endpoint = url ? endpointOf(url) : null;
@@ -63,7 +97,29 @@ async function main() {
     process.argv.includes("--dry-run") ||
     process.env.npm_config_dry_run === "true";
 
-  // Loaded only after the guard, so a refused run never constructs a client.
+  // Optional single-project restriction; validated before the client is constructed so a bad flag never
+  // touches the DB. Bare `--project` / `--project=` (empty value) is a usage error, not "all projects".
+  const projectFlag = parseProjectFlag(process.argv);
+  // npm swallows `--project=<id>` into its own `npm_config_project` env var when the flag is placed before
+  // `--`, the same way it swallows `--dry-run`/`--write`. Unlike those, a swallowed `--project` has no way
+  // to fail closed on its own: argv would just look like "no filter", and the run would silently widen
+  // from one project to every project. So detect the mismatch explicitly and abort rather than fail open.
+  // NOTE: a misspelled flag (`--projects=`) is NOT caught here — npm would swallow it into
+  // `npm_config_projects`, a different env var this check never reads — see the header comment.
+  if (process.env.npm_config_project && process.env.npm_config_project !== projectFlag.id) {
+    console.error(
+      `ABORT: npm swallowed --project=${process.env.npm_config_project} (it must come after \`--\`). ` +
+        "Use: npm run backfill:config-snapshot -- --project=<id> [--write]",
+    );
+    process.exit(1);
+  }
+  if (projectFlag.present && !projectFlag.id) {
+    console.error('ABORT: --project=<projectId> requires a non-empty id (got an empty value).');
+    process.exit(1);
+  }
+  const targetProjectId = projectFlag.id;
+
+  // Loaded only after the guards, so a refused run never constructs a client.
   const { PrismaClient, Prisma: PrismaRuntime } = await import("../app/generated/prisma/client");
   const { PrismaPg } = await import("@prisma/adapter-pg");
   const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
@@ -74,22 +130,47 @@ async function main() {
       ? "DRY RUN — nothing will be written. (Pass `-- --write` to write.)"
       : "REAL RUN (--write) — snapshots will be written.",
   );
+  if (targetProjectId) console.log(`Restricted to single project: ${targetProjectId}`);
 
   let candidates = 0;
   let filled = 0;
   let alreadyHad = 0; // gained a snapshot between read and write (conditional write matched 0 rows)
   let totalProjects = 0;
+  let targetNotFound = false;
+  let targetAlreadySnapshotted = false;
   const failures: string[] = [];
   const skippedConcurrent: string[] = [];
   let aborted = false;
 
   try {
-    totalProjects = await prisma.project.count();
-    const rows = await prisma.project.findMany({
-      where: { configSnapshot: { equals: PrismaRuntime.DbNull } },
-      select: { id: true, organizationId: true },
-      orderBy: { projectNumber: "asc" },
-    });
+    // Org-wide total is only meaningful (and only worth the query) in org-wide mode; single-project mode
+    // reports on that one row instead.
+    if (!targetProjectId) totalProjects = await prisma.project.count();
+
+    let rows: { id: string; organizationId: string }[];
+    if (targetProjectId) {
+      // Single-project mode: look the row up directly rather than filtering findMany, so a project that
+      // exists but already has a snapshot can be told apart from one that doesn't exist at all.
+      const target = await prisma.project.findUnique({
+        where: { id: targetProjectId },
+        select: { id: true, organizationId: true, configSnapshot: true },
+      });
+      if (!target) {
+        targetNotFound = true;
+        rows = [];
+      } else if (target.configSnapshot !== null) {
+        targetAlreadySnapshotted = true;
+        rows = [];
+      } else {
+        rows = [{ id: target.id, organizationId: target.organizationId }];
+      }
+    } else {
+      rows = await prisma.project.findMany({
+        where: { configSnapshot: { equals: PrismaRuntime.DbNull } },
+        select: { id: true, organizationId: true },
+        orderBy: { projectNumber: "asc" },
+      });
+    }
     candidates = rows.length;
 
     for (const row of rows) {
@@ -121,14 +202,29 @@ async function main() {
     const list = (items: string[]) => (items.length ? "\n  " + items.join("\n  ") : "");
     console.log("\n──── Project.configSnapshot backfill report ────");
     console.log(`Target DB endpoint: ${endpoint}${dryRun ? " (dry run)" : ""}`);
+    if (targetProjectId) console.log(`Scope: single project ${targetProjectId}`);
     if (aborted) console.log("!! RUN ABORTED by an unexpected error — counts below are PARTIAL. Re-run is safe (idempotent).");
-    console.log(`Projects total:                    ${totalProjects}`);
-    console.log(`With NULL configSnapshot:          ${candidates}`);
-    console.log(`${dryRun ? "Would backfill" : "Backfilled"}: ${filled}`);
-    console.log(`Already had snapshot (skipped): ${totalProjects - candidates + alreadyHad}`);
-    console.log(`Skipped, snapshot appeared mid-run (${alreadyHad}):${list(skippedConcurrent)}`);
+    if (targetProjectId) {
+      if (targetNotFound) {
+        console.log(`Project ${targetProjectId}: NOT FOUND — no such project exists. Nothing read or written.`);
+        console.log(`${dryRun ? "Would backfill" : "Backfilled"}: 0`);
+      } else if (targetAlreadySnapshotted) {
+        console.log(`Project ${targetProjectId}: already has a configSnapshot — left untouched, nothing written.`);
+        console.log(`${dryRun ? "Would backfill" : "Backfilled"}: 0`);
+      } else {
+        console.log(`Project ${targetProjectId}: eligible (configSnapshot was NULL).`);
+        console.log(`${dryRun ? "Would backfill" : "Backfilled"}: ${filled}`);
+        console.log(`Skipped, snapshot appeared mid-run (${alreadyHad}):${list(skippedConcurrent)}`);
+      }
+    } else {
+      console.log(`Projects total (org-wide):         ${totalProjects}`);
+      console.log(`With NULL configSnapshot:          ${candidates}`);
+      console.log(`${dryRun ? "Would backfill" : "Backfilled"}: ${filled}`);
+      console.log(`Already had snapshot (skipped): ${totalProjects - candidates + alreadyHad}`);
+      console.log(`Skipped, snapshot appeared mid-run (${alreadyHad}):${list(skippedConcurrent)}`);
+    }
     console.log(`Failures (not written): ${failures.length}${list(failures)}`);
-    if (failures.length || aborted) process.exitCode = 1;
+    if (failures.length || aborted || targetNotFound) process.exitCode = 1;
     await prisma.$disconnect();
   }
 }
