@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
 import { getComponentTypeById } from "@/lib/data/components";
 import { isComponentTypeFullyConfigured } from "@/lib/configurator-gating";
+import { parseFieldsSchema, parseFieldOptionsConfig } from "@/lib/parse-field-config";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,33 @@ export async function listSelections(session: SessionData, projectId: string) {
 
 // ─── Mutations ──────────────────────────────────────────────────────────────
 
+interface SnapshotTypeLite {
+  id: string;
+  active: boolean;
+  fieldsSchema: unknown;
+  fieldOptionsConfig: unknown;
+}
+
+/** Defensively read `Project.configSnapshot.componentTypes`; null when absent/malformed (-> live fallback). */
+function readSnapshotTypes(raw: unknown): SnapshotTypeLite[] | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const types = (raw as { componentTypes?: unknown }).componentTypes;
+  if (!Array.isArray(types)) return null;
+  const out: SnapshotTypeLite[] = [];
+  for (const t of types) {
+    if (typeof t !== "object" || t === null) continue;
+    const o = t as Record<string, unknown>;
+    if (typeof o.id !== "string") continue;
+    out.push({
+      id: o.id,
+      active: o.active === true,
+      fieldsSchema: o.fieldsSchema,
+      fieldOptionsConfig: o.fieldOptionsConfig,
+    });
+  }
+  return out;
+}
+
 /**
  * Create a new Selection scoped to the session org.
  *
@@ -62,26 +90,54 @@ export async function listSelections(session: SessionData, projectId: string) {
  * has its values filled in). The "Add Component" palette already greys out an unconfigured type
  * client-side, but this is the server-side backstop for a client that bypasses that UI gate.
  *
+ * Stage 22 decision #11: the configuredness/active guard validates against the project's frozen
+ * `configSnapshot` (same source as the Configuration page palette), falling back to live rows only
+ * when the project has no snapshot. A type absent from the snapshot is rejected.
+ *
  * Throws on any tenancy violation or on the configuredness guard.
  */
 export async function createSelection(
   session: SessionData,
   input: CreateSelectionInput,
 ) {
-  // Tenancy guard — verify project belongs to session's org.
+  // Tenancy guard — verify project belongs to session's org. Also reads the project's frozen
+  // configSnapshot (Stage 22 decision #11): the configuredness/active guard below validates against
+  // it, not live ComponentType rows, so it agrees with what the Configuration page offered.
   const project = await prisma.project.findFirst({
     where: { id: input.projectId, organizationId: session.organizationId },
-    select: { id: true },
+    select: { id: true, configSnapshot: true },
   });
   if (!project) throw new Error("Project not found or access denied.");
 
-  // Tenancy guard — verify componentType belongs to session's org. Reuses the DAL's
-  // fieldsSchema + fieldOptionsConfig read (Batch 4 folded the org-config join into this
-  // function) rather than a bare findFirst, so the configuredness guard below is free.
-  const componentType = await getComponentTypeById(session, input.componentTypeId);
-  if (!componentType) throw new Error("Component type not found or access denied.");
-  if (!isComponentTypeFullyConfigured(componentType.fieldsSchema, componentType.fieldOptionsConfig)) {
-    throw new Error("Component type is not fully configured — contact your admin.");
+  const snapshotTypes = readSnapshotTypes(project.configSnapshot);
+  if (snapshotTypes) {
+    // Snapshot path. The snapshot only holds this org's types, but still confirm the live row
+    // exists in the session's org (keeps the tenancy check, avoids an FK 500 if since deleted).
+    const snapType = snapshotTypes.find((t) => t.id === input.componentTypeId);
+    if (!snapType) throw new Error("Component type not found or access denied.");
+    const live = await prisma.componentType.findFirst({
+      where: { id: input.componentTypeId, organizationId: session.organizationId },
+      select: { id: true },
+    });
+    if (!live) throw new Error("Component type not found or access denied.");
+    if (
+      !snapType.active ||
+      !isComponentTypeFullyConfigured(
+        parseFieldsSchema(snapType.fieldsSchema),
+        parseFieldOptionsConfig(snapType.fieldOptionsConfig),
+      )
+    ) {
+      throw new Error("Component type is not fully configured — contact your admin.");
+    }
+  } else {
+    // null-guard: no snapshot (should not occur post-backfill) — validate against live config.
+    // Tenancy guard — verify componentType belongs to session's org. Reuses the DAL's
+    // fieldsSchema + fieldOptionsConfig read rather than a bare findFirst.
+    const componentType = await getComponentTypeById(session, input.componentTypeId);
+    if (!componentType) throw new Error("Component type not found or access denied.");
+    if (!isComponentTypeFullyConfigured(componentType.fieldsSchema, componentType.fieldOptionsConfig)) {
+      throw new Error("Component type is not fully configured — contact your admin.");
+    }
   }
 
   return prisma.selection.create({

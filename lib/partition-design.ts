@@ -116,9 +116,13 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+/** Sane upper bound (mm) for any section width / cell height / summed wall width — keeps derived
+ * `Partition.widthMm` well inside Int4 so absurd input is a 400, not a DB-range 500. */
+export const MAX_DESIGN_MM = 100000;
+
 function positiveInt(v: unknown, label: string): number {
-  if (typeof v !== "number" || !Number.isInteger(v) || v <= 0) {
-    fail(`${label} must be a positive integer (mm)`);
+  if (typeof v !== "number" || !Number.isInteger(v) || v <= 0 || v > MAX_DESIGN_MM) {
+    fail(`${label} must be a positive integer (mm) of at most ${MAX_DESIGN_MM}`);
   }
   return v;
 }
@@ -155,6 +159,7 @@ function parseSections(raw: unknown): DesignSectionV2[] {
     if (seen.has(id)) fail(`${label} id "${id}" is not unique within the design`);
     seen.add(id);
   };
+  let totalWidth = 0;
   return raw.map((rawSection, i) => {
     if (!isObject(rawSection)) fail(`design.sections[${i}] must be an object`);
     if (typeof rawSection.id !== "string" || !rawSection.id) {
@@ -184,6 +189,10 @@ function parseSections(raw: unknown): DesignSectionV2[] {
       }
       return cell;
     });
+    totalWidth += widthMm;
+    if (totalWidth > MAX_DESIGN_MM) {
+      fail(`design.sections widths sum to more than ${MAX_DESIGN_MM}mm`);
+    }
     return { id: rawSection.id, widthMm, cells };
   });
 }
