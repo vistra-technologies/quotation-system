@@ -129,6 +129,9 @@ export async function updateSelection(
  * duplicated (not imported) from lib/data/partitions.ts's PartitionDesign to
  * avoid a cross-module type dependency for a single read-only scan. */
 interface DesignRefsShape {
+  // v2 (Stage 22): sections[].cells[].selectionId. `panels` is the legacy v1 shape, still scanned
+  // until Batch 2's migration has converted every stored row.
+  sections?: { cells?: { selectionId?: string | null }[] }[];
   panels?: { selectionId?: string | null; door?: { selectionId?: string | null } | null }[];
   stops?: Record<string, string | null | undefined>;
 }
@@ -154,7 +157,7 @@ export async function deleteSelection(session: SessionData, id: string) {
   // Scan every Partition in this project's design JSON for a reference to
   // this selectionId. Small N per project — a JS scan is simpler and just as
   // correct as a JSON-path query for a shape with several differently-keyed
-  // reference sites (panels[].selectionId, panels[].door.selectionId,
+  // reference sites (sections[].cells[].selectionId, legacy panels[].selectionId/door.selectionId,
   // stops.{top,bottom,left,right}).
   const partitions = await prisma.partition.findMany({
     where: {
@@ -172,7 +175,11 @@ export async function deleteSelection(session: SessionData, id: string) {
       (panel) => panel.selectionId === id || panel.door?.selectionId === id,
     ).length;
     const stopHits = Object.values(design.stops ?? {}).filter((v) => v === id).length;
-    inUseCount += panelHits + stopHits;
+    const cellHits = (design.sections ?? []).reduce(
+      (n, sec) => n + (sec.cells ?? []).filter((c) => c.selectionId === id).length,
+      0,
+    );
+    inUseCount += panelHits + cellHits + stopHits;
   }
   if (inUseCount > 0) return { inUseCount };
 

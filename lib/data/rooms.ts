@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/app/generated/prisma/client";
 import type { SessionData } from "@/lib/session";
 import { createPartitionInTx } from "@/lib/data/partitions";
-import type { PartitionDesign } from "@/lib/data/partitions";
+import { seedSectionsDesign } from "@/lib/partition-design";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -459,7 +459,7 @@ export async function replaceSides(
             widthMm: incoming.widthMm,
             organizationId: session.organizationId,
           });
-          // Seed three equal-width panels on conversion (S21 design-page
+          // Seed three equal-width sections (v2, one cell each) on conversion (S21 design-page
           // parity fix) instead of one full-width panel — matches the
           // finalized mockup's default Convert-to-Partition state
           // (design-page.html) and gives the user a realistic starting
@@ -470,18 +470,12 @@ export async function replaceSides(
           // IMPORTANT 1) — so the seeded widths must still sum exactly to
           // incoming.widthMm (last panel absorbs the remainder, same
           // split rule as the MAKE_EQUAL_WIDTH draft action).
-          const seedWidthMm = incoming.widthMm;
-          const seedHeightMm = incoming.heightMm;
-          const basePanelWidth = Math.floor(seedWidthMm / 3);
-          const seedDesign: PartitionDesign = {
-            panels: [0, 1, 2].map((i) => ({
-              id: crypto.randomUUID(),
-              type: "glass",
-              widthMm: i === 2 ? seedWidthMm - basePanelWidth * 2 : basePanelWidth,
-              heightMm: seedHeightMm,
-              selectionId: null,
-            })),
-          };
+          const seedDesign = seedSectionsDesign(
+            incoming.widthMm,
+            incoming.heightMm,
+            3,
+            () => crypto.randomUUID(),
+          );
           await tx.partition.update({
             where: { id: partition.id },
             data: { design: seedDesign as unknown as Prisma.InputJsonValue },

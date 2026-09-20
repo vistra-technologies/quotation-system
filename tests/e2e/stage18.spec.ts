@@ -251,12 +251,11 @@ test.beforeAll(async ({ browser }) => {
   partitionCId = convertedC.sides[0].partitionId!;
   expect(partitionCId).toBeTruthy();
 
-  // Convert seeds design.panels with exactly one full-width panel matching
-  // the side's own dimensions (review-item7-piece2-round2.md MINOR 4 — the
-  // existing "neither rejected write partially applied" assertions further
-  // down only prove a seed panel EXISTS, never that its dimensions actually
-  // match Partition.widthMm/heightMm, which is the invariant IMPORTANT 1 was
-  // about).
+  // Convert seeds a v2 design (Stage 22): three equal-width sections, one
+  // full-height cell each, widths summing exactly to the side's own width
+  // (review-item7-piece2-round2.md MINOR 4 — the "neither rejected write
+  // partially applied" assertions further down only prove seed sections
+  // EXIST; this proves their dimensions match Partition.widthMm/heightMm).
   const seedRes = await acmePage.request.get(
     apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
   );
@@ -265,14 +264,22 @@ test.beforeAll(async ({ browser }) => {
     partition: {
       widthMm: number;
       heightMm: number;
-      design: { panels: { widthMm: number; heightMm: number }[] } | null;
+      design: {
+        schemaVersion?: number;
+        panels?: unknown;
+        sections: { widthMm: number; cells: { heightMm: number }[] }[];
+      } | null;
     };
   };
   expect(seeded.widthMm).toBe(1200);
-  expect(seeded.design?.panels).toHaveLength(1);
-  expect(seeded.design?.panels[0].widthMm).toBe(1200);
-  expect(seeded.design?.panels[0].widthMm).toBe(seeded.widthMm);
-  expect(seeded.design?.panels[0].heightMm).toBe(seeded.heightMm);
+  expect(seeded.design?.schemaVersion).toBe(2);
+  expect(seeded.design?.panels).toBeUndefined();
+  expect(seeded.design?.sections).toHaveLength(3);
+  expect(seeded.design!.sections.reduce((n, sec) => n + sec.widthMm, 0)).toBe(seeded.widthMm);
+  for (const sec of seeded.design!.sections) {
+    expect(sec.cells).toHaveLength(1);
+    expect(sec.cells[0].heightMm).toBe(seeded.heightMm);
+  }
 
   // ComponentTypes are org-seeded (lib/component-catalog-seed.ts): one
   // "Glass Partitions" category with GLASS/DOOR/PROFILE_STOP codes.
@@ -941,25 +948,29 @@ test("partitions/[id]: tenancy isolation — cross-org GET/PATCH 404, cross-org-
   expect(ownGet.status()).toBe(200);
 });
 
+/** A v2 design body; each entry is [sectionId, widthMm, cells]. */
+function v2Body(
+  sections: [string, number, { id: string; heightMm: number; selectionId: string | null; hinging?: "left" | "right" }[]][],
+  extra: Record<string, unknown> = {},
+) {
+  return {
+    schemaVersion: 2,
+    sections: sections.map(([id, widthMm, cells]) => ({ id, widthMm, cells })),
+    ...extra,
+  };
+}
+
 test("PATCH /partitions/[id] design: rejects a selectionId from a different project (same org) and a different org", async () => {
-  const panelId = "panel-x";
+  const sectionId = "section-x";
 
   // Same org, different project — must 400, not silently accepted.
   const crossProjectRes = await acmePage.request.patch(
     apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
     {
       data: {
-        design: {
-          panels: [
-            {
-              id: panelId,
-              type: "glass",
-              widthMm: 1200,
-              heightMm: 2400,
-              selectionId: crossProjectSelectionId,
-            },
-          ],
-        },
+        design: v2Body([
+          [sectionId, 1200, [{ id: "cell-x", heightMm: 2400, selectionId: crossProjectSelectionId }]],
+        ]),
       },
     },
   );
@@ -970,36 +981,29 @@ test("PATCH /partitions/[id] design: rejects a selectionId from a different proj
     apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
     {
       data: {
-        design: {
-          panels: [
-            {
-              id: panelId,
-              type: "glass",
-              widthMm: 1200,
-              heightMm: 2400,
-              selectionId: nordicSelectionId,
-            },
-          ],
-        },
+        design: v2Body([
+          [sectionId, 1200, [{ id: "cell-x", heightMm: 2400, selectionId: nordicSelectionId }]],
+        ]),
       },
     },
   );
   expect(crossOrgRes.status()).toBe(400);
 
   // Confirm neither rejected write partially applied — the partition still
-  // only has its convert-time seed panel (review-item7-piece2 IMPORTANT 1:
-  // plain->partition convert seeds exactly one full-width panel), not the
-  // foreign-project/foreign-org panel either rejected PATCH tried to write.
+  // only has its three convert-time seed sections, not the foreign-project/
+  // foreign-org section either rejected PATCH tried to write.
   const afterRes = await acmePage.request.get(
     apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
   );
   const { partition: after } = (await afterRes.json()) as {
-    partition: { design: { panels?: { id: string; selectionId: string | null }[] } | null };
+    partition: {
+      design: { sections?: { id: string; cells: { selectionId: string | null }[] }[] } | null;
+    };
   };
-  const afterPanels = after.design?.panels ?? [];
-  expect(afterPanels).toHaveLength(1);
-  expect(afterPanels[0].id).not.toBe(panelId);
-  expect(afterPanels[0].selectionId).toBeNull();
+  const afterSections = after.design?.sections ?? [];
+  expect(afterSections).toHaveLength(3);
+  expect(afterSections.map((sec) => sec.id)).not.toContain(sectionId);
+  expect(afterSections[0].cells[0].selectionId).toBeNull();
 
   // Same check on `stops` — a PROFILE_STOP reference to a foreign org must
   // also be rejected.
@@ -1010,38 +1014,69 @@ test("PATCH /partitions/[id] design: rejects a selectionId from a different proj
   expect(crossOrgStopRes.status()).toBe(400);
 });
 
-test("PATCH /partitions/[id] design: legitimate round-trip persists panels/doors/stops and derives widthMm from panels", async () => {
-  const panelAId = "panel-a";
-  const panelBId = "panel-b";
+test("PATCH /partitions/[id] design: v2 invariants — legacy panels body, per-section height sum and malformed cells are all 400", async () => {
+  const url = apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`);
+
+  // A legacy v1 `panels` body is no longer accepted (Stage 22 D-8).
+  const legacyRes = await acmePage.request.patch(url, {
+    data: {
+      design: {
+        panels: [{ id: "p", type: "glass", widthMm: 1200, heightMm: 2400, selectionId: glassSelectionId }],
+      },
+    },
+  });
+  expect(legacyRes.status()).toBe(400);
+
+  // Cell heights not summing to the partition height (2400) -> 400.
+  const badHeightRes = await acmePage.request.patch(url, {
+    data: {
+      design: v2Body([["s", 1200, [{ id: "c1", heightMm: 2000, selectionId: glassSelectionId }]]]),
+    },
+  });
+  expect(badHeightRes.status()).toBe(400);
+
+  // sections without schemaVersion 2 -> 400.
+  const noVersionRes = await acmePage.request.patch(url, {
+    data: {
+      design: {
+        sections: [{ id: "s", widthMm: 1200, cells: [{ id: "c1", heightMm: 2400, selectionId: glassSelectionId }] }],
+      },
+    },
+  });
+  expect(noVersionRes.status()).toBe(400);
+
+  // Non-positive width -> 400.
+  const badWidthRes = await acmePage.request.patch(url, {
+    data: {
+      design: v2Body([["s", 0, [{ id: "c1", heightMm: 2400, selectionId: glassSelectionId }]]]),
+    },
+  });
+  expect(badWidthRes.status()).toBe(400);
+});
+
+test("PATCH /partitions/[id] design: legitimate round-trip persists sections/cells/stops and derives widthMm from sections", async () => {
+  const sectionAId = "section-a";
+  const sectionBId = "section-b";
 
   const patchRes = await acmePage.request.patch(
     apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
     {
       data: {
-        design: {
-          panels: [
-            {
-              id: panelAId,
-              type: "glass",
-              widthMm: 700,
-              heightMm: 2400,
-              selectionId: glassSelectionId,
-            },
-            {
-              id: panelBId,
-              type: "door",
-              widthMm: 900,
-              heightMm: 2400,
-              selectionId: glassSelectionId,
-              door: {
-                selectionId: doorSelectionId,
-                hinging: "left",
-                outerFrame: { w: 900, h: 2100 },
-              },
-            },
+        design: v2Body(
+          [
+            [sectionAId, 700, [{ id: "cell-a", heightMm: 2400, selectionId: glassSelectionId }]],
+            [
+              sectionBId,
+              900,
+              [
+                // transom (glass) above the door: 300 + 2100 = 2400
+                { id: "cell-b-t", heightMm: 300, selectionId: glassSelectionId },
+                { id: "cell-b-d", heightMm: 2100, selectionId: doorSelectionId, hinging: "left" },
+              ],
+            ],
           ],
-          stops: { top: profileSelectionId, bottom: profileSelectionId },
-        },
+          { stops: { top: profileSelectionId, bottom: profileSelectionId } },
+        ),
       },
     },
   );
@@ -1049,14 +1084,23 @@ test("PATCH /partitions/[id] design: legitimate round-trip persists panels/doors
   const { partition: patched } = (await patchRes.json()) as {
     partition: {
       widthMm: number;
-      design: { panels: { id: string; door?: { selectionId: string } }[]; stops: Record<string, string> };
+      design: {
+        schemaVersion: number;
+        panels?: unknown;
+        sections: { id: string; cells: { id: string; heightMm: number; selectionId: string }[] }[];
+        stops: Record<string, string>;
+      };
     };
   };
-  // widthMm is DERIVED from sum(panels[].widthMm) — never trusted from the
+  // widthMm is DERIVED from sum(sections[].widthMm) — never trusted from the
   // client (architect-review-item7.md binding correction 4).
   expect(patched.widthMm).toBe(700 + 900);
-  expect(patched.design.panels).toHaveLength(2);
-  expect(patched.design.panels.find((p) => p.id === panelBId)?.door?.selectionId).toBe(doorSelectionId);
+  expect(patched.design.schemaVersion).toBe(2);
+  expect(patched.design.panels).toBeUndefined();
+  expect(patched.design.sections).toHaveLength(2);
+  const doorSection = patched.design.sections.find((sec) => sec.id === sectionBId)!;
+  expect(doorSection.cells.map((c) => c.heightMm)).toEqual([300, 2100]);
+  expect(doorSection.cells[1].selectionId).toBe(doorSelectionId);
   expect(patched.design.stops.top).toBe(profileSelectionId);
   expect(patched.design.stops.bottom).toBe(profileSelectionId);
 
@@ -1065,29 +1109,18 @@ test("PATCH /partitions/[id] design: legitimate round-trip persists panels/doors
     apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
   );
   const { partition: reRead } = (await reReadRes.json()) as {
-    partition: { widthMm: number; design: { panels: unknown[] } };
+    partition: { widthMm: number; design: { sections: unknown[] } };
   };
   expect(reRead.widthMm).toBe(1600);
-  expect(reRead.design.panels).toHaveLength(2);
+  expect(reRead.design.sections).toHaveLength(2);
 
-  // Removing a panel (add/remove/split all go through the same
-  // panels-array PATCH) re-derives widthMm again — confirms it's not a
+  // Removing a section re-derives widthMm again — confirms it's not a
   // one-time computation frozen at first write.
   const removeRes = await acmePage.request.patch(
     apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
     {
       data: {
-        design: {
-          panels: [
-            {
-              id: panelAId,
-              type: "glass",
-              widthMm: 700,
-              heightMm: 2400,
-              selectionId: glassSelectionId,
-            },
-          ],
-        },
+        design: v2Body([[sectionAId, 700, [{ id: "cell-a", heightMm: 2400, selectionId: glassSelectionId }]]]),
       },
     },
   );
@@ -1096,72 +1129,61 @@ test("PATCH /partitions/[id] design: legitimate round-trip persists panels/doors
   expect(afterRemove.widthMm).toBe(700);
 });
 
-test("PATCH /partitions/[id] design: server-side merge preserves measurements/stops on a panels-only write", async () => {
-  const panelId = "panel-merge";
+test("PATCH /partitions/[id] design: server-side merge preserves measurements/stops on a sections-only write", async () => {
+  const sectionId = "section-merge";
 
-  // First write: establish measurements + stops alongside panels.
+  // First write: establish measurements + stops alongside sections.
   const seedRes = await acmePage.request.patch(
     apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
     {
       data: {
-        design: {
-          panels: [
-            { id: panelId, type: "glass", widthMm: 700, heightMm: 2400, selectionId: glassSelectionId },
-          ],
-          stops: { top: profileSelectionId },
-          measurements: { note: "seeded-by-e2e" },
-        },
+        design: v2Body(
+          [[sectionId, 700, [{ id: "cell-merge", heightMm: 2400, selectionId: glassSelectionId }]]],
+          { stops: { top: profileSelectionId }, measurements: { note: "seeded-by-e2e" } },
+        ),
       },
     },
   );
   expect(seedRes.status()).toBe(200);
 
-  // Second write: panels only — no `stops`/`measurements` key at all in the
+  // Second write: sections only — no `stops`/`measurements` key at all in the
   // patch body. lib/data/partitions.ts's updatePartition() merges onto the
   // stored design and only overwrites keys present in the patch; this locks
   // that in against a regression to a naive "replace the whole document"
   // write (review-item7-piece2 MINOR 7a — previously untested).
-  const panelsOnlyRes = await acmePage.request.patch(
+  const sectionsOnlyRes = await acmePage.request.patch(
     apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
     {
       data: {
-        design: {
-          panels: [
-            { id: panelId, type: "glass", widthMm: 500, heightMm: 2400, selectionId: glassSelectionId },
-          ],
-        },
+        design: v2Body([[sectionId, 500, [{ id: "cell-merge", heightMm: 2400, selectionId: glassSelectionId }]]]),
       },
     },
   );
-  expect(panelsOnlyRes.status()).toBe(200);
-  const { partition: merged } = (await panelsOnlyRes.json()) as {
+  expect(sectionsOnlyRes.status()).toBe(200);
+  const { partition: merged } = (await sectionsOnlyRes.json()) as {
     partition: {
       widthMm: number;
       design: {
-        panels: { id: string; widthMm: number }[];
+        sections: { id: string; widthMm: number }[];
         stops?: Record<string, string>;
         measurements?: { note?: string };
       };
     };
   };
   expect(merged.widthMm).toBe(500);
-  expect(merged.design.panels).toEqual([expect.objectContaining({ id: panelId, widthMm: 500 })]);
+  expect(merged.design.sections).toEqual([expect.objectContaining({ id: sectionId, widthMm: 500 })]);
   expect(merged.design.stops?.top).toBe(profileSelectionId);
   expect(merged.design.measurements?.note).toBe("seeded-by-e2e");
 
   // A client-supplied `widthMm` in the request body is not even parsed —
-  // the server derives it from panels regardless of what's sent
+  // the server derives it from sections regardless of what's sent
   // (review-item7-piece2 MINOR 7b).
   const spoofRes = await acmePage.request.patch(
     apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
     {
       data: {
         widthMm: 999999,
-        design: {
-          panels: [
-            { id: panelId, type: "glass", widthMm: 500, heightMm: 2400, selectionId: glassSelectionId },
-          ],
-        },
+        design: v2Body([[sectionId, 500, [{ id: "cell-merge", heightMm: 2400, selectionId: glassSelectionId }]]]),
       },
     },
   );
@@ -1170,53 +1192,60 @@ test("PATCH /partitions/[id] design: server-side merge preserves measurements/st
   expect(spoofed.widthMm).toBe(500);
 });
 
-test("PATCH /partitions/[id] design: a heightMm-only PATCH (no design key) still normalizes stored panels/doors", async () => {
-  // review-item7-piece2-round2.md MINOR 1: the app's own UI never sends
-  // heightMm without design.panels, but the API itself must not leave stale
-  // panels[].heightMm/door.outerFrame.h behind for a caller that does.
-  const panelId = "panel-height-only";
-  const seedRes = await acmePage.request.patch(
-    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
-    {
-      data: {
-        heightMm: 2400,
-        design: {
-          panels: [
-            {
-              id: panelId,
-              type: "door",
-              widthMm: 900,
-              heightMm: 2400,
-              selectionId: glassSelectionId,
-              door: { selectionId: doorSelectionId, hinging: "left", outerFrame: { w: 900, h: 2300 } },
-            },
+test("PATCH /partitions/[id] design: a heightMm change must keep every section's cell heights summing to it (no silent normalization)", async () => {
+  // Stage 22 (replaces the v1 "heightMm-only PATCH normalizes panels" test):
+  // v2 has NO silent height normalization. A heightMm-only PATCH on a v2 row
+  // that would leave a section's cells not summing to the new height is a
+  // 400 (Stage 22 D-9); sending matching sections alongside is accepted.
+  const sectionId = "section-height";
+  const url = apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`);
+  const seedRes = await acmePage.request.patch(url, {
+    data: {
+      heightMm: 2400,
+      design: v2Body([
+        [
+          sectionId,
+          900,
+          [
+            { id: "cell-h-t", heightMm: 300, selectionId: glassSelectionId },
+            { id: "cell-h-d", heightMm: 2100, selectionId: doorSelectionId, hinging: "left" },
           ],
-        },
-      },
+        ],
+      ]),
     },
-  );
+  });
   expect(seedRes.status()).toBe(200);
 
-  // Shrink the wall with NO `design` key in the body at all.
-  const heightOnlyRes = await acmePage.request.patch(
-    apiUrl(ACME, `/api/v1/orgs/${ACME}/partitions/${partitionCId}`),
-    { data: { heightMm: 2000 } },
-  );
-  expect(heightOnlyRes.status()).toBe(200);
-  const { partition: afterHeightOnly } = (await heightOnlyRes.json()) as {
-    partition: {
-      heightMm: number;
-      design: { panels: { id: string; heightMm: number; door?: { outerFrame?: { w: number; h: number } } }[] };
-    };
+  // Shrink the wall with NO `design` key: stored cells (300 + 2100) no longer
+  // sum to 2000 -> rejected, and nothing is written.
+  const heightOnlyRes = await acmePage.request.patch(url, { data: { heightMm: 2000 } });
+  expect(heightOnlyRes.status()).toBe(400);
+  const stillRes = await acmePage.request.get(url);
+  const { partition: still } = (await stillRes.json()) as { partition: { heightMm: number } };
+  expect(still.heightMm).toBe(2400);
+
+  // Height + matching sections together (what the app's Save sends): 200 transom + 1800 door.
+  const okRes = await acmePage.request.patch(url, {
+    data: {
+      heightMm: 2000,
+      design: v2Body([
+        [
+          sectionId,
+          900,
+          [
+            { id: "cell-h-t", heightMm: 200, selectionId: glassSelectionId },
+            { id: "cell-h-d", heightMm: 1800, selectionId: doorSelectionId, hinging: "left" },
+          ],
+        ],
+      ]),
+    },
+  });
+  expect(okRes.status()).toBe(200);
+  const { partition: ok } = (await okRes.json()) as {
+    partition: { heightMm: number; design: { sections: { cells: { heightMm: number }[] }[] } };
   };
-  expect(afterHeightOnly.heightMm).toBe(2000);
-  // The panel's own heightMm and the door's outerFrame.h are re-normalized
-  // to the new wall height (not left at the pre-shrink 2400/2300) — same
-  // class of drift correction 3 already closes for widthMm, extended here to
-  // the heightMm-only path.
-  expect(afterHeightOnly.design.panels[0].heightMm).toBe(2000);
-  expect(afterHeightOnly.design.panels[0].door?.outerFrame?.h).toBe(2000);
-  expect(afterHeightOnly.design.panels[0].door?.outerFrame?.w).toBe(900);
+  expect(ok.heightMm).toBe(2000);
+  expect(ok.design.sections[0].cells.map((c) => c.heightMm)).toEqual([200, 1800]);
 });
 
 test("PATCH /rooms/[id]: room rename round-trips and is visible on a fresh read", async () => {

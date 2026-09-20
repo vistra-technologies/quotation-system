@@ -28,6 +28,7 @@ import { SavedComponentsRail } from "./saved-components-rail";
 import { NewRoomForm } from "./new-room-form";
 import { RoomNameInput } from "./room-name-input";
 import { redirectToLogin } from "./login-redirect";
+import { makeDoorResolver, toPanelViewRow, toPanelViewRows } from "./partition-view";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Toast, useToast } from "@/components/toast";
 import type {
@@ -185,7 +186,9 @@ function DesignWorkspaceInner({
         const data = (res.ok ? await res.json() : { partitions: [] }) as {
           partitions: PartitionRow[];
         };
-        if (!cancelled) setSelectedRoomPartitions(data.partitions);
+        if (!cancelled) {
+          setSelectedRoomPartitions(toPanelViewRows(data.partitions, makeDoorResolver(selections)));
+        }
       } catch {
         if (!cancelled) setSelectedRoomPartitions([]);
       }
@@ -193,6 +196,7 @@ function DesignWorkspaceInner({
 
     void run();
     return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- `selections` is stable page props; adding it would refetch on every parent render.
   }, [orgSlug, isSubdomain, selectedRoom]);
 
   /**
@@ -255,8 +259,11 @@ function DesignWorkspaceInner({
         return;
       }
       if (!res.ok) return;
-      const { partition } = (await res.json()) as { partition: PartitionRow };
+      const { partition: rawPartition } = (await res.json()) as { partition: PartitionRow };
       if (token.cancelled) return;
+      // Stage 22 (D-6): stored v1/v2 design -> panel view, once, at this boundary. Throws on a
+      // malformed stored document -> caught below, Configure mode simply doesn't open.
+      const partition = toPanelViewRow(rawPartition, makeDoorResolver(selections));
       dispatch({ type: "LOAD_PARTITION", partition });
       // Pre-select the first panel so Configure mode opens ready to edit
       // (assign a door/material) instead of requiring an explicit click first.
@@ -272,19 +279,27 @@ function DesignWorkspaceInner({
       // glass selection so the user always lands on a configured state.
       // This makes the partition immediately dirty (isDirty=true) — intentional,
       // since the user explicitly asked for glass to always be pre-assigned.
+      // Stage 22: only panels that own a glass cell count — a glass panel, or a door panel with a
+      // transom (door height < wall height). A full-height door has no glass cell in v2, so its
+      // null panel.selectionId is normal and must not mark the partition dirty on open.
       const panels = partition.design?.panels ?? [];
-      const hasUnglazedPanel = panels.some((p) => !p.selectionId);
-      if (hasUnglazedPanel && panels.length > 0) {
+      const needsGlass = (p: (typeof panels)[number]) =>
+        !p.selectionId &&
+        (p.type === "glass" ||
+          (p.door ? (p.door.outerFrame?.h ?? partition.heightMm) < partition.heightMm : false));
+      const unglazedIds = panels.filter(needsGlass).map((p) => p.id);
+      if (unglazedIds.length > 0) {
         const firstGlass = selections.find((s) => s.componentType.code === "GLASS");
         if (firstGlass) {
           dispatch({
             type: "SET_GLASS",
-            panelIds: panels.map((p) => p.id),
+            panelIds: unglazedIds,
             selectionId: firstGlass.id,
           });
         }
       }
-    } catch {
+    } catch (err) {
+      console.error("Failed to open partition in Configure mode", err);
       return;
     }
     setViewMode("configure");
@@ -495,6 +510,7 @@ function DesignWorkspaceInner({
                   onSelectPartition={enterConfigureMode}
                   selectedPartitionId={viewMode === "configure" ? state.partitionId : null}
                   lastSavedPartition={lastSavedPartition}
+                  selections={selections}
                 />
               ) : null}
             </>
@@ -704,7 +720,7 @@ export function DesignWorkspace(props: DesignWorkspaceProps) {
       {/* UnitProvider is kept even though the unit toggle was removed (Stage 20 B5)
           — child components still call useUnit() and the provider is the correct
           boundary for that hook, permanently fixed to "mm". */}
-      <DraftProvider>
+      <DraftProvider selections={props.selections}>
         <DesignWorkspaceInner {...props} />
       </DraftProvider>
     </UnitProvider>

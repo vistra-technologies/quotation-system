@@ -7,7 +7,8 @@ import { PartitionPreview } from "./partition-preview";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { redirectToLogin } from "./login-redirect";
 import { useDraftContext } from "./design-draft-context";
-import type { PartitionRow, RoomRow } from "./types";
+import { makeDoorResolver, toPanelViewRows } from "./partition-view";
+import type { PartitionRow, RoomRow, SelectionRow } from "./types";
 
 interface RoomListProps {
   orgSlug: string;
@@ -54,6 +55,9 @@ interface RoomListProps {
    * (Stage 21 QA bug #18).
    */
   lastSavedPartition?: PartitionRow | null;
+  /** The project's Selections — used to normalize each fetched partition's stored v2 design
+   * to the panel view (Stage 22, D-6). */
+  selections: SelectionRow[];
   /**
    * A4↔B1 wiring note (for reviewers):
    * Track B's B1 empty-state CTA triggers `addingRoomForEmptyState` state in
@@ -89,6 +93,7 @@ export function RoomList({
   onSelectPartition,
   selectedPartitionId,
   lastSavedPartition,
+  selections,
 }: RoomListProps) {
   const t = useTranslations("design");
 
@@ -142,7 +147,10 @@ export function RoomList({
           return res.ok ? res.json() : { partitions: [] };
         })
         .then((data: { partitions: PartitionRow[] }) => {
-          setPartitionsByRoom((prev) => ({ ...prev, [room.id]: data.partitions }));
+          setPartitionsByRoom((prev) => ({
+            ...prev,
+            [room.id]: toPanelViewRows(data.partitions, makeDoorResolver(selections)),
+          }));
         })
         .catch(() => {
           setPartitionsByRoom((prev) => ({ ...prev, [room.id]: [] }));

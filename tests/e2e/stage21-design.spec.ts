@@ -149,6 +149,60 @@ async function convertFirstSideToPartition(
   return partitionSide!.partitionId as string;
 }
 
+/**
+ * Create a GLASS Selection for the project and assign it to every cell of the (freshly converted)
+ * partition via the API, before the UI is opened. The convert seed's cells carry no selectionId, and
+ * the Design page's client Save guard (design-draft-context.tsx, Stage 21 bug #13) refuses to save
+ * a glass panel with no glass type — so without this the UI Save can never fire its PATCH.
+ * Every seeded panel gets the SAME selection, which the reducer then carries through Add Panel
+ * (copies it when all panels share one), Split (spreads orig) and Unite (spreads the first target),
+ * so the post-Unite single panel is glazed at Save time too. Returns the selection id.
+ */
+async function assignGlassToPartition(
+  page: Page,
+  orgSlug: string,
+  projectId: string,
+  partitionId: string,
+  tag: string,
+): Promise<string> {
+  const typesRes = await page.request.get(apiUrl(orgSlug, `/api/v1/orgs/${orgSlug}/component-types`));
+  expect(typesRes.status()).toBe(200);
+  const { componentTypes } = (await typesRes.json()) as { componentTypes: { id: string; code: string }[] };
+  const glassType = componentTypes.find((c) => c.code === "GLASS");
+  if (!glassType) throw new Error(`No seeded GLASS ComponentType in ${orgSlug}`);
+
+  const selRes = await page.request.post(apiUrl(orgSlug, `/api/v1/orgs/${orgSlug}/selections`), {
+    data: {
+      projectId,
+      componentTypeId: glassType.id,
+      label: `e2e-stage21-${tag}-glass-${RUN}`,
+      config: {},
+      orderIndex: 0,
+    },
+  });
+  expect(selRes.status()).toBe(201);
+  const { selection } = (await selRes.json()) as { selection: { id: string } };
+
+  const getRes = await page.request.get(apiUrl(orgSlug, `/api/v1/orgs/${orgSlug}/partitions/${partitionId}`));
+  expect(getRes.status()).toBe(200);
+  const { partition } = (await getRes.json()) as {
+    partition: { design: { sections: { cells: { selectionId: string | null }[] }[] } };
+  };
+  const design = {
+    ...partition.design,
+    sections: partition.design.sections.map((sec) => ({
+      ...sec,
+      cells: sec.cells.map((c) => ({ ...c, selectionId: selection.id })),
+    })),
+  };
+  const patchRes = await page.request.patch(
+    apiUrl(orgSlug, `/api/v1/orgs/${orgSlug}/partitions/${partitionId}`),
+    { data: { design } },
+  );
+  expect(patchRes.status()).toBe(200);
+  return selection.id;
+}
+
 async function deleteProject(page: Page, orgSlug: string, projectId: string) {
   await page.request.delete(apiUrl(orgSlug, `/api/v1/orgs/${orgSlug}/projects/${projectId}`)).catch(() => {});
 }
@@ -161,8 +215,34 @@ function sumPanelWidths(bodyText: string): number {
   return matches.reduce((s, m) => s + Number(m[1]), 0);
 }
 
+/**
+ * The Configure-mode header's displayed partition width (mm, the live sum of the draft panel
+ * widths). configure-mode.tsx renders it as a read-only <span> next to the "Width" label; an
+ * <input> only exists after clicking the pencil ("Edit width"), and this helper only READS the
+ * value, so it reads the span and never enters edit mode (which would also risk committing).
+ * The label's CSS uppercase is presentational — the DOM text is "Width".
+ */
 async function widthFieldValue(page: Page): Promise<string> {
-  return page.locator("text=WIDTH").locator("xpath=following::input[1]").inputValue();
+  return page
+    .getByText("Width", { exact: true })
+    .locator("xpath=following-sibling::div[1]/span[1]")
+    .innerText();
+}
+
+/** Select every panel chip: plain-click chip 2 (replaces any prior selection; a plain click on the
+ * sole-selected chip would DESELECT it, and Configure mode opens with P1 pre-selected, so never
+ * start from chip 1), then Ctrl-click the rest. Asserts all chips end up selected. */
+async function selectAllPanels(page: Page): Promise<number> {
+  const chips = page.locator("[role='button'][aria-selected]");
+  const n = await chips.count();
+  expect(n).toBeGreaterThan(1);
+  await chips.nth(1).click();
+  for (let i = 0; i < n; i++) {
+    if (i === 1) continue;
+    await chips.nth(i).click({ modifiers: ["Control"] });
+  }
+  await expect(page.locator("[role='button'][aria-selected='true']")).toHaveCount(n);
+  return n;
 }
 
 /** Expand the room group and click its (single) partition row to enter
@@ -194,18 +274,27 @@ test.describe("Configure mode draft isolation", () => {
     await enterWallConfigure(page);
 
     // Make a dirty, unsaved change.
+    // The convert seed is 3 sections (lib/data/rooms.ts), so one Add Panel -> 4 panel chips in the
+    // Configure canvas. The left-rail "N panels" label is NOT draft-reactive (it renders the
+    // fetched partition and is only patched after a Save — lastSavedPartition), so it must still
+    // read 3 here; the original "/2 panels/" assertion was stale since the 3-panel convert seed
+    // (810b368) and never matched anything draft-driven.
+    const panelChips = page.locator("[role='button'][aria-selected]");
+    await expect(panelChips).toHaveCount(3);
     await page.getByRole("button", { name: "+ Add Panel" }).click();
-    await expect(page.getByText(/2 panels/)).toBeVisible();
+    await expect(panelChips).toHaveCount(4);
+    await expect(page.getByText(/4 panels/)).toHaveCount(0);
+    await expect(page.getByText(/3 panels$/).first()).toBeVisible();
 
     // Reload without saving — the draft must be discarded server-side (never written).
     await page.goto(orgUrl(ORG, `/projects/${projectId}/design`));
     await enterWallConfigure(page);
-    await expect(page.getByText(/1 panel$/).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/3 panels$/).first()).toBeVisible({ timeout: 15_000 });
 
     // Confirm at the API level too — never trust only the re-rendered DOM.
     const res = await page.request.get(apiUrl(ORG, `/api/v1/orgs/${ORG}/partitions/${partitionId}`));
-    const { partition } = (await res.json()) as { partition: { design: { panels: unknown[] } } };
-    expect(partition.design.panels).toHaveLength(1);
+    const { partition } = (await res.json()) as { partition: { design: { sections: unknown[] } } };
+    expect(partition.design.sections).toHaveLength(3);
   });
 
   test.afterAll(async ({ browser }) => {
@@ -230,22 +319,29 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
     await apiSignIn(page, ORG, "admin");
     const { projectId: pid, room } = await createProjectFloorRoom(page, ORG, "invariant");
     projectId = pid;
-    partitionId = await convertFirstSideToPartition(page, ORG, room, 1200, 2400);
+    // Wall is 2400 wide (not 1200) so the 3 seeded 800mm panels stay >= MIN_SPLIT_WIDTH_MM (406)
+    // after Add Panel redivides the locked total (4 x 600) — Split is disabled below that, and a
+    // 1200mm wall's 300mm panels could never be split.
+    partitionId = await convertFirstSideToPartition(page, ORG, room, 2400, 2400);
+    // Glaze the seeded panels via the API so the UI Save guard (glass panels need a selection) passes.
+    const glassSelectionId = await assignGlassToPartition(page, ORG, projectId, partitionId, "invariant");
 
     await page.goto(orgUrl(ORG, `/projects/${projectId}/design`));
     await enterWallConfigure(page);
 
-    // Add a panel — grows the wall (1200 -> 1810; new panel defaults to 610mm).
+    // Add a panel — the wall total is locked, so the existing 2400 is redivided across 4 panels
+    // (4 x 600), not grown.
+    const panelButtons = page.locator("[role='button'][aria-selected]");
     await page.getByRole("button", { name: "+ Add Panel" }).click();
+    await expect(panelButtons).toHaveCount(4);
     let body = await page.locator("body").innerText();
     let width = Number(await widthFieldValue(page));
     expect(sumPanelWidths(body)).toBe(width);
 
-    // Split panel 1.
-    const panelButtons = page.locator("[role='button'][aria-selected]");
+    // Split panel 1 (600mm -> 300 + 300).
     await panelButtons.nth(0).click({ button: "right" });
     await page.getByText("Split the panel").click();
-    await page.waitForTimeout(300);
+    await expect(panelButtons).toHaveCount(5);
     body = await page.locator("body").innerText();
     width = Number(await widthFieldValue(page));
     expect(sumPanelWidths(body)).toBe(width);
@@ -261,11 +357,7 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
     expect(sumPanelWidths(body)).toBe(width);
 
     // Multi-select all panels and make-equal-width.
-    const count = await panelButtons.count();
-    await panelButtons.nth(0).click();
-    await page.keyboard.down("Control");
-    for (let i = 1; i < count; i++) await panelButtons.nth(i).click();
-    await page.keyboard.up("Control");
+    const count = await selectAllPanels(page);
     await panelButtons.nth(count - 1).click({ button: "right" });
     await page.getByText("Make equal width").click();
     await page.waitForTimeout(300);
@@ -274,13 +366,10 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
     expect(sumPanelWidths(body)).toBe(width);
 
     // Unite all panels back into one.
-    await panelButtons.nth(0).click();
-    await page.keyboard.down("Control");
-    for (let i = 1; i < count; i++) await panelButtons.nth(i).click();
-    await page.keyboard.up("Control");
+    await selectAllPanels(page);
     await panelButtons.nth(count - 1).click({ button: "right" });
     await page.getByText("Unite panels").click();
-    await page.waitForTimeout(300);
+    await expect(panelButtons).toHaveCount(1);
     body = await page.locator("body").innerText();
     width = Number(await widthFieldValue(page));
     expect(sumPanelWidths(body)).toBe(width);
@@ -288,15 +377,34 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
 
     // Save — must persist exactly what's on screen.
     await page.getByRole("button", { name: "Save changes" }).click();
-    await page.waitForTimeout(1000);
+    // The button flips to a disabled "Saved" once the PATCH round-trip completes.
+    await expect(page.getByRole("button", { name: "Saved", exact: true })).toBeVisible({ timeout: 15_000 });
 
+    // Persisted v2 document (GET partition): section widths sum to the wall, and every cell still
+    // carries the glass selection through the UI's panelsToV2 Save path.
     const res = await page.request.get(apiUrl(ORG, `/api/v1/orgs/${ORG}/partitions/${partitionId}`));
     const { partition } = (await res.json()) as {
-      partition: { widthMm: number; design: { panels: { widthMm: number }[] } };
+      partition: {
+        widthMm: number;
+        design: {
+          schemaVersion: number;
+          panels?: unknown;
+          sections: { widthMm: number; cells: { heightMm: number; selectionId: string | null }[] }[];
+        };
+      };
     };
-    const persistedSum = partition.design.panels.reduce((s, p) => s + p.widthMm, 0);
+    expect(partition.design.schemaVersion).toBe(2);
+    expect(partition.design.panels).toBeUndefined();
+    expect(partition.design.sections).toHaveLength(1); // post-Unite: one section
+    const persistedSum = partition.design.sections.reduce((s, p) => s + p.widthMm, 0);
     expect(persistedSum).toBe(finalWidth);
     expect(partition.widthMm).toBe(finalWidth);
+    expect(finalWidth).toBe(2400); // the locked wall total survived every operation
+    for (const sec of partition.design.sections) {
+      expect(sec.cells.length).toBeGreaterThan(0);
+      expect(sec.cells.reduce((h, c) => h + c.heightMm, 0)).toBe(2400);
+      for (const c of sec.cells) expect(c.selectionId).toBe(glassSelectionId);
+    }
   });
 
   test("Discard Changes reverts an in-progress edit and does not persist it", async ({ page }) => {
@@ -305,18 +413,25 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
     await enterWallConfigure(page);
 
     const beforeRes = await page.request.get(apiUrl(ORG, `/api/v1/orgs/${ORG}/partitions/${partitionId}`));
-    const { partition: before } = (await beforeRes.json()) as { partition: { design: { panels: unknown[] } } };
+    const { partition: before } = (await beforeRes.json()) as { partition: { design: { sections: unknown[] } } };
 
+    // Count Configure-canvas panel chips (draft state) — the left-rail "N panels" label only
+    // reflects persisted data, so it can't be used to observe an unsaved Add Panel.
+    const chips = page.locator("[role='button'][aria-selected]");
+    const chipsBefore = await chips.count();
     await page.getByRole("button", { name: "+ Add Panel" }).click();
-    await expect(page.getByText(/2 panels/)).toBeVisible();
+    await expect(chips).toHaveCount(chipsBefore + 1);
 
-    await page.locator("button", { hasText: "←" }).first().click();
+    // Back button is aria-labelled "Back to Room Layout" (a bare "←" match also hits other arrows).
+    await page.getByRole("button", { name: "Back to Room Layout" }).click();
     await expect(page.getByRole("button", { name: "Discard Changes" })).toBeVisible({ timeout: 5_000 });
     await page.getByRole("button", { name: "Discard Changes" }).click();
+    // Discard resumes the back navigation: Configure mode (its toolbar) is gone.
+    await expect(page.getByRole("button", { name: "+ Add Panel" })).toHaveCount(0, { timeout: 15_000 });
 
     const afterRes = await page.request.get(apiUrl(ORG, `/api/v1/orgs/${ORG}/partitions/${partitionId}`));
-    const { partition: after } = (await afterRes.json()) as { partition: { design: { panels: unknown[] } } };
-    expect(after.design.panels).toHaveLength(before.design.panels.length);
+    const { partition: after } = (await afterRes.json()) as { partition: { design: { sections: unknown[] } } };
+    expect(after.design.sections).toHaveLength(before.design.sections.length);
   });
 
   test.afterAll(async ({ browser }) => {
@@ -391,8 +506,10 @@ test.describe("Design page DOM/style — Layout vs Configure mode", () => {
 
     await page.goto(orgUrl(ORG, `/projects/${projectId}/design`));
     await page.getByText(`Room ${RUN}`, { exact: true }).click();
-    await expect(page.getByText("WALL DETAILS")).toBeVisible({ timeout: 15_000 });
-    await expect(page.getByText("SAVED COMPONENTS", { exact: true })).toHaveCount(0);
+    // Headings are CSS-uppercased; the DOM text is "Wall Details" / "Saved Components" (exact match
+    // is case-sensitive, so the old all-caps "SAVED COMPONENTS" assertion could never fail).
+    await expect(page.getByText("Wall Details", { exact: true })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Saved Components", { exact: true })).toHaveCount(0);
   });
 
   test("selecting a partition in the left rail does not ghost-highlight it after returning to Layout mode", async ({
@@ -438,9 +555,16 @@ test.describe("Layout-mode wall tooltip positioning", () => {
 
       await page.goto(orgUrl(ORG, `/projects/${projectId}/design`));
       await page.getByText(`Room ${RUN}`, { exact: true }).click();
-      await expect(page.getByText("4 sides")).toBeVisible({ timeout: 15_000 });
+      // Wait for the floor plan (interior placeholder + 4 wall bars). The old "4 sides" label no
+      // longer exists ("N/M walls" replaced it).
+      await expect(page.locator("svg polygon")).toHaveCount(5, { timeout: 15_000 });
 
-      const card = page.locator("div.overflow-hidden.rounded-\\[10px\\]").first();
+      // The center column card — filtered to the one containing the floor plan, since the left
+      // rail <aside> shares the same overflow-hidden/rounded-[10px] classes and comes first in the DOM.
+      const card = page
+        .locator("div.overflow-hidden.rounded-\\[10px\\]")
+        .filter({ has: page.locator("svg polygon") })
+        .first();
       const cardBox = (await card.boundingBox())!;
 
       // Hover the right wall polygon directly (SVG render order for the

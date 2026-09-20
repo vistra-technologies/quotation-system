@@ -11,10 +11,8 @@ import {
   getPartitionById,
   updatePartition,
   InvalidDesignError,
-  type DesignPanel,
-  type DesignStops,
-  type PartitionDesign,
 } from "@/lib/data/partitions";
+import { parseDesignPatch, PartitionDesignError } from "@/lib/partition-design";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -69,101 +67,19 @@ export async function GET(
 
 // ─── PATCH /api/v1/orgs/[orgSlug]/partitions/[id] ─────────────────────────────
 
-function parseDesign(raw: unknown): PartitionDesign | undefined {
-  if (raw === undefined) return undefined;
-  if (typeof raw !== "object" || raw === null) {
-    throw new InvalidDesignError("design must be an object");
-  }
-  const el = raw as Record<string, unknown>;
-  const design: PartitionDesign = {};
-
-  if (el.measurements !== undefined) design.measurements = el.measurements;
-  if (el.distribution !== undefined) design.distribution = el.distribution;
-
-  if (el.stops !== undefined) {
-    if (typeof el.stops !== "object" || el.stops === null) {
-      throw new InvalidDesignError("design.stops must be an object");
-    }
-    const rawStops = el.stops as Record<string, unknown>;
-    const stops: DesignStops = {};
-    for (const side of ["top", "bottom", "left", "right"] as const) {
-      const value = rawStops[side];
-      if (value === undefined) continue;
-      if (value !== null && typeof value !== "string") {
-        throw new InvalidDesignError(`design.stops.${side} must be a string or null`);
-      }
-      stops[side] = value;
-    }
-    design.stops = stops;
-  }
-
-  if (el.panels !== undefined) {
-    if (!Array.isArray(el.panels)) {
-      throw new InvalidDesignError("design.panels must be an array");
-    }
-    design.panels = el.panels.map((rawPanel, i) => {
-      if (typeof rawPanel !== "object" || rawPanel === null) {
-        throw new InvalidDesignError(`design.panels[${i}] must be an object`);
-      }
-      const p = rawPanel as Record<string, unknown>;
-      if (typeof p.id !== "string" || !p.id) {
-        throw new InvalidDesignError(`design.panels[${i}].id is required`);
-      }
-      if (p.type !== "glass" && p.type !== "door") {
-        throw new InvalidDesignError(`design.panels[${i}].type must be "glass" or "door"`);
-      }
-      if (typeof p.widthMm !== "number" || p.widthMm <= 0) {
-        throw new InvalidDesignError(`design.panels[${i}].widthMm must be a positive number`);
-      }
-      if (typeof p.heightMm !== "number" || p.heightMm <= 0) {
-        throw new InvalidDesignError(`design.panels[${i}].heightMm must be a positive number`);
-      }
-      const panel: DesignPanel = {
-        id: p.id,
-        type: p.type,
-        widthMm: p.widthMm,
-        heightMm: p.heightMm,
-        selectionId:
-          typeof p.selectionId === "string" ? p.selectionId : null,
-      };
-      if (p.door !== undefined && p.door !== null) {
-        if (typeof p.door !== "object") {
-          throw new InvalidDesignError(`design.panels[${i}].door must be an object or null`);
-        }
-        const d = p.door as Record<string, unknown>;
-        if (typeof d.selectionId !== "string" || !d.selectionId) {
-          throw new InvalidDesignError(`design.panels[${i}].door.selectionId is required`);
-        }
-        panel.door = {
-          selectionId: d.selectionId,
-          hinging: d.hinging === "right" ? "right" : "left",
-          outerFrame:
-            typeof d.outerFrame === "object" && d.outerFrame !== null
-              ? (d.outerFrame as { w: number; h: number })
-              : undefined,
-        };
-      }
-      // Note: panels[].index is intentionally never read/written — array
-      // position is authoritative (04-data-model.md's own ruling; carried
-      // over from the room sides[] precedent).
-      return panel;
-    });
-  }
-
-  return design;
-}
-
 /**
  * Update a Partition's `label`/`heightMm`/`design` — Configure mode's write
  * path (Stage 18 item 7 Piece 2). Same shape as PATCH /rooms/[id]/sides:
- * thin structural validation here, deeper invariant validation (cross-tenant
- * selectionId checks, widthMm derivation) in lib/data/partitions.ts
+ * thin structural validation here (lib/partition-design.ts parseDesignPatch), deeper
+ * invariant validation (height sums, cross-tenant selectionId checks, widthMm derivation) in lib/data/partitions.ts
  * updatePartition(), which is the single source of truth for those rules.
  *
  * Auth: any authenticated org member (no specific RBAC permission required).
  * Body: { label?, heightMm?, design? } — all optional, partial-replace.
+ *   `design` is the v2 shape (`schemaVersion: 2`, `sections[].cells[]`); a
+ *   legacy `panels` body is a 400 (Stage 22).
  *   `widthMm` is NOT accepted directly — it's derived server-side from
- *   `design.panels[].widthMm` whenever panels are patched (Stage 18
+ *   `design.sections[].widthMm` whenever sections are patched (Stage 18
  *   invariant 3: a PARTITION side's length on the floor plan IS
  *   Partition.widthMm).
  *
@@ -211,9 +127,9 @@ export async function PATCH(
 
   let design;
   try {
-    design = parseDesign(body.design);
+    design = parseDesignPatch(body.design);
   } catch (err) {
-    if (err instanceof InvalidDesignError) {
+    if (err instanceof PartitionDesignError) {
       return apiBadRequest(err.message);
     }
     throw err;

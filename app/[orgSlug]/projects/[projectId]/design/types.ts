@@ -39,53 +39,23 @@ export interface FloorWithRooms extends FloorRow {
   rooms: RoomRow[];
 }
 
-/** A door placed on a panel — mirrors lib/data/partitions.ts's DesignDoor.
- * `hinging` has no picker in this UI pass (Stage 18 item 7 plan flag 5,
- * architect-approved) — always written as "left". */
-export interface DesignDoor {
-  selectionId: string;
-  hinging: "left" | "right";
-  outerFrame?: { w: number; h: number };
-}
+// The panel view (the Design page reducer's internal shape) and the v2 PATCH body live in
+// lib/partition-design.ts — a pure module, safe to import client-side. Stage 22 (D-6): the server
+// stores `sections[].cells[]` (v2); the client converts to/from this panel view once, at the fetch
+// boundaries (see partition-view.ts), so the consumers keep reading `design.panels`.
+import type { PanelViewDesign, PartitionDesignPatch } from "@/lib/partition-design";
+export type { DesignDoor, DesignPanel, DesignStops } from "@/lib/partition-design";
 
-/** One pane in `Partition.design.panels[]`. No `index` field — array
- * position is authoritative (architect-review-item7.md binding correction;
- * 04-data-model.md's own ruling). */
-export interface DesignPanel {
-  id: string;
-  type: "glass" | "door";
-  widthMm: number;
-  heightMm: number;
-  selectionId: string | null;
-  door?: DesignDoor | null;
-}
-
-export interface DesignStops {
-  top?: string | null;
-  bottom?: string | null;
-  left?: string | null;
-  right?: string | null;
-}
-
-/** `Partition.design` JSONB shape (04-data-model.md). `measurements`/
- * `distribution` are documented keys this UI pass doesn't render or edit —
- * carried through unread, never dropped, by the server-side merge in
- * lib/data/partitions.ts updatePartition(). */
-export interface PartitionDesign {
-  measurements?: unknown;
-  distribution?: unknown;
-  stops?: DesignStops;
-  panels?: DesignPanel[];
-}
+/** `Partition.design` as the client sees it: the panel view. */
+export type PartitionDesign = PanelViewDesign;
 
 export interface PartitionRow {
   id: string;
   label: string;
   heightMm: number;
   widthMm: number;
-  /** Only populated once Configure mode fetches the full partition via
-   * GET /partitions/[id] — the collection route (GET /partitions?roomId=)
-   * doesn't need it for the Layout-mode summary/preview. */
+  /** Panel view (already normalized from the stored v1/v2 document by
+   * partition-view.ts's toPanelViewRow at every fetch boundary). */
   design?: PartitionDesign | null;
 }
 
@@ -132,7 +102,7 @@ export type ConfigureSelection =
 export interface PartitionPatch {
   label?: string;
   heightMm?: number;
-  design?: PartitionDesign;
+  design?: PartitionDesignPatch;
 }
 
 export type MutateResult =

@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
+import { parseFieldsSchema, parseFieldOptionsConfig } from "@/lib/parse-field-config";
 import { fetchProjectDetail } from "../_project-fetch";
 import { AddSelectionForm } from "./add-selection-form";
 
@@ -38,16 +39,26 @@ interface FieldEntry {
   dependsOn?: string;
 }
 
-/** Shape of a single ComponentType as returned by GET /api/v1/.../component-types */
+/**
+ * Shape of a single ComponentType as offered to the form/sidebar.
+ *
+ * Populated from one of two sources (Stage 22 B5):
+ *   - `project.configSnapshot.componentTypes` (normal path) — no `category` (Decision #6's
+ *     snapshot shape doesn't carry it; confirmed unused below, D-11).
+ *   - GET /api/v1/.../component-types (null-guard fallback only) — includes `category`.
+ * Neither add-selection-form.tsx nor this page ever reads `.category`, so it stays optional
+ * rather than forcing every snapshot row to fabricate one.
+ */
 interface ComponentTypeRow {
   id: string;
   name: string;
   code: string;
   active: boolean;
-  category: { id: string; name: string };
+  category?: { id: string; name: string };
   fieldsSchema: FieldEntry[];
-  // Stage 20 Batch 4: org-level dropdown/radio value config, folded into the list route's
-  // response. null = the org hasn't configured any field on this type yet.
+  // Stage 20 Batch 4: org-level dropdown/radio value config. null = the org hasn't configured
+  // any field on this type yet (live path); the snapshot path always supplies `{}` for the same
+  // case (Stage 22 B4) — both are treated identically by the gating helpers (`?? {}`).
   fieldOptionsConfig: FieldOptionsConfig | null;
 }
 
@@ -78,28 +89,20 @@ export default async function ConfigurationPage({
   // Base URL for project-relative hrefs (subdomain-aware, matching wizard layout pattern).
   const base = await orgHref(orgSlug, "");
 
-  // Parallel fetch: project (React.cache() deduped with layout), selections,
-  // component types.
-  const [
-    { status: projectStatus, project },
-    selectionsRes,
-    componentTypesRes,
-  ] = await Promise.all([
+  // Parallel fetch: project (React.cache() deduped with layout) + selections.
+  // component-types is fetched below, conditionally — only on the null-guard
+  // path — so a snapshot render never issues a ComponentType/OrgConfig query.
+  const [{ status: projectStatus, project }, selectionsRes] = await Promise.all([
     fetchProjectDetail(orgSlug, projectId),
-    internalFetch(
-      `/api/v1/orgs/${orgSlug}/selections?projectId=${projectId}`,
-    ),
-    internalFetch(`/api/v1/orgs/${orgSlug}/component-types`),
+    internalFetch(`/api/v1/orgs/${orgSlug}/selections?projectId=${projectId}`),
   ]);
 
-  // Auth redirect on 401 or 403 from any of the three API calls.
+  // Auth redirect on 401 or 403 from either call so far.
   if (
     projectStatus === 401 ||
     projectStatus === 403 ||
     selectionsRes.status === 401 ||
-    selectionsRes.status === 403 ||
-    componentTypesRes.status === 401 ||
-    componentTypesRes.status === 403
+    selectionsRes.status === 403
   ) {
     redirect(await orgHref(orgSlug, "/login"));
   }
@@ -116,13 +119,40 @@ export default async function ConfigurationPage({
     ? ((await selectionsRes.json()) as { selections: SelectionRow[] }).selections
     : [];
 
-  const allComponentTypes: ComponentTypeRow[] = componentTypesRes.ok
-    ? (
-        (await componentTypesRes.json()) as {
-          componentTypes: ComponentTypeRow[];
-        }
-      ).componentTypes
-    : [];
+  // Stage 22 B5 — component options come from the project's frozen configSnapshot when
+  // present; a project created before this stage (or in the pre-backfill window) has
+  // `configSnapshot: null`, so we fall back to today's live read.
+  const usingSnapshot = project.configSnapshot !== null;
+
+  let allComponentTypes: ComponentTypeRow[];
+  if (usingSnapshot) {
+    // Snapshot's fieldsSchema/fieldOptionsConfig are stored raw (Stage 22 B4) — parse them
+    // through the same helpers the live route uses so the form/gating logic sees identical
+    // typed shapes regardless of source.
+    allComponentTypes = project.configSnapshot!.componentTypes.map((ct) => ({
+      id: ct.id,
+      name: ct.name,
+      code: ct.code,
+      active: ct.active,
+      fieldsSchema: parseFieldsSchema(ct.fieldsSchema),
+      fieldOptionsConfig: parseFieldOptionsConfig(ct.fieldOptionsConfig),
+    }));
+  } else {
+    // null-guard: snapshot absent (pre-backfill window) — reading live config
+    const componentTypesRes = await internalFetch(
+      `/api/v1/orgs/${orgSlug}/component-types`,
+    );
+    if (componentTypesRes.status === 401 || componentTypesRes.status === 403) {
+      redirect(await orgHref(orgSlug, "/login"));
+    }
+    allComponentTypes = componentTypesRes.ok
+      ? (
+          (await componentTypesRes.json()) as {
+            componentTypes: ComponentTypeRow[];
+          }
+        ).componentTypes
+      : [];
+  }
 
   // Only active ComponentTypes are offered in the picker.
   const activeComponentTypes = allComponentTypes.filter((ct) => ct.active);
@@ -151,6 +181,7 @@ export default async function ConfigurationPage({
             orderIndex={selections.length}
             componentTypes={activeComponentTypes}
             selections={selections}
+            snapshotNotice={usingSnapshot}
           />
           {/* Card footer — Back / Continue to Design (Step 3 of the wizard, 5d) */}
           <div className="flex shrink-0 items-center justify-between border-t border-border px-7 py-5">

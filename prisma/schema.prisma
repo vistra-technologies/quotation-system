@@ -380,6 +380,9 @@ model Project {
   // reaching those steps is a deliberate action, not automatic. Null = not
   // yet submitted (locked); non-null = submitted (unlocked).
   designSubmittedAt    DateTime?
+  // Stage 22 B3: frozen copy of the org's ComponentType config at project creation
+  // (written by B4). 3-30 KB — always `omit` it from list/detail queries unless needed.
+  configSnapshot       Json?
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   // Stage 6 relations

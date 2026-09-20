@@ -1,3 +1,5 @@
+import type { Prisma } from "@/app/generated/prisma/client";
+import { loadConfigSnapshot } from "@/lib/config-snapshot";
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
 
@@ -485,8 +487,13 @@ export async function convertInquiryToProject(
       }
 
       // Step 4: create the Project populated from the Inquiry's fields
+      // Stage 22 B4: freeze the org's ComponentType config in the same tx as the Project row (write-once).
+      const configSnapshot = await loadConfigSnapshot(tx, session.organizationId);
       const project = await tx.project.create({
+        // Never echo the snapshot in the create response (Stage 22 B3).
+        omit: { configSnapshot: true },
         data: {
+          configSnapshot: configSnapshot as unknown as Prisma.InputJsonValue,
           organizationId: session.organizationId,
           createdByUserId: session.userId,
           projectNumber,

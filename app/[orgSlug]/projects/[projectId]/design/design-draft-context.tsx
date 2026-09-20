@@ -21,6 +21,8 @@
 
 import React, { createContext, useContext, useReducer } from "react";
 import { redirectToLogin } from "./login-redirect";
+import { panelsToV2 } from "@/lib/partition-design";
+import { makeDoorResolver, toPanelViewRow } from "./partition-view";
 import type {
   DesignDoor,
   DesignPanel,
@@ -28,6 +30,7 @@ import type {
   PartitionPatch,
   PartitionRow,
   RoomRow,
+  SelectionRow,
 } from "./types";
 
 // ─── Selection type (replaces ConfigureSelection — always uses panelIds[]) ────
@@ -475,7 +478,15 @@ const DraftContext = createContext<DraftContextValue | null>(null);
 
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
-export function DraftProvider({ children }: { children: React.ReactNode }) {
+export function DraftProvider({
+  children,
+  selections,
+}: {
+  children: React.ReactNode;
+  /** The project's Selections — used to tell a door cell from a glass cell when a stored v2
+   * document is converted to the panel view (Stage 22, D-5). */
+  selections: SelectionRow[];
+}) {
   const [state, dispatch] = useReducer(draftReducer, initialDraftState);
 
   async function save(orgSlug: string, isSubdomain: boolean): Promise<SaveResult> {
@@ -500,7 +511,10 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
     const patchBody: PartitionPatch = {
       label: state.draft.label,
       heightMm: state.draft.heightMm,
-      design: state.draft.design ?? undefined,
+      // Stage 22: the reducer keeps its panel view; the Save path is the serializer to v2.
+      design: state.draft.design
+        ? panelsToV2(state.draft.design, state.draft.heightMm)
+        : undefined,
     };
 
     const pendingRooms = Object.entries(state.pendingRoomNameEdits);
@@ -529,7 +543,13 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
         const body = (await partitionRes.json().catch(() => ({}))) as { error?: string };
         return { ok: false, error: body.error ?? "An unexpected error occurred — please try again." };
       }
-      const { partition: updated } = (await partitionRes.json()) as { partition: PartitionRow };
+      const { partition: savedRaw } = (await partitionRes.json()) as { partition: PartitionRow };
+      let updated: PartitionRow;
+      try {
+        updated = toPanelViewRow(savedRaw, makeDoorResolver(selections));
+      } catch {
+        return { ok: false, error: "Saved, but the stored design could not be re-read — please reload the page." };
+      }
 
       const updatedRooms: RoomRow[] = [];
       for (let i = 0; i < roomResults.length; i++) {
@@ -562,10 +582,13 @@ export function DraftProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       if (!res.ok) return;
-      const { partition } = (await res.json()) as { partition: PartitionRow };
-      dispatch({ type: "LOAD_PARTITION", partition });
+      const { partition: raw } = (await res.json()) as { partition: PartitionRow };
+      dispatch({
+        type: "LOAD_PARTITION",
+        partition: toPanelViewRow(raw, makeDoorResolver(selections)),
+      });
     } catch {
-      // Silently fail — state remains dirty, user can retry.
+      // Silently fail (incl. an unparseable stored design) — state remains dirty, user can retry.
     }
   }
 

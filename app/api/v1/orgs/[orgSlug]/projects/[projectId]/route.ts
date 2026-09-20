@@ -46,7 +46,14 @@ export async function GET(
   }
 
   try {
-    const project = await getProjectById(session, projectId);
+    // Stage 22 B5: this route backs fetchProjectDetail(), the single project-detail
+    // fetch shared (via React.cache()) by every page under /projects/[projectId]/* —
+    // including the Configuration page, which needs configSnapshot. Fetched only
+    // server-to-server (internalFetch); the raw snapshot never reaches the browser —
+    // only Configuration page parses it and forwards typed props to its client component.
+    const project = await getProjectById(session, projectId, {
+      includeConfigSnapshot: true,
+    });
     if (!project) {
       return apiNotFound("Project not found");
     }
