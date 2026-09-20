@@ -28,6 +28,11 @@
  *     the id doesn't match any project at all, the report says so clearly (`not found`) rather than
  *     silently backfilling nothing.
  *   - No flag = current behavior (all NULL-snapshot projects), unchanged.
+ *   - `--project=<id>` MUST come after `--` (same as `--write`). If it's placed before `--`, npm swallows
+ *     it into `npm_config_project` instead of forwarding it, and argv would otherwise look like "no
+ *     filter" was given at all — this case is detected and aborts rather than silently falling through to
+ *     an org-wide run. (A misspelled flag name, e.g. `--projects=`, is a separate, narrower risk not
+ *     covered by this check — see review-10.md IMPORTANT 1.)
  *
  * Usage (from quotation-system/):
  *   npm run backfill:config-snapshot                                    # dry run, all projects (default)
@@ -93,6 +98,18 @@ async function main() {
   // Optional single-project restriction; validated before the client is constructed so a bad flag never
   // touches the DB. Bare `--project` / `--project=` (empty value) is a usage error, not "all projects".
   const projectFlag = parseProjectFlag(process.argv);
+  // npm swallows `--project=<id>` into its own `npm_config_project` env var when the flag is placed before
+  // `--` (or misspelled, e.g. `--projects=`), the same way it swallows `--dry-run`/`--write`. Unlike those,
+  // a swallowed `--project` has no way to fail closed on its own: argv would just look like "no filter", and
+  // the run would silently widen from one project to every project. So detect the mismatch explicitly and
+  // abort rather than fail open.
+  if (process.env.npm_config_project && process.env.npm_config_project !== projectFlag.id) {
+    console.error(
+      `ABORT: npm swallowed --project=${process.env.npm_config_project} (it must come after \`--\`). ` +
+        "Use: npm run backfill:config-snapshot -- --project=<id> [--write]",
+    );
+    process.exit(1);
+  }
   if (projectFlag.present && !projectFlag.id) {
     console.error('ABORT: --project=<projectId> requires a non-empty id (got an empty value).');
     process.exit(1);
@@ -123,7 +140,9 @@ async function main() {
   let aborted = false;
 
   try {
-    totalProjects = await prisma.project.count();
+    // Org-wide total is only meaningful (and only worth the query) in org-wide mode; single-project mode
+    // reports on that one row instead.
+    if (!targetProjectId) totalProjects = await prisma.project.count();
 
     let rows: { id: string; organizationId: string }[];
     if (targetProjectId) {
@@ -182,18 +201,20 @@ async function main() {
     console.log(`Target DB endpoint: ${endpoint}${dryRun ? " (dry run)" : ""}`);
     if (targetProjectId) console.log(`Scope: single project ${targetProjectId}`);
     if (aborted) console.log("!! RUN ABORTED by an unexpected error — counts below are PARTIAL. Re-run is safe (idempotent).");
-    console.log(`Projects total (org-wide):         ${totalProjects}`);
     if (targetProjectId) {
       if (targetNotFound) {
         console.log(`Project ${targetProjectId}: NOT FOUND — no such project exists. Nothing read or written.`);
+        console.log(`${dryRun ? "Would backfill" : "Backfilled"}: 0`);
       } else if (targetAlreadySnapshotted) {
         console.log(`Project ${targetProjectId}: already has a configSnapshot — left untouched, nothing written.`);
+        console.log(`${dryRun ? "Would backfill" : "Backfilled"}: 0`);
       } else {
         console.log(`Project ${targetProjectId}: eligible (configSnapshot was NULL).`);
         console.log(`${dryRun ? "Would backfill" : "Backfilled"}: ${filled}`);
         console.log(`Skipped, snapshot appeared mid-run (${alreadyHad}):${list(skippedConcurrent)}`);
       }
     } else {
+      console.log(`Projects total (org-wide):         ${totalProjects}`);
       console.log(`With NULL configSnapshot:          ${candidates}`);
       console.log(`${dryRun ? "Would backfill" : "Backfilled"}: ${filled}`);
       console.log(`Already had snapshot (skipped): ${totalProjects - candidates + alreadyHad}`);
