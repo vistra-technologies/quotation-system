@@ -13,6 +13,7 @@ import {
   COMPONENT_TYPE_ORG_CONFIG_DEFS,
   SEEDED_CATALOG_CATEGORY_NAME,
 } from "@/lib/component-catalog-seed";
+import { ACTIVE_FORMULA_SET_NAME } from "@/prisma/seed-formula-sets";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -114,10 +115,29 @@ export async function createOrganizationWithDefaults(
   const permByCode = new Map(allPermissions.map((p) => [p.code, p.id]));
 
   try {
+    // Stage 23 Batch 2 (D-22): resolve the platform's seeded formula set upfront (read-only,
+    // outside the transaction body below but still inside this try so a lookup failure returns
+    // the normal { ok: false, reason: "unknown_error" } shape instead of an uncaught rejection —
+    // the route handler doesn't wrap this call in its own try/catch). A new org must never be
+    // created without a pin — fail loudly rather than silently leaving activeFormulaSetId null
+    // (that state is reserved for pre-Stage-23 orgs the backfill hasn't reached yet, never for a
+    // brand-new one).
+    const activeFormulaSet = await prisma.formulaSet.findFirst({
+      where: { name: ACTIVE_FORMULA_SET_NAME },
+      orderBy: { version: "desc" },
+      select: { id: true },
+    });
+    if (!activeFormulaSet) {
+      throw new Error(
+        `No FormulaSet found for name "${ACTIVE_FORMULA_SET_NAME}" — run \`npx prisma db seed\` ` +
+          "before creating a new organization.",
+      );
+    }
+
     const { org, adminUserId } = await prisma.$transaction(async (tx) => {
       // 1. Create the organization row.
       const newOrg = await tx.organization.create({
-        data: { name, slug },
+        data: { name, slug, activeFormulaSetId: activeFormulaSet.id },
         select: { id: true, slug: true, name: true },
       });
 

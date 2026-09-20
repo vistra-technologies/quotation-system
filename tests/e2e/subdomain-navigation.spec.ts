@@ -25,7 +25,10 @@
  *   2 external companies (Dist Co, Arch Firm)
  *   4 users (admin, member, distributor, architect)
  *   12 catalog items with prices (WT-001, GL-001, …)
- *   3 component types (GLASS, DOOR, PROFILE_STOP)
+ *   3 component types (GLASS, DOOR, PROFILE_STOP) — `vistra` predates the Stage 23 Batch 2
+ *     catalog swap (D-34), so it still carries its original PROFILE_STOP row; the seed never
+ *     deletes existing ComponentType rows. A fresh org created after Batch 2 only gets 2
+ *     (GLASS, DOOR — see lib/component-catalog-seed.ts's COMPONENT_TYPE_DEFS).
  * Projects and inquiries are created via API within the tests.
  *
  * All tests hit https://vistra.test.easeetool.com — the staging branch's stable

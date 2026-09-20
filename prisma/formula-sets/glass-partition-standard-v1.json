@@ -1,0 +1,30 @@
+{
+  "NOTE": [
+    "v1 is deliberately formula-free (\"formulas\": []) — the customer has not yet supplied formulas.",
+    "Formulas arrive as v2 of this same \"name\": Organization.activeFormulaSetId gets repointed at that",
+    "point, and every project already pinned to v1 keeps that pin (Project.formulaSetId is never rewritten",
+    "by updateProject()) — so existing projects' summaries are unaffected by the v1 -> v2 upgrade.",
+    "Profiles (u_profile / i_profile / l_profile, fields on GLASS) are deliberately unbilled this stage —",
+    "there is no PROFILE_STOP slot (D-35). Profile billing is deferred to Stage 25 along with materialList.",
+    "See development-cycles/stage-23.md D-34, D-35, D-38 and 'The real starter catalog'."
+  ],
+  "slots": {
+    "GLASS": {
+      "role": "glass",
+      "requiredParams": [],
+      "summaryParams": {
+        "glassType": "glassType",
+        "thickness": "thickness"
+      }
+    },
+    "DOOR": {
+      "role": "door",
+      "requiredParams": [],
+      "summaryParams": {
+        "category": "category",
+        "doorType": "doorType"
+      }
+    }
+  },
+  "formulas": []
+}
