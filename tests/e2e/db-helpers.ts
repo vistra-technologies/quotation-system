@@ -9,6 +9,7 @@
  *     (createProject, convertInquiryToProject) now writes a non-null snapshot in the same
  *     transaction (Batch 4); the only way to get a null one post-Batch-4 is a row created before
  *     the backfill ran, which the suite cannot rely on existing, or a direct DB write.
+ * plus one test-only teardown (E6's leftover ComponentType — see `deleteComponentType`).
  *
  * This mirrors the B7 seeding decision recorded in the worklog (GATE A, 2026-09-19): "B7 seeding =
  * direct Prisma DB inserts in a test helper against the dev DB." Safety is deliberately the SAME
@@ -17,54 +18,56 @@
  * share it — never against production, which no test target in this repo points at):
  *   - fail-closed destination allowlist (dev Neon endpoint only; unset/unparseable/other host
  *     throws before a client is ever constructed).
- *   - env precedence matches Next (.env.local > .env), loaded here because the Playwright test
- *     process does not otherwise read them (playwright.config.ts only loads .env.playwright.local).
+ *   - env precedence matches Next (.env.local > .env).
  *
- * The generated Prisma client (`app/generated/prisma/client`) is ESM; Playwright's own TS loader
- * transpiles spec/helper files to CJS, and a static top-level `import` of an ESM module from a
- * CJS-loaded file throws `ReferenceError: exports is not defined` under Node's require() ESM
- * interop. `prisma/migrate-design-v1-to-v2.ts` and `prisma/backfill-config-snapshots.ts` already
- * work around this the same way (see their `main()`): the Prisma client and adapter are loaded via
- * a runtime `await import(...)` inside `testDb()`, never as a static top-level import.
+ * How the DB is actually reached (revised after review-9 #1 — see that report for the failure this
+ * replaces): the generated Prisma client (`app/generated/prisma/client`) is ESM-only; Playwright's
+ * own TS loader transpiles specs and helpers to CJS, and even a *dynamic* `await import(...)` of
+ * that module gets rewritten to a `require()` there, which throws "Cannot use import statement
+ * outside a module" — measured, not theoretical (see review-9). `prisma/migrate-design-v1-to-v2.ts`
+ * and `prisma/backfill-config-snapshots.ts` don't hit this because they run under `tsx` directly,
+ * never through Playwright's transform. So this helper shells out to a tiny CLI
+ * (`prisma/e2e-db-helper-cli.ts`) run via `tsx`'s own CLI entry point (invoked as
+ * `node node_modules/tsx/dist/cli.mjs prisma/e2e-db-helper-cli.ts <op>`, never the `tsx`/`npx`
+ * shell shims, so this works identically on Windows and POSIX CI runners with no shell/PATHEXT
+ * resolution involved) — the same shape as devops's B4 DB-level check
+ * (`.engineering/stage-22/verify-b4.md` T6, execSync to a tsx script). Each call is one child
+ * process: JSON args on stdin, one JSON line (`{ok, data|error}`) on stdout.
  */
-import dotenv from "dotenv";
-import type { PrismaClient as PrismaClientType, Prisma as PrismaNamespace } from "@/app/generated/prisma/client";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
 
-dotenv.config({ path: ".env.local", quiet: true });
-dotenv.config({ path: ".env", quiet: true });
+const REPO_ROOT = path.resolve(__dirname, "..", "..");
+const TSX_CLI = path.join(REPO_ROOT, "node_modules", "tsx", "dist", "cli.mjs");
+const HELPER_SCRIPT = path.join(REPO_ROOT, "prisma", "e2e-db-helper-cli.ts");
 
-const ALLOWED_ENDPOINT = "ep-dark-term-ai0ufj4k";
-
-function endpointOf(url: string): string | null {
-  try {
-    const host = new URL(url).hostname;
-    if (!host) return null;
-    return host.split(".")[0].replace(/-pooler$/, "");
-  } catch {
-    return null;
+/** Runs one guarded DB operation in a `tsx` child process and returns its result. */
+function runDbOp<T>(op: string, args: Record<string, unknown> = {}): T {
+  const result = spawnSync(process.execPath, [TSX_CLI, HELPER_SCRIPT, op], {
+    input: JSON.stringify(args),
+    encoding: "utf-8",
+    cwd: REPO_ROOT,
+  });
+  if (result.error) {
+    throw new Error(`stage22 DB test helper (${op}): failed to spawn tsx child process: ${result.error.message}`);
   }
-}
-
-let client: PrismaClientType | null = null;
-let prismaNs: typeof PrismaNamespace | null = null;
-
-/** Lazily-constructed, guarded Prisma client — only ever touches the dev Neon branch. */
-async function testDb(): Promise<PrismaClientType> {
-  if (client) return client;
-  const url = process.env.DATABASE_URL ?? "";
-  const endpoint = url ? endpointOf(url) : null;
-  if (endpoint !== ALLOWED_ENDPOINT) {
+  const stdout = (result.stdout ?? "").trim();
+  if (!stdout) {
     throw new Error(
-      `stage22 DB test helper refuses to run: DATABASE_URL targets "${endpoint ?? "(unset/unparseable)"}", ` +
-        `not the dev branch (${ALLOWED_ENDPOINT}). This suite must never touch any other database.`,
+      `stage22 DB test helper (${op}): child process produced no output (exit ${result.status}). ` +
+        `stderr: ${(result.stderr ?? "").trim()}`,
     );
   }
-  // Loaded only after the guard, and only via dynamic import — see file header.
-  const { PrismaClient, Prisma } = await import("@/app/generated/prisma/client");
-  const { PrismaPg } = await import("@prisma/adapter-pg");
-  prismaNs = Prisma;
-  client = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
-  return client;
+  let parsed: { ok: boolean; data?: T; error?: string };
+  try {
+    parsed = JSON.parse(stdout) as { ok: boolean; data?: T; error?: string };
+  } catch {
+    throw new Error(`stage22 DB test helper (${op}): could not parse child output as JSON: ${stdout}`);
+  }
+  if (!parsed.ok) {
+    throw new Error(`stage22 DB test helper (${op}): ${parsed.error}`);
+  }
+  return parsed.data as T;
 }
 
 /**
@@ -72,20 +75,14 @@ async function testDb(): Promise<PrismaClientType> {
  * entirely — the only way to produce a v1 row for E1/E2 since Batch 1.
  */
 export async function seedV1Design(partitionId: string, design: Record<string, unknown>): Promise<void> {
-  const db = await testDb();
-  await db.partition.update({
-    where: { id: partitionId },
-    data: { design: design as unknown as PrismaNamespace.InputJsonValue },
-  });
+  runDbOp("seedV1Design", { partitionId, design });
 }
 
 /** Read a Partition's raw stored `design`/`widthMm`/`heightMm`, unparsed. */
-export async function readPartitionRow(partitionId: string) {
-  const db = await testDb();
-  return db.partition.findUniqueOrThrow({
-    where: { id: partitionId },
-    select: { design: true, widthMm: true, heightMm: true },
-  });
+export async function readPartitionRow(
+  partitionId: string,
+): Promise<{ design: unknown; widthMm: number; heightMm: number }> {
+  return runDbOp("readPartitionRow", { partitionId });
 }
 
 /**
@@ -95,31 +92,32 @@ export async function readPartitionRow(partitionId: string) {
  * could never cause.
  */
 export async function nullOutConfigSnapshot(projectId: string): Promise<void> {
-  const db = await testDb();
-  if (!prismaNs) throw new Error("Prisma namespace not loaded — testDb() must run first");
-  await db.project.update({
-    where: { id: projectId },
-    data: { configSnapshot: prismaNs.DbNull },
-  });
+  runDbOp("nullOutConfigSnapshot", { projectId });
 }
 
 /** Read a project's raw `configSnapshot` column (never exposed by the list API — Stage 22 D-10). */
 export async function readConfigSnapshot(projectId: string) {
-  const db = await testDb();
-  const row = await db.project.findUniqueOrThrow({
-    where: { id: projectId },
-    select: { configSnapshot: true },
-  });
-  return row.configSnapshot as {
+  return runDbOp<{
     takenAt: string;
     componentTypes: Array<{ id: string; code: string; name: string; active: boolean }>;
-  } | null;
+  } | null>("readConfigSnapshot", { projectId });
 }
 
-/** Close the pooled connection — call once in a suite's afterAll if this helper was used. */
+/**
+ * Delete a ComponentType directly — test-only teardown (review-9 #2). There is no DELETE route for
+ * ComponentType, so the E6 freeze test's `E2E_<timestamp>`-coded type has no other way to be
+ * cleaned up. Safe: the suite never creates a Selection against a type it creates itself (E6 only
+ * reads component-types lists / snapshots after creating it), so this can never violate an FK.
+ */
+export async function deleteComponentType(componentTypeId: string): Promise<void> {
+  runDbOp("deleteComponentType", { componentTypeId });
+}
+
+/**
+ * Kept as a no-op for API compatibility with callers' `afterAll` hooks — each `runDbOp` call now
+ * owns a short-lived child process (and its own Prisma client) rather than a shared long-lived
+ * connection, so there is nothing left open here to close.
+ */
 export async function closeTestDb(): Promise<void> {
-  if (client) {
-    await client.$disconnect();
-    client = null;
-  }
+  // no-op — see doc comment above.
 }

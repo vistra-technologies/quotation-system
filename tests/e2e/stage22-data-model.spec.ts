@@ -33,6 +33,7 @@ import {
   readPartitionRow,
   nullOutConfigSnapshot,
   readConfigSnapshot,
+  deleteComponentType,
   closeTestDb,
 } from "./db-helpers";
 
@@ -98,6 +99,11 @@ let v1GlassSelectionId: string;
 // Fixtures for the configSnapshot tests (E5, E6, E7, E8, E10).
 let acmeCategoryId: string;
 
+// E6 creates a real ComponentType with no delete API (review-9 #2) — tracked here so afterAll can
+// remove it directly (test-only teardown; no Selection is ever created against it, see the
+// db-helpers.deleteComponentType doc comment for why that's FK-safe).
+let e6ComponentTypeId: string | undefined;
+
 test.beforeAll(async ({ browser }) => {
   test.setTimeout(120_000);
   acmeCtx = await browser.newContext();
@@ -116,6 +122,9 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
+  if (e6ComponentTypeId) {
+    await deleteComponentType(e6ComponentTypeId);
+  }
   await acmeCtx.close();
   await nordicCtx.close();
   await closeTestDb();
@@ -290,6 +299,8 @@ test("E6: freeze holds — a ComponentType added to the org after project creati
     },
   });
   expect(createTypeRes.status()).toBe(201);
+  const { componentType: createdType } = (await createTypeRes.json()) as { componentType: { id: string } };
+  e6ComponentTypeId = createdType.id;
 
   // Reload the SAME project's detail — its snapshot must still be exactly what it was.
   const after = await acmePage.request.get(apiUrl(ACME, `/api/v1/orgs/${ACME}/projects/${projectId}`));
