@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { invalidateProjectCalculation } from "@/lib/data/formula-pin";
 import type { Prisma } from "@/app/generated/prisma/client";
 import type { SessionData } from "@/lib/session";
 import { createPartitionInTx } from "@/lib/data/partitions";
@@ -284,12 +285,16 @@ export async function reorderRooms(
 export async function deleteRoom(session: SessionData, roomId: string) {
   const existing = await prisma.room.findFirst({
     where: { id: roomId, organizationId: session.organizationId },
-    select: { id: true },
+    select: { id: true, floor: { select: { projectId: true } } },
   });
   if (!existing) return null;
 
-  await prisma.room.delete({ where: { id: roomId } });
-  return existing;
+  // Stage 23 D-20: the cascade removes Partitions, so the project's calculation is invalidated in the same tx.
+  await prisma.$transaction(async (tx) => {
+    await tx.room.delete({ where: { id: roomId } });
+    await invalidateProjectCalculation(tx, existing.floor.projectId);
+  });
+  return { id: existing.id };
 }
 
 /**
@@ -346,8 +351,10 @@ export async function replaceSides(
   return prisma.$transaction(async (tx) => {
     const room = await tx.room.findFirst({
       where: { id: roomId, organizationId: session.organizationId },
+      include: { floor: { select: { projectId: true } } },
     });
     if (!room) return null;
+    let partitionsCreated = false;
 
     const previousSides = (room.sides as unknown as RoomSide[]) ?? [];
     const willBeClosed = isClosed ?? room.isClosed;
@@ -452,6 +459,7 @@ export async function replaceSides(
               "Converting a side to PARTITION requires label, heightMm, and widthMm.",
             );
           }
+          partitionsCreated = true;
           const partition = await createPartitionInTx(tx, {
             roomId,
             label: incoming.label,
@@ -528,6 +536,11 @@ export async function replaceSides(
           roomId,
         },
       });
+    }
+
+    // Stage 23 D-18: adding or removing a wall makes any prior calculation wrong.
+    if (partitionsCreated || removedPartitionIds.length > 0) {
+      await invalidateProjectCalculation(tx, room.floor.projectId);
     }
 
     return tx.room.update({

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { invalidateProjectCalculation } from "@/lib/data/formula-pin";
 import type { SessionData } from "@/lib/session";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -137,10 +138,14 @@ export async function renameFloor(
 export async function deleteFloor(session: SessionData, floorId: string) {
   const existing = await prisma.floor.findFirst({
     where: { id: floorId, organizationId: session.organizationId },
-    select: { id: true },
+    select: { id: true, projectId: true },
   });
   if (!existing) return null;
 
-  await prisma.floor.delete({ where: { id: floorId } });
-  return existing;
+  // Stage 23 D-20: the cascade removes Partitions, so the project's calculation is invalidated in the same tx.
+  await prisma.$transaction(async (tx) => {
+    await tx.floor.delete({ where: { id: floorId } });
+    await invalidateProjectCalculation(tx, existing.projectId);
+  });
+  return { id: existing.id };
 }

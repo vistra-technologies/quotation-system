@@ -1,5 +1,6 @@
 import type { Prisma } from "@/app/generated/prisma/client";
 import { loadConfigSnapshot } from "@/lib/config-snapshot";
+import { resolveFormulaSetPin } from "@/lib/data/formula-pin";
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
 
@@ -301,12 +302,16 @@ export async function createProject(
       // Stage 22 B4: freeze the org's ComponentType config in the SAME tx as the Project row (write-once;
       // no update path touches configSnapshot). A load failure aborts the create — no null-snapshot project.
       const configSnapshot = await loadConfigSnapshot(tx, session.organizationId);
+      // Stage 23 B3 (D-21/D-22): pin the org's active formula set in the same tx, after the 13a structural
+      // check against the snapshot just loaded. Throws FormulaPinError (-> 409) and aborts the create.
+      const formulaSetId = await resolveFormulaSetPin(tx, session.organizationId, configSnapshot);
 
       return tx.project.create({
         // Never echo the snapshot in the create response (Stage 22 B3).
         omit: { configSnapshot: true },
         data: {
           configSnapshot: configSnapshot as unknown as Prisma.InputJsonValue,
+          formulaSetId,
           organizationId: session.organizationId,
           createdByUserId: session.userId,
           projectNumber,
@@ -472,7 +477,8 @@ export async function submitDesign(session: SessionData, projectId: string) {
  *                   belt-and-braces: a Room with this org's organizationId but
  *                   whose Floor is gone would otherwise abort on FK_RESTRICT)
  *   3. Floor      — references Project (FK_RESTRICT)
- *   4. Project    — the row itself
+ *   4. ProjectCalculation — Cascade from Project, explicit first (Stage 23 D-20)
+ *   5. Project    — the row itself
  * Partition rows cascade automatically when their Room is deleted (DB FK).
  */
 export async function deleteProject(session: SessionData, projectId: string) {
@@ -537,7 +543,12 @@ export async function deleteProject(session: SessionData, projectId: string) {
       where: { projectId, organizationId: session.organizationId },
     });
 
-    // 4. Project itself
+    // 4. ProjectCalculation — Cascade from Project at the DB, but explicit first (Stage 23 D-20)
+    await tx.projectCalculation.deleteMany({
+      where: { projectId, organizationId: session.organizationId },
+    });
+
+    // 5. Project itself
     await tx.project.delete({ where: { id: projectId }, select: { id: true } });
   });
 

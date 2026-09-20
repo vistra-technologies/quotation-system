@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { invalidateProjectCalculation } from "@/lib/data/formula-pin";
 import type { Prisma } from "@/app/generated/prisma/client";
 import type { SessionData } from "@/lib/session";
 import {
@@ -195,8 +196,9 @@ export async function createPartition(input: CreatePartitionInput) {
  * this PATCH carries `design` or `heightMm` (a geometry-affecting edit,
  * as opposed to a label-only rename), it's cleared back to null in the same
  * transaction as the partition write — re-locking the Summary/Quotation
- * wizard steps until Submit Design is clicked again. No `ProjectCalculation`
- * deletion here; that table doesn't exist yet (Stage 23).
+ * wizard steps until Submit Design is clicked again. Stage 23 (D-17) extends that
+ * same transaction via invalidateProjectCalculation(), which also deletes the
+ * project's ProjectCalculation and no longer depends on the flag's current value.
  */
 export async function updatePartition(
   session: SessionData,
@@ -211,7 +213,6 @@ export async function updatePartition(
           floor: {
             select: {
               projectId: true,
-              project: { select: { designSubmittedAt: true } },
             },
           },
         },
@@ -300,18 +301,17 @@ export async function updatePartition(
   // edits don't touch geometry and leave the flag alone. No query is issued
   // when the flag is already null.
   const projectId = existing.room.floor.projectId;
-  const designSubmittedAt = existing.room.floor.project.designSubmittedAt;
   const geometryChanged = patch.design !== undefined || patch.heightMm !== undefined;
 
-  if (designSubmittedAt !== null && geometryChanged) {
-    const [updated] = await prisma.$transaction([
-      prisma.partition.update({ where: { id }, data }),
-      prisma.project.update({
-        where: { id: projectId },
-        data: { designSubmittedAt: null },
-      }),
-    ]);
-    return updated;
+  // Stage 23 D-17: NOT gated on designSubmittedAt — a calculation can exist with a null flag (after a
+  // Recompute, or an earlier edit already cleared it). The shared helper deletes the calculation
+  // (no-op-safe) and clears designSubmittedAt only when non-null.
+  if (geometryChanged) {
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.partition.update({ where: { id }, data });
+      await invalidateProjectCalculation(tx, projectId);
+      return updated;
+    });
   }
 
   return prisma.partition.update({ where: { id }, data });
