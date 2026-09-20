@@ -2,11 +2,16 @@
 
 ## Status
 
-- **Phase:** implement — Batch 1 done, awaiting review
-- **Branch:** `release/stage-23` (cut fresh from `origin/master` @ cf130ca, 2026-09-21) @ `c211852`
-- **Active work item:** Batch 1 done (schema + migration, APPROVE-WITH-NITS, applied to dev DB out-of-band).
-  Next: Batch 2 (starter-catalog swap + slots-only formula set + seed + backfill) — dispatching developer
-  on `feature/s23-b2-catalog-seed`.
+- **Phase:** implement — Batch 2 done, awaiting review
+- **Branch:** `feature/s23-b2-catalog-seed` (cut from `release/stage-23` @ `21cc967`) @ `66233dd`
+- **Active work item:** Batch 2 done (starter-catalog swap + slots-only formula set + seed + backfill).
+  **Not yet done on dev DB: `npx prisma db seed` has NOT been re-run there** — the code is ready but the
+  actual write (creates the `FormulaSet` row, pins existing orgs) was deliberately left for an explicit
+  follow-up (mirrors Batch 1's out-of-band devops migration apply) rather than run inline by the developer,
+  per the dispatch's "flag before writing to the shared dev DB" instruction. **Next: someone (devops/
+  reviewer) should run `npx prisma db seed` against dev, then re-verify** (fresh org via `/controls` gets
+  the 2 new types + working cascading dropdowns; existing orgs' `PROFILE_STOP`/configs untouched; backfill
+  dry-run then `--write` on dev). After that, review Batch 2, then proceed to Batch 4 per the tier order.
 - **Latest artifacts:** `plan.md` (local, untracked per `.gitignore` convention — regenerate by reading
   worklog history if a fresh checkout is missing it), `diff-b1.patch` (local, untracked).
 - **Stage target:** `quotation-system-docs/development-cycles/stage-23.md` — Formula Set engine + data model
@@ -113,3 +118,90 @@
     unmigrated-DB preview hit at review time).
 - **Outcome:** dev DB (`ep-dark-term-ai0ufj4k`) is now ready for Batch 2+ feature-branch previews to use
   the new `FormulaSet`/`ProjectCalculation` tables and FK columns.
+
+- **developer · Batch 2 — starter-catalog swap + slots-only formula set + seed + backfill (2026-09-21).**
+  Branch `feature/s23-b2-catalog-seed`, cut off `release/stage-23` @ `21cc967`. Per `plan.md`'s Batch 2
+  section and `stage-23.md`'s Batch 2 / D-34 / D-35 / D-38:
+  - `lib/component-catalog-seed.ts` — rewrote `COMPONENT_TYPE_DEFS`/`COMPONENT_TYPE_ORG_CONFIG_DEFS` to the
+    real `cloisons` two-type catalog (GLASS "Partition": category→glassType→thickness dropdown chain +
+    3 advanced profile fields depending on glassType; DOOR: category→doorType). No `PROFILE_STOP` slot
+    (D-35). Every field a `summaryParams` value will reference is `required: true`. Comments document that
+    `RESERVED_COMPONENT_TYPE_CODES` shrinking to `{GLASS, DOOR}` is accepted (Batch 6's guard is the real
+    protection). Confirmed the `valueMap` write/read path (`lib/types/field-options-config.ts`,
+    `lib/validate-field-options-config.ts`, `lib/parse-field-config.ts`) already fully supports this shape
+    (built Stage 20) — no plumbing changes needed.
+  - `prisma/formula-sets/glass-partition-standard-v1.json` (new) — `{ NOTE: [...], slots: { GLASS, DOOR },
+    formulas: [] }` per D-38; NOTE documents v1's formula-free status, the v2-repoint plan, and the
+    no-PROFILE_STOP decision (D-35).
+  - `prisma/seed-formula-sets.ts` (new) — `loadFormulaSetDocs()` (JSON import, NOTE stripped before
+    storage) + `seedFormulaSets()`: create-only upsert on `(name, version)`; an existing row's body is
+    verified by a deterministic `stableHash()` and never overwritten on mismatch (logged + skipped, per
+    decision #1's immutability rule). Exports `ACTIVE_FORMULA_SET_NAME` as the single source both
+    `seed.ts` and `createOrganizationWithDefaults()` look up by.
+  - `prisma/seed.ts` — wired in `seedFormulaSets()` + a create-only `activeFormulaSetId` backfill loop over
+    `allOrgs`; made both `ComponentTypes:` count lines informational (legacy `PROFILE_STOP` rows on
+    pre-existing orgs make a fixed "expected" figure meaningless — matches the blast-radius table).
+  - `lib/data/superadmin/orgs.ts` — `createOrganizationWithDefaults()` resolves the seeded set (by name,
+    highest version) before the transaction and pins `activeFormulaSetId` on org create; throws (caught by
+    the existing catch block, returned as `{ ok: false, reason: "unknown_error" }`, never an uncaught
+    rejection) if no set exists yet.
+  - `prisma/backfill-formula-set-pins.ts` (new) — modelled on `prisma/backfill-config-snapshots.ts`:
+    dry-run default, `--write` required, `--project=<id>` filter (org pass always runs org-wide regardless,
+    since it's cheap/idempotent/NULL-conditional), `prisma/db-target-guard.ts` import, two passes (orgs
+    then projects, so a project whose org gets backfilled in the same run is still picked up), full
+    dry-run/real-run parity in the report. **Caught and fixed a real bug before ever running it**: the
+    first draft's org-pass called `updateMany()` unconditionally and only branched on `dryRun` when
+    reporting the result — an actual write under a claimed dry run. Restructured to check `dryRun` and
+    `continue` before the query.
+  - `package.json` — added `"backfill:formula-pins": "tsx prisma/backfill-formula-set-pins.ts"`.
+  - `tests/unit/formula-set-document.test.ts` (new, 12 tests) — JSON parses; `formulas === []`; no
+    `numericType`/`PROFILE_STOP` anywhere in `slots`; NOTE block present and mentions formula-free/v2/
+    PROFILE_STOP; every slot has a `role`; `requiredParams` present and empty; every slot code + every
+    `summaryParams` value exists in the new starter catalog; every `summaryParams`-referenced key is
+    `required: true`; `expr-eval` absent from `package.json`; `seedFormulaSets.ts`'s `loadFormulaSetDocs`/
+    `stableHash` behave as documented.
+  - `tests/e2e/superadmin-component-types.spec.ts` — reworked the "list seeded types" test to assert the
+    *current* `COMPONENT_TYPE_DEFS` code list (imported, not hardcoded) plus a conditional `PROFILE_STOP`
+    check (present only if the org still has the legacy row) — passes on both the shared dev DB
+    (`acme-glass` keeps its legacy row) and a genuinely fresh DB.
+  - `tests/e2e/subdomain-navigation.spec.ts` — updated the seed-data doc comment to explain `vistra`'s
+    3-type count is a pre-Stage-23 legacy artifact, not the current starter catalog.
+  - **Reused:** `prisma/backfill-config-snapshots.ts` (CLI/report shape), `prisma/db-target-guard.ts` (guard
+    import), the existing `lib/types/field-options-config.ts`/`lib/validate-field-options-config.ts`/
+    `lib/parse-field-config.ts` valueMap plumbing (Stage 20, unmodified), the existing `prisma/seed.ts` org
+    loop and `createOrganizationWithDefaults()` transaction (extended, not restructured).
+  - **Verify (local):** `npm run lint` — clean (only pre-existing unrelated errors/warnings in
+    `.engineering/stage-22/prod-recon-readonly.ts` and untouched e2e/tsx files). `npx tsc --noEmit` — clean
+    (only the same pre-existing 188 `use-intl` `.d.ts` errors as Batch 1's baseline, 0 from this change).
+    `npm run test:unit` — 51/51 (was 39 before Batch 1's review; +12 new). `npx prisma generate` — clean.
+  - **Verify (dev DB, read-only/dry-run only — no `--write`, no `prisma db seed`):** ran
+    `npm run backfill:formula-pins` (dry run) directly against the real dev DB (`.env.local`'s
+    `DATABASE_URL`, endpoint `ep-dark-term-ai0ufj4k` — confirmed via the guard's own printed target line):
+    connected successfully (proves the migration is live and the new columns/table are queryable), reported
+    0 orgs/0 projects (informational — the guard doesn't gate the counts, it gates the endpoint) and then
+    failed loudly with `No FormulaSet found for name "glass-partition-standard"` — the **expected** state,
+    since `prisma db seed` hasn't been re-run against dev with this code yet. Also smoke-tested the guard's
+    fail-closed paths directly (empty `DATABASE_URL` → abort; a non-dev endpoint → abort naming it; an
+    `npm_config_project` env var mismatch → abort naming the swallow). **Deliberately did NOT run
+    `npx prisma db seed` or any `--write`** against the shared dev DB — flagging this clearly per the
+    dispatch's instruction, since other in-flight stage work depends on that DB's current state. This is
+    the recommended next step (by devops or whoever reviews this batch) before the full functional
+    acceptance checklist (fresh org via `/controls`, cascading dropdowns, backfill `--write`) can run.
+  - **Verify (preview):** pushed `feature/s23-b2-catalog-seed` @ `66233dd`. No Vercel MCP tool was available
+    in this dispatch's toolset, so polled via `gh api repos/.../commits/<sha>/status` (Vercel bot posts a
+    commit status) and `gh api repos/.../deployments/<id>/statuses` for the actual preview URL — build
+    reached `Deployment has completed` (success) at
+    `https://quotation-system-63q9xx1xn-vistra-indias-projects.vercel.app`. `GET /api/health` → 200,
+    `{"status":"ok","database":"connected",...}`. **Not verified on preview:** the `/controls` fresh-org
+    creation flow and cascading-dropdown UI check — no SuperAdmin credentials available in this environment
+    (`TEST_SA_USERNAME`/`TEST_SA_PASSWORD` unset locally), and this ad-hoc per-branch preview URL has no
+    `*.test.easeetool.com` subdomain alias for org-scoped page testing per CLAUDE.md's branching doc
+    (subdomain routing only applies to the stable staging alias). Also note: even with credentials, org
+    creation on this preview would currently fail loudly (by design — `createOrganizationWithDefaults()`
+    now requires an `activeFormulaSetId` lookup that returns nothing until dev is seeded), so that
+    end-to-end UI check can't fully pass until the seed step above runs regardless.
+  - Committed `66233dd` on `feature/s23-b2-catalog-seed`, pushed.
+  Status: DONE_WITH_CONCERNS — code, local verification, and DB-guard/dry-run verification are complete and
+  green; the DB write (`prisma db seed`) needed for full functional acceptance is explicitly left as a
+  flagged next step rather than run inline, and the `/controls` UI check couldn't be performed without
+  SuperAdmin credentials.
