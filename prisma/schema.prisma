@@ -50,6 +50,11 @@ model Organization {
   rooms             Room[]
   // Stage 20 relations
   componentTypeOrgConfigs ComponentTypeOrgConfig[]
+  // Stage 23: the org-wide default FormulaSet new projects pin to at creation time.
+  // Restrict — a FormulaSet can't be deleted while any org still points at it.
+  activeFormulaSetId      String?
+  activeFormulaSet        FormulaSet?           @relation(fields: [activeFormulaSetId], references: [id], onDelete: Restrict)
+  projectCalculations     ProjectCalculation[]
 }
 
 // ────────────────────────────────────────────────────────────
@@ -392,6 +397,11 @@ model Project {
   inquiry              Inquiry?         @relation(fields: [inquiryId], references: [id], onDelete: SetNull)
   // Stage 8 relations
   floors               Floor[]
+  // Stage 23: the FormulaSet pinned at project creation (never rewritten by updateProject()).
+  // Restrict — a FormulaSet can't be deleted while any project is pinned to it.
+  formulaSetId         String?
+  formulaSet           FormulaSet?      @relation(fields: [formulaSetId], references: [id], onDelete: Restrict)
+  calculation          ProjectCalculation?
 
   @@unique([organizationId, projectNumber])
   @@unique([externalCompanyId, companyProjectNumber])
@@ -606,4 +616,59 @@ model Selection {
   orderIndex      Int
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+}
+
+// ────────────────────────────────────────────────────────────
+// Domain models — Stage 23: Formula Set engine + summary calculation
+// ────────────────────────────────────────────────────────────
+
+// Platform-level (not org-scoped) versioned document describing how a
+// project's design resolves into the BOQ summary: per-role `slots`
+// (`role` + `requiredParams` + `summaryParams`) plus a `formulas` array
+// (empty in the v1 slots-only set shipped this stage — see stage-23.md's
+// "Summary output shape"). Immutable once created: a given (name, version)
+// is never updated in place — a change ships as a new version row.
+// See design-docs/04-data-model.md — FormulaSet.
+model FormulaSet {
+  id          String    @id @default(uuid())
+  name        String
+  version     Int
+  body        Json
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  activeForOrgs   Organization[]
+  pinnedProjects  Project[]
+  calculations    ProjectCalculation[]
+
+  @@unique([name, version])
+}
+
+// One computed BOQ summary per Project (1:1), produced by lib/summary's
+// buildSummary() from the project's frozen configSnapshot + design tree +
+// Selections, resolved through the pinned FormulaSet's slots. Deleted and
+// recomputed (never patched) whenever the design changes underneath it —
+// see lib/data's invalidateProjectCalculation() call sites. materialList is
+// always `[]` this stage (D-37, no evaluator yet). onDelete: Cascade from
+// both Project and Organization; Restrict from FormulaSet (a set can't be
+// deleted while any calculation still references it).
+// See design-docs/04-data-model.md — ProjectCalculation.
+model ProjectCalculation {
+  id             String       @id @default(uuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  projectId      String       @unique
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  formulaSetId   String
+  formulaSet     FormulaSet   @relation(fields: [formulaSetId], references: [id], onDelete: Restrict)
+  computedAt     DateTime
+  status         String       // "OK" | "FAILED"
+  errorDetail    String?
+  summary        Json
+  materialList   Json         @default("[]")
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId])
 }
