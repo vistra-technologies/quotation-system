@@ -17,7 +17,10 @@
  *   - glass panel               -> [glass cell]
  *   - door panel, door.h == wall -> [door cell]
  *   - door panel, door.h <  wall -> [transom glass cell (wall - door.h), door cell (door.h)]  (top -> bottom)
- * The transom's glass pointer lives on the panel view's own `selectionId` (v1 always had null there).
+ * The transom's glass pointer lives on the panel view's own `selectionId`. On save (panelsToV2), the
+ * fallback order is: the panel's own selectionId -> design.defaults.glassSelectionId -> null (human
+ * decision, Stage 22 B2 review-3 #5 — NOT "v1 always had null there": pre-B1 TOGGLE_DOOR preserved the
+ * glass id on the panel, so real v1 rows can carry a non-null value here).
  */
 
 // ─── Stored v2 shape ─────────────────────────────────────────────────────────
