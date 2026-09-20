@@ -3,11 +3,10 @@
 ## Status
 
 - **Phase:** implement — Batch 1 done, awaiting review
-- **Branch:** `release/stage-23` (cut fresh from `origin/master` @ cf130ca, 2026-09-21) @ `48563e5`
-- **Active work item:** Batch 1 reviewed — APPROVE-WITH-NITS (0 critical/important, 3 minor, see
-  `review-1.md`). Next: devops applies the migration to the dev Neon DB out-of-band (via
-  `prisma migrate deploy` on `DATABASE_URL_UNPOOLED`, per review-1.md's MINOR-3 — not pasted SQL, so
-  `_prisma_migrations` gets the row), then Batch 2 (starter-catalog swap + seed + backfill).
+- **Branch:** `release/stage-23` (cut fresh from `origin/master` @ cf130ca, 2026-09-21) @ `c211852`
+- **Active work item:** Batch 1 done (schema + migration, APPROVE-WITH-NITS, applied to dev DB out-of-band).
+  Next: Batch 2 (starter-catalog swap + slots-only formula set + seed + backfill) — dispatching developer
+  on `feature/s23-b2-catalog-seed`.
 - **Latest artifacts:** `plan.md` (local, untracked per `.gitignore` convention — regenerate by reading
   worklog history if a fresh checkout is missing it), `diff-b1.patch` (local, untracked).
 - **Stage target:** `quotation-system-docs/development-cycles/stage-23.md` — Formula Set engine + data model
