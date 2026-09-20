@@ -30,3 +30,11 @@
   not a parallel work-item split (Batch 3/6 share `lib/formula-compat.ts`, and stage size doesn't
   justify worktree overhead). No product code touched this dispatch.
   Status: DONE. See `plan.md`.
+
+- **developer · plan.md correction (2026-09-21).** Fixed stale door-shape wording in `plan.md`'s Batch 4/5
+  sections per the human's D-40 ruling (doors hang off the **wall**, not the room; aggregate within a wall
+  only, never across walls; wall with no doors emits `doors: []`; rooms carry no door list). Also fixed the
+  Batch 4 gate-status paragraph (A1 is now CLEARED, not pending) and a stale Batch-4 unit-test line ("3
+  identical doors across 2 walls → 1 row qty 3", which was wrong even under the old room-based reading — the
+  stage doc's actual example splits 2/1 across two walls into two rows). Batches 1/2/3/6/7 and the triage
+  recommendation untouched. No product code touched. Status: DONE.
