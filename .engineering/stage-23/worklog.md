@@ -2,16 +2,12 @@
 
 ## Status
 
-- **Phase:** implement — Batch 2 done, awaiting review
-- **Branch:** `feature/s23-b2-catalog-seed` (cut from `release/stage-23` @ `21cc967`) @ `66233dd`
-- **Active work item:** Batch 2 done (starter-catalog swap + slots-only formula set + seed + backfill).
-  **Not yet done on dev DB: `npx prisma db seed` has NOT been re-run there** — the code is ready but the
-  actual write (creates the `FormulaSet` row, pins existing orgs) was deliberately left for an explicit
-  follow-up (mirrors Batch 1's out-of-band devops migration apply) rather than run inline by the developer,
-  per the dispatch's "flag before writing to the shared dev DB" instruction. **Next: someone (devops/
-  reviewer) should run `npx prisma db seed` against dev, then re-verify** (fresh org via `/controls` gets
-  the 2 new types + working cascading dropdowns; existing orgs' `PROFILE_STOP`/configs untouched; backfill
-  dry-run then `--write` on dev). After that, review Batch 2, then proceed to Batch 4 per the tier order.
+- **Phase:** implement — Batch 2 merged (reviews: review-2 CHANGES-NEEDED -> fixed -> review-3 APPROVE-WITH-NITS)
+- **Branch:** `release/stage-23` @ `d50b70e`
+- **Active work item:** Batch 2 code merged. **Next: devops runs `npx prisma db seed` on dev DB, then backfill
+  dry-run/--write and the verification checklist (fresh org via /controls, guard, e2e on a preview).** Then
+  Batch 4 (summary builder). D-34 amended by human 2026-09-21: seed overwrites existing orgs' GLASS/DOOR
+  (schema + option config); deletes nothing.
 - **Latest artifacts:** `plan.md` (local, untracked per `.gitignore` convention — regenerate by reading
   worklog history if a fresh checkout is missing it), `diff-b1.patch` (local, untracked).
 - **Stage target:** `quotation-system-docs/development-cycles/stage-23.md` — Formula Set engine + data model
