@@ -82,3 +82,35 @@
   to mechanically verify future hand-written migrations; (3) the out-of-band dev apply must go through
   `prisma migrate deploy` on `DATABASE_URL_UNPOOLED`, and the migration file must not be edited afterwards
   (checksum). No blockers — Batch 2 may proceed. See `review-1.md`.
+
+## devops — out-of-band migrate deploy (Batch 1 -> dev DB), 2026-09-21
+- STUB: about to run `npx prisma migrate deploy` against dev Neon endpoint `ep-dark-term-ai0ufj4k`
+  (DATABASE_URL overridden to DATABASE_URL_UNPOOLED value, mirroring scripts/build.mjs) to apply
+  `20260921000001_add_formula_sets`. Pre-check: `prisma migrate status` confirms it as the only
+  pending migration; datasource resolved to `ep-dark-term-ai0ufj4k-pooler...` confirming dev, not prod.
+
+- **RESULT: applied cleanly.** Ran `npx prisma migrate deploy` with `DATABASE_URL` overridden in-process
+  to the `DATABASE_URL_UNPOOLED` value (mirroring `scripts/build.mjs`'s exact override, no shell
+  interpolation of the secret — set via a Node child-process env object, temp file holding the value
+  deleted immediately after). Datasource line during the deploy showed
+  `ep-dark-term-ai0ufj4k.c-4.us-east-1.aws.neon.tech` (no `-pooler` suffix), confirming the override took
+  effect and confirming dev target (matches profile.md's dev endpoint `ep-dark-term-ai0ufj4k`; production
+  is the unrelated `ep-little-paper-aipm0o0i`, never touched).
+  - `prisma migrate status` before: 25 found, `20260921000001_add_formula_sets` pending. After: "Database
+    schema is up to date!" (all 25 applied).
+  - Verified via direct `pg` query (pooled `DATABASE_URL`, read-only):
+    - `_prisma_migrations` has a `finished_at`-populated row for `20260921000001_add_formula_sets` (per
+      review-1.md MINOR-3, this is what prevents `staging`'s later auto-migrate from re-running the SQL
+      and hitting a P3009 "already exists").
+    - `FormulaSet` and `ProjectCalculation` tables exist.
+    - `Organization.activeFormulaSetId` and `Project.formulaSetId` columns exist.
+    - Sanity read on existing data (no regression from the additive migration): `Project` count 710,
+      `Organization` count 6 — both readable, additive migration confirmed non-destructive.
+  - Did not run `prisma db seed` or any backfill (Batch 2's job). Did not touch production. Did not paste
+    raw SQL anywhere (per MINOR-3, went through `migrate deploy` only).
+  - Did not separately hit `/api/health` on a feature-branch preview since no Batch-1+ feature branch is
+    pushed yet to verify against; the direct DB check above is the stronger, more specific evidence for
+    this batch (same reasoning review-1.md gave for why DB-free static checks were preferred over an
+    unmigrated-DB preview hit at review time).
+- **Outcome:** dev DB (`ep-dark-term-ai0ufj4k`) is now ready for Batch 2+ feature-branch previews to use
+  the new `FormulaSet`/`ProjectCalculation` tables and FK columns.
