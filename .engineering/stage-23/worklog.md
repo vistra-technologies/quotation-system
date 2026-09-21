@@ -2,15 +2,20 @@
 
 ## Status
 
-- **Phase:** implement — Batches 1, 2, 4 merged. Next: Batch 3 (creation wiring + invalidation), then 6, 5, 7.
-- **Branch:** `release/stage-23` @ `8aa410b`
-- **Active work item:** Batch 3 (`lib/formula-compat.ts`, createProject/convertInquiry pin + 409, invalidation
-  helper in partitions/rooms/floors/selections, delete cascades, org creation sets activeFormulaSetId).
+- **Phase:** implement — Batches 1, 2, 3, 4 merged. Next: Batch 6 (key-edit guard, can start now that
+  `lib/formula-compat.ts` exists), then Batch 5 (submit/recompute), then Batch 7 (e2e + docs).
+- **Branch:** `release/stage-23` @ `f85ba56`
+- **Active work item:** none yet — about to dispatch developer for Batch 6.
 - **Carry-forwards:** (a) review-4 MINOR: KPI rounding drift (entries can sum 1e-4 off `totalPartitionSqm`) -
   Batch 7 adds a Known-limitations note to stage-23.md. (b) review-4: a partition with `design: null` makes
   the builder return FAILED - Batch 5's 13b submit check must catch it first as a legible 400/422.
-  (c) Batch 2 leftover unverified: fresh-org /controls check + e2e on a preview (needs SuperAdmin creds) -
-  fold into the Batch 7 e2e/preview pass.
+  (c) Batch 2 + Batch 3 leftover unverified: fresh-org /controls check, SuperAdmin hard-delete-with-calcs,
+  and e2e on a preview (all need SuperAdmin creds nobody has had yet) - fold into the Batch 7 e2e/preview
+  pass, or ask the human for creds before then if it's blocking. (d) review-5-opus-checkpoint MINOR:
+  `lib/data/partitions.ts`'s `createPartition()` is a dead export with no `invalidateProjectCalculation()`
+  call of its own — harmless (zero call sites) but flag/delete before a future stage wires it up. (e) note
+  for Batch 5: if its summary loader derives wall ordering from `Room.sides` rather than Partition rows,
+  a sides-reorder-only PATCH would need invalidation too (cosmetic-only risk, not a correctness one).
 - **Latest artifacts:** `plan.md` (local, untracked per `.gitignore` convention — regenerate by reading
   worklog history if a fresh checkout is missing it), `diff-b1.patch` (local, untracked).
 - **Stage target:** `quotation-system-docs/development-cycles/stage-23.md` — Formula Set engine + data model
