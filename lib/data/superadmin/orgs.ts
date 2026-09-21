@@ -421,6 +421,10 @@ export async function deleteOrganization(
       // 4. Floor — references Project
       await tx.floor.deleteMany({ where: { organizationId: orgId } });
 
+      // 4b. ProjectCalculation — references Project + Organization (Stage 23 D-20; also Cascade at the DB,
+      //     explicit here so the delete order never depends on it)
+      await tx.projectCalculation.deleteMany({ where: { organizationId: orgId } });
+
       // 5. Project — references User (createdByUserId), ExternalCompany, Inquiry (SetNull)
       await tx.project.deleteMany({ where: { organizationId: orgId } });
 
