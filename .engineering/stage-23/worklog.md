@@ -2,13 +2,20 @@
 
 ## Status
 
-- **Phase:** implement — **all 7 batches merged, Stage 23 is code-complete.** `release/stage-23` has not
-  yet been merged to `staging`/`master` — that's the next step (human-gated, per CLAUDE.md's branching
-  rules), not another implement dispatch.
-- **Branch:** `release/stage-23` @ (Batch 7 not yet merged in — developer's branch
-  `feature/s23-b7-e2e-docs` @ `aea1ee6`, pushed, e2e-verified against its own preview, ready to merge)
-- **Active work item:** none — Batch 7 done. Next action: merge `feature/s23-b7-e2e-docs` →
-  `release/stage-23` → `staging` (verify on `test.easeetool.com`) → human approval → `master`.
+- **Phase:** implement — **CLOSED. All 7 batches merged and review-clean; Stage 23 is code-complete.**
+  Final review (review-8, Batch 7, Opus): APPROVE-WITH-NITS, 0 CRITICAL/IMPORTANT, 6 MINOR (all dev's
+  discretion / non-blocking). Reviewer's explicit technical read: Stage 23 is safe to merge to `staging`.
+  Per the `engineering:implement` skill, this orchestrator does not test or deploy from here — next phase
+  is `engineering:test` against `test.easeetool.com` once the human merges `release/stage-23` → `staging`.
+- **Branch:** `release/stage-23` @ `87f8770` (Batch 7 merged, all 7 batches in, pushed to origin).
+- **Active work item:** none — implement phase complete. Next action is human-gated:
+  merge `release/stage-23` → `staging` (verify on `test.easeetool.com`) → `engineering:test` phase →
+  human approval → `master`.
+- **⚠️ Flagged for the human before `master` promotion (found by review-8, outside this stage's diff):**
+  `.engineering/stage-16/worklog.md:468-480` is tracked in the (public) repo and records that
+  `SUPERADMIN_DEVADMIN_PASSWORD`/`_ISHAN_`/`_SHAJI_` were set to the placeholder `Seed1234!` across
+  **Production**, with its own note to rotate at promotion — not confirmed rotated. This is the same
+  password just supplied for Batch 7's e2e dev/preview testing. Added to `backlog/backlog.md` as Critical.
 - **Carry-forwards — all resolved or accepted in Batch 7:**
   (a) RESOLVED (documented): KPI rounding drift — accepted as a Known limitation in `stage-23.md`, not a
   code fix (see the doc's rationale).
