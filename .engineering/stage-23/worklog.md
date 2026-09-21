@@ -2,36 +2,32 @@
 
 ## Status
 
-- **Phase:** implement — Batches 1, 2, 3, 4, 5, 6 merged (all engine batches done). Next: Batch 7
-  (e2e + docs, stage close-out) — the final batch.
-- **Branch:** `release/stage-23` @ `9dfed34` (Batch 5 merge)
-- **Active work item:** none yet — about to scope/dispatch developer for Batch 7.
-- **Carry-forwards:** (a) review-4 MINOR: KPI rounding drift (entries can sum 1e-4 off `totalPartitionSqm`) -
-  Batch 7 adds a Known-limitations note to stage-23.md.
-  (b) RESOLVED in Batch 5 — see review-7: `checkDesignReadyForSubmit()` in `lib/data/calculations.ts` runs
-  before `buildSummary()` and turns null/incomplete designs into a 422, never an opaque FAILED.
-  (c) Batch 2/3/6 leftover unverified: fresh-org /controls check, SuperAdmin hard-delete-with-calcs, and
-  SuperAdmin PATCH/DELETE 409s (all need SuperAdmin creds — `SUPERADMIN_*_PASSWORD` are Vercel Secrets,
-  confirmed un-pullable by agents across 3 separate batches now). **Flagged to the human directly** —
-  their call whether to share creds or have them rotated for agent use before Batch 7's e2e pass, or accept
-  code-inspection + shared-unit-test coverage as sufficient for the SuperAdmin surface this stage.
-  Still unanswered as of this update.
-  (d) review-5-opus-checkpoint MINOR: `lib/data/partitions.ts`'s `createPartition()` is a dead export with
-  no `invalidateProjectCalculation()` call of its own — harmless (zero call sites) but flag/delete before a
-  future stage wires it up.
-  (e) RESOLVED in Batch 5 — see review-7: wall order derives from `Partition` rows
-  (`orderBy: partitionNumber`), never from `Room.sides`; the reorder-invalidation gap doesn't apply.
-  (f) review-6 MINORs (dev's discretion, non-blocking): an
-  avoidable org/FormulaSet lookup on PATCHes with no guardable field change; 409 message names only the
-  first removed key; `prisma/seed.ts`'s `componentType.upsert` sits outside the Batch 6 guard (not an API
-  path, not actionable — no prod org has `activeFormulaSetId` set from a seed run yet).
-  (g) review-7 MINORs (Batch 5, dev's discretion, non-blocking): a malformed (non-null, missing
-  `componentTypes`) `configSnapshot` escapes `buildSummary()`'s catch as a raw `TypeError` -> 500 instead of
-  a clean 409/FAILED (one-line fix candidate at `lib/data/calculations.ts:346`); the "design is malformed"
-  branch has no dedicated unit case in `tests/unit/calculations-preflight.test.ts` (7 other branches do).
-- **Latest artifacts:** `plan.md` (local, untracked per `.gitignore` convention — regenerate by reading
-  worklog history if a fresh checkout is missing it), `diff-b1.patch`..`diff-b5.patch`, `review-7.md`
-  (local, untracked).
+- **Phase:** implement — **all 7 batches merged, Stage 23 is code-complete.** `release/stage-23` has not
+  yet been merged to `staging`/`master` — that's the next step (human-gated, per CLAUDE.md's branching
+  rules), not another implement dispatch.
+- **Branch:** `release/stage-23` @ (Batch 7 not yet merged in — developer's branch
+  `feature/s23-b7-e2e-docs` @ `aea1ee6`, pushed, e2e-verified against its own preview, ready to merge)
+- **Active work item:** none — Batch 7 done. Next action: merge `feature/s23-b7-e2e-docs` →
+  `release/stage-23` → `staging` (verify on `test.easeetool.com`) → human approval → `master`.
+- **Carry-forwards — all resolved or accepted in Batch 7:**
+  (a) RESOLVED (documented): KPI rounding drift — accepted as a Known limitation in `stage-23.md`, not a
+  code fix (see the doc's rationale).
+  (b) RESOLVED in Batch 5.
+  (c) RESOLVED in Batch 7 — SuperAdmin creds provided (`devadmin`); all 3 items now have real e2e coverage
+  in `tests/e2e/stage23-summary.spec.ts`'s SuperAdmin-only describe block, verified passing against the
+  branch's own preview: fresh-org `/controls` catalog + D-22/D-38 pin works end-to-end (proven by actually
+  submitting a design against it); the D-36 guard 409s from all three DAL paths (org PATCH, SuperAdmin
+  PATCH, SuperAdmin DELETE); org hard-delete-with-calculations cascades cleanly (explicit before/after
+  `ProjectCalculation` count, not just "the delete didn't error").
+  (d) RESOLVED in Batch 7 — dead `createPartition()` export deleted from `lib/data/partitions.ts`.
+  (e) RESOLVED in Batch 5.
+  (f) Left as documented follow-ups (dev's discretion, explicitly non-blocking per review-6) — not
+  fixed, not forgotten.
+  (g) RESOLVED in Batch 7 — one-line fix in `lib/summary/index.ts` (malformed-but-non-null snapshot now
+  fails cleanly as `FAILED` instead of a raw `TypeError`), plus the missing "design is malformed" unit
+  case added to `tests/unit/calculations-preflight.test.ts`.
+- **Latest artifacts:** `plan.md`, `plan-b7.md` (local, untracked), `diff-b1.patch`..`diff-b6.patch`,
+  `review-1.md`..`review-7.md` (local, untracked), `retro.md`.
 - **Stage target:** `quotation-system-docs/development-cycles/stage-23.md` — Formula Set engine + data model
 - **Tier:** near-serial, substantial (per profile.md: 1 → 2 → 4 → 3 → 6 → 5 → 7, batches 3∥4 and 6∥3–5)
 - **Gate:** RESOLVED 2026-09-21. A1 (door aggregation) is locked as **D-40**: `doors[]` hangs off the
@@ -304,3 +300,79 @@
   green; the DB write (`prisma db seed`) needed for full functional acceptance is explicitly left as a
   flagged next step rather than run inline, and the `/controls` UI check couldn't be performed without
   SuperAdmin credentials.
+
+- **developer · Batch 7 — E2E + docs reconciliation, stage close-out (2026-09-21).** Branch
+  `feature/s23-b7-e2e-docs` (cut off `release/stage-23` @ `57dd2f4`, Batch 5's merge). Per `plan-b7.md`:
+  - `tests/e2e/stage23-summary.spec.ts` (new): submit → summary matches D-27/D-40's shape (per-wall
+    `glass[]`/`doors[]`, populated labels, KPIs) and recompute reproduces it byte-identically without
+    touching `designSubmittedAt`; submit blocked 422 on an incomplete design (13b), nothing written;
+    editing a submitted design through the real `PATCH /partitions/:id` route clears `designSubmittedAt`
+    **and** deletes the calculation (previous coverage in `stage23-wiring.spec.ts` only exercised this via
+    a DB-inserted calc, never through a real submit); recompute 409s on a never-computed DRAFT and on a
+    non-DRAFT project (D-23) via a new guarded `setProjectStatus` DB helper (no route can change status
+    yet). **SuperAdmin-only describe block** (skips without `TEST_SA_USERNAME`/`TEST_SA_PASSWORD`, same
+    FLAG-B3 convention as `superadmin-orgs.spec.ts`), built around **one throwaway fresh org** so the
+    guard tests' formula-set-pointer swap can never race a concurrently-running spec file (unlike
+    reusing acme-glass/nordic-walls): item 1 proves the D-34 catalog + D-22/D-38 pin work end-to-end on a
+    freshly-created org (create → design → assign real GLASS Selection → submit → OK summary); item 2
+    proves the D-36 guard 409s from all three DAL entry points (org-level PATCH, SuperAdmin PATCH,
+    SuperAdmin DELETE) on a custom, non-reserved ComponentType wired into a temp formula set, plus one
+    non-block (adding a field still succeeds); item 3 proves SuperAdmin hard-delete of an org with a
+    project + calculation cascades cleanly, via an explicit before/after `countProjectCalculations` count
+    (new DB helper), not just "the delete call returned 200."
+  - `tests/e2e/helpers.ts`: extracted `apiSignIn()` — was duplicated verbatim in `stage23-wiring.spec.ts` —
+    as a shared export; `stage23-wiring.spec.ts` now imports it and dropped its own copy plus the now-dead
+    local `BASE_URL` const. Re-ran `stage23-wiring.spec.ts` after the refactor: 7/7 still pass.
+  - `tests/e2e/db-helpers.ts` + `prisma/e2e-db-helper-cli.ts`: two small guarded ops — `setProjectStatus`
+    (test-only, no route exists) and `countProjectCalculations` (the explicit cascade-delete proof above).
+  - **Carry-forward (g) fixed:** `lib/summary/index.ts` — a non-null but malformed `configSnapshot`
+    (missing/non-array `componentTypes`) now throws `SummaryFailure` (caught, → `FAILED`) instead of a raw
+    `TypeError` escaping `buildSummary()`'s catch. Added a unit case in `tests/unit/summary-builder.test.ts`
+    and the missing "design is malformed" (a section with no `cells[]`) 13b case in
+    `tests/unit/calculations-preflight.test.ts`.
+  - **Carry-forward (d) fixed:** deleted `lib/data/partitions.ts`'s dead `createPartition()` export (zero
+    call sites, confirmed by grep; `createPartitionInTx()`, the function every real caller uses via
+    `replaceSides()`, is untouched). Updated its doc comment to explain why and to warn a future caller
+    to wire `invalidateProjectCalculation()` into any new wrapper, rather than resurrecting this one.
+  - **Carry-forward (a) accepted, not fixed:** documented as a Known limitation in `stage-23.md` (KPI
+    rounding: `sqmByGlassType[]`/`totalPartitionSqm` are each rounded independently from unrounded
+    per-cell sums, so they can differ by up to ~1e-4 m² on an adversarial input — deliberate, per D-27's
+    "round once per aggregate" rule, immaterial at BOQ scale).
+  - **Carry-forward (f) left as follow-up**, per review-6's own "dev's discretion, non-blocking" framing —
+    not touched.
+  - Docs repo (`quotation-system-docs`, commit `9bad21e`, pushed to `main`): `by-page.sql` (found and
+    fixed two real gaps in the org-creation section that predate Stage 23 — the D-22 `FormulaSet`
+    lookup/`activeFormulaSetId` pin and the Stage 20 `ComponentTypeOrgConfig` write were never documented
+    there, and a comment still named `PROFILE_STOP` post-D-34), `04-data-model.md`/`03-subsystems.md`
+    (status flips, D-34 catalog vocabulary corrections, clarified Stage 23's builder walks only the Cell
+    grain), `07-roadmap-open-questions.md` (moved the summary-shape question to Resolved, tally fixed),
+    `development-cycles/README.md` (status flag), `stage-24.md` (found and corrected one real drift: it
+    assumed a `GET .../projects/:id/calculation` route that doesn't exist — Stage 23 shipped only
+    `submit-design`/`recompute`), `TECH_DESIGN.md` (`Last updated` bump), `stage-23.md` (Status flipped to
+    Built; full Execution Log written reconciling plan vs. reality across all 7 batches; Deviations
+    register closed with "no entries" — the one shape change, D-40, was a decision amendment merged
+    *before* Batch 4 was approved, not a deviation found after the fact; Known limitations section added),
+    `task-format-retro.md` (developer retro note, including a process gap found: `worklog.md`'s Activity
+    log had no entries at all for Batches 3/4/6 — only git history and gitignored `review-N.md` scratch
+    files preserved their outcomes, which happened to still be present locally but aren't guaranteed to
+    be).
+  - **Verify (local):** `npx tsc --noEmit` clean; `npm run lint` clean (only the same pre-existing
+    findings as every prior batch, none introduced); `npm run test:unit` 115/115 (was 113 before this
+    batch — +2: the malformed-snapshot case and the "design is malformed" 13b case).
+  - **Verify (preview):** pushed `feature/s23-b7-e2e-docs` @ `aea1ee6`; polled via
+    `gh api repos/.../commits/<sha>/status` → `success`, resolved the deployment's `environment_url` via
+    `gh api repos/.../deployments/<id>/statuses`
+    (`https://quotation-system-bhafn7x6u-vistra-indias-projects.vercel.app`); `/api/health` → 200
+    `database: "connected"`. Ran the full new suite against it with `TEST_SA_USERNAME=devadmin`/
+    `TEST_SA_PASSWORD` (sourced from the gitignored `superadmin-creds-DO-NOT-COMMIT.md`, never inlined in
+    any tracked file or committed): `stage23-summary.spec.ts` **7/7 pass** (including all 3 previously
+    SuperAdmin-blocked items); `stage23-wiring.spec.ts` **7/7 pass** (post-refactor regression check);
+    `superadmin-orgs.spec.ts` + `superadmin-component-types.spec.ts` **29/29 pass, 2 Tier-2 skips**
+    (staging-only page tests, expected on a per-branch preview) — confirms the shared `apiSignIn` helper
+    didn't regress any existing SuperAdmin coverage. No local dev server/build/DB was used at any point.
+  - Committed `aea1ee6` on `feature/s23-b7-e2e-docs`, pushed. Not yet merged into `release/stage-23` —
+    that merge, then `release/stage-23` → `staging`, is the next step (human-gated per CLAUDE.md).
+  Status: DONE. Files: `tests/e2e/stage23-summary.spec.ts` (new), `tests/e2e/helpers.ts`,
+  `tests/e2e/stage23-wiring.spec.ts`, `tests/e2e/db-helpers.ts`, `prisma/e2e-db-helper-cli.ts`,
+  `lib/summary/index.ts`, `lib/data/partitions.ts`, `tests/unit/summary-builder.test.ts`,
+  `tests/unit/calculations-preflight.test.ts`; docs repo (10 files, commit `9bad21e`).
