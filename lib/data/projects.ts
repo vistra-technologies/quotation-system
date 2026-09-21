@@ -1,8 +1,15 @@
 import type { Prisma } from "@/app/generated/prisma/client";
+import {
+  checkDesignReadyForSubmit,
+  loadCalculationInput,
+  writeCalculation,
+  type DesignCheckViolation,
+} from "@/lib/data/calculations";
 import { loadConfigSnapshot } from "@/lib/config-snapshot";
 import { resolveFormulaSetPin } from "@/lib/data/formula-pin";
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
+import { buildSummary } from "@/lib/summary";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -428,34 +435,146 @@ export async function updateProject(
 /**
  * Mark a Project's design as submitted — the gate that unlocks the Summary
  * and Quotation wizard steps (previously auto-unlocked at partitionCount>0;
- * now a deliberate action). Stands in for "a Summary exists" until the real
- * BOQ/Summary pipeline is built.
+ * now a deliberate action). Stage 23 Batch 5: also builds and writes the
+ * project's ProjectCalculation (the Summary) in the same transaction as the
+ * stamp — see stage-23.md Batch 5 steps 1-4.
  *
  * Requires at least one Partition — submitting an empty design isn't
  * meaningful, and would leave Summary/Quotation unlocked with nothing to show.
  *
+ * The 13b data check (every cell has a non-null selectionId resolving to a
+ * live Selection) runs BEFORE buildSummary() — a null/incomplete design never
+ * reaches the builder from here, so it can never surface as an opaque FAILED
+ * (worklog review-4 carry-forward (b)). Two distinct "blocked" outcomes,
+ * matching stage-23.md's step 2 vs step 4:
+ *   - a 13b violation -> nothing is written -> { designIncomplete }
+ *   - buildSummary() itself returns FAILED (13b passed, but e.g. a blank
+ *     org-required field) -> the FAILED row IS written (with errorDetail),
+ *     but designSubmittedAt is NOT set -> { buildFailed }
+ *
  * Returns null if the project doesn't exist or belongs to a different org.
  * Returns { noPartitions: true } if the project has zero Partitions.
+ * Returns { noFormulaSet: true } if the project has no pinned formula set or
+ * no frozen config snapshot (defensive — shouldn't happen post-creation-pin).
+ * Returns { designIncomplete: DesignCheckViolation[] } on a 13b failure.
+ * Returns { buildFailed: string } if buildSummary() itself returns FAILED.
+ * Returns { project } on success.
  */
-export async function submitDesign(session: SessionData, projectId: string) {
-  const existing = await prisma.project.findFirst({
-    where: { id: projectId, organizationId: session.organizationId },
-    select: { id: true },
-  });
-  if (!existing) return null;
+export type SubmitDesignResult =
+  | null
+  | { noPartitions: true }
+  | { noFormulaSet: true }
+  | { designIncomplete: DesignCheckViolation[] }
+  | { buildFailed: string }
+  | { project: { id: string; designSubmittedAt: Date | null } };
 
-  const partitionCount = await prisma.partition.count({
-    where: { room: { floor: { projectId, project: { organizationId: session.organizationId } } } },
-  });
-  if (partitionCount === 0) return { noPartitions: true as const };
+export async function submitDesign(
+  session: SessionData,
+  projectId: string,
+): Promise<SubmitDesignResult> {
+  return prisma.$transaction(async (tx): Promise<SubmitDesignResult> => {
+    const existing = await tx.project.findFirst({
+      where: { id: projectId, organizationId: session.organizationId },
+      select: { id: true },
+    });
+    if (!existing) return null;
 
-  const updated = await prisma.project.update({
-    where: { id: projectId },
-    data: { designSubmittedAt: new Date() },
-    select: { id: true, designSubmittedAt: true },
-  });
+    const partitionCount = await tx.partition.count({
+      where: { room: { floor: { projectId, project: { organizationId: session.organizationId } } } },
+    });
+    if (partitionCount === 0) return { noPartitions: true as const };
 
-  return { project: updated };
+    const loaded = await loadCalculationInput(tx, session.organizationId, projectId);
+    if (!loaded) return null; // shouldn't happen — existing was just re-checked in this tx
+    if (!loaded.project.formulaSetId || loaded.input.snapshot.takenAt === "") {
+      return { noFormulaSet: true as const };
+    }
+
+    const violations = checkDesignReadyForSubmit(
+      loaded.input.floors,
+      new Set(loaded.input.selections.map((s) => s.id)),
+    );
+    if (violations.length > 0) {
+      return { designIncomplete: violations };
+    }
+
+    const result = buildSummary(loaded.input);
+    if (result.status === "FAILED") {
+      // 13b passed but the builder still failed on something 13b doesn't check (e.g. a blank
+      // org-required field). Still write the FAILED row (D-33-adjacent — same class of failure),
+      // but block the submit: no designSubmittedAt stamp.
+      await writeCalculation(tx, session.organizationId, projectId, loaded.project.formulaSetId, result);
+      return { buildFailed: result.errorDetail ?? "design could not be summarized" };
+    }
+
+    await writeCalculation(tx, session.organizationId, projectId, loaded.project.formulaSetId, result);
+
+    const updated = await tx.project.update({
+      where: { id: projectId },
+      data: { designSubmittedAt: new Date() },
+      select: { id: true, designSubmittedAt: true },
+    });
+
+    return { project: updated };
+  });
+}
+
+/**
+ * Recompute a Project's ProjectCalculation (Stage 23 Batch 5, D-23). Re-runs the same shared
+ * load-summary-write path as submitDesign() but:
+ *   - is gated to DRAFT projects that have EITHER a designSubmittedAt OR an existing calculation —
+ *     recompute is never the FIRST computation (D-23);
+ *   - runs NO 13b preflight — an old null-selectionId cell must produce a written FAILED row (with
+ *     errorDetail), never a crash, never an "Unassigned" row (D-33);
+ *   - never touches designSubmittedAt.
+ *
+ * Returns null if the project doesn't exist or belongs to a different org (-> 404).
+ * Returns { notDraft: true } if the project isn't DRAFT (-> 409).
+ * Returns { neverComputed: true } if neither designSubmittedAt nor a prior calculation exists (-> 409).
+ * Returns { noFormulaSet: true } if the project has no pinned formula set (defensive, -> 409).
+ * Returns { calculation } on success (OK or FAILED — recompute never blocks on the result).
+ */
+type ProjectCalculationRow = Awaited<
+  ReturnType<typeof prisma.projectCalculation.findUniqueOrThrow>
+>;
+
+export type RecomputeProjectResult =
+  | null
+  | { notDraft: true }
+  | { neverComputed: true }
+  | { noFormulaSet: true }
+  | { calculation: ProjectCalculationRow };
+
+export async function recomputeProject(
+  session: SessionData,
+  projectId: string,
+): Promise<RecomputeProjectResult> {
+  return prisma.$transaction(async (tx): Promise<RecomputeProjectResult> => {
+    const existing = await tx.project.findFirst({
+      where: { id: projectId, organizationId: session.organizationId },
+      select: { id: true, status: true, designSubmittedAt: true },
+    });
+    if (!existing) return null;
+    if (existing.status !== "DRAFT") return { notDraft: true as const };
+
+    const priorCalculation = await tx.projectCalculation.findUnique({
+      where: { projectId },
+      select: { id: true },
+    });
+    if (existing.designSubmittedAt === null && !priorCalculation) {
+      return { neverComputed: true as const };
+    }
+
+    const loaded = await loadCalculationInput(tx, session.organizationId, projectId);
+    if (!loaded) return null; // shouldn't happen — existing was just re-checked in this tx
+    if (!loaded.project.formulaSetId) return { noFormulaSet: true as const };
+
+    const result = buildSummary(loaded.input);
+    await writeCalculation(tx, session.organizationId, projectId, loaded.project.formulaSetId, result);
+
+    const calculation = await tx.projectCalculation.findUniqueOrThrow({ where: { projectId } });
+    return { calculation };
+  });
 }
 
 /**

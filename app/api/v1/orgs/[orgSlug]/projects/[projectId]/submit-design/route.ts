@@ -5,6 +5,8 @@ import {
   apiForbidden,
   apiNotFound,
   apiBadRequest,
+  apiConflict,
+  apiUnprocessable,
   apiServerError,
 } from "@/lib/api-error";
 import { submitDesign } from "@/lib/data/projects";
@@ -24,6 +26,13 @@ export const dynamic = "force-dynamic";
  *
  * Returns 400 if the project has zero Partitions (nothing to submit).
  * Returns 404 if the project does not exist or belongs to a different org.
+ *
+ * Stage 23 Batch 5: also builds and writes the project's Summary (ProjectCalculation) in the same
+ * transaction as the stamp.
+ * Returns 409 if the project has no active formula set / config snapshot pinned (defensive — shouldn't
+ * happen post-creation-pin).
+ * Returns 422 if the design has a data problem (13b — a cell with no/unresolvable selection), or if the
+ * summary build itself failed (a FAILED row is still written in that case, but the submit is blocked).
  */
 export async function POST(
   request: Request,
@@ -58,6 +67,22 @@ export async function POST(
       return apiBadRequest(
         "Add at least one partition before submitting the design.",
       );
+    }
+
+    if ("noFormulaSet" in result) {
+      return apiConflict(
+        "This organization has no active formula set or configuration snapshot pinned to this project.",
+      );
+    }
+
+    if ("designIncomplete" in result) {
+      return apiUnprocessable(
+        `Design is incomplete: ${result.designIncomplete.map((v) => v.message).join("; ")}`,
+      );
+    }
+
+    if ("buildFailed" in result) {
+      return apiUnprocessable(`Could not build the design summary: ${result.buildFailed}`);
     }
 
     return NextResponse.json({ project: result.project });
