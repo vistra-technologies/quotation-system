@@ -91,7 +91,16 @@ function build(input: SummaryInput): Summary {
   const { formulaSetBody, snapshot } = input;
   const slots = isRecord(formulaSetBody?.slots) ? formulaSetBody.slots : {};
   const selectionById = new Map(input.selections.map((s) => [s.id, s]));
-  const typeById = new Map((snapshot as ConfigSnapshot).componentTypes.map((t) => [t.id, t]));
+  // A non-null but malformed snapshot (missing/non-array componentTypes) must fail cleanly like a null
+  // one, never crash with a raw TypeError (review-7 MINOR — Batch 5's 13b/noFormulaSet guard only catches
+  // an actually-null snapshot; this is the builder's own backstop for a corrupt-but-present one).
+  const componentTypes = Array.isArray((snapshot as ConfigSnapshot | undefined)?.componentTypes)
+    ? (snapshot as ConfigSnapshot).componentTypes
+    : null;
+  if (!componentTypes) {
+    throw new SummaryFailure("project configuration snapshot is malformed — componentTypes is missing");
+  }
+  const typeById = new Map(componentTypes.map((t) => [t.id, t]));
 
   const resolved = new Map<string, ResolvedSelection>();
   function resolve(selectionId: string, where: string): ResolvedSelection {

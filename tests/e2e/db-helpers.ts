@@ -149,6 +149,21 @@ export async function deleteTempFormulaSet(formulaSetId: string): Promise<void> 
   runDbOp("deleteTempFormulaSet", { formulaSetId });
 }
 
+// ── Stage 23 Batch 7 ────────────────────────────────────────────────────────
+
+/**
+ * Force a project's status directly — no API route can change it this stage. Used only to exercise
+ * recompute's DRAFT-only gate (D-23); callers must revert to "DRAFT" in a `finally`/`afterAll`.
+ */
+export async function setProjectStatus(projectId: string, status: string): Promise<void> {
+  runDbOp("setProjectStatus", { projectId, status });
+}
+
+/** Count of ProjectCalculation rows for an org — used as an explicit before/after cascade-delete proof. */
+export async function countProjectCalculations(organizationId: string): Promise<number> {
+  return runDbOp<number>("countProjectCalculations", { organizationId });
+}
+
 /**
  * Kept as a no-op for API compatibility with callers' `afterAll` hooks — each `runDbOp` call now
  * owns a short-lived child process (and its own Prisma client) rather than a shared long-lived

@@ -65,10 +65,13 @@ export async function getPartitionById(id: string, organizationId: string) {
 // ─── Mutations ──────────────────────────────────────────────────────────────
 
 /**
- * Create a Partition inside an already-open transaction — the shared step
- * used by both createPartition() below and lib/data/rooms.ts's
- * replaceSides() (which opens its own transaction for the plain->partition
- * convert compound op and cannot nest a second prisma.$transaction()).
+ * Create a Partition inside an already-open transaction. Currently the only caller is
+ * lib/data/rooms.ts's replaceSides() (which opens its own transaction for the plain->partition
+ * convert compound op and cannot nest a second prisma.$transaction()) — there is no standalone
+ * "create one partition" API route or entry point today (Stage 23 Batch 7: removed the dead
+ * `createPartition()` wrapper that had zero call sites and, notably, no
+ * `invalidateProjectCalculation()` of its own; a future direct "create wall" flow should add a
+ * fresh wrapper that calls the invalidation helper, not resurrect this one as-is).
  *
  * `partitionNumber` is assigned as MAX(partitionNumber) + 1 across ALL
  * partitions for the org, matching the @@unique([organizationId,
@@ -81,9 +84,6 @@ export async function getPartitionById(id: string, organizationId: string) {
  * 3. Assign partitionNumber = max + 1 and create the Partition row.
  *
  * Throws { code: "ROOM_NOT_FOUND" } if roomId doesn't resolve within the org.
- * A P2002 race on the @@unique constraint propagates unchanged — callers that
- * want the friendlier { code: "SEQUENCE_CONFLICT" } mapping should use
- * createPartition() below, which wraps this in its own transaction + catch.
  */
 export async function createPartitionInTx(
   tx: Prisma.TransactionClient,
@@ -118,48 +118,6 @@ export async function createPartitionInTx(
       status: "DRAFT",
     },
   });
-}
-
-/**
- * Create a new Partition scoped to the session org, in its own transaction.
- * Thin wrapper around createPartitionInTx() — see that function for the
- * step-by-step behavior. This is the standalone entry point (e.g. for a
- * future direct "create wall" flow); lib/data/rooms.ts's replaceSides() calls
- * createPartitionInTx() directly instead, since it needs the create to run
- * inside its own already-open transaction.
- *
- * Throws { code: "ROOM_NOT_FOUND" } if roomId doesn't resolve within the org.
- * Throws { code: "SEQUENCE_CONFLICT" } on a concurrent partitionNumber race
- *   (P2002 from the @@unique([organizationId, partitionNumber]) DB constraint).
- * All other errors propagate.
- */
-export async function createPartition(input: CreatePartitionInput) {
-  try {
-    return await prisma.$transaction((tx) => createPartitionInTx(tx, input));
-  } catch (err) {
-    // Re-throw our own structured errors unchanged.
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "code" in err &&
-      (err as { code: string }).code === "ROOM_NOT_FOUND"
-    ) {
-      throw err;
-    }
-    // P2002 on @@unique([organizationId, partitionNumber]) = concurrent race collision.
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "code" in err &&
-      (err as { code: string }).code === "P2002"
-    ) {
-      throw Object.assign(
-        new Error("Partition number conflict — please try again."),
-        { code: "SEQUENCE_CONFLICT" },
-      );
-    }
-    throw err;
-  }
 }
 
 /**

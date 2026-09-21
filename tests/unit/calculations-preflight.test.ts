@@ -64,6 +64,20 @@ describe("checkDesignReadyForSubmit", () => {
     assert.match(violations[0].message, /does not resolve within this project/);
   });
 
+  test("a section with no cells[] array -> 'design is malformed' violation, not a crash (review-7 MINOR)", () => {
+    const p = {
+      id: "p1",
+      label: "Wall A",
+      widthMm: 1000,
+      heightMm: 2400,
+      design: { schemaVersion: 2, sections: [{ id: "s1", widthMm: 1000 /* no cells[] */ }] },
+    };
+    const violations = checkDesignReadyForSubmit(floors([p]), new Set());
+    assert.equal(violations.length, 1);
+    assert.match(violations[0].message, /Wall A.*design is malformed/);
+    assert.equal(violations[0].partitionId, "p1");
+  });
+
   test("multiple partitions/cells -> collects every violation, not just the first", () => {
     const p1 = { id: "p1", label: "Wall A", widthMm: 1000, heightMm: 2400, design: null };
     const p2 = { id: "p2", label: "Wall B", widthMm: 1000, heightMm: 2400, design: { schemaVersion: 2, sections: [section("s1", [cell("c1", null), cell("c2", "sel-1")])] } };
