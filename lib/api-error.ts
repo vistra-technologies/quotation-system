@@ -34,6 +34,12 @@ export function apiConflict(message: string): NextResponse {
   return NextResponse.json({ error: message }, { status: 409 });
 }
 
+/** 422 Unprocessable Entity — well-formed request, but the data it targets fails a business-rule check
+ * (e.g. Stage 23's submit-design 13b data check, or a summary build that resolved but failed). */
+export function apiUnprocessable(message: string): NextResponse {
+  return NextResponse.json({ error: message }, { status: 422 });
+}
+
 /** 500 Internal Server Error — unhandled exception in a route handler. */
 export function apiServerError(message = "Internal server error"): NextResponse {
   return NextResponse.json({ error: message }, { status: 500 });

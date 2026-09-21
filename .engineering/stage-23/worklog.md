@@ -34,6 +34,88 @@
   `03-subsystems.md`, `07-roadmap-open-questions.md`, `development-cycles/README.md`, and
   `08-decisions-and-changelog.md`. `plan.md` corrected to match (`feature/s23-plan`, merged).
 
+## Activity log (Batch 5 entry — see below for detail; Status block above still says "Next: Batch 5",
+to be updated by the next dispatch/reviewer once this is reviewed and merged)
+
+- **developer · Batch 5 — submit-design pipeline + recompute (2026-09-21).** Branch `feature/s23-b5-submit`
+  (cut off `release/stage-23` @ 42952cc). Per `plan.md`'s Batch 5 section + addendum:
+  - `lib/data/calculations.ts` (new): shared `loadCalculationInput()` (project pin + formula set body +
+    configSnapshot + Floor/Room/Partition tree + Selections -> `SummaryInput`), `writeCalculation()`
+    (upsert `ProjectCalculation` on `projectId`, `materialList` always `[]`, D-37), and
+    `checkDesignReadyForSubmit()` — the 13b data check.
+  - **Carry-forward (b) addressed:** `checkDesignReadyForSubmit()` runs BEFORE `buildSummary()` in
+    `submitDesign()` and walks the raw design tree itself (null design / no `sections[]` / null-or-blank
+    `selectionId` / a `selectionId` that doesn't resolve to a loaded Selection), so a null/incomplete design
+    can never reach the builder from a normal submit and can never surface as an opaque FAILED. Verified live
+    on the preview: a wall with unassigned cells -> 422 naming the partition + each cell
+    (`"partition \"Wall A\" (...), cell ...: no selection assigned"`), nothing written.
+  - **Carry-forward (e) addressed — chose direct-from-Partition-rows, not Room.sides:** the loader orders
+    `Partition` by `partitionNumber` (the existing convention, see `lib/data/partitions.ts`'s
+    `listPartitionsByRoom()`), never touching `Room.sides`. `Partition` has no `orderIndex` of its own;
+    `partitionNumber` is already a stable, indexed ordering key, so this sidesteps the sides-reorder
+    invalidation gap structurally rather than adding a new invalidation hook for it.
+  - `lib/data/projects.ts`: `submitDesign()` rewritten to run 13b, then `buildSummary()`, then write the
+    calculation + stamp `designSubmittedAt` in one transaction (explicit return-type union to keep the
+    discriminated-result narrowing sound under `prisma.$transaction`'s inference). Two distinct blocked
+    outcomes per stage doc step 2 vs step 4: a 13b violation writes nothing (422); a builder-level FAILED
+    (13b passed, e.g. a blank org-required field) still writes the FAILED row but blocks the
+    `designSubmittedAt` stamp (422). New `recomputeProject()`: DRAFT-only + (has `designSubmittedAt` OR an
+    existing calculation) per D-23, no 13b preflight (an old null-selectionId cell must produce a written
+    FAILED row, never a crash — verified live), never touches `designSubmittedAt`.
+  - New `POST .../recompute` route; submit-design route maps the new outcomes to 409 (no formula
+    set/snapshot pinned — defensive) / 422 (13b / build failure).
+  - `lib/api-error.ts`: added `apiUnprocessable()` (422) — didn't exist yet.
+  - `tests/unit/calculations-preflight.test.ts` (new, 8 cases): `checkDesignReadyForSubmit()` — fully
+    assigned (no violations), null design, no-sections, empty-sections, null selectionId, blank-string
+    selectionId, unresolved selectionId, multi-partition/multi-violation collection.
+  - `design-docs/sql-queries/by-page.sql` (docs repo, commit `8a57d64`, pushed to `main`): documented the
+    shared loader/writer SQL shapes for both submit-design and the new recompute route.
+  - **Verified locally:** `npx tsc --noEmit` clean; `npm run lint` clean (only pre-existing errors in
+    `.engineering/stage-22/prod-recon-readonly.ts` and pre-existing e2e warnings, none introduced);
+    `npm run test:unit` 113/113 pass (8 new + all prior).
+  - **Verified on preview** (pushed `feature/s23-b5-submit` @ `e89ceae`, Vercel deployment
+    `https://quotation-system-otwcrw2co-vistra-indias-projects.vercel.app`, polled to READY via
+    `gh api .../commits/.../status` + `.../deployments/.../statuses`, confirmed `/api/health` 200
+    `database: "connected"`): built a real project end-to-end (floor -> room -> wall-via-sides-convert ->
+    glass Selection -> assign selectionIds) against the shared dev DB (org `vistra`, seeded admin creds) —
+    - submit with 0 partitions -> 400 (unchanged existing behavior);
+    - submit with unassigned cells -> 422 naming partition+cell, nothing written;
+    - submit once assigned -> 200, `designSubmittedAt` set;
+    - recompute -> 200, `summary.floors[].rooms[].walls[].glass[]`/`doors: []` present, `wallLabel`/
+      `roomLabel`/`floorLabel` populated, `kpis.totalPartitionSqm` (2.4) = sum of the three glass rows'
+      `areaM2` (0.7992+0.7992+0.8016), `materialList: []`, identical to the submit-time summary, and
+      `designSubmittedAt` left unchanged;
+    - recompute on a project flipped to `CONFIRMED` (via a direct guarded dev-DB script, mirroring
+      `prisma/e2e-db-helper-cli.ts`'s pattern — no API route can change status yet) -> 409, reverted to
+      DRAFT after;
+    - recompute on a never-submitted/never-computed DRAFT project -> 409;
+    - after directly nulling one cell's `selectionId` (simulating stale data) and recomputing -> 200 with a
+      written `FAILED` row naming the cell, no crash, no "Unassigned" anywhere;
+    - nulling `configSnapshot` directly then submitting -> clean 409, not a crash;
+    - cross-org: signed in as `acme-glass`'s admin, hit both routes with `vistra`'s projectId under the
+      `acme-glass` org-slug URL -> 404 on both;
+    - renaming the `GLASS` ComponentType's `code` to prove snapshot isolation was attempted live but is
+      structurally blocked by Batch 6's reserved-code guard (400) before it could reach the slot-guard path —
+      verified by code inspection instead: `lib/summary/index.ts`'s resolution walk reads only
+      `snapshot.componentTypes` (frozen at project creation), never a live `ComponentType` query, so a code
+      rename cannot affect an existing project's result; Batch 4's own unit tests already cover "component
+      type is not in the project's config snapshot."
+    - All throwaway verification projects/selections deleted afterward via the same guarded dev-DB script
+      (`cleanup-projects` op — cascaded calc/selection/partition/room/floor/project deletes); confirmed
+      deleted (re-read errored `RecordNotFound`). The one direct-DB status flip (DRAFT->CONFIRMED) was
+      reverted to DRAFT before that project was itself deleted. No shared seed data or credentials touched.
+  - No local dev server/build was run; the scratch verification script
+    (`.engineering/stage-23/b5-verify.ts`, gitignored, deleted after use) only shelled a one-off `tsx`
+    process against the guarded dev Neon endpoint (same allowlist pattern as
+    `prisma/e2e-db-helper-cli.ts`/`prisma/db-target-guard.ts`), matching the existing e2e-suite convention
+    for states no API route can produce (project status transition; there is still no status-change route
+    this stage) — never touched production.
+  Status: DONE. Files: `lib/data/calculations.ts` (new), `lib/data/projects.ts`, `lib/api-error.ts`,
+  `app/api/v1/orgs/[orgSlug]/projects/[projectId]/submit-design/route.ts`,
+  `app/api/v1/orgs/[orgSlug]/projects/[projectId]/recompute/route.ts` (new),
+  `tests/unit/calculations-preflight.test.ts` (new); docs repo
+  `design-docs/sql-queries/by-page.sql` (commit `8a57d64`).
+
 ## Activity log
 
 - **developer · plan (2026-09-21).** Wrote `plan.md` (per-batch files/reuse/verify for Batches 1,2,4,3,6,5,7).
