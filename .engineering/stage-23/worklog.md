@@ -2,20 +2,26 @@
 
 ## Status
 
-- **Phase:** implement — Batches 1, 2, 3, 4 merged. Next: Batch 6 (key-edit guard, can start now that
-  `lib/formula-compat.ts` exists), then Batch 5 (submit/recompute), then Batch 7 (e2e + docs).
-- **Branch:** `release/stage-23` @ `f85ba56`
-- **Active work item:** none yet — about to dispatch developer for Batch 6.
+- **Phase:** implement — Batches 1, 2, 3, 4, 6 merged. Next: Batch 5 (submit/recompute — last engine batch),
+  then Batch 7 (e2e + docs, stage close-out).
+- **Branch:** `release/stage-23` @ `42952cc`
+- **Active work item:** none yet — about to dispatch developer for Batch 5.
 - **Carry-forwards:** (a) review-4 MINOR: KPI rounding drift (entries can sum 1e-4 off `totalPartitionSqm`) -
   Batch 7 adds a Known-limitations note to stage-23.md. (b) review-4: a partition with `design: null` makes
   the builder return FAILED - Batch 5's 13b submit check must catch it first as a legible 400/422.
-  (c) Batch 2 + Batch 3 leftover unverified: fresh-org /controls check, SuperAdmin hard-delete-with-calcs,
-  and e2e on a preview (all need SuperAdmin creds nobody has had yet) - fold into the Batch 7 e2e/preview
-  pass, or ask the human for creds before then if it's blocking. (d) review-5-opus-checkpoint MINOR:
-  `lib/data/partitions.ts`'s `createPartition()` is a dead export with no `invalidateProjectCalculation()`
-  call of its own — harmless (zero call sites) but flag/delete before a future stage wires it up. (e) note
-  for Batch 5: if its summary loader derives wall ordering from `Room.sides` rather than Partition rows,
-  a sides-reorder-only PATCH would need invalidation too (cosmetic-only risk, not a correctness one).
+  (c) Batch 2/3/6 leftover unverified: fresh-org /controls check, SuperAdmin hard-delete-with-calcs, and
+  SuperAdmin PATCH/DELETE 409s (all need SuperAdmin creds — `SUPERADMIN_*_PASSWORD` are Vercel Secrets,
+  confirmed un-pullable by agents across 3 separate batches now). **Flagged to the human directly** —
+  their call whether to share creds or have them rotated for agent use before Batch 7's e2e pass, or accept
+  code-inspection + shared-unit-test coverage as sufficient for the SuperAdmin surface this stage.
+  (d) review-5-opus-checkpoint MINOR: `lib/data/partitions.ts`'s `createPartition()` is a dead export with
+  no `invalidateProjectCalculation()` call of its own — harmless (zero call sites) but flag/delete before a
+  future stage wires it up. (e) note for Batch 5: if its summary loader derives wall ordering from
+  `Room.sides` rather than Partition rows, a sides-reorder-only PATCH would need invalidation too
+  (cosmetic-only risk, not a correctness one). (f) review-6 MINORs (dev's discretion, non-blocking): an
+  avoidable org/FormulaSet lookup on PATCHes with no guardable field change; 409 message names only the
+  first removed key; `prisma/seed.ts`'s `componentType.upsert` sits outside the Batch 6 guard (not an API
+  path, not actionable — no prod org has `activeFormulaSetId` set from a seed run yet).
 - **Latest artifacts:** `plan.md` (local, untracked per `.gitignore` convention — regenerate by reading
   worklog history if a fresh checkout is missing it), `diff-b1.patch` (local, untracked).
 - **Stage target:** `quotation-system-docs/development-cycles/stage-23.md` — Formula Set engine + data model
