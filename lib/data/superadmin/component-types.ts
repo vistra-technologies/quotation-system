@@ -14,6 +14,12 @@ import {
   RESERVED_COMPONENT_TYPE_CODES,
   ReservedComponentTypeCodeError,
 } from "@/lib/component-catalog-seed";
+import {
+  checkComponentTypeGuard,
+  describeGuardViolation,
+  ComponentTypeGuardError,
+} from "@/lib/formula-compat";
+import type { FormulaSetBody } from "@/lib/summary/types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -83,6 +89,45 @@ function parseFieldsSchema(raw: unknown): FieldEntry[] {
       return entry;
     })
     .filter((x): x is FieldEntry => x !== null);
+}
+
+/**
+ * Stage 23 Batch 6 (#12/D-26/D-36): if the org has an active formula set with a slot for `code`, block an
+ * edit or delete that would break it (removing/renaming a referenced fieldsSchema key, changing `code`,
+ * deactivating, or deleting). No-op (allow) when the org has no active set or the set has no slot for
+ * `code`.
+ *
+ * The pure decision lives in lib/formula-compat.ts (one definition, D-36); this is a self-contained copy
+ * of the Prisma glue, deliberately duplicated from lib/data/components.ts's own copy — the two files
+ * share no DAL code path (D-26), and this module is intentionally self-contained (see the
+ * parseFieldsSchema() comment above).
+ *
+ * NOT called for `moveComponentTypeForOrg()` (sortOrder-only reorder) — a deliberate non-block.
+ *
+ * superadmin-only — intentionally cross-org
+ */
+async function assertComponentTypeGuard(
+  orgId: string,
+  existing: { code: string; fieldsSchema?: unknown },
+  patch: { code?: string; fieldsSchema?: unknown; active?: boolean },
+  isDelete = false,
+): Promise<void> {
+  // superadmin-only — intentionally cross-org
+  const org = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: { activeFormulaSet: { select: { name: true, version: true, body: true } } },
+  });
+  const set = org?.activeFormulaSet;
+  if (!set) return; // no active set — nothing to protect
+  const result = checkComponentTypeGuard(set.body as unknown as FormulaSetBody, {
+    code: existing.code,
+    fieldsSchema: existing.fieldsSchema,
+    patch,
+    isDelete,
+  });
+  if (!result.ok) {
+    throw new ComponentTypeGuardError(result.violation, describeGuardViolation(result.violation, set));
+  }
 }
 
 /**
@@ -210,18 +255,27 @@ export async function updateComponentTypeForOrg(
   // of the 3 seeded/reserved codes can be rejected below (Stage 20 Batch 7).
   const existing = await prisma.componentType.findFirst({
     where: { id: typeId, organizationId: orgId },
-    select: { id: true, code: true },
+    select: { id: true, code: true, fieldsSchema: true },
   });
   if (!existing) return null;
 
+  let normalizedCode: string | undefined;
   if (patch.code !== undefined) {
-    const normalizedCode = patch.code.toUpperCase().trim();
+    normalizedCode = patch.code.toUpperCase().trim();
     if (RESERVED_COMPONENT_TYPE_CODES.has(existing.code) && normalizedCode !== existing.code) {
       throw new ReservedComponentTypeCodeError(
         `Cannot change the code of a reserved component type (${existing.code}).`,
       );
     }
   }
+
+  // Stage 23 Batch 6 (#12/D-36): fires after the reserved-code check (400) but before the tenancy check
+  // below — a non-reserved code/fieldsSchema/active change can still break the org's active formula set.
+  await assertComponentTypeGuard(
+    orgId,
+    { code: existing.code, fieldsSchema: existing.fieldsSchema },
+    { code: normalizedCode, fieldsSchema: patch.fieldsSchema, active: patch.active },
+  );
 
   if (patch.categoryId !== undefined) {
     await assertCategoryInOrg(orgId, patch.categoryId);
@@ -309,7 +363,7 @@ export async function deleteComponentTypeForOrg(
   // superadmin-only — intentionally cross-org
   const existing = await prisma.componentType.findFirst({
     where: { id: typeId, organizationId: orgId },
-    select: { id: true },
+    select: { id: true, code: true },
   });
   if (!existing) return { notFound: true };
 
@@ -318,6 +372,9 @@ export async function deleteComponentTypeForOrg(
     where: { componentTypeId: typeId, organizationId: orgId },
   });
   if (selectionCount > 0) return { inUse: true, selectionCount };
+
+  // Stage 23 Batch 6 (#12/D-36): cannot delete a type that is a slot in the org's active formula set.
+  await assertComponentTypeGuard(orgId, { code: existing.code }, {}, true);
 
   // Stage 20 Batch 1: ComponentTypeOrgConfig carries an ON DELETE RESTRICT FK to ComponentType.
   // Delete the config row first (if any), then the type — same pattern as deleteOrganization's
