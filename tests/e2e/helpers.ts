@@ -1,5 +1,6 @@
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { toAuthEmail } from "@/lib/auth-utils";
 
 // ---------------------------------------------------------------------------
 // Subdomain-aware URL helpers
@@ -196,4 +197,45 @@ export async function signIn(
   }
 
   await page.waitForURL(orgUrlPattern(orgSlug, "/dashboard"), { timeout: 30_000 });
+}
+
+/**
+ * API-level sign-in: hits the auth endpoint directly and attaches the resulting session cookie to
+ * `page.context()`, without navigating anywhere — for specs that only ever use `page.request`
+ * (no UI interaction). Extracted from stage23-wiring.spec.ts (Stage 23 Batch 3) so Batch 7's
+ * stage23-summary.spec.ts can reuse it instead of a second copy (return-contract "reuse before you
+ * write" rule).
+ *
+ * Same 429-retry shape as signIn() above (better-auth's in-memory rate limit under parallel workers).
+ */
+export async function apiSignIn(page: Page, orgSlug: string, username: string): Promise<void> {
+  const password = process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!";
+  let resp;
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    resp = await page.request.post(apiUrl(orgSlug, "/api/auth/sign-in/email"), {
+      data: { email: toAuthEmail(username, orgSlug), password },
+    });
+    if (resp.status() !== 429) break;
+    if (attempt < 4) {
+      const retryAfterSec = Number(resp.headers()["x-retry-after"] ?? "10");
+      await new Promise((r) => setTimeout(r, (retryAfterSec + 1) * 1_000));
+    }
+  }
+  if (!resp || !resp.ok()) throw new Error(`apiSignIn(${username}@${orgSlug}) failed: ${resp?.status()}`);
+  const line = resp.headers()["set-cookie"]?.split("\n").find((l) => l.includes("session_token"));
+  if (!line) throw new Error(`apiSignIn(${username}@${orgSlug}): no session_token cookie`);
+  const [nameValue] = line.split(";");
+  const eq = nameValue.indexOf("=");
+  const base = new URL(_BASE_URL);
+  await page.context().addCookies([
+    {
+      name: nameValue.slice(0, eq),
+      value: decodeURIComponent(nameValue.slice(eq + 1)),
+      domain: isSubdomain ? `.${base.hostname}` : base.hostname,
+      path: "/",
+      httpOnly: true,
+      secure: base.protocol === "https:",
+      sameSite: "Lax",
+    },
+  ]);
 }

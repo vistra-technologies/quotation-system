@@ -184,6 +184,22 @@ async function main() {
         await db.formulaSet.delete({ where: { id: formulaSetId } });
         return null;
       }
+      // ── Stage 23 Batch 7 (tests/e2e/stage23-summary.spec.ts) ────────────────────────────────────
+      case "countProjectCalculations": {
+        // Before/after proof that a SuperAdmin org hard-delete cascades ProjectCalculation rows
+        // (D-20) — a successful delete already implies this (the FK would otherwise abort the
+        // transaction), but this makes the cascade an explicit, independently-observed assertion.
+        const { organizationId } = input as { organizationId: string };
+        return db.projectCalculation.count({ where: { organizationId } });
+      }
+      case "setProjectStatus": {
+        // No API route can change Project.status this stage (Batch 5's own worklog note) — needed
+        // only to exercise recompute's "non-DRAFT -> 409" gate (D-23). Test-only; callers must
+        // revert to "DRAFT" afterward.
+        const { projectId, status } = input as { projectId: string; status: string };
+        await db.project.update({ where: { id: projectId }, data: { status } });
+        return null;
+      }
       default:
         throw new Error(`Unknown operation: ${op}`);
     }

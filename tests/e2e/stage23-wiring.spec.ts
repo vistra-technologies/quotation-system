@@ -15,8 +15,7 @@
  * suite is serial and only nordic-walls is touched for that. Everything created is prefixed `e2e-s23-`.
  */
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
-import { apiUrl, isSubdomain } from "./helpers";
-import { toAuthEmail } from "@/lib/auth-utils";
+import { apiUrl, apiSignIn } from "./helpers";
 import {
   insertCalculation,
   setDesignSubmittedAt,
@@ -32,41 +31,8 @@ test.setTimeout(120_000);
 
 const ACME = "acme-glass";
 const NORDIC = "nordic-walls";
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
 const RUN = Date.now();
 const PREFIX = `e2e-s23-${RUN}`;
-
-async function apiSignIn(page: Page, orgSlug: string, username: string) {
-  const password = process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!";
-  let resp;
-  for (let attempt = 1; attempt <= 4; attempt++) {
-    resp = await page.request.post(apiUrl(orgSlug, "/api/auth/sign-in/email"), {
-      data: { email: toAuthEmail(username, orgSlug), password },
-    });
-    if (resp.status() !== 429) break;
-    if (attempt < 4) {
-      const retryAfterSec = Number(resp.headers()["x-retry-after"] ?? "10");
-      await new Promise((r) => setTimeout(r, (retryAfterSec + 1) * 1_000));
-    }
-  }
-  if (!resp || !resp.ok()) throw new Error(`apiSignIn(${username}@${orgSlug}) failed: ${resp?.status()}`);
-  const line = resp.headers()["set-cookie"]?.split("\n").find((l) => l.includes("session_token"));
-  if (!line) throw new Error(`apiSignIn(${username}@${orgSlug}): no session_token cookie`);
-  const [nameValue] = line.split(";");
-  const eq = nameValue.indexOf("=");
-  const base = new URL(BASE_URL);
-  await page.context().addCookies([
-    {
-      name: nameValue.slice(0, eq),
-      value: decodeURIComponent(nameValue.slice(eq + 1)),
-      domain: isSubdomain ? `.${base.hostname}` : base.hostname,
-      path: "/",
-      httpOnly: true,
-      secure: base.protocol === "https:",
-      sameSite: "Lax",
-    },
-  ]);
-}
 
 let acmeCtx: BrowserContext;
 let nordicCtx: BrowserContext;

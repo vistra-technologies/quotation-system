@@ -287,6 +287,16 @@ describe("buildSummary", () => {
     assert.match(r.errorDetail!, /snapshot/);
   });
 
+  test("malformed (non-null, missing componentTypes) snapshot -> FAILED cleanly, not a crash (review-7 MINOR)", () => {
+    const r = buildSummary(
+      input([partition("p1", "N", [section("s1", 1000, [cell("c1", 2000, "g-id1-12")])])], {
+        snapshot: { takenAt: "2026-09-21T00:00:00.000Z" } as unknown as SummaryInput["snapshot"],
+      }),
+    );
+    assert.equal(r.status, "FAILED");
+    assert.match(r.errorDetail!, /snapshot/i);
+  });
+
   test("unknown selection id and slotless type -> FAILED", () => {
     const missing = buildSummary(input([partition("p1", "N", [section("s1", 1000, [cell("c1", 2000, "nope")])])]));
     assert.equal(missing.status, "FAILED");
