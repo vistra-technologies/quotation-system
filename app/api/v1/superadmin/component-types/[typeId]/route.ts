@@ -16,6 +16,7 @@ import {
 import { getOrgById } from "@/lib/data/superadmin/orgs";
 import { validateFieldsSchema } from "@/lib/validate-fields-schema";
 import { ReservedComponentTypeCodeError } from "@/lib/component-catalog-seed";
+import { ComponentTypeGuardError } from "@/lib/formula-compat";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // Never cached.
@@ -143,6 +144,10 @@ export async function PATCH(
     if (err instanceof ReservedComponentTypeCodeError) {
       return apiBadRequest(err.message);
     }
+    // Stage 23 Batch 6 (#12/D-36): edit would break the org's currently assigned formula set.
+    if (err instanceof ComponentTypeGuardError) {
+      return apiConflict(err.message);
+    }
     if (err instanceof Error && err.message.includes("Category not found")) {
       return apiBadRequest(err.message);
     }
@@ -220,6 +225,10 @@ export async function DELETE(
   try {
     result = await deleteComponentTypeForOrg(orgId, typeId);
   } catch (err) {
+    // Stage 23 Batch 6 (#12/D-36): delete would remove a slot type from the org's active formula set.
+    if (err instanceof ComponentTypeGuardError) {
+      return apiConflict(err.message);
+    }
     console.error("[DELETE /api/v1/superadmin/component-types/[typeId]] deleteComponentTypeForOrg", err);
     return apiServerError();
   }
