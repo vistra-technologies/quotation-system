@@ -113,6 +113,57 @@ export async function deleteComponentType(componentTypeId: string): Promise<void
   runDbOp("deleteComponentType", { componentTypeId });
 }
 
+// ── Stage 23 Batch 3 ────────────────────────────────────────────────────────
+
+/** Insert a ProjectCalculation for the project (pinned to the project's own formulaSetId). */
+export async function insertCalculation(projectId: string): Promise<void> {
+  runDbOp("insertCalculation", { projectId });
+}
+
+/** Stamp designSubmittedAt = now (simulates a submitted design without Batch 5's route). */
+export async function setDesignSubmittedAt(projectId: string): Promise<void> {
+  runDbOp("setDesignSubmittedAt", { projectId });
+}
+
+export async function readProjectState(projectId: string) {
+  return runDbOp<{ formulaSetId: string | null; designSubmittedAt: string | null; calcCount: number }>(
+    "readProjectState",
+    { projectId },
+  );
+}
+
+export async function readOrgActiveFormulaSet(orgSlug: string) {
+  return runDbOp<string | null>("readOrgActiveFormulaSet", { orgSlug });
+}
+
+export async function setOrgActiveFormulaSet(orgSlug: string, formulaSetId: string | null): Promise<void> {
+  runDbOp("setOrgActiveFormulaSet", { orgSlug, formulaSetId });
+}
+
+/** Create a throwaway "e2e-"-named FormulaSet v1 (body as given); returns its id. */
+export async function createTempFormulaSet(name: string, body: Record<string, unknown>): Promise<string> {
+  return runDbOp<string>("createTempFormulaSet", { name, body });
+}
+
+export async function deleteTempFormulaSet(formulaSetId: string): Promise<void> {
+  runDbOp("deleteTempFormulaSet", { formulaSetId });
+}
+
+// ── Stage 23 Batch 7 ────────────────────────────────────────────────────────
+
+/**
+ * Force a project's status directly — no API route can change it this stage. Used only to exercise
+ * recompute's DRAFT-only gate (D-23); callers must revert to "DRAFT" in a `finally`/`afterAll`.
+ */
+export async function setProjectStatus(projectId: string, status: string): Promise<void> {
+  runDbOp("setProjectStatus", { projectId, status });
+}
+
+/** Count of ProjectCalculation rows for an org — used as an explicit before/after cascade-delete proof. */
+export async function countProjectCalculations(organizationId: string): Promise<number> {
+  return runDbOp<number>("countProjectCalculations", { organizationId });
+}
+
 /**
  * Kept as a no-op for API compatibility with callers' `afterAll` hooks — each `runDbOp` call now
  * owns a short-lived child process (and its own Prisma client) rather than a shared long-lived

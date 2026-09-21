@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { invalidateProjectCalculation } from "@/lib/data/formula-pin";
 import type { SessionData } from "@/lib/session";
 import { getComponentTypeById } from "@/lib/data/components";
 import { isComponentTypeFullyConfigured } from "@/lib/configurator-gating";
@@ -168,17 +169,26 @@ export async function updateSelection(
   // Tenancy guard — verify the selection belongs to the session's org.
   const existing = await prisma.selection.findFirst({
     where: { id, organizationId: session.organizationId },
-    select: { id: true },
+    select: { id: true, projectId: true },
   });
   if (!existing) return null;
 
-  return prisma.selection.update({
-    where: { id },
-    data: {
-      ...(input.label !== undefined ? { label: input.label } : {}),
-      ...(input.config !== undefined ? { config: input.config } : {}),
-    },
-  });
+  const data = {
+    ...(input.label !== undefined ? { label: input.label } : {}),
+    ...(input.config !== undefined ? { config: input.config } : {}),
+  };
+
+  // Stage 23 D-19: a config change can change the summary's own grouping (glassType/thickness/category/
+  // doorType), so it invalidates the project's calculation in the same tx. Label-only patches do not.
+  if (input.config !== undefined) {
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.selection.update({ where: { id }, data });
+      await invalidateProjectCalculation(tx, existing.projectId);
+      return updated;
+    });
+  }
+
+  return prisma.selection.update({ where: { id }, data });
 }
 
 /** Shape of the fields inside Partition.design that can reference a Selection —

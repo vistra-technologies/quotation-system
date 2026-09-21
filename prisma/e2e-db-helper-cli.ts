@@ -117,6 +117,89 @@ async function main() {
         await db.componentType.delete({ where: { id: componentTypeId } });
         return null;
       }
+      // ── Stage 23 Batch 3 ops (tests/e2e/stage23-wiring.spec.ts) ─────────────────────────────────
+      case "insertCalculation": {
+        // A ProjectCalculation for the project, pinned to the project's own formulaSetId. Test-only:
+        // Batch 5's submit/recompute is what writes these in the app.
+        const { projectId } = input as { projectId: string };
+        const proj = await db.project.findUniqueOrThrow({
+          where: { id: projectId },
+          select: { organizationId: true, formulaSetId: true },
+        });
+        if (!proj.formulaSetId) throw new Error("insertCalculation: project has no formulaSetId");
+        await db.projectCalculation.create({
+          data: {
+            organizationId: proj.organizationId,
+            projectId,
+            formulaSetId: proj.formulaSetId,
+            computedAt: new Date(),
+            status: "OK",
+            summary: { floors: [], kpis: { totalPartitionSqm: 0, sqmByGlassType: [], doorsByType: [] } },
+          },
+        });
+        return null;
+      }
+      case "setDesignSubmittedAt": {
+        const { projectId } = input as { projectId: string };
+        await db.project.update({ where: { id: projectId }, data: { designSubmittedAt: new Date() } });
+        return null;
+      }
+      case "readProjectState": {
+        const { projectId } = input as { projectId: string };
+        const p = await db.project.findUniqueOrThrow({
+          where: { id: projectId },
+          select: { formulaSetId: true, designSubmittedAt: true },
+        });
+        const calcCount = await db.projectCalculation.count({ where: { projectId } });
+        return { formulaSetId: p.formulaSetId, designSubmittedAt: p.designSubmittedAt, calcCount };
+      }
+      case "readOrgActiveFormulaSet": {
+        const { orgSlug } = input as { orgSlug: string };
+        const org = await db.organization.findUniqueOrThrow({
+          where: { slug: orgSlug },
+          select: { activeFormulaSetId: true },
+        });
+        return org.activeFormulaSetId;
+      }
+      case "setOrgActiveFormulaSet": {
+        const { orgSlug, formulaSetId } = input as { orgSlug: string; formulaSetId: string | null };
+        await db.organization.update({ where: { slug: orgSlug }, data: { activeFormulaSetId: formulaSetId } });
+        return null;
+      }
+      case "createTempFormulaSet": {
+        // Throwaway "e2e-"-named set (never a real one) for the incompatible-config 409 check.
+        const { name, body } = input as { name: string; body: Record<string, unknown> };
+        if (!name.startsWith("e2e-")) throw new Error("createTempFormulaSet refused: name must start with e2e-");
+        const row = await db.formulaSet.create({
+          data: { name, version: 1, body: body as unknown as Prisma.InputJsonValue },
+          select: { id: true },
+        });
+        return row.id;
+      }
+      case "deleteTempFormulaSet": {
+        const { formulaSetId } = input as { formulaSetId: string };
+        const fs = await db.formulaSet.findUnique({ where: { id: formulaSetId }, select: { name: true } });
+        if (!fs) return null;
+        if (!fs.name.startsWith("e2e-")) throw new Error(`deleteTempFormulaSet refused: ${fs.name}`);
+        await db.formulaSet.delete({ where: { id: formulaSetId } });
+        return null;
+      }
+      // ── Stage 23 Batch 7 (tests/e2e/stage23-summary.spec.ts) ────────────────────────────────────
+      case "countProjectCalculations": {
+        // Before/after proof that a SuperAdmin org hard-delete cascades ProjectCalculation rows
+        // (D-20) — a successful delete already implies this (the FK would otherwise abort the
+        // transaction), but this makes the cascade an explicit, independently-observed assertion.
+        const { organizationId } = input as { organizationId: string };
+        return db.projectCalculation.count({ where: { organizationId } });
+      }
+      case "setProjectStatus": {
+        // No API route can change Project.status this stage (Batch 5's own worklog note) — needed
+        // only to exercise recompute's "non-DRAFT -> 409" gate (D-23). Test-only; callers must
+        // revert to "DRAFT" afterward.
+        const { projectId, status } = input as { projectId: string; status: string };
+        await db.project.update({ where: { id: projectId }, data: { status } });
+        return null;
+      }
       default:
         throw new Error(`Unknown operation: ${op}`);
     }

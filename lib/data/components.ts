@@ -14,6 +14,12 @@ import {
   parseFieldsSchema,
   parseFieldOptionsConfig,
 } from "@/lib/parse-field-config";
+import {
+  checkComponentTypeGuard,
+  describeGuardViolation,
+  ComponentTypeGuardError,
+} from "@/lib/formula-compat";
+import type { FormulaSetBody } from "@/lib/summary/types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -129,6 +135,41 @@ export type ComponentTypeInput = {
   active?: boolean;
 };
 
+/**
+ * Stage 23 Batch 6 (#12/D-26/D-36): if the org has an active formula set with a slot for `code`, block
+ * an edit that would break it (removing/renaming a referenced fieldsSchema key, changing `code`, or
+ * deactivating). No-op (allow) when the org has no active set or the set has no slot for `code`.
+ *
+ * The pure decision lives in lib/formula-compat.ts (one definition, D-36); this is just the Prisma glue —
+ * duplicated in lib/data/superadmin/component-types.ts's own copy on purpose, since the two files share no
+ * DAL code path (D-26).
+ *
+ * NOT called from setComponentTypeOrgConfig() (field-VALUE edits) or moveComponentTypeForOrg()-equivalent
+ * reordering — both are deliberate non-blocks per stage-23.md Batch 6.
+ */
+async function assertComponentTypeGuard(
+  organizationId: string,
+  existing: { code: string; fieldsSchema?: unknown },
+  patch: { code?: string; fieldsSchema?: unknown; active?: boolean },
+  isDelete = false,
+): Promise<void> {
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { activeFormulaSet: { select: { name: true, version: true, body: true } } },
+  });
+  const set = org?.activeFormulaSet;
+  if (!set) return; // no active set — nothing to protect
+  const result = checkComponentTypeGuard(set.body as unknown as FormulaSetBody, {
+    code: existing.code,
+    fieldsSchema: existing.fieldsSchema,
+    patch,
+    isDelete,
+  });
+  if (!result.ok) {
+    throw new ComponentTypeGuardError(result.violation, describeGuardViolation(result.violation, set));
+  }
+}
+
 /** Verify a categoryId belongs to the session org (tenancy guard against FK injection). */
 async function assertCategoryInOrg(session: SessionData, categoryId: string) {
   const category = await prisma.componentCategory.findFirst({
@@ -177,18 +218,27 @@ export async function updateComponentType(
   // (Stage 20 Batch 7).
   const existing = await prisma.componentType.findFirst({
     where: { id, organizationId: session.organizationId },
-    select: { id: true, code: true },
+    select: { id: true, code: true, fieldsSchema: true },
   });
   if (!existing) throw new Error("ComponentType not found or access denied");
 
+  let normalizedCode: string | undefined;
   if (input.code !== undefined) {
-    const normalizedCode = input.code.toUpperCase().trim();
+    normalizedCode = input.code.toUpperCase().trim();
     if (RESERVED_COMPONENT_TYPE_CODES.has(existing.code) && normalizedCode !== existing.code) {
       throw new ReservedComponentTypeCodeError(
         `Cannot change the code of a reserved component type (${existing.code}).`,
       );
     }
   }
+
+  // Stage 23 Batch 6 (#12/D-36): fires after the reserved-code check (400) but before the tenancy check
+  // below — a non-reserved code/fieldsSchema/active change can still break the org's active formula set.
+  await assertComponentTypeGuard(
+    session.organizationId,
+    { code: existing.code, fieldsSchema: existing.fieldsSchema },
+    { code: normalizedCode, fieldsSchema: input.fieldsSchema, active: input.active },
+  );
 
   if (input.categoryId !== undefined) {
     await assertCategoryInOrg(session, input.categoryId);

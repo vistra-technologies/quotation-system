@@ -16,6 +16,19 @@
  *     options arrays are gone — they live in COMPONENT_TYPE_ORG_CONFIG_DEFS below.
  *   - COMPONENT_TYPE_ORG_CONFIG_DEFS is a new export: the starter option values per ComponentType
  *     code, written into a ComponentTypeOrgConfig row at org-creation time (and upserted by seed).
+ *
+ * Stage 23 Batch 2 (D-34): the placeholder 3-type catalog (GLASS/DOOR/PROFILE_STOP with invented
+ * fields) is REPLACED with the real `cloisons` two-type vocabulary (GLASS, DOOR — no PROFILE_STOP),
+ * reconciled against the dev DB's `cloisons` org. This is what the seeded FormulaSet v1's
+ * `summaryParams` name (prisma/formula-sets/glass-partition-standard-v1.json) — the two land
+ * together so the set's referenced keys are always real fieldsSchema keys.
+ *
+ * IMPORTANT — re-seeding OVERWRITES existing orgs' GLASS and DOOR (D-34, amended): prisma/seed.ts
+ * upserts by (organizationId, code) and rewrites both `fieldsSchema` AND
+ * `ComponentTypeOrgConfig.fieldOptionsConfig` for the codes listed below, so schema and config stay
+ * consistent. Org-authored option values on those two types are replaced with the defaults below.
+ * The seed still deletes nothing: an org's PROFILE_STOP type (and its config) and any other type
+ * not listed below are left untouched.
  */
 
 /** The ComponentCategory name created alongside these types. */
@@ -23,7 +36,7 @@ export const SEEDED_CATALOG_CATEGORY_NAME = "Glass Partitions";
 
 /**
  * Thrown by both DAL update paths (lib/data/superadmin/component-types.ts and
- * lib/data/components.ts) when a `code` patch would rename one of the 3 seeded
+ * lib/data/components.ts) when a `code` patch would rename one of the seeded
  * codes below. Routes catch this and map it to a 400.
  *
  * Stage 20 Batch 7.
@@ -41,6 +54,12 @@ export class ReservedComponentTypeCodeError extends Error {}
  *   dependsOn: (Stage 20) key of an earlier dropdown/radio field this one depends on
  *   hint:      optional helper text shown below the input
  *   basic:     true = Basic section, false = Advanced section (shown behind Configure button)
+ *
+ * Stage 23 Batch 2 (D-34): the real `cloisons` catalog — two types, no PROFILE_STOP (D-35).
+ * Every key referenced by the seeded FormulaSet's summaryParams (glassType, thickness, category,
+ * doorType) is `required: true` here — stage-23.md's "Are summary keys required:true?" ruling
+ * requires the *shipped* starter configuration to never produce a blank summary column, even
+ * though the platform itself only demands presence (checked in tests/unit/formula-set-document.test.ts).
  */
 export const COMPONENT_TYPE_DEFS: {
   code: string;
@@ -57,14 +76,13 @@ export const COMPONENT_TYPE_DEFS: {
 }[] = [
   {
     code: "GLASS",
-    name: "Glass",
+    name: "Partition",
     fieldsSchema: [
       // Basic fields
       {
-        key: "thickness",
-        label: "Thickness (mm)",
-        type: "field",
-        hint: "Glass thickness in millimetres",
+        key: "category",
+        label: "Category",
+        type: "dropdown",
         required: true,
         basic: true,
       },
@@ -72,30 +90,41 @@ export const COMPONENT_TYPE_DEFS: {
         key: "glassType",
         label: "Glass Type",
         type: "dropdown",
+        dependsOn: "category",
         required: true,
         basic: true,
       },
       {
-        key: "finish",
-        label: "Finish",
+        key: "thickness",
+        label: "Thickness (mm)",
         type: "dropdown",
-        required: false,
+        dependsOn: "glassType",
+        hint: "Glass thickness in millimetres",
+        required: true,
         basic: true,
       },
-      // Advanced fields
+      // Advanced fields — profiles are fields on GLASS, deliberately unbilled this stage (D-35).
       {
-        key: "note",
-        label: "Internal Note",
-        type: "field",
-        hint: "Internal reference note",
+        key: "u_profile",
+        label: "U Profile",
+        type: "dropdown",
+        dependsOn: "glassType",
         required: false,
         basic: false,
       },
       {
-        key: "customOrder",
-        label: "Custom Order",
-        type: "checkbox",
-        hint: "Mark as custom order",
+        key: "i_profile",
+        label: "I Profile",
+        type: "dropdown",
+        dependsOn: "glassType",
+        required: false,
+        basic: false,
+      },
+      {
+        key: "l_profile",
+        label: "L Profile",
+        type: "dropdown",
+        dependsOn: "glassType",
         required: false,
         basic: false,
       },
@@ -107,106 +136,39 @@ export const COMPONENT_TYPE_DEFS: {
     fieldsSchema: [
       // Basic fields
       {
+        key: "category",
+        label: "Category",
+        type: "dropdown",
+        required: true,
+        basic: true,
+      },
+      {
         key: "doorType",
         label: "Door Type",
-        // Changed from "radio" to "dropdown" (Stage 17 item 5b / field-pairing decision):
-        // The field-pairing layout (5d) auto-pairs consecutive field/dropdown entries into
-        // 2-column rows; radio fields always render full-width alone. Changing to dropdown
-        // lets doorType pair with the adjacent "width" field entry, matching the mockup.
-        // See design-docs/08-decisions-and-changelog.md 2026-09-03 decision #3.
         type: "dropdown",
+        dependsOn: "category",
         required: true,
         basic: true,
-      },
-      {
-        key: "width",
-        label: "Width (mm)",
-        type: "field",
-        hint: "Width in mm",
-        required: true,
-        basic: true,
-      },
-      {
-        key: "glassVariant",
-        label: "Glass Variant",
-        type: "dropdown",
-        required: false,
-        basic: true,
-      },
-      // Advanced fields
-      {
-        key: "handedness",
-        label: "Handedness",
-        type: "dropdown",
-        required: false,
-        basic: false,
-      },
-      {
-        key: "hasCloser",
-        label: "Include Door Closer",
-        type: "checkbox",
-        hint: "Include door closer in the configuration",
-        required: false,
-        basic: false,
-      },
-    ],
-  },
-  {
-    code: "PROFILE_STOP",
-    name: "Profile Stop",
-    fieldsSchema: [
-      // Basic fields
-      {
-        key: "profileCode",
-        label: "Profile Code",
-        type: "field",
-        hint: "e.g. U-CH-25",
-        required: true,
-        basic: true,
-      },
-      {
-        key: "material",
-        label: "Material",
-        type: "dropdown",
-        required: true,
-        basic: true,
-      },
-      {
-        key: "lengthM",
-        label: "Length (m)",
-        type: "field",
-        hint: "Length in metres",
-        required: false,
-        basic: true,
-      },
-      // Advanced fields
-      {
-        key: "colour",
-        label: "Colour / Finish",
-        type: "field",
-        hint: "RAL code or finish name",
-        required: false,
-        basic: false,
-      },
-      {
-        key: "anodised",
-        label: "Anodised",
-        type: "checkbox",
-        required: false,
-        basic: false,
       },
     ],
   },
 ];
 
 /**
- * The 3 seeded codes above, derived (not hand-duplicated) for both DAL update paths to
+ * The seeded codes above, derived (not hand-duplicated) for both DAL update paths to
  * check `code` patches against. These stay locked because two display-only lookups are
- * hard-coded to these specific literals (`saved-components-rail.tsx`'s design-canvas
+ * hard-coded to specific literals (`saved-components-rail.tsx`'s design-canvas
  * grouping, `component-icons.tsx`'s icon lookup) and org-creation seed-matching keys off
  * them — see design-docs/04-data-model.md's Stage 20 addendum.
  *
  * Stage 20 Batch 7.
+ *
+ * Stage 23 Batch 2 (D-34): shrinks from {GLASS, DOOR, PROFILE_STOP} to {GLASS, DOOR} — the swap
+ * drops PROFILE_STOP from the *starter* defs only. A side effect (accepted, see stage-23.md's
+ * blast-radius table): PROFILE_STOP becomes code-editable/deletable in orgs that still have it,
+ * since it's no longer "reserved". That's fine — the real protection is the Batch 6 formula-set
+ * guard, which blocks by *slot* (whether a set actually references the type), the correct
+ * criterion, not by a hardcoded reserved-code list.
  */
 export const RESERVED_COMPONENT_TYPE_CODES: ReadonlySet<string> = new Set(
   COMPONENT_TYPE_DEFS.map((d) => d.code),
@@ -223,10 +185,11 @@ export const RESERVED_COMPONENT_TYPE_CODES: ReadonlySet<string> = new Set(
  *   { [fieldKey]: { options: string[] } }         — flat field (no dependsOn)
  *   { [fieldKey]: { valueMap: Record<parentValue, string[]> } } — dependent field
  *
- * Note: the new Category → Glass Type → Thickness dependency chain (from the Stage 20
- * design doc) is intentionally absent here — it starts genuinely unconfigured so org
- * admins must fill it in via the Catalog screen. Only the existing starter values that
- * were previously inline in fieldsSchema are lifted here.
+ * Stage 23 Batch 2 (D-34): the real `cloisons` value chains — category -> glassType -> thickness
+ * on GLASS (plus glassType -> u_profile/i_profile/l_profile), and category -> doorType on DOOR.
+ * `glassType` values are product codes (ID1, NT2, TST1…), not colours — Stage 24 renders a label
+ * like "ID1 · 12mm". `thickness` values are numeric-looking strings carried verbatim (no
+ * coercion this stage — decision 11 is deferred to Stage 25).
  */
 export const COMPONENT_TYPE_ORG_CONFIG_DEFS: {
   code: string;
@@ -235,22 +198,62 @@ export const COMPONENT_TYPE_ORG_CONFIG_DEFS: {
   {
     code: "GLASS",
     fieldOptionsConfig: {
-      glassType: { options: ["Clear", "Frosted", "Tinted"] },
-      finish:    { options: ["Polished", "Satin", "Matt"] },
+      category: { options: ["Single", "Glazed", "Double Glaze"] },
+      glassType: {
+        valueMap: {
+          Single: ["ID1", "ID6"],
+          Glazed: ["NT2"],
+          "Double Glaze": ["TST1", "TST2"],
+        },
+      },
+      thickness: {
+        valueMap: {
+          ID1: ["12", "12.76"],
+          ID6: ["10", "14.2"],
+          NT2: ["15.3", "15.2"],
+          TST1: ["12"],
+          TST2: ["13"],
+        },
+      },
+      u_profile: {
+        valueMap: {
+          ID1: ["I LUF-01"],
+          ID6: ["I LUF-01"],
+          NT2: ["I LUF-01"],
+          TST1: ["I LUF-01"],
+          TST2: ["I LUF-01"],
+        },
+      },
+      i_profile: {
+        valueMap: {
+          ID1: ["I10 PDL"],
+          ID6: ["I10 PDL"],
+          NT2: ["I10 PDL"],
+          TST1: ["I10 PDL"],
+          TST2: ["I10 PDL"],
+        },
+      },
+      l_profile: {
+        valueMap: {
+          ID1: ["I LUO-01"],
+          ID6: ["I LUO-01"],
+          NT2: ["I LUO-01"],
+          TST1: ["I LUO-01"],
+          TST2: ["I LUO-01"],
+        },
+      },
     },
   },
   {
     code: "DOOR",
     fieldOptionsConfig: {
-      doorType:     { options: ["Single Swing", "Double Swing", "Sliding"] },
-      glassVariant: { options: ["Standard", "Fire-Rated"] },
-      handedness:   { options: ["Left", "Right", "Reversible"] },
-    },
-  },
-  {
-    code: "PROFILE_STOP",
-    fieldOptionsConfig: {
-      material: { options: ["Aluminium", "Steel", "Stainless Steel"] },
+      category: { options: ["Single", "Double"] },
+      doorType: {
+        valueMap: {
+          Single: ["Simple Glass", "Frameless Glass"],
+          Double: ["Simple Glass", "Frameless Glazed"],
+        },
+      },
     },
   },
 ];

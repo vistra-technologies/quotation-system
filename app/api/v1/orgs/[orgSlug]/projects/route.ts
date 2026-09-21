@@ -9,6 +9,7 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { listProjectsPaginated, createProject } from "@/lib/data/projects";
+import { isFormulaPinError } from "@/lib/data/formula-pin";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -224,6 +225,10 @@ export async function POST(
     });
     return NextResponse.json({ project }, { status: 201 });
   } catch (err) {
+    // Stage 23 B3 (13a / D-22): no active formula set, or the set is incompatible with the org's config.
+    if (isFormulaPinError(err)) {
+      return apiConflict(err.message);
+    }
     if (
       typeof err === "object" &&
       err !== null &&
