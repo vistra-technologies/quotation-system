@@ -2,28 +2,36 @@
 
 ## Status
 
-- **Phase:** implement — Batches 1, 2, 3, 4, 6 merged. Next: Batch 5 (submit/recompute — last engine batch),
-  then Batch 7 (e2e + docs, stage close-out).
-- **Branch:** `release/stage-23` @ `42952cc`
-- **Active work item:** none yet — about to dispatch developer for Batch 5.
+- **Phase:** implement — Batches 1, 2, 3, 4, 5, 6 merged (all engine batches done). Next: Batch 7
+  (e2e + docs, stage close-out) — the final batch.
+- **Branch:** `release/stage-23` @ `9dfed34` (Batch 5 merge)
+- **Active work item:** none yet — about to scope/dispatch developer for Batch 7.
 - **Carry-forwards:** (a) review-4 MINOR: KPI rounding drift (entries can sum 1e-4 off `totalPartitionSqm`) -
-  Batch 7 adds a Known-limitations note to stage-23.md. (b) review-4: a partition with `design: null` makes
-  the builder return FAILED - Batch 5's 13b submit check must catch it first as a legible 400/422.
+  Batch 7 adds a Known-limitations note to stage-23.md.
+  (b) RESOLVED in Batch 5 — see review-7: `checkDesignReadyForSubmit()` in `lib/data/calculations.ts` runs
+  before `buildSummary()` and turns null/incomplete designs into a 422, never an opaque FAILED.
   (c) Batch 2/3/6 leftover unverified: fresh-org /controls check, SuperAdmin hard-delete-with-calcs, and
   SuperAdmin PATCH/DELETE 409s (all need SuperAdmin creds — `SUPERADMIN_*_PASSWORD` are Vercel Secrets,
   confirmed un-pullable by agents across 3 separate batches now). **Flagged to the human directly** —
   their call whether to share creds or have them rotated for agent use before Batch 7's e2e pass, or accept
   code-inspection + shared-unit-test coverage as sufficient for the SuperAdmin surface this stage.
+  Still unanswered as of this update.
   (d) review-5-opus-checkpoint MINOR: `lib/data/partitions.ts`'s `createPartition()` is a dead export with
   no `invalidateProjectCalculation()` call of its own — harmless (zero call sites) but flag/delete before a
-  future stage wires it up. (e) note for Batch 5: if its summary loader derives wall ordering from
-  `Room.sides` rather than Partition rows, a sides-reorder-only PATCH would need invalidation too
-  (cosmetic-only risk, not a correctness one). (f) review-6 MINORs (dev's discretion, non-blocking): an
+  future stage wires it up.
+  (e) RESOLVED in Batch 5 — see review-7: wall order derives from `Partition` rows
+  (`orderBy: partitionNumber`), never from `Room.sides`; the reorder-invalidation gap doesn't apply.
+  (f) review-6 MINORs (dev's discretion, non-blocking): an
   avoidable org/FormulaSet lookup on PATCHes with no guardable field change; 409 message names only the
   first removed key; `prisma/seed.ts`'s `componentType.upsert` sits outside the Batch 6 guard (not an API
   path, not actionable — no prod org has `activeFormulaSetId` set from a seed run yet).
+  (g) review-7 MINORs (Batch 5, dev's discretion, non-blocking): a malformed (non-null, missing
+  `componentTypes`) `configSnapshot` escapes `buildSummary()`'s catch as a raw `TypeError` -> 500 instead of
+  a clean 409/FAILED (one-line fix candidate at `lib/data/calculations.ts:346`); the "design is malformed"
+  branch has no dedicated unit case in `tests/unit/calculations-preflight.test.ts` (7 other branches do).
 - **Latest artifacts:** `plan.md` (local, untracked per `.gitignore` convention — regenerate by reading
-  worklog history if a fresh checkout is missing it), `diff-b1.patch` (local, untracked).
+  worklog history if a fresh checkout is missing it), `diff-b1.patch`..`diff-b5.patch`, `review-7.md`
+  (local, untracked).
 - **Stage target:** `quotation-system-docs/development-cycles/stage-23.md` — Formula Set engine + data model
 - **Tier:** near-serial, substantial (per profile.md: 1 → 2 → 4 → 3 → 6 → 5 → 7, batches 3∥4 and 6∥3–5)
 - **Gate:** RESOLVED 2026-09-21. A1 (door aggregation) is locked as **D-40**: `doors[]` hangs off the
@@ -34,8 +42,7 @@
   `03-subsystems.md`, `07-roadmap-open-questions.md`, `development-cycles/README.md`, and
   `08-decisions-and-changelog.md`. `plan.md` corrected to match (`feature/s23-plan`, merged).
 
-## Activity log (Batch 5 entry — see below for detail; Status block above still says "Next: Batch 5",
-to be updated by the next dispatch/reviewer once this is reviewed and merged)
+## Activity log
 
 - **developer · Batch 5 — submit-design pipeline + recompute (2026-09-21).** Branch `feature/s23-b5-submit`
   (cut off `release/stage-23` @ 42952cc). Per `plan.md`'s Batch 5 section + addendum:
