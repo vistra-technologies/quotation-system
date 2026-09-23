@@ -11,6 +11,7 @@ import {
 } from "@/lib/component-catalog-seed";
 import { seedFormulaSets } from "./seed-formula-sets";
 import { ACTIVE_FORMULA_SET_NAME } from "../lib/formula-sets";
+import { CLOISONS_INVENTORY_DEFS } from "./inventory/cloisons-inventory";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -372,6 +373,43 @@ async function main() {
   console.log(
     `Organizations with activeFormulaSetId set: ${orgsWithActiveSet} / ${allOrgs.length}`,
   );
+
+  // ── 4c. Cloisons inventory (Stage 24 Batch 3) ───────────────────────────────
+  // Targeted seed: only runs if the `cloisons` org exists (D-3 in plan-b3.md).
+  // Gracefully skipped in other environments (e.g. vistra/acme-glass/nordic-walls/clearline only).
+  const cloisonsOrg = await prisma.organization.findFirst({ where: { slug: "cloisons" } });
+  if (!cloisonsOrg) {
+    console.warn("cloisons org not found — skipping cloisons inventory seed");
+  } else {
+    for (const def of CLOISONS_INVENTORY_DEFS) {
+      await prisma.inventoryItem.upsert({
+        where: { organizationId_code: { organizationId: cloisonsOrg.id, code: def.code } },
+        update: {
+          name: def.name,
+          measurementUnit: def.measurementUnit,
+          active: def.active,
+          perUnitQuantity: def.perUnitQuantity,
+        },
+        create: { organizationId: cloisonsOrg.id, ...def, attributes: {} },
+      });
+    }
+    console.log(`cloisons InventoryItems: ${CLOISONS_INVENTORY_DEFS.length} seeded`);
+  }
+
+  // ── 4d. Cloisons formula-set activation (Stage 24 Batch 3) ─────────────────
+  // Overwrites cloisons.activeFormulaSetId unconditionally — runs after the general null-filter
+  // loop (step 4b) so the general loop cannot overwrite this targeted assignment (D-4).
+  const cloisonsSet = formulaSetsByName.get("cloisons_formula_set");
+  if (!cloisonsSet) {
+    throw new Error('seedFormulaSets() did not produce a "cloisons_formula_set" set');
+  }
+  if (cloisonsOrg) {
+    await prisma.organization.updateMany({
+      where: { slug: "cloisons" },
+      data: { activeFormulaSetId: cloisonsSet.id },
+    });
+    console.log(`cloisons.activeFormulaSetId → ${cloisonsSet.id}`);
+  }
 
   // ── 5. Catalog items and prices ─────────────────────────────────────────────
   // Representative items covering all categories.
