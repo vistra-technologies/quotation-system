@@ -7,8 +7,6 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
-import path from "node:path";
 import formulaSetDoc from "../../prisma/formula-sets/glass-partition-standard-v1.json";
 import { COMPONENT_TYPE_DEFS, COMPONENT_TYPE_ORG_CONFIG_DEFS } from "../../lib/component-catalog-seed";
 import { isComponentTypeFullyConfigured } from "../../lib/configurator-gating";
@@ -102,17 +100,8 @@ describe("glass-partition-standard-v1.json", () => {
   });
 });
 
-describe("expr-eval is not installed (decision 10 deferred to Stage 25)", () => {
-  test("package.json has no expr-eval dependency", () => {
-    const pkgPath = path.resolve(__dirname, "../../package.json");
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as {
-      dependencies?: Record<string, string>;
-      devDependencies?: Record<string, string>;
-    };
-    assert.ok(!pkg.dependencies?.["expr-eval"]);
-    assert.ok(!pkg.devDependencies?.["expr-eval"]);
-  });
-});
+// expr-eval is now installed (Stage 24 Batch 2 — validate.ts uses it for publish-time validation).
+// The "not installed" guard that lived here through Stage 23 has been removed.
 
 describe("seed-formula-sets.ts", () => {
   test("loadFormulaSetDocs() returns the v1 doc with slots/formulas only (NOTE stripped)", () => {
