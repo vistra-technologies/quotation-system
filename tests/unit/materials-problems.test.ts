@@ -138,6 +138,49 @@ describe("ProblemCollector — PARTITION-grain dedupe (review-b4-2 regression)",
   });
 });
 
+describe("ProblemCollector — scope-aware dedupe key (Batch 5)", () => {
+  // Two CELL_UNASSIGNED on different (partitionId, sectionIndex, cellIndex) → 2 problems
+  test("two CELL_UNASSIGNED on different partition/section/cell tuples → 2 distinct problems", () => {
+    const c = new ProblemCollector();
+    c.add({
+      kind: "CELL_UNASSIGNED",
+      scope: "DESIGN",
+      message: 'Partition "Wall 1": no selection assigned at section 0, cell 0',
+      locus: { partitionId: "p1", sectionIndex: 0, cellIndex: 0 },
+    });
+    c.add({
+      kind: "CELL_UNASSIGNED",
+      scope: "DESIGN",
+      message: 'Partition "Wall 2": no selection assigned at section 0, cell 0',
+      locus: { partitionId: "p2", sectionIndex: 0, cellIndex: 0 },
+    });
+    const r = c.report();
+    assert.equal(
+      r.problems.length,
+      2,
+      `expected 2 problems (different partitionIds), got ${r.problems.length}`,
+    );
+  });
+
+  // Same UNRESOLVED_CODE code from 3 adds → 1 problem, occurrenceCount=3
+  test("same UNRESOLVED_CODE code from 3 adds → 1 problem, occurrenceCount=3", () => {
+    const c = new ProblemCollector();
+    for (let i = 0; i < 3; i++) {
+      c.add({
+        kind: "UNRESOLVED_CODE",
+        scope: "INVENTORY",
+        message: `No inventory item for code "BAD-001"`,
+        code: "BAD-001",
+        locus: { formulaId: `formula-${i}` }, // different formulaId — should NOT split on INVENTORY scope
+        occurrenceCount: 1,
+      });
+    }
+    const r = c.report();
+    assert.equal(r.problems.length, 1, "same INVENTORY code should dedupe regardless of formulaId");
+    assert.equal(r.problems[0].occurrenceCount, 3);
+  });
+});
+
 describe("ProblemCollector — sort order", () => {
   test("shuffled input → report().problems sorted by scope (DESIGN < SELECTION < INVENTORY < FORMULA_SET), then kind", () => {
     const c = new ProblemCollector();
