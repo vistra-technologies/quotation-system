@@ -28,7 +28,7 @@
  */
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 import { apiUrl, apiSignIn } from "./helpers";
-import { readProjectState, setInventoryItemActive } from "./db-helpers";
+import { readProjectState, readCalculation, setInventoryItemActive } from "./db-helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(180_000);
@@ -91,6 +91,9 @@ test.beforeAll(async ({ browser }) => {
 });
 
 test.afterAll(async () => {
+  // Belt-and-braces reactivation for C2 (M-3): if the test body timed out and its finally didn't
+  // run, this ensures the shared dev DB is not left with DOOR-FRAME-01 deactivated.
+  await setInventoryItemActive("DOOR-FRAME-01", CLOISONS, true).catch(() => {});
   for (const id of projectsToDelete) {
     await cloisons.request.delete(C(`/projects/${id}`)).catch(() => {});
   }
@@ -194,7 +197,7 @@ function allGlassDesign(glassSelId: string, widthMm: number, heightMm: number, s
 // ── Group A — cloisons happy path ────────────────────────────────────────────
 
 test("A1: Submit Design populates materialList + materialByRoom for a cloisons DOOR+GLASS partition", async () => {
-  const { projectId, roomId, partitionId } = await newCloisonsRoom("A1");
+  const { projectId, partitionId } = await newCloisonsRoom("A1");
   const glassId = await cloisonsSelection(projectId, "GLASS", GLASS_CFG);
   const doorId = await cloisonsSelection(projectId, "DOOR", DOOR_CFG_FULL);
 
@@ -208,15 +211,29 @@ test("A1: Submit Design populates materialList + materialByRoom for a cloisons D
   const submitBody = (await submit.json()) as { project: { designSubmittedAt: string | null } };
   expect(submitBody.project.designSubmittedAt).not.toBeNull();
 
-  // submit-design returns only { project }; call recompute to read the materialList
+  // submit-design returns only { project }; read the calculation row directly from DB to verify
+  // that Submit Design wrote materialList + materialByRoom (materialByRoom is omitted from all
+  // API responses by lib/prisma.ts omit defaults, so only a DB read can prove it was written).
+  const calcDb = await readCalculation(projectId);
+  expect(calcDb, "Submit Design wrote a ProjectCalculation row").not.toBeNull();
+  expect(calcDb!.status, "calculation status = OK").toBe("OK");
+  const materialList = calcDb!.materialList as unknown[];
+  expect(Array.isArray(materialList), "materialList is an array").toBe(true);
+  expect(materialList.length, "materialList is non-empty").toBeGreaterThan(0);
+  const materialByRoom = calcDb!.materialByRoom as Array<{ roomId: string; lines: unknown[] }>;
+  expect(Array.isArray(materialByRoom), "materialByRoom is an array").toBe(true);
+  expect(materialByRoom.length, "materialByRoom has one entry (one room)").toBe(1);
+  expect(
+    materialByRoom[0].lines.length,
+    "materialByRoom[0].lines is non-empty",
+  ).toBeGreaterThan(0);
+
+  // Confirm the materialList lines are well-formed (call recompute to get the API view)
   const recompRes = await cloisons.request.post(C(`/projects/${projectId}/recompute`));
   expect(recompRes.status(), await recompRes.text()).toBe(200);
   const calcBody = (await recompRes.json()) as {
     calculation: { status: string; materialList: unknown[] };
   };
-  expect(calcBody.calculation.status).toBe("OK");
-  expect(calcBody.calculation.materialList.length).toBeGreaterThan(0);
-
   type MLine = { code: string; name: string; quantity: number; unit: string; perUnitQuantity: number };
   for (const line of calcBody.calculation.materialList as MLine[]) {
     expect(line.code, "every materialList line has a code").toBeTruthy();
@@ -225,11 +242,6 @@ test("A1: Submit Design populates materialList + materialByRoom for a cloisons D
     expect(typeof line.perUnitQuantity).toBe("number");
     expect("status" in line, "no status field on a successful materialList line").toBe(false);
   }
-
-  // materialByRoom is globally omitted from all API responses (lib/prisma.ts omit);
-  // verify via DB helper that the calculation row was written (materialByRoom lives in DB)
-  const roomState = await readProjectState(projectId);
-  expect(roomState.calcCount, "materialByRoom written — calculation row exists").toBe(1);
 });
 
 test("A2: door.md 2m×3m worked example (frame+leaf) reproduces exact requirement values", async () => {
@@ -470,8 +482,10 @@ test("C2: INACTIVE_ITEM → 422; stored row byte-identical (G-3 option a)", asyn
   // First submit successfully to establish a stored row
   const firstSubmit = await cloisons.request.post(C(`/projects/${projectId}/submit-design`));
   expect(firstSubmit.status(), await firstSubmit.text()).toBe(200);
-  const stateBefore = await readProjectState(projectId);
-  expect(stateBefore.calcCount).toBe(1);
+
+  // Take a full snapshot of the stored row BEFORE deactivating — G-3 requires byte-identical
+  const calcBefore = await readCalculation(projectId);
+  expect(calcBefore, "a calculation row exists after first submit").not.toBeNull();
 
   // Deactivate an item referenced by this design
   await setInventoryItemActive("DOOR-FRAME-01", CLOISONS, false);
@@ -482,12 +496,14 @@ test("C2: INACTIVE_ITEM → 422; stored row byte-identical (G-3 option a)", asyn
     const body = (await recompute.json()) as { problems: { kind: string }[] };
     expect(body.problems.some((p) => p.kind === "INACTIVE_ITEM")).toBe(true);
 
-    // G-3: stored row must be byte-identical — calcCount unchanged, designSubmittedAt unchanged
-    const stateAfter = await readProjectState(projectId);
-    expect(stateAfter.calcCount).toBe(stateBefore.calcCount);
-    expect(stateAfter.designSubmittedAt).toBe(stateBefore.designSubmittedAt);
+    // G-3: stored row must be byte-identical — all fields (status, computedAt, materialList,
+    // materialByRoom) unchanged. This would catch a regression back to Stage-23 D-33 behaviour
+    // where Recompute would upsert a FAILED row or rewrite materialList on the drift path.
+    const calcAfter = await readCalculation(projectId);
+    expect(calcAfter, "calculation row still exists after refused recompute").not.toBeNull();
+    expect(calcAfter).toEqual(calcBefore);
   } finally {
-    // Always restore the item to active
+    // Always restore the item to active (belt-and-braces: afterAll also restores this)
     await setInventoryItemActive("DOOR-FRAME-01", CLOISONS, true);
   }
 });
@@ -585,9 +601,7 @@ test("D2: fixing one problem leaves exactly one fewer in the response", async ()
   const firstBody = (await first.json()) as { problems: unknown[] };
   const firstCount = firstBody.problems.length;
 
-  // Fix door2's problem by updating the selection config (use the API: delete and recreate)
-  // Actually we can't PATCH a Selection's config directly in general, but let's use door2 with a bad frameCode only
-  // and a good leafCode to fix one problem. Since we can't PATCH config in-place, create a new selection for door2.
+  // Fix door2's problem: create a new selection with all codes correct and reassign the partition cell.
   const door2Fixed = await cloisonsSelection(projectId, "DOOR", DOOR_CFG_FULL); // all good
   const patchFixed = await cloisons.request.patch(C(`/partitions/${partitionId}`), {
     data: {
@@ -632,9 +646,7 @@ test("D3: byte-identical 422 body on repeat calls with no change", async () => {
   expect(second.status()).toBe(422);
   const body1 = (await first.json()) as { error: string; problems: { kind: string; code?: string }[] };
   const body2 = (await second.json()) as { error: string; problems: { kind: string; code?: string }[] };
-  expect(body1.error).toBe(body2.error);
-  expect(body1.problems.length).toBe(body2.problems.length);
-  expect(body1.problems[0]?.kind).toBe(body2.problems[0]?.kind);
+  expect(body2).toEqual(body1);
 });
 
 // ── Group E — condition-gated blank is not a problem ─────────────────────────
@@ -736,13 +748,31 @@ test("J1: PATCH cloisons DOOR ComponentType removing a requiredParams-referenced
   const doorType = types.find((t) => t.code === "DOOR");
   expect(doorType, "cloisons has DOOR ComponentType").toBeTruthy();
 
+  // Save the original fieldsSchema so we can restore it if the guard ever regresses (M-2).
+  // If D-36 regressed, the PATCH below would succeed and permanently strip 'hasFrame' from the
+  // shared dev DB's cloisons DOOR ComponentType, breaking every subsequent run.
+  const originalFieldsSchema = doorType!.fieldsSchema;
+
   // Remove 'hasFrame' from the fieldsSchema — this is referenced in cloisons_formula_set requiredParams
-  const withoutHasFrame = doorType!.fieldsSchema.filter((f) => f.key !== "hasFrame");
-  const patch = await cloisons.request.patch(C(`/component-types/${doorType!.id}`), {
-    data: { fieldsSchema: withoutHasFrame },
-  });
-  expect(patch.status(), await patch.text()).toBe(409);
-  expect(((await patch.json()) as { error: string }).error).toMatch(/DOOR/);
+  const withoutHasFrame = originalFieldsSchema.filter((f) => f.key !== "hasFrame");
+  let patchStatus = 0;
+  try {
+    const patch = await cloisons.request.patch(C(`/component-types/${doorType!.id}`), {
+      data: { fieldsSchema: withoutHasFrame },
+    });
+    patchStatus = patch.status();
+    expect(patchStatus, await patch.text()).toBe(409);
+    expect(((await patch.json()) as { error: string }).error).toMatch(/DOOR/);
+  } finally {
+    // If the guard regressed and the PATCH succeeded, restore the original schema.
+    if (patchStatus !== 409) {
+      await cloisons.request
+        .patch(C(`/component-types/${doorType!.id}`), {
+          data: { fieldsSchema: originalFieldsSchema },
+        })
+        .catch(() => {});
+    }
+  }
 });
 
 // ── Group L — cross-org tenancy ───────────────────────────────────────────────
@@ -789,7 +819,7 @@ test("M1: GET /api/v1/orgs/vistra/catalog without auth → 401 (route live after
   }
 });
 
-test("M2: GET /api/v1/orgs/vistra/catalog with vistra admin auth → 200 with inventoryItems array", async () => {
+test("M2: GET /api/v1/orgs/vistra/catalog with vistra admin auth → 200 with items array", async () => {
   let vistraCtx3: BrowserContext | null = null;
   try {
     vistraCtx3 = await cloisons.context().browser()!.newContext();
