@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 // ─── POST /api/v1/orgs/[orgSlug]/catalog/[itemId]/prices ─────────────────────
 
 /**
- * Upsert (add or update) an ItemPrice for a CatalogItem + currency pair.
+ * Upsert (add or update) an ItemPrice for an InventoryItem + currency pair.
  *
  * Auth: authenticated org member with MANAGE_PRICING permission.
  * Body: { currency: string, price: number }
@@ -27,10 +27,10 @@ export const dynamic = "force-dynamic";
  *
  * Returns 400 on missing/invalid input.
  * Returns 403 if the session role lacks MANAGE_PRICING.
- * Returns 404 if the CatalogItem does not exist in the org.
+ * Returns 404 if the InventoryItem does not exist in the org.
  *
  * Tenancy: enforced by getApiSession() (403 on cross-org) and upsertItemPrice()
- *          calling assertCatalogItemInOrg() before writing — double guard.
+ *          calling assertInventoryItemInOrg() before writing — double guard.
  */
 export async function POST(
   request: Request,
@@ -113,7 +113,7 @@ export async function POST(
  * Auth: authenticated org member with MANAGE_PRICING permission.
  * Body: { priceId: string }
  *
- * The [itemId] URL param anchors the operation to the correct CatalogItem for
+ * The [itemId] URL param anchors the operation to the correct InventoryItem for
  * routing clarity; the actual tenancy guard is enforced by deleteItemPrice()
  * via itemPrice.organizationId === session.organizationId (defense in depth).
  *

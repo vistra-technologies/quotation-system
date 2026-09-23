@@ -434,7 +434,7 @@ export async function deleteOrganization(
       // 7. ItemPrice — references InventoryItem (also cascades, but explicit for clarity)
       await tx.itemPrice.deleteMany({ where: { organizationId: orgId } });
 
-      // 8. InventoryItem (renamed from CatalogItem in Stage 24 Batch 1)
+      // 8. InventoryItem
       await tx.inventoryItem.deleteMany({ where: { organizationId: orgId } });
 
       // 9a. ComponentTypeOrgConfig — references ComponentType (FK RESTRICT); must precede it.

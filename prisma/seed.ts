@@ -376,7 +376,7 @@ async function main() {
   // ── 5. Catalog items and prices ─────────────────────────────────────────────
   // Representative items covering all categories.
   // PLACEHOLDER — replace with real client data before handover
-  const catalogItemDefs = [
+  const inventoryItemDefs = [
     {
       category: "WALL_TYPE",
       code: "WT-001",
@@ -471,7 +471,7 @@ async function main() {
   ];
 
   for (const org of allOrgs) {
-    for (const def of catalogItemDefs) {
+    for (const def of inventoryItemDefs) {
       const item = await prisma.inventoryItem.upsert({
         where: {
           organizationId_code: { organizationId: org.id, code: def.code },
@@ -555,7 +555,7 @@ async function main() {
   const totalRoles = await prisma.role.count();
   const totalCompanies = await prisma.externalCompany.count();
   const totalUsers = await prisma.user.count();
-  const totalCatalogItems = await prisma.inventoryItem.count();
+  const totalInventoryItems = await prisma.inventoryItem.count();
   const totalItemPrices = await prisma.itemPrice.count();
   const totalComponentTypesCount = await prisma.componentType.count();
 
@@ -572,10 +572,10 @@ async function main() {
     `Users:              ${totalUsers}  (4×${allOrgs.length}=${4 * allOrgs.length} expected)`,
   );
   console.log(
-    `Inventory items:    ${totalCatalogItems}  (${catalogItemDefs.length}×${allOrgs.length}=${catalogItemDefs.length * allOrgs.length} expected)`,
+    `Inventory items:    ${totalInventoryItems}  (${inventoryItemDefs.length}×${allOrgs.length}=${inventoryItemDefs.length * allOrgs.length} expected)`,
   );
   console.log(
-    `Item prices:        ${totalItemPrices}  (${priceDefs.length * catalogItemDefs.length}×${allOrgs.length}=${priceDefs.length * catalogItemDefs.length * allOrgs.length} expected)`,
+    `Item prices:        ${totalItemPrices}  (${priceDefs.length * inventoryItemDefs.length}×${allOrgs.length}=${priceDefs.length * inventoryItemDefs.length * allOrgs.length} expected)`,
   );
   console.log(
     `Component types:    ${totalComponentTypesCount}  (informational — see the note above; legacy codes on pre-existing orgs make a fixed "expected" figure meaningless)`,

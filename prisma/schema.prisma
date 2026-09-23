@@ -235,7 +235,7 @@ model ExternalCompany {
 // Domain models — Stage 3: catalog items and pricing
 // ────────────────────────────────────────────────────────────
 
-// Inventory item definitions behind every design option (renamed from CatalogItem in Stage 24 Batch 1).
+// Inventory item definitions behind every design option (Stage 24 Batch 1 rename; see migration 20260924*).
 // category is a plain String (not enum) — open-ended list per data-model.md.
 // attributes is untyped JSONB in Stage 3; typed contract deferred.
 // perUnitQuantity: how many natural units one "counted" unit represents (e.g. 1 box = 50 screws);
@@ -655,8 +655,9 @@ model FormulaSet {
 // recomputed (never patched) whenever the design changes underneath it —
 // see lib/data's invalidateProjectCalculation() call sites. materialByRoom
 // is a per-room material breakdown (added Stage 24 Batch 1; populated by
-// the evaluator in Batch 5); always omitted from reads via the global PrismaClient
-// omit in lib/prisma.ts. onDelete: Cascade from both Project and Organization;
+// the evaluator in Batch 5); always omitted from Prisma client reads via the
+// global omit in lib/prisma.ts (raw SQL and $queryRaw bypass it — see lib/prisma.ts
+// comment). onDelete: Cascade from both Project and Organization;
 // Restrict from FormulaSet (a set can't be deleted while any calculation
 // still references it).
 // See design-docs/04-data-model.md — ProjectCalculation.

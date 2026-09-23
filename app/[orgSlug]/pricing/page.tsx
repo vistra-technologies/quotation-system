@@ -15,7 +15,7 @@ interface ItemPriceRow {
   price: string | number;
 }
 
-interface CatalogItemRow {
+interface InventoryItemRow {
   id: string;
   category: string;
   code: string;
@@ -55,8 +55,8 @@ export default async function PricingPage({
     redirect(await orgHref(orgSlug, "/login"));
   }
 
-  const items: CatalogItemRow[] = catalogRes.ok
-    ? ((await catalogRes.json()) as { items: CatalogItemRow[] }).items
+  const items: InventoryItemRow[] = catalogRes.ok
+    ? ((await catalogRes.json()) as { items: InventoryItemRow[] }).items
     : [];
 
   return (

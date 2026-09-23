@@ -7,7 +7,7 @@ import type { SessionData } from "@/lib/session";
  * List active inventory items for the session org, with their prices.
  * Ordered category → code, then prices by currency within each item.
  */
-export async function listCatalogItems(session: SessionData) {
+export async function listInventoryItems(session: SessionData) {
   return prisma.inventoryItem.findMany({
     where: { organizationId: session.organizationId, active: true },
     include: { prices: { orderBy: { currency: "asc" } } },
@@ -19,7 +19,7 @@ export async function listCatalogItems(session: SessionData) {
  * Get one inventory item with prices, org-scoped (tenancy guard).
  * Returns null if not found or if it belongs to a different org.
  */
-export async function getCatalogItemById(session: SessionData, itemId: string) {
+export async function getInventoryItemById(session: SessionData, itemId: string) {
   return prisma.inventoryItem.findFirst({
     where: { id: itemId, organizationId: session.organizationId },
     include: { prices: { orderBy: { currency: "asc" } } },
@@ -32,7 +32,7 @@ export async function getCatalogItemById(session: SessionData, itemId: string) {
  * Tenancy guard: assert an InventoryItem belongs to the given org.
  * Throws a generic error on failure to prevent enumeration of other orgs' items.
  */
-export async function assertCatalogItemInOrg(
+export async function assertInventoryItemInOrg(
   itemId: string,
   organizationId: string,
 ): Promise<void> {
@@ -40,7 +40,7 @@ export async function assertCatalogItemInOrg(
     where: { id: itemId, organizationId },
     select: { id: true },
   });
-  if (!item) throw new Error("Catalog item not found or access denied");
+  if (!item) throw new Error("Inventory item not found or access denied");
 }
 
 /**
@@ -53,7 +53,7 @@ export async function upsertItemPrice(
   currency: string,
   price: number,
 ): Promise<void> {
-  await assertCatalogItemInOrg(itemId, session.organizationId);
+  await assertInventoryItemInOrg(itemId, session.organizationId);
   await prisma.itemPrice.upsert({
     where: {
       inventoryItemId_currency: { inventoryItemId: itemId, currency },

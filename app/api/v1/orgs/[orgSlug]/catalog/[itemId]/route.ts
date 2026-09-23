@@ -7,7 +7,7 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { getCatalogItemById } from "@/lib/data/catalog";
+import { getInventoryItemById } from "@/lib/data/catalog";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -15,14 +15,14 @@ export const dynamic = "force-dynamic";
 // ─── GET /api/v1/orgs/[orgSlug]/catalog/[itemId] ─────────────────────────────
 
 /**
- * Get a single CatalogItem by ID, scoped to the org, with its prices.
+ * Get a single InventoryItem by ID, scoped to the org, with its prices.
  *
  * Auth: authenticated org member with MANAGE_PRICING permission.
  *
  * Returns 404 if the item does not exist in the org (tenancy guard: items
  * belonging to another org are indistinguishable from missing items).
  *
- * Tenancy: enforced by getApiSession() (403 on cross-org) and getCatalogItemById()
+ * Tenancy: enforced by getApiSession() (403 on cross-org) and getInventoryItemById()
  *          filtering on session.organizationId — returns null for items that
  *          belong to a different org, surfaced as 404.
  */
@@ -57,14 +57,14 @@ export async function GET(
   }
 
   try {
-    const item = await getCatalogItemById(session, itemId);
+    const item = await getInventoryItemById(session, itemId);
     if (!item) {
-      return apiNotFound("Catalog item not found");
+      return apiNotFound("Inventory item not found");
     }
     return NextResponse.json({ item });
   } catch (err) {
     console.error(
-      "[GET /api/v1/orgs/[orgSlug]/catalog/[itemId]] getCatalogItemById",
+      "[GET /api/v1/orgs/[orgSlug]/catalog/[itemId]] getInventoryItemById",
       err,
     );
     return apiServerError();

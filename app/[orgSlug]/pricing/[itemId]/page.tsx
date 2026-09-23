@@ -16,7 +16,7 @@ interface ItemPriceRow {
   price: string | number;
 }
 
-interface CatalogItemDetail {
+interface InventoryItemDetail {
   id: string;
   category: string;
   code: string;
@@ -30,7 +30,7 @@ interface CatalogItemDetail {
 /**
  * Pricing item edit page (Server Component).
  *
- * Shows the current prices for one CatalogItem and lets company members add,
+ * Shows the current prices for one InventoryItem and lets company members add,
  * update, or delete ItemPrice rows.  Gated on MANAGE_PRICING.
  *
  * Stage 11 (Batch 9): restyled to Sage Ease tokens; removed incorrect
@@ -67,7 +67,7 @@ export default async function PricingItemPage({
     notFound();
   }
 
-  const item = ((await itemRes.json()) as { item: CatalogItemDetail }).item;
+  const item = ((await itemRes.json()) as { item: InventoryItemDetail }).item;
 
   return (
     <div className="mx-auto w-full max-w-lg px-6 py-8">
