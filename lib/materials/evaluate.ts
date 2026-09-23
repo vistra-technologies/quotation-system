@@ -123,15 +123,43 @@ function makeReadParam(proxy: Record<string, unknown>): (k: string) => string {
 
 // ─── Condition/quantity evaluation helpers ────────────────────────────────────
 
-function evaluateExpr(expr: string, scope: Record<string, unknown>): number | null {
+/**
+ * Evaluate an expr-eval expression.
+ *
+ * Return contract:
+ * - `number` (including NaN/Infinity) — expression evaluated; NaN/Infinity are non-finite.
+ * - `null` — evaluation threw an exception; `onThrow` (if provided) was called with the message.
+ *
+ * Non-number, non-boolean results (null, undefined, string, object) returned by expr-eval
+ * are mapped to NaN so they are caught by the NON_FINITE_QUANTITY guard rather than coerced
+ * through Number() which would silently produce 0 for null and NaN only for undefined.
+ * Boolean results are mapped to 1/0 (true/false) so a condition expression whose quantity
+ * is also used as a flag never silently disappears.
+ *
+ * `onThrow` is optional: pass it when the call-site needs to distinguish "threw" from
+ * "evaluated to a falsy value", i.e. condition evaluation (where both → skip-formula but
+ * only a throw should record a problem).
+ */
+function evaluateExpr(
+  expr: string,
+  scope: Record<string, unknown>,
+  onThrow?: (msg: string) => void,
+): number | null {
   try {
     // expr-eval's Value type is narrower than Record<string, unknown>; cast is safe because the
     // Proxy and nested objects expr-eval traverses at runtime behave correctly via property access.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const result = parser.evaluate(expr, scope as any);
-    return typeof result === "number" ? result : Number(result);
-  } catch {
-    return null;
+    if (typeof result === "number") return result;
+    if (typeof result === "boolean") return result ? 1 : 0;
+    // null / undefined / string / object — non-finite, not a throw
+    // (e.g. `2 * calc.missing` returns null in expr-eval when calc.missing is undefined)
+    return NaN;
+  } catch (e) {
+    if (onThrow) {
+      onThrow(e instanceof Error ? e.message : String(e));
+    }
+    return null; // threw; quantity callers treat null → NaN → NON_FINITE_QUANTITY
   }
 }
 
@@ -211,10 +239,28 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
               const cellScope = { widthMm: section.widthMm, heightMm: cell.heightMm };
               const scope: Record<string, unknown> = { param: paramProxy, cell: cellScope, calc: calcScope };
 
-              // Evaluate condition (absent = always fires)
+              // Evaluate condition (absent = always fires).
+              // A throw is distinguished from a false result: a throw records a FORMULA_SET problem
+              // (it means the expression itself is broken — typo'd namespace etc.) while a false
+              // result is the normal "condition not met, skip formula" path.
               if (formula.condition !== undefined) {
-                const condResult = evaluateExpr(formula.condition, scope);
-                if (!isConditionTrue(condResult)) continue; // condition false or blank-param; skip formula
+                let condThrew = false;
+                const condResult = evaluateExpr(formula.condition, scope, (msg) => {
+                  condThrew = true;
+                  collector.add({
+                    kind: "NON_FINITE_QUANTITY",
+                    scope: "FORMULA_SET",
+                    message: `Formula "${formula.id}": condition threw an error: ${msg}`,
+                    locus: {
+                      floorId: floor.id,
+                      roomId: room.id,
+                      partitionId: partition.id,
+                      selectionId: cell.selectionId!,
+                      formulaId: formula.id,
+                    },
+                  });
+                });
+                if (condThrew || !isConditionTrue(condResult)) continue;
               }
 
               // Evaluate quantity
@@ -307,11 +353,18 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
         // One calcScope per partition — accumulates fired PARTITION-grain formula quantities
         const calcScope: Record<string, number> = {};
 
+        // Per-partition blank-field dedup gate: mirrors the CELL pass's cellBlankSeen so that
+        // occurrenceCount reflects partitions affected, not formulas-per-partition.
+        const partitionBlankSeen = new Set<string>();
+
         for (const formula of partitionFormulas) {
           const selInfo = slotFirstSel.get(formula.slot);
           if (!selInfo) continue; // no cell of this slot type in this partition → formula doesn't apply
 
           const paramProxy = makeParamProxy(selInfo.config, (key) => {
+            const blankKey = `${selInfo.selectionId}|${key}`;
+            if (partitionBlankSeen.has(blankKey)) return; // already recorded for this partition
+            partitionBlankSeen.add(blankKey);
             collector.add({
               kind: "MISSING_PARAM",
               scope: "SELECTION",
@@ -332,10 +385,25 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
 
           const scope: Record<string, unknown> = { param: paramProxy, partition: geometry, calc: calcScope };
 
-          // Evaluate condition (absent = always fires)
+          // Evaluate condition (absent = always fires).
+          // A throw records a FORMULA_SET problem rather than being treated silently as false.
           if (formula.condition !== undefined) {
-            const condResult = evaluateExpr(formula.condition, scope);
-            if (!isConditionTrue(condResult)) continue;
+            let condThrew = false;
+            const condResult = evaluateExpr(formula.condition, scope, (msg) => {
+              condThrew = true;
+              collector.add({
+                kind: "NON_FINITE_QUANTITY",
+                scope: "FORMULA_SET",
+                message: `Formula "${formula.id}": condition threw an error: ${msg}`,
+                locus: {
+                  floorId: floor.id,
+                  roomId: room.id,
+                  partitionId: partition.id,
+                  formulaId: formula.id,
+                },
+              });
+            });
+            if (condThrew || !isConditionTrue(condResult)) continue;
           }
 
           // Evaluate quantity

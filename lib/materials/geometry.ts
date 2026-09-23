@@ -107,6 +107,12 @@ export function derivePartitionGeometry(args: DerivePartitionGeometryArgs): Part
   const idx = sides.findIndex(s => s.kind === "PARTITION" && s.partitionId === partitionId);
 
   // ── Step 2: Identify left/right neighbors ────────────────────────────────────
+  // If idx === -1 (partition absent from sides[]), both neighbours stay null → both ends are
+  // treated as wall/wall — the maximum profile/L-connector treatment. This is a data-integrity
+  // problem (a Partition row not referenced by its Room's sides[]), NOT a valid geometry default.
+  // It is unreachable in normal operation: Batch 5's phase-A structural pass will record a
+  // SELECTION_MISSING (or equivalent) problem and gate submission before the evaluator runs.
+  // If it becomes reachable, it should be caught and surfaced here rather than silently degraded.
   let leftNeighbor: RoomSide | null = null;
   let rightNeighbor: RoomSide | null = null;
 
@@ -165,8 +171,12 @@ export function derivePartitionGeometry(args: DerivePartitionGeometryArgs): Part
     }
   }
 
-  // nonCornerDoorCount: subtract the left and right corner doors (each end at most 1)
-  const nonCornerDoorCount = doorCount - leftEndIsDoor - rightEndIsDoor;
+  // nonCornerDoorCount: subtract the left and right corner doors (each end at most 1).
+  // Math.max(0, ...) guards the degenerate case of a single DOOR cell that is simultaneously the
+  // leftmost and rightmost cell (leftEndIsDoor=1, rightEndIsDoor=1, doorCount=1 → would give -1).
+  // That partition has no GLASS cell so no PARTITION-grain formula fires (evaluate.ts skips it),
+  // but the geometry object itself should not carry a negative value.
+  const nonCornerDoorCount = Math.max(0, doorCount - leftEndIsDoor - rightEndIsDoor);
 
   // ── Step 5: leftNeighborEndIsDoor / rightNeighborEndIsDoor ───────────────────
   // ASSUMPTION (FLAG 2, plan-b4.md): sides[] walk order corresponds to left-to-right partition

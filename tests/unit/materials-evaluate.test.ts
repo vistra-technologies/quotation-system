@@ -730,6 +730,86 @@ describe("determinism", () => {
   });
 });
 
+// ─── Bug-fix tests (review-b4-1 findings) ────────────────────────────────────
+
+describe("IMPORTANT #2 — condition that throws records a FORMULA_SET problem, not a silent skip", () => {
+  // A typo'd namespace ("parm" instead of "param") causes expr-eval to throw.
+  // Before the fix: caught → null → isConditionTrue(null)=false → formula silently skipped.
+  // After the fix: caught → onThrow callback → NON_FINITE_QUANTITY recorded → formula skipped with problem.
+  const throwingFormulaSet: FormulaSetBody = {
+    schemaVersion: 2,
+    slots: {
+      DOOR: {
+        role: "door",
+        requiredParams: [{ key: "hasFrame" }, { key: "frameCode" }],
+      },
+    },
+    formulas: [
+      {
+        id: "doorFrame",
+        slot: "DOOR", grain: "CELL",
+        // "parm" is not a valid scope variable — expr-eval will throw "undefined variable: parm"
+        condition: "parm.hasFrame == 'Yes'",
+        materialCode: "{param.frameCode}", unit: "metres",
+        quantity: "1",
+      },
+    ],
+  };
+  const input = makeDoorInput(doorConfig());
+  const inputPatched: MaterialsInput = { ...input, formulaSetBody: throwingFormulaSet };
+  const result = buildMaterials(inputPatched);
+  const report = result.collector.report();
+
+  test("formula with throwing condition is skipped (no line emitted)", () => {
+    assert.equal(result.rawLines.find(l => l.formulaId === "doorFrame"), undefined);
+  });
+  test("NON_FINITE_QUANTITY problem recorded naming the formula id", () => {
+    const p = report.problems.find(p => p.kind === "NON_FINITE_QUANTITY" && p.locus?.formulaId === "doorFrame");
+    assert.ok(p, `expected NON_FINITE_QUANTITY for doorFrame; got: ${JSON.stringify(report.problems)}`);
+  });
+  test("problem scope is FORMULA_SET", () => {
+    const p = report.problems.find(p => p.kind === "NON_FINITE_QUANTITY" && p.locus?.formulaId === "doorFrame");
+    assert.equal(p?.scope, "FORMULA_SET");
+  });
+});
+
+describe("IMPORTANT #3 — arithmetic on missing calc.* yields NON_FINITE_QUANTITY, not a 0-quantity line", () => {
+  // "calc.nonexistent" is undefined in the scope; expr-eval's "2*calc.nonexistent" returns null.
+  // Before the fix: Number(null)=0 → finite → silent zero-quantity line emitted.
+  // After the fix: null result → NaN → NON_FINITE_QUANTITY recorded.
+  const missingCalcFormulaSet: FormulaSetBody = {
+    schemaVersion: 2,
+    slots: {
+      DOOR: {
+        role: "door",
+        requiredParams: [{ key: "frameCode" }],
+      },
+    },
+    formulas: [
+      {
+        id: "derived",
+        slot: "DOOR", grain: "CELL",
+        materialCode: "{param.frameCode}", unit: "metres",
+        // "calc.nonexistent" is not a prior formula id → undefined in scope
+        // expr-eval: 2 * undefined → null (not NaN); Number(null)=0 was the silent bug
+        quantity: "2 * calc.nonexistent",
+      },
+    ],
+  };
+  const input = makeDoorInput(doorConfig());
+  const inputPatched: MaterialsInput = { ...input, formulaSetBody: missingCalcFormulaSet };
+  const result = buildMaterials(inputPatched);
+  const report = result.collector.report();
+
+  test("no line emitted for formula with missing calc.*", () => {
+    assert.equal(result.rawLines.find(l => l.formulaId === "derived"), undefined);
+  });
+  test("NON_FINITE_QUANTITY problem recorded (not a 0-quantity line)", () => {
+    const p = report.problems.find(p => p.kind === "NON_FINITE_QUANTITY" && p.locus?.formulaId === "derived");
+    assert.ok(p, `expected NON_FINITE_QUANTITY for derived; got: ${JSON.stringify(report.problems)}`);
+  });
+});
+
 // ─── v1 fast-path ─────────────────────────────────────────────────────────────
 
 describe("v1 fast-path", () => {

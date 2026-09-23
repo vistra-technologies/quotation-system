@@ -49,6 +49,36 @@ function tryParse(expr: string): string | null {
 }
 
 /**
+ * Reject JavaScript logical operators that are silently wrong (or a parse error) in expr-eval.
+ *
+ * - `||` — expr-eval's string-concatenation operator; binds tighter than `==`, re-associates
+ *   boolean expressions in unexpected ways and always evaluates to false for typical flag comparisons.
+ *   Use `or` instead.
+ * - `&&` — not in expr-eval's grammar (parse error); use `and`.
+ * - `!` (when not part of `!=`) — expr-eval's postfix factorial operator, not logical NOT.
+ *   Use `not` instead.
+ *
+ * This is a static token check, not parse-based — these tokens pass `tryParse` (or already
+ * produce a parse error), so the check must be separate.
+ */
+function checkForbiddenLogicOperators(
+  expr: string,
+  formulaId: string,
+  fieldName: string,
+): string | null {
+  if (/\|\|/.test(expr)) {
+    return `formula "${formulaId}": ${fieldName} contains "||" — expr-eval uses "or" for logical OR ("||" is string concatenation in this library and produces incorrect boolean results)`;
+  }
+  if (/&&/.test(expr)) {
+    return `formula "${formulaId}": ${fieldName} contains "&&" — expr-eval uses "and" for logical AND`;
+  }
+  if (/!(?!=)/.test(expr)) {
+    return `formula "${formulaId}": ${fieldName} contains "!" — expr-eval uses "not" for logical NOT ("!" is the postfix factorial operator in this library)`;
+  }
+  return null;
+}
+
+/**
  * Validate a FormulaSetBody document.
  *
  * v1 (schemaVersion absent or 1): validates that formulas is absent or [], and that any
@@ -136,9 +166,10 @@ export function validateFormulaSetBody(body: unknown): { ok: true } | { ok: fals
   }
   const formulas: unknown[] = Array.isArray(body.formulas) ? (body.formulas as unknown[]) : [];
 
-  // Build maps for Validator 2 — track id → index and grain for backward/same-grain check
+  // Build maps for Validator 2 — track id → index, grain, and slot for backward/same-grain/same-slot check
   const idToIndex = new Map<string, number>();
   const idToGrain = new Map<string, string>();
+  const idToSlot = new Map<string, string>();
   const seenIds = new Set<string>();
 
   // Build requiredParams lookup per slot
@@ -197,20 +228,24 @@ export function validateFormulaSetBody(body: unknown): { ok: true } | { ok: fals
       errors.push(`formula "${id}": unit must be "metres" or "pieces" (got "${fRec.unit}")`);
     }
 
-    // condition (optional) — parse
+    // condition (optional) — check for forbidden JS operators, then parse
     if (fRec.condition !== undefined) {
       if (typeof fRec.condition !== "string") {
         errors.push(`formula "${id}": condition must be a string`);
       } else {
+        const opErr = checkForbiddenLogicOperators(fRec.condition, id, "condition");
+        if (opErr) errors.push(opErr);
         const parseErr = tryParse(fRec.condition);
         if (parseErr) errors.push(`formula "${id}": condition is not a valid expression: ${parseErr}`);
       }
     }
 
-    // quantity — required, parse
+    // quantity — required; check for forbidden JS operators, then parse
     if (typeof fRec.quantity !== "string") {
       errors.push(`formula "${id}": quantity must be a string expression`);
     } else {
+      const opErr = checkForbiddenLogicOperators(fRec.quantity, id, "quantity");
+      if (opErr) errors.push(opErr);
       const parseErr = tryParse(fRec.quantity);
       if (parseErr) errors.push(`formula "${id}": quantity is not a valid expression: ${parseErr}`);
     }
@@ -280,15 +315,24 @@ export function validateFormulaSetBody(body: unknown): { ok: true } | { ok: fals
           if (refGrain !== grain) {
             errors.push(`formula "${id}": calc.${refId} is a cross-grain reference (this grain: ${grain}, ref grain: ${refGrain})`);
           }
+          // Same-slot check: at runtime, calcScope is accumulated per-cell (CELL) or per-partition
+          // (PARTITION) and contains only the formulas that fired for the current formula's slot.
+          // A cross-slot calc.* reference always resolves to undefined → null/NaN at runtime,
+          // producing a silent NON_FINITE_QUANTITY or a 0 quantity (before fix #3). Reject it here.
+          const refSlot = idToSlot.get(refId);
+          if (refSlot !== undefined && refSlot !== slotCode) {
+            errors.push(`formula "${id}": calc.${refId} is a cross-slot reference (this slot: ${slotCode}, ref slot: ${refSlot}) — calc.* scope is per-slot at runtime`);
+          }
         }
       }
     }
 
-    // Register this formula's id/grain only after its own calc.* references have been validated,
-    // ensuring backward-only references are enforced and self-references are caught above.
+    // Register this formula's id/grain/slot only after its own calc.* references have been
+    // validated, ensuring backward-only references are enforced and self-references are caught above.
     if (typeof fRec.id === "string" && typeof fRec.grain === "string" && IMPLEMENTED_GRAINS.has(fRec.grain)) {
       idToIndex.set(fRec.id, i);
       idToGrain.set(fRec.id, fRec.grain);
+      idToSlot.set(fRec.id, slotCode);
     }
   }
 
