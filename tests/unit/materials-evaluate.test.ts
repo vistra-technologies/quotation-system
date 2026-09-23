@@ -810,6 +810,71 @@ describe("IMPORTANT #3 — arithmetic on missing calc.* yields NON_FINITE_QUANTI
   });
 });
 
+// ─── PARTITION-grain onThrow (review-b4-2 MINOR) ────────────────────────────
+// Covers the PARTITION pass's condition-throw wiring (review-b4-2 noted both
+// prior throw tests were CELL-grain only).
+
+describe("PARTITION-grain — condition that throws records a FORMULA_SET problem", () => {
+  // A PARTITION-grain formula whose condition contains "parm" (typo; undefined variable in
+  // expr-eval). Before the fix this would be a silent skip. After the fix it must produce a
+  // NON_FINITE_QUANTITY problem with scope FORMULA_SET.
+  const throwingPartitionFormulaSet: FormulaSetBody = {
+    schemaVersion: 2,
+    slots: {
+      GLASS: {
+        role: "glass",
+        requiredParams: [{ key: "u_profile" }],
+      },
+    },
+    formulas: [
+      {
+        id: "profileU",
+        slot: "GLASS",
+        grain: "PARTITION",
+        // "parm" is not defined in the scope → expr-eval will throw "undefined variable: parm"
+        condition: "parm.u_profile == 'Yes'",
+        materialCode: "{param.u_profile}",
+        unit: "metres",
+        quantity: "partition.widthMm / 1000",
+      },
+    ],
+  };
+
+  const sides: RoomSide[] = [plainSide("s0"), partitionSide("s1", "p1"), plainSide("s2")];
+  const input: MaterialsInput = {
+    formulaSetBody: throwingPartitionFormulaSet,
+    snapshot: makeSnapshot([{ id: "ct-glass", code: "GLASS" }]),
+    floors: [{
+      id: "f1", label: "Floor 1",
+      rooms: [{
+        id: "r1", label: "Room 1",
+        isClosed: true,
+        sides,
+        partitions: [{ id: "p1", label: "Wall 1", widthMm: 4000, heightMm: 3000, design: glassDesign4Panel() }],
+      }],
+    }],
+    selections: [{ id: "sel-glass", componentTypeId: "ct-glass", config: glassConfig() }],
+  };
+  const result = buildMaterials(input);
+  const report = result.collector.report();
+
+  test("PARTITION-grain formula with throwing condition is skipped (no line emitted)", () => {
+    assert.equal(result.rawLines.find(l => l.formulaId === "profileU"), undefined);
+  });
+  test("PARTITION-grain: NON_FINITE_QUANTITY problem recorded naming the formula id", () => {
+    const p = report.problems.find(p => p.kind === "NON_FINITE_QUANTITY" && p.locus?.formulaId === "profileU");
+    assert.ok(p, `expected NON_FINITE_QUANTITY for PARTITION-grain profileU; got: ${JSON.stringify(report.problems)}`);
+  });
+  test("PARTITION-grain: problem scope is FORMULA_SET", () => {
+    const p = report.problems.find(p => p.kind === "NON_FINITE_QUANTITY" && p.locus?.formulaId === "profileU");
+    assert.equal(p?.scope, "FORMULA_SET");
+  });
+  test("PARTITION-grain: problem locus includes partitionId", () => {
+    const p = report.problems.find(p => p.kind === "NON_FINITE_QUANTITY" && p.locus?.formulaId === "profileU");
+    assert.equal(p?.locus?.partitionId, "p1");
+  });
+});
+
 // ─── v1 fast-path ─────────────────────────────────────────────────────────────
 
 describe("v1 fast-path", () => {

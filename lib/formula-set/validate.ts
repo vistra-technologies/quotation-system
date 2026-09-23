@@ -315,13 +315,17 @@ export function validateFormulaSetBody(body: unknown): { ok: true } | { ok: fals
           if (refGrain !== grain) {
             errors.push(`formula "${id}": calc.${refId} is a cross-grain reference (this grain: ${grain}, ref grain: ${refGrain})`);
           }
-          // Same-slot check: at runtime, calcScope is accumulated per-cell (CELL) or per-partition
-          // (PARTITION) and contains only the formulas that fired for the current formula's slot.
-          // A cross-slot calc.* reference always resolves to undefined → null/NaN at runtime,
-          // producing a silent NON_FINITE_QUANTITY or a 0 quantity (before fix #3). Reject it here.
+          // Same-slot check: at CELL grain, calcScope is built per-cell from formulas filtered to
+          // the current cell's slot, so a cross-slot calc.* reference is structurally impossible —
+          // the referenced formula simply never runs for that cell. At PARTITION grain, calcScope is
+          // shared across all slots for the partition, so a cross-slot ref *can* resolve — but only
+          // when the partition happens to contain a cell of the referenced slot; when it doesn't, the
+          // value is absent from the scope and arithmetic produces NaN → NON_FINITE_QUANTITY. That
+          // conditional satisfiability is exactly the kind of fragile dependency a formula author
+          // should not rely on, so we reject cross-slot refs at both grains at publish time.
           const refSlot = idToSlot.get(refId);
           if (refSlot !== undefined && refSlot !== slotCode) {
-            errors.push(`formula "${id}": calc.${refId} is a cross-slot reference (this slot: ${slotCode}, ref slot: ${refSlot}) — calc.* scope is per-slot at runtime`);
+            errors.push(`formula "${id}": calc.${refId} is a cross-slot reference (this slot: ${slotCode}, ref slot: ${refSlot}) — cross-slot refs are impossible at CELL grain and only conditionally satisfiable at PARTITION grain`);
           }
         }
       }
