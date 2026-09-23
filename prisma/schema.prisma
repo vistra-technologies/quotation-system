@@ -33,7 +33,7 @@ model Organization {
   externalCompanies ExternalCompany[]
   users             User[]
   // Stage 3 relations
-  catalogItems      CatalogItem[]
+  inventoryItems    InventoryItem[]
   itemPrices        ItemPrice[]
   // Stage 5 relations
   componentCategories ComponentCategory[]
@@ -235,46 +235,50 @@ model ExternalCompany {
 // Domain models — Stage 3: catalog items and pricing
 // ────────────────────────────────────────────────────────────
 
-// Master catalog definitions behind every design option.
+// Inventory item definitions behind every design option (renamed from CatalogItem in Stage 24 Batch 1).
 // category is a plain String (not enum) — open-ended list per data-model.md.
 // attributes is untyped JSONB in Stage 3; typed contract deferred.
+// perUnitQuantity: how many natural units one "counted" unit represents (e.g. 1 box = 50 screws);
+//   formula engine divides required quantity by this value to get order quantity. Must be > 0.
 // See design-docs/04-data-model.md — Catalog & pricing.
-model CatalogItem {
-  id             String       @id @default(uuid())
-  organizationId String
-  category       String       // WALL_TYPE | GLASS | DOOR_TYPE | PROFILE_STOP | FRAME |
-                              // HINGE | LOCKBOX | HANDLE | SEAL | RUBBER | FITTING | SCREW | …
-  code           String
-  name           String
-  unitOfMeasure  String
-  attributes     Json         // untyped JSONB — typed contract deferred to a later stage
-  active         Boolean      @default(true)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+model InventoryItem {
+  id               String       @id @default(uuid())
+  organizationId   String
+  category         String       // WALL_TYPE | GLASS | DOOR_TYPE | PROFILE_STOP | FRAME |
+                                // HINGE | LOCKBOX | HANDLE | SEAL | RUBBER | FITTING | SCREW | …
+  code             String
+  name             String
+  measurementUnit  String
+  perUnitQuantity  Decimal      @default(1)
+  attributes       Json         // untyped JSONB — typed contract deferred to a later stage
+  active           Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   organization   Organization @relation(fields: [organizationId], references: [id])
   prices         ItemPrice[]
 
   // Upsert key for seed idempotency
   @@unique([organizationId, code])
+  @@index([organizationId, active])
 }
 
-// Per-currency price for one catalog item within one org.
-// Unique on (catalogItemId, currency) — one price per item per currency.
+// Per-currency price for one inventory item within one org.
+// Unique on (inventoryItemId, currency) — one price per item per currency.
 // See design-docs/04-data-model.md — ItemPrice notes.
 model ItemPrice {
-  id             String      @id @default(uuid())
-  organizationId String
-  catalogItemId  String
-  currency       String      // ISO code, e.g. "AED", "USD"
-  price          Decimal
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  id              String        @id @default(uuid())
+  organizationId  String
+  inventoryItemId String
+  currency        String        // ISO code, e.g. "AED", "USD"
+  price           Decimal
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
-  organization   Organization @relation(fields: [organizationId], references: [id])
-  catalogItem    CatalogItem  @relation(fields: [catalogItemId], references: [id], onDelete: Cascade)
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  inventoryItem  InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
 
-  @@unique([catalogItemId, currency])
+  @@unique([inventoryItemId, currency])
 }
 
 // ────────────────────────────────────────────────────────────
@@ -649,10 +653,12 @@ model FormulaSet {
 // buildSummary() from the project's frozen configSnapshot + design tree +
 // Selections, resolved through the pinned FormulaSet's slots. Deleted and
 // recomputed (never patched) whenever the design changes underneath it —
-// see lib/data's invalidateProjectCalculation() call sites. materialList is
-// always `[]` this stage (D-37, no evaluator yet). onDelete: Cascade from
-// both Project and Organization; Restrict from FormulaSet (a set can't be
-// deleted while any calculation still references it).
+// see lib/data's invalidateProjectCalculation() call sites. materialByRoom
+// is a per-room material breakdown (added Stage 24 Batch 1; populated by
+// the evaluator in Batch 5); always omitted from reads via the global PrismaClient
+// omit in lib/prisma.ts. onDelete: Cascade from both Project and Organization;
+// Restrict from FormulaSet (a set can't be deleted while any calculation
+// still references it).
 // See design-docs/04-data-model.md — ProjectCalculation.
 model ProjectCalculation {
   id             String       @id @default(uuid())
@@ -667,6 +673,7 @@ model ProjectCalculation {
   errorDetail    String?
   summary        Json
   materialList   Json         @default("[]")
+  materialByRoom Json         @default("[]")
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 

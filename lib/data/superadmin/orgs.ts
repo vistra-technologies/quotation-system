@@ -346,7 +346,7 @@ export type DeleteOrgResult =
  * Deletes every organizationId-scoped table in FK-safe order inside a single
  * $transaction, then deletes the Organization row itself. Session and Account
  * rows cascade automatically from User (onDelete: Cascade declared on both).
- * ItemPrice rows cascade from CatalogItem but are deleted explicitly for
+ * ItemPrice rows cascade from InventoryItem but are deleted explicitly for
  * clarity. SuperAdminAuditLog is untouched — targetId is polymorphic with no
  * FK to Organization, so the permanent audit trail survives the deletion.
  *
@@ -431,11 +431,11 @@ export async function deleteOrganization(
       // 6. Inquiry — references User (createdByUserId), ExternalCompany
       await tx.inquiry.deleteMany({ where: { organizationId: orgId } });
 
-      // 7. ItemPrice — references CatalogItem (also cascades, but explicit for clarity)
+      // 7. ItemPrice — references InventoryItem (also cascades, but explicit for clarity)
       await tx.itemPrice.deleteMany({ where: { organizationId: orgId } });
 
-      // 8. CatalogItem
-      await tx.catalogItem.deleteMany({ where: { organizationId: orgId } });
+      // 8. InventoryItem (renamed from CatalogItem in Stage 24 Batch 1)
+      await tx.inventoryItem.deleteMany({ where: { organizationId: orgId } });
 
       // 9a. ComponentTypeOrgConfig — references ComponentType (FK RESTRICT); must precede it.
       //     Stage 20 Batch 1: new table — easy to forget in cascade deletes, so called out

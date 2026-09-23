@@ -20,7 +20,7 @@ interface CatalogItemRow {
   category: string;
   code: string;
   name: string;
-  unitOfMeasure: string;
+  measurementUnit: string;
   prices: ItemPriceRow[];
 }
 
@@ -113,7 +113,7 @@ export default async function PricingPage({
                     {item.name}
                   </td>
                   <td className="px-5 py-4 text-text-body">
-                    {item.unitOfMeasure}
+                    {item.measurementUnit}
                   </td>
                   <td className="px-5 py-4 text-text-body">
                     {item.prices.length === 0 ? (

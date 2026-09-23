@@ -21,7 +21,7 @@ interface CatalogItemDetail {
   category: string;
   code: string;
   name: string;
-  unitOfMeasure: string;
+  measurementUnit: string;
   prices: ItemPriceRow[];
 }
 
@@ -109,7 +109,7 @@ export default async function PricingItemPage({
           <div className="flex justify-between gap-4">
             <dt className="text-text-muted">{t("colUOM")}</dt>
             <dd className="font-semibold text-text-heading">
-              {item.unitOfMeasure}
+              {item.measurementUnit}
             </dd>
           </div>
         </dl>

@@ -117,7 +117,7 @@ export async function POST(
  * routing clarity; the actual tenancy guard is enforced by deleteItemPrice()
  * via itemPrice.organizationId === session.organizationId (defense in depth).
  *
- * Returns 200 with { catalogItemId } on success (same as the DAL return shape,
+ * Returns 200 with { inventoryItemId } on success (same as the DAL return shape,
  * lets callers revalidate the right item-detail page without a second lookup).
  * Returns 400 on missing priceId in body.
  * Returns 403 if the session role lacks MANAGE_PRICING.
@@ -171,8 +171,8 @@ export async function DELETE(
   }
 
   try {
-    const { catalogItemId } = await deleteItemPrice(session, priceId);
-    return NextResponse.json({ catalogItemId });
+    const { inventoryItemId } = await deleteItemPrice(session, priceId);
+    return NextResponse.json({ inventoryItemId });
   } catch (err) {
     if (err instanceof Error && err.message.includes("not found")) {
       return apiNotFound(err.message);

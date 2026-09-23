@@ -4,11 +4,11 @@ import type { SessionData } from "@/lib/session";
 // ─── Reads ───────────────────────────────────────────────────────────────────
 
 /**
- * List active catalog items for the session org, with their prices.
+ * List active inventory items for the session org, with their prices.
  * Ordered category → code, then prices by currency within each item.
  */
 export async function listCatalogItems(session: SessionData) {
-  return prisma.catalogItem.findMany({
+  return prisma.inventoryItem.findMany({
     where: { organizationId: session.organizationId, active: true },
     include: { prices: { orderBy: { currency: "asc" } } },
     orderBy: [{ category: "asc" }, { code: "asc" }],
@@ -16,11 +16,11 @@ export async function listCatalogItems(session: SessionData) {
 }
 
 /**
- * Get one catalog item with prices, org-scoped (tenancy guard).
+ * Get one inventory item with prices, org-scoped (tenancy guard).
  * Returns null if not found or if it belongs to a different org.
  */
 export async function getCatalogItemById(session: SessionData, itemId: string) {
-  return prisma.catalogItem.findFirst({
+  return prisma.inventoryItem.findFirst({
     where: { id: itemId, organizationId: session.organizationId },
     include: { prices: { orderBy: { currency: "asc" } } },
   });
@@ -29,14 +29,14 @@ export async function getCatalogItemById(session: SessionData, itemId: string) {
 // ─── Mutations ───────────────────────────────────────────────────────────────
 
 /**
- * Tenancy guard: assert a CatalogItem belongs to the given org.
+ * Tenancy guard: assert an InventoryItem belongs to the given org.
  * Throws a generic error on failure to prevent enumeration of other orgs' items.
  */
 export async function assertCatalogItemInOrg(
   itemId: string,
   organizationId: string,
 ): Promise<void> {
-  const item = await prisma.catalogItem.findFirst({
+  const item = await prisma.inventoryItem.findFirst({
     where: { id: itemId, organizationId },
     select: { id: true },
   });
@@ -44,8 +44,8 @@ export async function assertCatalogItemInOrg(
 }
 
 /**
- * Upsert (add or update) an ItemPrice for a CatalogItem + currency pair.
- * Tenancy guard: verifies the CatalogItem belongs to the session org before writing.
+ * Upsert (add or update) an ItemPrice for an InventoryItem + currency pair.
+ * Tenancy guard: verifies the InventoryItem belongs to the session org before writing.
  */
 export async function upsertItemPrice(
   session: SessionData,
@@ -56,12 +56,12 @@ export async function upsertItemPrice(
   await assertCatalogItemInOrg(itemId, session.organizationId);
   await prisma.itemPrice.upsert({
     where: {
-      catalogItemId_currency: { catalogItemId: itemId, currency },
+      inventoryItemId_currency: { inventoryItemId: itemId, currency },
     },
     update: { price: price.toFixed(2), organizationId: session.organizationId },
     create: {
       organizationId: session.organizationId,
-      catalogItemId: itemId,
+      inventoryItemId: itemId,
       currency,
       price: price.toFixed(2),
     },
@@ -71,17 +71,17 @@ export async function upsertItemPrice(
 /**
  * Delete a single ItemPrice row.
  * Tenancy guard: verifies the ItemPrice belongs to the session org before deleting.
- * Returns the catalogItemId so the caller can revalidate the correct item page.
+ * Returns the inventoryItemId so the caller can revalidate the correct item page.
  */
 export async function deleteItemPrice(
   session: SessionData,
   itemPriceId: string,
-): Promise<{ catalogItemId: string }> {
+): Promise<{ inventoryItemId: string }> {
   const existing = await prisma.itemPrice.findFirst({
     where: { id: itemPriceId, organizationId: session.organizationId },
-    select: { id: true, catalogItemId: true },
+    select: { id: true, inventoryItemId: true },
   });
   if (!existing) throw new Error("ItemPrice not found or access denied");
   await prisma.itemPrice.delete({ where: { id: itemPriceId } });
-  return { catalogItemId: existing.catalogItemId };
+  return { inventoryItemId: existing.inventoryItemId };
 }
