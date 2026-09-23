@@ -181,6 +181,40 @@ describe("ProblemCollector — scope-aware dedupe key (Batch 5)", () => {
   });
 });
 
+describe("CalculationProblemReport.error field (IMPORTANT-2 — review-b5-1)", () => {
+  test("report() with a single problem sets error to that problem's message", () => {
+    const c = new ProblemCollector();
+    c.add({ kind: "CELL_UNASSIGNED", scope: "DESIGN", message: "Partition P1: design has not been started" });
+    const r = c.report();
+    assert.equal(r.error, "Partition P1: design has not been started");
+  });
+
+  test("report() with two problems sets error to first message + '(and 1 more)'", () => {
+    const c = new ProblemCollector();
+    c.add({ kind: "CELL_UNASSIGNED", scope: "DESIGN", message: "First problem", locus: { partitionId: "p1", sectionIndex: 0, cellIndex: 0 } });
+    c.add({ kind: "CELL_UNASSIGNED", scope: "DESIGN", message: "Second problem", locus: { partitionId: "p2", sectionIndex: 0, cellIndex: 0 } });
+    const r = c.report();
+    // Sort: both DESIGN scope, CELL_UNASSIGNED kind — insertion order preserved.
+    assert.ok(r.error.endsWith("(and 1 more)"), `error should end with '(and 1 more)': ${r.error}`);
+    assert.ok(r.error.length > "(and 1 more)".length, "error should include the first problem message");
+  });
+
+  test("report() with three problems sets error to first message + '(and 2 more)'", () => {
+    const c = new ProblemCollector();
+    c.add({ kind: "CELL_UNASSIGNED", scope: "DESIGN", message: "Msg A", locus: { partitionId: "p1", sectionIndex: 0, cellIndex: 0 } });
+    c.add({ kind: "CELL_UNASSIGNED", scope: "DESIGN", message: "Msg B", locus: { partitionId: "p2", sectionIndex: 0, cellIndex: 0 } });
+    c.add({ kind: "CELL_UNASSIGNED", scope: "DESIGN", message: "Msg C", locus: { partitionId: "p3", sectionIndex: 0, cellIndex: 0 } });
+    const r = c.report();
+    assert.ok(r.error.includes("(and 2 more)"), `error should include '(and 2 more)': ${r.error}`);
+  });
+
+  test("report() on an empty collector produces error: ''", () => {
+    const c = new ProblemCollector();
+    const r = c.report();
+    assert.equal(r.error, "");
+  });
+});
+
 describe("ProblemCollector — sort order", () => {
   test("shuffled input → report().problems sorted by scope (DESIGN < SELECTION < INVENTORY < FORMULA_SET), then kind", () => {
     const c = new ProblemCollector();

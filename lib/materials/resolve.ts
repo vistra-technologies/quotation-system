@@ -141,7 +141,23 @@ export function resolveAndAggregate(
       continue;
     }
 
-    // Step 2e: success — ceil() applied ONCE here on the project total
+    // Step 2e: guard against bad inventory data — perUnitQuantity must be a positive number.
+    // Division by 0 → Infinity (JSON serialises as null); negative → nonsense quantity.
+    // Not reachable through the current seed or UI (no inventory admin exists yet), but
+    // a future bad import would silently produce wrong numbers without this check.
+    if (!(item.perUnitQuantity > 0)) {
+      collector.add({
+        kind: "NON_FINITE_QUANTITY",
+        scope: "INVENTORY",
+        message: `Inventory item "${code}" has invalid perUnitQuantity (${item.perUnitQuantity}) — must be > 0`,
+        code,
+        occurrences: buildOccurrences(),
+        occurrenceCount: lineCount,
+      });
+      continue;
+    }
+
+    // Step 2f: success — ceil() applied ONCE here on the project total
     const quantity = Math.ceil(requirement / item.perUnitQuantity);
     const slotArr = Array.from(slots);
     materialList.push({

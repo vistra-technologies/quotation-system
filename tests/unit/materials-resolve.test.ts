@@ -283,3 +283,41 @@ describe("resolveAndAggregate — edge cases", () => {
     assert.equal(result[0].name, "U-Profile 80mm");
   });
 });
+
+describe("resolveAndAggregate — perUnitQuantity guard (MINOR-1 — review-b5-1)", () => {
+  // perUnitQuantity of 0 would produce Infinity (stored as null in JSON).
+  // Negative would produce a nonsense negative quantity. Both are guarded since Batch 5 fix round.
+
+  test("perUnitQuantity = 0 → NON_FINITE_QUANTITY problem emitted, no resolved line", () => {
+    const inv = makeInventoryMap([["BAD-ITEM", { perUnitQuantity: 0, measurementUnit: "metres" }]]);
+    const lines = [makeLine({ code: "BAD-ITEM", unit: "metres", requirement: 5 })];
+    const c = new ProblemCollector();
+    const result = resolveAndAggregate(lines, inv, c, emptyLabels, emptyLabels);
+    assert.equal(result.length, 0, "no resolved line should be written");
+    const r = c.report();
+    assert.equal(r.problems.length, 1);
+    assert.equal(r.problems[0].kind, "NON_FINITE_QUANTITY");
+    assert.equal(r.problems[0].scope, "INVENTORY");
+    assert.equal(r.problems[0].code, "BAD-ITEM");
+  });
+
+  test("perUnitQuantity < 0 (negative) → NON_FINITE_QUANTITY problem emitted, no resolved line", () => {
+    const inv = makeInventoryMap([["BAD-NEG", { perUnitQuantity: -3, measurementUnit: "metres" }]]);
+    const lines = [makeLine({ code: "BAD-NEG", unit: "metres", requirement: 5 })];
+    const c = new ProblemCollector();
+    const result = resolveAndAggregate(lines, inv, c, emptyLabels, emptyLabels);
+    assert.equal(result.length, 0, "no resolved line should be written");
+    const r = c.report();
+    assert.equal(r.problems[0].kind, "NON_FINITE_QUANTITY");
+  });
+
+  test("perUnitQuantity = 0.001 (positive but tiny) → resolved correctly", () => {
+    const inv = makeInventoryMap([["TINY-UNIT", { perUnitQuantity: 0.001, measurementUnit: "metres" }]]);
+    const lines = [makeLine({ code: "TINY-UNIT", unit: "metres", requirement: 0.005 })];
+    const c = new ProblemCollector();
+    const result = resolveAndAggregate(lines, inv, c, emptyLabels, emptyLabels);
+    assert.equal(c.hasAny(), false);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].quantity, Math.ceil(0.005 / 0.001)); // 5
+  });
+});

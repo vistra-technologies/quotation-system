@@ -5,8 +5,8 @@
  * reaches the builder from a normal submit and surfaces as an opaque FAILED (review-4 carry-forward (b)).
  *
  * Stage 24 Batch 5: adds `runPhaseA()` — the new ProblemCollector-based structural check that replaces
- * `checkDesignReadyForSubmit` in the submit/recompute pipeline. `checkDesignReadyForSubmit` is kept for
- * any callers outside `projects.ts`. Also extends `writeCalculation()` to accept `materialList` and
+ * `checkDesignReadyForSubmit` in the submit/recompute pipeline. `checkDesignReadyForSubmit` and its
+ * `DesignCheckViolation` type were removed in the Batch 5 fix round (MINOR-2 — no callers). Also extends `writeCalculation()` to accept `materialList` and
  * `materialByRoom` explicitly (D-E — fixes the Batch 1 review-2 MINOR #4 materialByRoom stale-on-upsert).
  * Adds `roomTopology` to `CalculationLoad` and extends the room query to select `isClosed`/`sides`.
  *
@@ -152,80 +152,6 @@ export async function loadCalculationInput(
     },
     roomTopology,
   };
-}
-
-// ─── 13b — submit-time data check (runs BEFORE buildSummary) ────────────────
-
-export interface DesignCheckViolation {
-  partitionId: string;
-  partitionLabel: string;
-  cellId?: string;
-  message: string;
-}
-
-/**
- * Every cell in every partition's design must have a non-null, non-blank `selectionId` that resolves to a
- * loaded Selection of this project. A partition with no design started (`design` null, or no `sections[]`)
- * is reported the same way — this is what stops a null design from ever reaching `buildSummary()` on a
- * normal submit (worklog review-4 carry-forward (b)). Returns `[]` when everything is ready. Pure — no
- * Prisma, takes the already-loaded `SummaryInput` shape.
- *
- * @deprecated Use `runPhaseA()` for the submit/recompute pipeline (Stage 24 Batch 5). This function is
- * kept for any callers outside `lib/data/projects.ts`.
- */
-export function checkDesignReadyForSubmit(
-  floors: SummaryInput["floors"],
-  selectionIds: ReadonlySet<string>,
-): DesignCheckViolation[] {
-  const violations: DesignCheckViolation[] = [];
-
-  for (const floor of floors) {
-    for (const room of floor.rooms) {
-      for (const partition of room.partitions) {
-        const design = partition.design;
-        const sections = isRecord(design) && Array.isArray(design.sections) ? design.sections : null;
-        if (!sections || sections.length === 0) {
-          violations.push({
-            partitionId: partition.id,
-            partitionLabel: partition.label,
-            message: `partition "${partition.label}" (${partition.id}): design has not been started`,
-          });
-          continue;
-        }
-        for (const section of sections) {
-          if (!isRecord(section) || !Array.isArray(section.cells)) {
-            violations.push({
-              partitionId: partition.id,
-              partitionLabel: partition.label,
-              message: `partition "${partition.label}" (${partition.id}): design is malformed`,
-            });
-            continue;
-          }
-          for (const cell of section.cells) {
-            const cellId = isRecord(cell) && typeof cell.id === "string" ? cell.id : "?";
-            const selectionId = isRecord(cell) ? cell.selectionId : undefined;
-            if (typeof selectionId !== "string" || selectionId === "") {
-              violations.push({
-                partitionId: partition.id,
-                partitionLabel: partition.label,
-                cellId,
-                message: `partition "${partition.label}" (${partition.id}), cell ${cellId}: no selection assigned`,
-              });
-            } else if (!selectionIds.has(selectionId)) {
-              violations.push({
-                partitionId: partition.id,
-                partitionLabel: partition.label,
-                cellId,
-                message: `partition "${partition.label}" (${partition.id}), cell ${cellId}: selection ${selectionId} does not resolve within this project`,
-              });
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return violations;
 }
 
 // ─── Phase A — structural check (Stage 24 Batch 5) ──────────────────────────

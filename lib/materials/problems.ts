@@ -63,6 +63,13 @@ export interface CalculationProblemReport {
   problems: CalculationProblem[];
   /** problems.length — carried explicitly so a caller need not deserialize the array to count. */
   problemCount: number;
+  /**
+   * Human-readable summary for the first problem, with a count if there are more.
+   * Format: "<first problem message>" or "<first problem message> (and N more)".
+   * Empty string only when there are no problems (should not occur in practice — the report is
+   * only returned when hasAny() is true, but the field is always present for type safety).
+   */
+  error: string;
 }
 
 /** Maximum occurrence entries stored per deduplicated problem (formula-engine.md §8.3). */
@@ -168,6 +175,10 @@ export class ProblemCollector {
         return a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0;
       });
 
-    return { ok: false, problems, problemCount: problems.length };
+    const error =
+      problems.length > 0
+        ? `${problems[0].message}${problems.length > 1 ? ` (and ${problems.length - 1} more)` : ""}`
+        : "";
+    return { ok: false, problems, problemCount: problems.length, error };
   }
 }

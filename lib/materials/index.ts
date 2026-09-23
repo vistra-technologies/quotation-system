@@ -129,11 +129,14 @@ export function buildMaterials(input: MaterialsInput): MaterialsResult {
   }
 
   // ── v1 fast-path: no formulas — return immediately ───────────────────────────
+  // byRoom is [] (not per-room empty entries) to match Stage 23's exact prior behavior:
+  // v1 sets always wrote materialByRoom: [] — the column default is '[]', so the written
+  // value must be identical (formula-engine.md + stage-24.md step 6: "v1 must be byte-identical").
   const isV1 = !formulaSetBody.schemaVersion || formulaSetBody.schemaVersion === 1;
   if (isV1) {
     return {
       rawLines: [],
-      byRoom: allRooms.map(r => ({ roomId: r.id, roomLabel: r.label, lines: [] })),
+      byRoom: [],
       collector: new ProblemCollector(),
     };
   }

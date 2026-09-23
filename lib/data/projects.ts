@@ -558,11 +558,19 @@ export async function submitDesign(
     // ── Phase B (material) ──────────────────────────────────────────────────
     const result = buildSummary(loaded.input);
     if (result.status === "FAILED") {
-      // Unexpected: Phase A passed but buildSummary still failed. No FAILED row is written
-      // post-Stage-24 (§8.2). Throw → 500.
-      throw new Error(
-        `buildSummary failed unexpectedly after Phase A: ${result.errorDetail ?? "unknown"}`,
-      );
+      // buildSummary can fail on semantic errors Phase A cannot detect:
+      //   • a blank required summary field (e.g. GLASS.glassType) on a Selection
+      //   • a ComponentType whose code has no slot in the pinned formula set
+      // These are user-data problems, not internal bugs. Route through the 422 envelope
+      // (MISSING_PARAM, SELECTION scope) so the UI shows the actual reason. The throw-as-500
+      // backstop in catch() below still covers any genuinely unexpected errors.
+      const failedCollector = new ProblemCollector();
+      failedCollector.add({
+        kind: "MISSING_PARAM",
+        scope: "SELECTION",
+        message: result.errorDetail ?? "Design summary could not be built — a required field or slot is missing",
+      });
+      return { calculationRefused: failedCollector.report() }; // ← exit 2a: nothing written
     }
 
     const roomLabels = new Map<string, string>();
@@ -572,7 +580,7 @@ export async function submitDesign(
     const materialList = resolveAndAggregate(rawLines, inventoryMap, collector, roomLabels, partitionLabels);
 
     if (collector.hasAny()) {
-      return { calculationRefused: collector.report() }; // ← exit 2: nothing written
+      return { calculationRefused: collector.report() }; // ← exit 2b: nothing written
     }
 
     // ── Write (exactly one path — only reachable when both collectors are empty) ──
@@ -668,10 +676,15 @@ export async function recomputeProject(
     // ── Phase B (material) ──────────────────────────────────────────────────
     const result = buildSummary(loaded.input);
     if (result.status === "FAILED") {
-      // Unexpected: Phase A passed but buildSummary still failed. No write. Throw → 500.
-      throw new Error(
-        `buildSummary failed unexpectedly after Phase A: ${result.errorDetail ?? "unknown"}`,
-      );
+      // Same semantic-error cases as submitDesign — route through 422 envelope, no write.
+      // The stored row is left UNTOUCHED (satisfies G-3 for recompute).
+      const failedCollector = new ProblemCollector();
+      failedCollector.add({
+        kind: "MISSING_PARAM",
+        scope: "SELECTION",
+        message: result.errorDetail ?? "Design summary could not be built — a required field or slot is missing",
+      });
+      return { calculationRefused: failedCollector.report() }; // ← exit 2a: stored row UNTOUCHED
     }
 
     const roomLabels = new Map<string, string>();
@@ -681,7 +694,7 @@ export async function recomputeProject(
     const materialList = resolveAndAggregate(rawLines, inventoryMap, collector, roomLabels, partitionLabels);
 
     if (collector.hasAny()) {
-      return { calculationRefused: collector.report() }; // ← exit 2: stored row UNTOUCHED
+      return { calculationRefused: collector.report() }; // ← exit 2b: stored row UNTOUCHED
     }
 
     // ── Write (exactly one path — only reachable when both collectors are empty) ──
