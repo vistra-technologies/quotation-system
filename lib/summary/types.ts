@@ -7,14 +7,40 @@ import type { ConfigSnapshot } from "../config-snapshot";
 /** One slot of a FormulaSet body: classifies a ComponentType code and names its summary fields (D-24). */
 export interface FormulaSlot {
   role: string;
-  requiredParams?: string[];
+  /**
+   * fieldsSchema keys the formulas read as `param.*`. Object-array shape per formula-engine.md §2.
+   * `keysReferencedBySet()` in `lib/formula-compat.ts` tolerates both plain strings and `{ key }` at
+   * runtime (so Stage 23's seeded v1 document — which uses `[]` — still resolves cleanly); this type
+   * reflects the canonical shape for new documents.
+   */
+  requiredParams?: Array<{ key: string }>;
   /** role-param name (e.g. "glassType") -> the org's fieldsSchema key holding the value */
   summaryParams?: Record<string, string>;
 }
 
+/** One formula in a v2 FormulaSet body (formula-engine.md §2). */
+export interface FormulaDef {
+  /** camelCase, unique within the set — must parse as `calc.<id>` member access. */
+  id: string;
+  /** ComponentType.code whose Selection config supplies `param.*`. */
+  slot: string;
+  grain: "CELL" | "PARTITION" | "ROOM_SIDE" | "ROOM_JUNCTION";
+  /** expr-eval expression; absent = always fires. */
+  condition?: string;
+  /** `{param.x}` — plain string substitution, never expr-eval. */
+  materialCode: string;
+  /** "metres" | "pieces" — hard-matched against InventoryItem.measurementUnit. */
+  unit: string;
+  /** expr-eval expression. */
+  quantity: string;
+}
+
 export interface FormulaSetBody {
+  /** 1 = slots-only (Stage 23). 2 = slots + formulas. Absent means 1. */
+  schemaVersion?: 1 | 2;
   slots: Record<string, FormulaSlot>;
-  formulas?: unknown[];
+  /** Flat array; absent or `[]` in v1 documents. ARRAY ORDER IS EVALUATION ORDER. */
+  formulas?: FormulaDef[];
 }
 
 export interface SummaryInput {
@@ -91,10 +117,39 @@ export interface Summary {
   kpis: SummaryKpis;
 }
 
+/**
+ * One resolved, code-deduped material line in the computed material list (formula-engine.md §8).
+ * No `status` field and no `MaterialLineStatus` type — see §8 and decision 10.
+ */
+export interface MaterialListLine {
+  /** Always a real, resolved InventoryItem code — never blank, never null. */
+  code: string;
+  /** Resolved InventoryItem.name, frozen at computedAt. */
+  name: string;
+  /**
+   * ComponentType.code (slot) whose formula produced this line. `string[]` when two slots contribute
+   * to the same code (merged, correctly-summed requirement).
+   */
+  slot: string | string[];
+  unit: string;
+  /** Project total; 3 dp for metres. */
+  requirement: number;
+  perUnitQuantity: number;
+  /** ceil(requirement / perUnitQuantity). */
+  quantity: number;
+}
+
+/** Per-room material breakdown stored in ProjectCalculation.materialByRoom (formula-engine.md §8). */
+export interface MaterialByRoomEntry {
+  roomId: string;
+  roomLabel: string;
+  lines: Array<{ code: string; unit: string; requirement: number }>;
+}
+
 export interface SummaryResult {
   status: "OK" | "FAILED";
   errorDetail?: string;
   summary: Summary;
-  /** Always [] this stage (D-37) so callers need no branch. */
-  materialList: [];
+  /** Empty in Stage 23 (D-37); populated by Stage 24's material-list engine. */
+  materialList: MaterialListLine[];
 }
