@@ -13,6 +13,8 @@
 import crypto from "node:crypto";
 import type { Prisma, PrismaClient } from "../app/generated/prisma/client";
 import glassPartitionStandardV1 from "./formula-sets/glass-partition-standard-v1.json";
+import cloisonsFormulaSetV1 from "./formula-sets/cloisons-formula-set-v1.json";
+import { validateFormulaSetBody } from "../lib/formula-set/validate";
 
 export interface FormulaSetDoc {
   name: string;
@@ -47,6 +49,16 @@ export function loadFormulaSetDocs(): FormulaSetDoc[] {
       // NOTE is documentation only — stripped before storage so `body` is exactly the engine's
       // consumable shape ({ slots, formulas }).
       body: { slots: glassPartitionStandardV1.slots, formulas: glassPartitionStandardV1.formulas },
+    },
+    {
+      name: "cloisons_formula_set",
+      version: 1,
+      // NOTE stripped — body is the engine's consumable shape ({ schemaVersion, slots, formulas }).
+      body: {
+        schemaVersion: 2,
+        slots: cloisonsFormulaSetV1.slots,
+        formulas: cloisonsFormulaSetV1.formulas,
+      },
     },
   ];
 }
@@ -90,6 +102,16 @@ export async function seedFormulaSets(
       }
       setIfHigher(byName, { id: existing.id, name: existing.name, version: existing.version });
       continue;
+    }
+
+    // Validate before storing — aborts the entire seed on failure so a bad transcription
+    // is caught immediately rather than silently stored as an unusable formula set.
+    const validation = validateFormulaSetBody(doc.body);
+    if (!validation.ok) {
+      throw new Error(
+        `FormulaSet ${doc.name}@${doc.version} failed validation:\n` +
+          validation.errors.join("\n"),
+      );
     }
 
     const created = await prisma.formulaSet.create({

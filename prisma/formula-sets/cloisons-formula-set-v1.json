@@ -1,0 +1,243 @@
+{
+  "NOTE": [
+    "Cloisons-specific formula set — Stage 24 Batch 3.",
+    "Org: cloisons. This set must NOT be assigned to other orgs (see plan-b3.md D-3 and D-4).",
+    "Corner-junction model (leftWallLike/rightWallLike/leftDegree/rightDegree) is an intermediate",
+    "solution, not yet verified against real cloisons output. Corrections ship as version 2.",
+    "See design-docs/formulas/cloisons/partition.md Open items #1."
+  ],
+  "slots": {
+    "GLASS": {
+      "role": "glass",
+      "summaryParams": {
+        "glassType": "glassType",
+        "thickness": "thickness"
+      },
+      "requiredParams": [
+        { "key": "u_profile" },
+        { "key": "i_profile" },
+        { "key": "l_profile" },
+        { "key": "acousticGasketCode" },
+        { "key": "whiteSealCode" },
+        { "key": "woodWedgeCode" },
+        { "key": "lConnectorCode" },
+        { "key": "degreeConnectorCode" },
+        { "key": "doorConnectorCode" },
+        { "key": "straightConnectorCode" }
+      ]
+    },
+    "DOOR": {
+      "role": "door",
+      "summaryParams": {
+        "category": "category",
+        "doorType": "doorType"
+      },
+      "requiredParams": [
+        { "key": "hasFrame" },
+        { "key": "hasLeaf" },
+        { "key": "frameCode" },
+        { "key": "leafCode" },
+        { "key": "cornerConnBigCode" },
+        { "key": "cornerConnSmallFrameCode" },
+        { "key": "cornerConnSmallLeafCode" },
+        { "key": "lAngleCode" },
+        { "key": "hingeCode" },
+        { "key": "rubber25mmCode" },
+        { "key": "frameBumperGasketCode" },
+        { "key": "frameBackGasketCode" },
+        { "key": "leafGlassGasket1Code" },
+        { "key": "leafGlassGasket2Code" }
+      ]
+    }
+  },
+  "formulas": [
+    {
+      "id": "doorFrame",
+      "slot": "DOOR",
+      "grain": "CELL",
+      "condition": "param.hasFrame == 'Yes'",
+      "materialCode": "{param.frameCode}",
+      "unit": "metres",
+      "quantity": "(cell.widthMm + 2*cell.heightMm) / 1000"
+    },
+    {
+      "id": "doorLeaf",
+      "slot": "DOOR",
+      "grain": "CELL",
+      "condition": "param.hasLeaf == 'Yes'",
+      "materialCode": "{param.leafCode}",
+      "unit": "metres",
+      "quantity": "(2*(cell.widthMm + cell.heightMm)) / 1000"
+    },
+    {
+      "id": "cornerConnBig",
+      "slot": "DOOR",
+      "grain": "CELL",
+      "condition": "param.hasLeaf == 'Yes'",
+      "materialCode": "{param.cornerConnBigCode}",
+      "unit": "pieces",
+      "quantity": "3"
+    },
+    {
+      "id": "cornerConnSmallFrame",
+      "slot": "DOOR",
+      "grain": "CELL",
+      "condition": "param.hasFrame == 'Yes'",
+      "materialCode": "{param.cornerConnSmallFrameCode}",
+      "unit": "pieces",
+      "quantity": "2"
+    },
+    {
+      "id": "cornerConnSmallLeaf",
+      "slot": "DOOR",
+      "grain": "CELL",
+      "condition": "param.hasLeaf == 'Yes'",
+      "materialCode": "{param.cornerConnSmallLeafCode}",
+      "unit": "pieces",
+      "quantity": "1"
+    },
+    {
+      "id": "lAngle",
+      "slot": "DOOR",
+      "grain": "CELL",
+      "condition": "param.hasFrame == 'Yes'",
+      "materialCode": "{param.lAngleCode}",
+      "unit": "pieces",
+      "quantity": "4"
+    },
+    {
+      "id": "hinges",
+      "slot": "DOOR",
+      "grain": "CELL",
+      "condition": "param.hasFrame == 'Yes'",
+      "materialCode": "{param.hingeCode}",
+      "unit": "pieces",
+      "quantity": "4"
+    },
+    {
+      "id": "rubber25mm",
+      "slot": "DOOR",
+      "grain": "CELL",
+      "condition": "param.hasFrame == 'Yes' or param.hasLeaf == 'Yes'",
+      "materialCode": "{param.rubber25mmCode}",
+      "unit": "metres",
+      "quantity": "(param.hasFrame == 'Yes' ? calc.doorFrame : 0) + (param.hasLeaf == 'Yes' ? calc.doorLeaf : 0)"
+    },
+    {
+      "id": "frameBumperGasket",
+      "slot": "DOOR",
+      "grain": "CELL",
+      "condition": "param.hasFrame == 'Yes'",
+      "materialCode": "{param.frameBumperGasketCode}",
+      "unit": "metres",
+      "quantity": "calc.doorFrame"
+    },
+    {
+      "id": "frameBackGasket",
+      "slot": "DOOR",
+      "grain": "CELL",
+      "condition": "param.hasFrame == 'Yes'",
+      "materialCode": "{param.frameBackGasketCode}",
+      "unit": "metres",
+      "quantity": "(cell.heightMm * 4) / 1000"
+    },
+    {
+      "id": "leafGlassGasket1",
+      "slot": "DOOR",
+      "grain": "CELL",
+      "condition": "param.hasLeaf == 'Yes'",
+      "materialCode": "{param.leafGlassGasket1Code}",
+      "unit": "metres",
+      "quantity": "calc.doorLeaf"
+    },
+    {
+      "id": "leafGlassGasket2",
+      "slot": "DOOR",
+      "grain": "CELL",
+      "condition": "param.hasLeaf == 'Yes'",
+      "materialCode": "{param.leafGlassGasket2Code}",
+      "unit": "metres",
+      "quantity": "calc.doorLeaf"
+    },
+    {
+      "id": "profileU",
+      "slot": "GLASS",
+      "grain": "PARTITION",
+      "materialCode": "{param.u_profile}",
+      "unit": "metres",
+      "quantity": "(partition.widthMm - partition.doorWidthMmFullHeight) / 1000"
+    },
+    {
+      "id": "profileL",
+      "slot": "GLASS",
+      "grain": "PARTITION",
+      "materialCode": "{param.l_profile}",
+      "unit": "metres",
+      "quantity": "(partition.widthMm + partition.heightMm*(partition.leftWallLike + partition.rightWallLike) - partition.doorWidthMmFullHeight) / 1000"
+    },
+    {
+      "id": "profileI",
+      "slot": "GLASS",
+      "grain": "PARTITION",
+      "materialCode": "{param.i_profile}",
+      "unit": "metres",
+      "quantity": "(partition.widthMm + partition.heightMm*(partition.leftWallLike + partition.rightWallLike) - partition.doorWidthMmFullHeight) / 1000"
+    },
+    {
+      "id": "acousticGasket",
+      "slot": "GLASS",
+      "grain": "PARTITION",
+      "materialCode": "{param.acousticGasketCode}",
+      "unit": "metres",
+      "quantity": "2*calc.profileU + calc.profileL + calc.profileI"
+    },
+    {
+      "id": "whiteSeal",
+      "slot": "GLASS",
+      "grain": "PARTITION",
+      "materialCode": "{param.whiteSealCode}",
+      "unit": "metres",
+      "quantity": "calc.profileU + calc.profileL"
+    },
+    {
+      "id": "woodWedge",
+      "slot": "GLASS",
+      "grain": "PARTITION",
+      "materialCode": "{param.woodWedgeCode}",
+      "unit": "metres",
+      "quantity": "(partition.widthMm / 1000) * 2"
+    },
+    {
+      "id": "lConnector",
+      "slot": "GLASS",
+      "grain": "PARTITION",
+      "materialCode": "{param.lConnectorCode}",
+      "unit": "pieces",
+      "quantity": "2*partition.leftWallLike + 2*partition.rightWallLike"
+    },
+    {
+      "id": "degreeConnector",
+      "slot": "GLASS",
+      "grain": "PARTITION",
+      "materialCode": "{param.degreeConnectorCode}",
+      "unit": "pieces",
+      "quantity": "partition.leftDegree + partition.rightDegree"
+    },
+    {
+      "id": "doorConnector",
+      "slot": "GLASS",
+      "grain": "PARTITION",
+      "materialCode": "{param.doorConnectorCode}",
+      "unit": "pieces",
+      "quantity": "4 * partition.nonCornerDoorCount"
+    },
+    {
+      "id": "straightConnector",
+      "slot": "GLASS",
+      "grain": "PARTITION",
+      "materialCode": "{param.straightConnectorCode}",
+      "unit": "pieces",
+      "quantity": "2*(ceil(partition.heightMm/3000) - 1) + 2*(ceil(partition.widthMm/3000) - 1)"
+    }
+  ]
+}
