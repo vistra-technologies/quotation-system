@@ -63,23 +63,43 @@ export interface CalculationProblemReport {
   problems: CalculationProblem[];
   /** problems.length — carried explicitly so a caller need not deserialize the array to count. */
   problemCount: number;
+  /**
+   * Human-readable summary for the first problem, with a count if there are more.
+   * Format: "<first problem message>" or "<first problem message> (and N more)".
+   * Empty string only when there are no problems (should not occur in practice — the report is
+   * only returned when hasAny() is true, but the field is always present for type safety).
+   */
+  error: string;
 }
 
 /** Maximum occurrence entries stored per deduplicated problem (formula-engine.md §8.3). */
 const MAX_OCCURRENCES = 5;
 
 /**
- * Key for deduplication: kind + code + selectionId + fieldKey + formulaId.
+ * Scope-aware deduplication key (Batch 5 — review-b4-3 carry-forward).
  *
- * `formulaId` distinguishes two problems from _different_ formulas (e.g. two PARTITION-grain
- * NON_FINITE_QUANTITY problems — one for "profileL", one for "profileI" — that both carry no code /
- * selectionId / fieldKey). Without it they collapse to the same key and the second is silently dropped.
+ * DESIGN scope:         kind | partitionId | sectionIndex | cellIndex
+ *   — one problem per cell location; different cells must NOT collapse even if they share kind.
  *
- * For MISSING_PARAM and similar problems, cellBlankSeen / partitionBlankSeen already guarantee at most
- * one `add()` call per (selectionId, fieldKey) pair, so the extra segment doesn't change their behaviour.
+ * INVENTORY scope:      kind | code
+ *   — one problem per (kind, code) regardless of which formula or field produced it;
+ *     `occurrences[]` carries the per-location detail.
+ *   — omitting formulaId here prevents the same UNRESOLVED_CODE from appearing once per
+ *     formula, which was the review-b4-3 over-splitting concern.
+ *
+ * SELECTION / FORMULA_SET scope: kind | code | selectionId | fieldKey | formulaId
+ *   — unchanged from Batch 4; `formulaId` distinguishes two different PARTITION-grain
+ *     NON_FINITE_QUANTITY problems (e.g. "profileL" vs "profileI") that carry no code/field.
  */
 function dedupeKey(p: CalculationProblem): string {
-  return `${p.kind}|${p.code ?? ""}|${p.locus?.selectionId ?? ""}|${p.locus?.fieldKey ?? ""}|${p.locus?.formulaId ?? ""}`;
+  switch (p.scope) {
+    case "DESIGN":
+      return `${p.kind}|${p.locus?.partitionId ?? ""}|${p.locus?.sectionIndex ?? ""}|${p.locus?.cellIndex ?? ""}`;
+    case "INVENTORY":
+      return `${p.kind}|${p.code ?? ""}`;
+    default: // "SELECTION" | "FORMULA_SET"
+      return `${p.kind}|${p.code ?? ""}|${p.locus?.selectionId ?? ""}|${p.locus?.fieldKey ?? ""}|${p.locus?.formulaId ?? ""}`;
+  }
 }
 
 /**
@@ -92,7 +112,7 @@ export class ProblemCollector {
   private readonly _order: string[] = [];  // insertion order of first occurrence, for stable sort
 
   /**
-   * Accept a problem, deduplicating on (kind, code, selectionId, fieldKey, formulaId). Never throws.
+   * Accept a problem, deduplicating via the scope-aware `dedupeKey()` above. Never throws.
    *
    * `occurrenceCount` semantics:
    * - First `add()` initialises `occurrenceCount` to `problem.occurrenceCount ?? 1`, so a
@@ -155,6 +175,10 @@ export class ProblemCollector {
         return a.kind < b.kind ? -1 : a.kind > b.kind ? 1 : 0;
       });
 
-    return { ok: false, problems, problemCount: problems.length };
+    const error =
+      problems.length > 0
+        ? `${problems[0].message}${problems.length > 1 ? ` (and ${problems.length - 1} more)` : ""}`
+        : "";
+    return { ok: false, problems, problemCount: problems.length, error };
   }
 }

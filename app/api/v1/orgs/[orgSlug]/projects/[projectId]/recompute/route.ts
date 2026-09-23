@@ -16,17 +16,20 @@ export const dynamic = "force-dynamic";
 
 /**
  * Recompute a project's Summary (ProjectCalculation) — Stage 23 Batch 5, D-23. Re-runs the same
- * load-summary-write path as submit-design, but never touches `designSubmittedAt` and runs no 13b
- * preflight: an old null-selectionId cell still produces a written row (status FAILED, with errorDetail),
- * never a crash, never blocked.
+ * load-summary-write path as submit-design, but never touches `designSubmittedAt`.
+ *
+ * Stage 24 Batch 5: the same two-phase gate as submit-design now applies. If either phase emits
+ * problems, the stored calculation row is left UNTOUCHED (G-3 — recompute refusal is not an
+ * invalidation event). Returns 422 with a CalculationProblemReport body on refusal.
  *
  * Auth: any authenticated org member (matches the project GET/PATCH gates).
  * Tenancy: enforced by getApiSession() and recomputeProject() (org-scoped lookup).
  *
  * Returns 404 if the project does not exist or belongs to a different org.
- * Returns 409 if the project is not DRAFT, or if it has never been computed before (no `designSubmittedAt`
- * and no existing calculation — recompute is never the first computation), or if it has no formula set
- * pinned (defensive).
+ * Returns 409 if the project is not DRAFT, or if it has never been computed before, or if it has
+ *   no formula set pinned (defensive).
+ * Returns 422 (CalculationProblemReport body) if Phase A or Phase B has problems; stored row unchanged.
+ * Returns 200 { calculation } on success.
  */
 export async function POST(
   request: Request,
@@ -71,6 +74,11 @@ export async function POST(
       return apiConflict(
         "This organization has no active formula set pinned to this project.",
       );
+    }
+
+    if ("calculationRefused" in result) {
+      // 422 with the full CalculationProblemReport as the body. Stored row is unchanged.
+      return NextResponse.json(result.calculationRefused, { status: 422 });
     }
 
     return NextResponse.json({ calculation: result.calculation });

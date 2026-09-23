@@ -1,15 +1,20 @@
 import type { Prisma } from "@/app/generated/prisma/client";
 import {
-  checkDesignReadyForSubmit,
   loadCalculationInput,
+  runPhaseA,
   writeCalculation,
-  type DesignCheckViolation,
+  type CalculationLoad,
 } from "@/lib/data/calculations";
+import { loadInventoryMap } from "@/lib/data/inventory";
 import { loadConfigSnapshot } from "@/lib/config-snapshot";
 import { resolveFormulaSetPin } from "@/lib/data/formula-pin";
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
 import { buildSummary } from "@/lib/summary";
+import { buildMaterials, type MaterialsInput } from "@/lib/materials/index";
+import { resolveAndAggregate } from "@/lib/materials/resolve";
+import { ProblemCollector, type CalculationProblemReport } from "@/lib/materials/problems";
+import type { RoomSide } from "@/lib/data/rooms";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -432,40 +437,86 @@ export async function updateProject(
   return { project: updated };
 }
 
+// ─── buildMaterialsInput — local helper ────────────────────────────────────
+
 /**
- * Mark a Project's design as submitted — the gate that unlocks the Summary
- * and Quotation wizard steps (previously auto-unlocked at partitionCount>0;
- * now a deliberate action). Stage 23 Batch 5: also builds and writes the
- * project's ProjectCalculation (the Summary) in the same transaction as the
- * stamp — see stage-23.md Batch 5 steps 1-4.
+ * Build a `MaterialsInput` from a `CalculationLoad`, merging room topology (isClosed, sides)
+ * from `loaded.roomTopology` into the floors structure. Also populates `roomLabels` and
+ * `partitionLabels` maps (passed by reference — both maps are built as a side-effect here).
  *
- * Requires at least one Partition — submitting an empty design isn't
- * meaningful, and would leave Summary/Quotation unlocked with nothing to show.
+ * Pure function — no DB access, no Prisma.
+ */
+function buildMaterialsInputHelper(
+  loaded: CalculationLoad,
+  roomLabels: Map<string, string>,
+  partitionLabels: Map<string, string>,
+): MaterialsInput {
+  return {
+    formulaSetBody: loaded.input.formulaSetBody,
+    snapshot: loaded.input.snapshot,
+    floors: loaded.input.floors.map((f) => ({
+      id: f.id,
+      label: f.label,
+      rooms: f.rooms.map((r) => {
+        roomLabels.set(r.id, r.label);
+        const topo = loaded.roomTopology.get(r.id);
+        r.partitions.forEach((p) => partitionLabels.set(p.id, p.label));
+        return {
+          id: r.id,
+          label: r.label,
+          isClosed: topo?.isClosed ?? true,
+          // Cast: sides is Prisma.JsonValue at runtime but carries valid RoomSide[] data
+          // (app-code validated on write; schema guarantees the column is jsonb).
+          sides: (topo?.sides ?? []) as unknown as RoomSide[],
+          partitions: r.partitions.map((p) => ({
+            id: p.id,
+            label: p.label,
+            widthMm: p.widthMm,
+            heightMm: p.heightMm,
+            design: p.design,
+          })),
+        };
+      }),
+    })),
+    selections: loaded.input.selections.map((s) => ({
+      id: s.id,
+      componentTypeId: s.componentTypeId,
+      config: s.config,
+    })),
+  };
+}
+
+// ─── Submit Design ──────────────────────────────────────────────────────────
+
+/**
+ * Mark a Project's design as submitted — the gate that unlocks the Summary and Quotation wizard
+ * steps (previously auto-unlocked at partitionCount>0; now requires this explicit action).
  *
- * The 13b data check (every cell has a non-null selectionId resolving to a
- * live Selection) runs BEFORE buildSummary() — a null/incomplete design never
- * reaches the builder from here, so it can never surface as an opaque FAILED
- * (worklog review-4 carry-forward (b)). Two distinct "blocked" outcomes,
- * matching stage-23.md's step 2 vs step 4:
- *   - a 13b violation -> nothing is written -> { designIncomplete }
- *   - buildSummary() itself returns FAILED (13b passed, but e.g. a blank
- *     org-required field) -> the FAILED row IS written (with errorDetail),
- *     but designSubmittedAt is NOT set -> { buildFailed }
+ * Stage 23 Batch 5: also builds and writes the project's ProjectCalculation (Summary) in the same
+ * transaction as the stamp.
+ *
+ * Stage 24 Batch 5: the old `checkDesignReadyForSubmit` / `buildFailed` paths are replaced by a
+ * two-phase gate:
+ *   Phase A (runPhaseA) — structural: every cell must have a resolving Selection with a known
+ *     componentType. If any problem → return `calculationRefused`, nothing written.
+ *   Phase B — material: buildSummary + buildMaterials + resolveAndAggregate share one collector.
+ *     If any problem → return `calculationRefused`, nothing written.
+ *   Write — reached only when BOTH collectors are empty (exactly one call to writeCalculation).
+ *   An unexpected FAILED from buildSummary after Phase A passes → throws (→ 500, no write).
+ *
+ * Requires at least one Partition — submitting an empty design isn't meaningful.
  *
  * Returns null if the project doesn't exist or belongs to a different org.
  * Returns { noPartitions: true } if the project has zero Partitions.
- * Returns { noFormulaSet: true } if the project has no pinned formula set or
- * no frozen config snapshot (defensive — shouldn't happen post-creation-pin).
- * Returns { designIncomplete: DesignCheckViolation[] } on a 13b failure.
- * Returns { buildFailed: string } if buildSummary() itself returns FAILED.
+ * Returns { noFormulaSet: true } if the project has no pinned formula set or config snapshot.
+ * Returns { calculationRefused: CalculationProblemReport } if Phase A or Phase B has problems.
  * Returns { project } on success.
  */
 export type SubmitDesignResult =
   | null
   | { noPartitions: true }
   | { noFormulaSet: true }
-  | { designIncomplete: DesignCheckViolation[] }
-  | { buildFailed: string }
+  | { calculationRefused: CalculationProblemReport }
   | { project: { id: string; designSubmittedAt: Date | null } };
 
 export async function submitDesign(
@@ -490,24 +541,58 @@ export async function submitDesign(
       return { noFormulaSet: true as const };
     }
 
-    const violations = checkDesignReadyForSubmit(
+    const inventoryMap = await loadInventoryMap(tx, session.organizationId);
+
+    // ── Phase A (structural) ────────────────────────────────────────────────
+    const phaseACollector = new ProblemCollector();
+    runPhaseA(
       loaded.input.floors,
-      new Set(loaded.input.selections.map((s) => s.id)),
+      loaded.input.selections,
+      loaded.input.snapshot,
+      phaseACollector,
     );
-    if (violations.length > 0) {
-      return { designIncomplete: violations };
+    if (phaseACollector.hasAny()) {
+      return { calculationRefused: phaseACollector.report() }; // ← exit 1: nothing written
     }
 
+    // ── Phase B (material) ──────────────────────────────────────────────────
     const result = buildSummary(loaded.input);
     if (result.status === "FAILED") {
-      // 13b passed but the builder still failed on something 13b doesn't check (e.g. a blank
-      // org-required field). Still write the FAILED row (D-33-adjacent — same class of failure),
-      // but block the submit: no designSubmittedAt stamp.
-      await writeCalculation(tx, session.organizationId, projectId, loaded.project.formulaSetId, result);
-      return { buildFailed: result.errorDetail ?? "design could not be summarized" };
+      // buildSummary can fail on semantic errors Phase A cannot detect:
+      //   • a blank required summary field (e.g. GLASS.glassType) on a Selection
+      //   • a ComponentType whose code has no slot in the pinned formula set
+      // These are user-data problems, not internal bugs. Route through the 422 envelope
+      // (MISSING_PARAM, SELECTION scope) so the UI shows the actual reason. The throw-as-500
+      // backstop in catch() below still covers any genuinely unexpected errors.
+      const failedCollector = new ProblemCollector();
+      failedCollector.add({
+        kind: "MISSING_PARAM",
+        scope: "SELECTION",
+        message: result.errorDetail ?? "Design summary could not be built — a required field or slot is missing",
+      });
+      return { calculationRefused: failedCollector.report() }; // ← exit 2a: nothing written
     }
 
-    await writeCalculation(tx, session.organizationId, projectId, loaded.project.formulaSetId, result);
+    const roomLabels = new Map<string, string>();
+    const partitionLabels = new Map<string, string>();
+    const materialsInput = buildMaterialsInputHelper(loaded, roomLabels, partitionLabels);
+    const { rawLines, byRoom, collector } = buildMaterials(materialsInput);
+    const materialList = resolveAndAggregate(rawLines, inventoryMap, collector, roomLabels, partitionLabels);
+
+    if (collector.hasAny()) {
+      return { calculationRefused: collector.report() }; // ← exit 2b: nothing written
+    }
+
+    // ── Write (exactly one path — only reachable when both collectors are empty) ──
+    await writeCalculation(
+      tx,
+      session.organizationId,
+      projectId,
+      loaded.project.formulaSetId,
+      result,
+      materialList,
+      byRoom,
+    );
 
     const updated = await tx.project.update({
       where: { id: projectId },
@@ -524,15 +609,19 @@ export async function submitDesign(
  * load-summary-write path as submitDesign() but:
  *   - is gated to DRAFT projects that have EITHER a designSubmittedAt OR an existing calculation —
  *     recompute is never the FIRST computation (D-23);
- *   - runs NO 13b preflight — an old null-selectionId cell must produce a written FAILED row (with
- *     errorDetail), never a crash, never an "Unassigned" row (D-33);
  *   - never touches designSubmittedAt.
+ *
+ * Stage 24 Batch 5: same two-phase gate as submitDesign(). If either phase emits problems, the
+ * stored row is left UNTOUCHED (computedAt, materialList, materialByRoom, designSubmittedAt all
+ * unchanged). This satisfies G-3: a recompute refusal is NOT a D-17…D-20 invalidation event —
+ * the stored calculation row is not written at all on a refused pass.
  *
  * Returns null if the project doesn't exist or belongs to a different org (-> 404).
  * Returns { notDraft: true } if the project isn't DRAFT (-> 409).
  * Returns { neverComputed: true } if neither designSubmittedAt nor a prior calculation exists (-> 409).
  * Returns { noFormulaSet: true } if the project has no pinned formula set (defensive, -> 409).
- * Returns { calculation } on success (OK or FAILED — recompute never blocks on the result).
+ * Returns { calculationRefused: CalculationProblemReport } if Phase A or Phase B has problems (→ 422).
+ * Returns { calculation } on success.
  */
 type ProjectCalculationRow = Awaited<
   ReturnType<typeof prisma.projectCalculation.findUniqueOrThrow>
@@ -543,6 +632,7 @@ export type RecomputeProjectResult =
   | { notDraft: true }
   | { neverComputed: true }
   | { noFormulaSet: true }
+  | { calculationRefused: CalculationProblemReport }
   | { calculation: ProjectCalculationRow };
 
 export async function recomputeProject(
@@ -569,8 +659,54 @@ export async function recomputeProject(
     if (!loaded) return null; // shouldn't happen — existing was just re-checked in this tx
     if (!loaded.project.formulaSetId) return { noFormulaSet: true as const };
 
+    const inventoryMap = await loadInventoryMap(tx, session.organizationId);
+
+    // ── Phase A (structural) ────────────────────────────────────────────────
+    const phaseACollector = new ProblemCollector();
+    runPhaseA(
+      loaded.input.floors,
+      loaded.input.selections,
+      loaded.input.snapshot,
+      phaseACollector,
+    );
+    if (phaseACollector.hasAny()) {
+      return { calculationRefused: phaseACollector.report() }; // ← exit 1: stored row UNTOUCHED
+    }
+
+    // ── Phase B (material) ──────────────────────────────────────────────────
     const result = buildSummary(loaded.input);
-    await writeCalculation(tx, session.organizationId, projectId, loaded.project.formulaSetId, result);
+    if (result.status === "FAILED") {
+      // Same semantic-error cases as submitDesign — route through 422 envelope, no write.
+      // The stored row is left UNTOUCHED (satisfies G-3 for recompute).
+      const failedCollector = new ProblemCollector();
+      failedCollector.add({
+        kind: "MISSING_PARAM",
+        scope: "SELECTION",
+        message: result.errorDetail ?? "Design summary could not be built — a required field or slot is missing",
+      });
+      return { calculationRefused: failedCollector.report() }; // ← exit 2a: stored row UNTOUCHED
+    }
+
+    const roomLabels = new Map<string, string>();
+    const partitionLabels = new Map<string, string>();
+    const materialsInput = buildMaterialsInputHelper(loaded, roomLabels, partitionLabels);
+    const { rawLines, byRoom, collector } = buildMaterials(materialsInput);
+    const materialList = resolveAndAggregate(rawLines, inventoryMap, collector, roomLabels, partitionLabels);
+
+    if (collector.hasAny()) {
+      return { calculationRefused: collector.report() }; // ← exit 2b: stored row UNTOUCHED
+    }
+
+    // ── Write (exactly one path — only reachable when both collectors are empty) ──
+    await writeCalculation(
+      tx,
+      session.organizationId,
+      projectId,
+      loaded.project.formulaSetId,
+      result,
+      materialList,
+      byRoom,
+    );
 
     const calculation = await tx.projectCalculation.findUniqueOrThrow({ where: { projectId } });
     return { calculation };

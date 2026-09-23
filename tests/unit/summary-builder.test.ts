@@ -323,6 +323,38 @@ describe("buildSummary", () => {
     assert.equal(r.summary.kpis.totalPartitionSqm, 1); // 0.999999 -> 1, not 0.3333*3 = 0.9999
   });
 
+  // The following two tests document the exact FAILED conditions that projects.ts (Stage 24 Batch 5
+  // fix round, IMPORTANT-1) now maps to 422 CalculationProblemReport instead of throwing → 500.
+  // Both conditions pass Phase A (the cell IS assigned, the componentTypeId IS in the snapshot) and
+  // are only caught by buildSummary's semantic checks.
+
+  test("blank required GLASS field (glassType) -> FAILED naming the field (routes to 422, not 500)", () => {
+    // Snapshot marks glassType required:true via req() helper; config has glassType: "".
+    const blankGlassTypeSelection = { id: "g-blank-gt", componentTypeId: GLASS_T, config: { category: "Clear", glassType: "", thickness: "12" } };
+    const r = buildSummary({
+      formulaSetBody: body,
+      snapshot: snapshot(), // glassType is required:true in snapshot()
+      floors: [{ id: "f1", label: "Ground", rooms: [{ id: "r1", label: "Room A", partitions: [
+        partition("p1", "Wall 1", [section("s1", 1000, [cell("c1", 2800, "g-blank-gt")])]),
+      ] }] }],
+      selections: [blankGlassTypeSelection],
+    });
+    assert.equal(r.status, "FAILED", `expected FAILED, got ${r.status}: ${r.errorDetail}`);
+    assert.match(r.errorDetail!, /glassType/i, "errorDetail should name the blank field");
+  });
+
+  test("selection type present in snapshot but has no slot in formula set -> FAILED (routes to 422, not 500)", () => {
+    // GLASS is in the snapshot but the formula set body has no GLASS slot.
+    const r = buildSummary(
+      input([partition("p1", "Wall 1", [section("s1", 1000, [cell("c1", 2000, "g-id1-12")])])], {
+        formulaSetBody: { slots: { DOOR: body.slots.DOOR } }, // GLASS slot deliberately absent
+      }),
+    );
+    assert.equal(r.status, "FAILED", `expected FAILED, got ${r.status}: ${r.errorDetail}`);
+    assert.match(r.errorDetail!, /slot/i, "errorDetail should mention 'slot'");
+    assert.match(r.errorDetail!, /GLASS/i, "errorDetail should name the type code");
+  });
+
   test("deterministic: same input twice -> identical output", () => {
     const i = input([
       partition("p1", "N", [

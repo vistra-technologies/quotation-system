@@ -4,6 +4,12 @@
  * check (`checkDesignReadyForSubmit`), which runs BEFORE `buildSummary()` so a null/incomplete design never
  * reaches the builder from a normal submit and surfaces as an opaque FAILED (review-4 carry-forward (b)).
  *
+ * Stage 24 Batch 5: adds `runPhaseA()` — the new ProblemCollector-based structural check that replaces
+ * `checkDesignReadyForSubmit` in the submit/recompute pipeline. `checkDesignReadyForSubmit` and its
+ * `DesignCheckViolation` type were removed in the Batch 5 fix round (MINOR-2 — no callers). Also extends `writeCalculation()` to accept `materialList` and
+ * `materialByRoom` explicitly (D-E — fixes the Batch 1 review-2 MINOR #4 materialByRoom stale-on-upsert).
+ * Adds `roomTopology` to `CalculationLoad` and extends the room query to select `isClosed`/`sides`.
+ *
  * Wall ordering: derived directly from `Partition` rows ordered by `partitionNumber` (the existing
  * convention — lib/data/partitions.ts's listPartitionsByRoom()), NOT from `Room.sides`. `Partition` has no
  * `orderIndex` of its own, and deriving order from `Room.sides` instead would need its own
@@ -13,7 +19,8 @@
 import type { Prisma } from "@/app/generated/prisma/client";
 import type { ConfigSnapshot } from "@/lib/config-snapshot";
 import { prisma } from "@/lib/prisma";
-import type { FormulaSetBody, SummaryInput, SummaryResult } from "@/lib/summary/types";
+import type { FormulaSetBody, MaterialByRoomEntry, MaterialListLine, SummaryInput, SummaryResult } from "@/lib/summary/types";
+import { ProblemCollector } from "@/lib/materials/problems";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -33,12 +40,21 @@ export interface CalculationLoad {
     formulaSetId: string | null;
   };
   input: SummaryInput;
+  /**
+   * Room topology data (isClosed, sides) keyed by roomId — not included in SummaryInput
+   * (which doesn't carry topology) but needed by buildMaterials(). Populated from the
+   * same DB query that loads floors/rooms.
+   */
+  roomTopology: Map<string, { label: string; isClosed: boolean; sides: unknown }>;
 }
 
 /**
  * Load everything `buildSummary()` needs for one project, scoped to `organizationId` (tenancy guard —
  * returns null if the project doesn't exist or belongs to a different org). Works against either the plain
  * client or an open transaction client (structural `Db` type), matching lib/config-snapshot.ts's pattern.
+ *
+ * Stage 24 Batch 5: room select extended to include `isClosed` and `sides`; these are surfaced in
+ * `CalculationLoad.roomTopology` for use by `buildMaterialsInput()` in projects.ts.
  */
 export async function loadCalculationInput(
   db: Db,
@@ -70,6 +86,8 @@ export async function loadCalculationInput(
         select: {
           id: true,
           label: true,
+          isClosed: true,
+          sides: true,
           partitions: {
             orderBy: { partitionNumber: "asc" }, // see file header — NOT Room.sides
             select: { id: true, label: true, widthMm: true, heightMm: true, design: true },
@@ -90,6 +108,14 @@ export async function loadCalculationInput(
   const snapshot: ConfigSnapshot = isRecord(project.configSnapshot)
     ? (project.configSnapshot as unknown as ConfigSnapshot)
     : { takenAt: "", componentTypes: [] };
+
+  // Build roomTopology: Map<roomId, { label, isClosed, sides }>
+  const roomTopology = new Map<string, { label: string; isClosed: boolean; sides: unknown }>();
+  for (const f of floors) {
+    for (const r of f.rooms) {
+      roomTopology.set(r.id, { label: r.label, isClosed: r.isClosed, sides: r.sides });
+    }
+  }
 
   return {
     project: {
@@ -124,86 +150,137 @@ export async function loadCalculationInput(
         config: s.config,
       })),
     },
+    roomTopology,
   };
 }
 
-// ─── 13b — submit-time data check (runs BEFORE buildSummary) ────────────────
-
-export interface DesignCheckViolation {
-  partitionId: string;
-  partitionLabel: string;
-  cellId?: string;
-  message: string;
-}
+// ─── Phase A — structural check (Stage 24 Batch 5) ──────────────────────────
 
 /**
- * Every cell in every partition's design must have a non-null, non-blank `selectionId` that resolves to a
- * loaded Selection of this project. A partition with no design started (`design` null, or no `sections[]`)
- * is reported the same way — this is what stops a null design from ever reaching `buildSummary()` on a
- * normal submit (worklog review-4 carry-forward (b)). Returns `[]` when everything is ready. Pure — no
- * Prisma, takes the already-loaded `SummaryInput` shape.
+ * Phase A structural check: walks every cell in every partition's design and emits CalculationProblems
+ * into `collector` for cells that lack a selection, have a selection not present in the project, or have
+ * a selection whose componentType is absent from the config snapshot.
+ *
+ * Replaces `checkDesignReadyForSubmit` in the submit/recompute pipeline. Pure — no Prisma, takes the
+ * already-loaded input shapes.
+ *
+ * All three problem kinds carry `(partitionId, sectionIndex, cellIndex)` in the locus so the
+ * scope-aware DESIGN dedupe key makes each unique per cell location.
  */
-export function checkDesignReadyForSubmit(
+export function runPhaseA(
   floors: SummaryInput["floors"],
-  selectionIds: ReadonlySet<string>,
-): DesignCheckViolation[] {
-  const violations: DesignCheckViolation[] = [];
+  selections: SummaryInput["selections"],
+  snapshot: ConfigSnapshot,
+  collector: ProblemCollector,
+): void {
+  const selectionMap = new Map(selections.map((s) => [s.id, s]));
+  const componentTypeIdSet = new Set((snapshot.componentTypes ?? []).map((t) => t.id));
 
   for (const floor of floors) {
     for (const room of floor.rooms) {
       for (const partition of room.partitions) {
         const design = partition.design;
-        const sections = isRecord(design) && Array.isArray(design.sections) ? design.sections : null;
+        const sections =
+          isRecord(design) && Array.isArray(design.sections) ? design.sections : null;
+
         if (!sections || sections.length === 0) {
-          violations.push({
-            partitionId: partition.id,
-            partitionLabel: partition.label,
-            message: `partition "${partition.label}" (${partition.id}): design has not been started`,
+          // Partition with no design started — emit a single CELL_UNASSIGNED for the partition
+          // so the Phase-A gate fires. sectionIndex=0 / cellIndex=0 makes the DESIGN-scope dedupe
+          // key (partitionId|0|0) unique per partition.
+          collector.add({
+            kind: "CELL_UNASSIGNED",
+            scope: "DESIGN",
+            message: `Partition "${partition.label}" (${partition.id}): design has not been started`,
+            locus: {
+              partitionId: partition.id,
+              partitionLabel: partition.label,
+              sectionIndex: 0,
+              cellIndex: 0,
+            },
           });
           continue;
         }
-        for (const section of sections) {
+
+        for (let sI = 0; sI < sections.length; sI++) {
+          const section = sections[sI];
           if (!isRecord(section) || !Array.isArray(section.cells)) {
-            violations.push({
-              partitionId: partition.id,
-              partitionLabel: partition.label,
-              message: `partition "${partition.label}" (${partition.id}): design is malformed`,
+            collector.add({
+              kind: "CELL_UNASSIGNED",
+              scope: "DESIGN",
+              message: `Partition "${partition.label}" (${partition.id}): design section ${sI} is malformed`,
+              locus: {
+                partitionId: partition.id,
+                partitionLabel: partition.label,
+                sectionIndex: sI,
+                cellIndex: 0,
+              },
             });
             continue;
           }
-          for (const cell of section.cells) {
-            const cellId = isRecord(cell) && typeof cell.id === "string" ? cell.id : "?";
+
+          for (let cI = 0; cI < (section.cells as unknown[]).length; cI++) {
+            const cell = (section.cells as unknown[])[cI];
             const selectionId = isRecord(cell) ? cell.selectionId : undefined;
+
             if (typeof selectionId !== "string" || selectionId === "") {
-              violations.push({
-                partitionId: partition.id,
-                partitionLabel: partition.label,
-                cellId,
-                message: `partition "${partition.label}" (${partition.id}), cell ${cellId}: no selection assigned`,
+              collector.add({
+                kind: "CELL_UNASSIGNED",
+                scope: "DESIGN",
+                message: `Partition "${partition.label}" (${partition.id}), section ${sI}, cell ${cI}: no selection assigned`,
+                locus: {
+                  partitionId: partition.id,
+                  partitionLabel: partition.label,
+                  sectionIndex: sI,
+                  cellIndex: cI,
+                },
               });
-            } else if (!selectionIds.has(selectionId)) {
-              violations.push({
-                partitionId: partition.id,
-                partitionLabel: partition.label,
-                cellId,
-                message: `partition "${partition.label}" (${partition.id}), cell ${cellId}: selection ${selectionId} does not resolve within this project`,
+            } else if (!selectionMap.has(selectionId)) {
+              collector.add({
+                kind: "SELECTION_MISSING",
+                scope: "DESIGN",
+                message: `Partition "${partition.label}" (${partition.id}), section ${sI}, cell ${cI}: selection "${selectionId}" does not exist in this project`,
+                locus: {
+                  partitionId: partition.id,
+                  partitionLabel: partition.label,
+                  sectionIndex: sI,
+                  cellIndex: cI,
+                  selectionId,
+                },
               });
+            } else {
+              const sel = selectionMap.get(selectionId)!;
+              if (!componentTypeIdSet.has(sel.componentTypeId)) {
+                collector.add({
+                  kind: "SELECTION_TYPE_UNKNOWN",
+                  scope: "DESIGN",
+                  message: `Partition "${partition.label}" (${partition.id}), section ${sI}, cell ${cI}: selection "${selectionId}" has componentTypeId "${sel.componentTypeId}" not found in config snapshot`,
+                  locus: {
+                    partitionId: partition.id,
+                    partitionLabel: partition.label,
+                    sectionIndex: sI,
+                    cellIndex: cI,
+                    selectionId,
+                    componentTypeCode: sel.componentTypeId,
+                  },
+                });
+              }
             }
           }
         }
       }
     }
   }
-
-  return violations;
 }
 
 // ─── Writer ─────────────────────────────────────────────────────────────────
 
 /**
  * Upsert the project's ProjectCalculation row on `projectId` (#7 — one row per project, rewritten
- * wholesale). `materialList` is always `[]` (D-37). Call inside the same transaction as any status/stamp
- * write that must be atomic with it (submitDesign's `designSubmittedAt` stamp; recompute has none).
+ * wholesale). `materialList` and `materialByRoom` are passed explicitly (D-E — Stage 24 Batch 5 fix
+ * for the Batch 1 review-2 MINOR #4 stale-on-upsert carry-forward: both fields go into the shared
+ * `data` object so both branches of the upsert write the same values). Call inside the same transaction
+ * as any status/stamp write that must be atomic with it (submitDesign's `designSubmittedAt` stamp;
+ * recompute has none).
  */
 export async function writeCalculation(
   tx: Prisma.TransactionClient,
@@ -211,6 +288,8 @@ export async function writeCalculation(
   projectId: string,
   formulaSetId: string,
   result: SummaryResult,
+  materialList: MaterialListLine[],
+  materialByRoom: MaterialByRoomEntry[],
 ): Promise<void> {
   const computedAt = new Date();
   const data = {
@@ -220,7 +299,8 @@ export async function writeCalculation(
     status: result.status,
     errorDetail: result.errorDetail ?? null,
     summary: result.summary as unknown as Prisma.InputJsonValue,
-    materialList: result.materialList as unknown as Prisma.InputJsonValue,
+    materialList: materialList as unknown as Prisma.InputJsonValue,
+    materialByRoom: materialByRoom as unknown as Prisma.InputJsonValue,
   };
   await tx.projectCalculation.upsert({
     where: { projectId },

@@ -895,7 +895,9 @@ describe("v1 fast-path", () => {
     };
     const result = buildMaterials(v1Input);
     assert.equal(result.rawLines.length, 0);
-    assert.deepEqual(result.byRoom, [{ roomId: "r1", roomLabel: "Room 1", lines: [] }]);
+    // v1 fast-path returns byRoom: [] (not per-room empty entries) to match Stage 23's prior behavior
+    // (formula-engine.md + stage-24.md step 6: "v1 must be byte-identical to Stage 23 which wrote []").
+    assert.deepEqual(result.byRoom, []);
     assert.equal(result.collector.hasAny(), false);
   });
 });
