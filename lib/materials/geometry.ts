@@ -140,6 +140,10 @@ export function derivePartitionGeometry(args: DerivePartitionGeometryArgs): Part
   // ASSUMPTION: sections[] are ordered left-to-right in the partition's local coordinate
   // (the first section's first cell is the leftmost corner cell). This is the natural order
   // for the design canvas; if disproved, leftEndIsDoor/rightEndIsDoor swap — a one-line fix.
+  // See the documented limitation in partition.md ("Stated limitation — sections[] ordering"):
+  // this invariant is not currently enforceable — partition orientation is not representable
+  // in the data model. The mismatch only matters when a partition has a door at exactly one
+  // end and a partition neighbour at that end.
   let leftEndIsDoor: 0 | 1 = 0;
   let rightEndIsDoor: 0 | 1 = 0;
   let doorCount = 0;
@@ -179,11 +183,16 @@ export function derivePartitionGeometry(args: DerivePartitionGeometryArgs): Part
   const nonCornerDoorCount = Math.max(0, doorCount - leftEndIsDoor - rightEndIsDoor);
 
   // ── Step 5: leftNeighborEndIsDoor / rightNeighborEndIsDoor ───────────────────
-  // ASSUMPTION (FLAG 2, plan-b4.md): sides[] walk order corresponds to left-to-right partition
-  // orientation. So a left-neighbor A (which precedes B in sides[]) has its *right* end
+  // ASSUMPTION: sides[] walk order corresponds to left-to-right partition orientation. So a
+  // left-neighbor A (which precedes B in sides[]) has its *right* end
   // (sections[last].cells[last]) adjacent to B, and a right-neighbor C has its *left* end
   // (sections[0].cells[0]) adjacent to B. If this assumption is wrong, the two values are
   // reversed — a one-line fix in the resolver calls below.
+  // This is a documented, named limitation — see partition.md ("Stated limitation — sections[]
+  // ordering"): the invariant is not currently enforceable because partition orientation is not
+  // representable in the data model. Damage is bounded to the configuration where a partition
+  // has a door at exactly one end and a partition neighbour whose facing end differs from what
+  // is read here. The planned fix is a `reversed?: boolean` field on PartitionSide in Room.sides.
   function resolveNeighborEndIsDoor(neighbor: RoomSide | null, isLeftNeighbor: boolean): 0 | 1 {
     if (!neighbor || neighbor.kind !== "PARTITION") return 0;
     const design = neighborDesignResolver(neighbor.partitionId);
