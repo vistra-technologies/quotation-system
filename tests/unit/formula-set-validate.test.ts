@@ -146,6 +146,32 @@ describe("Validator 2 — calc.* references", () => {
     );
   });
 
+  test("self-referencing calc.<own-id> → rejected (not a backward reference)", () => {
+    // A formula whose own quantity references calc.<its own id> must be rejected.
+    // Confirmed empirically in review-b2-1: the original code accepted this because it registered
+    // the id before scanning the formula's own expressions.
+    const body = {
+      schemaVersion: 2,
+      slots: { GLASS: { role: "glass", requiredParams: [] } },
+      formulas: [
+        {
+          id: "selfRef",
+          slot: "GLASS",
+          grain: "CELL",
+          materialCode: "GLASS-001",
+          unit: "pieces",
+          quantity: "calc.selfRef + 1",  // self-reference — must be rejected
+        },
+      ],
+    };
+    const result = validateFormulaSetBody(body);
+    assert.equal(result.ok, false);
+    assert.ok(
+      (result as { ok: false; errors: string[] }).errors.some((e) => e.includes("calc.selfRef") && e.includes("selfRef")),
+      `expected error mentioning calc.selfRef and formula id, got: ${(result as { ok: false; errors: string[] }).errors.join("; ")}`,
+    );
+  });
+
   test("backward same-grain calc.* reference → accepted", () => {
     const body = {
       schemaVersion: 2,

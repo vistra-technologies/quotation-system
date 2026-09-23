@@ -19,7 +19,7 @@ export type CalculationProblemKind =
   | "NON_FINITE_QUANTITY";     // a quantity expression produced NaN/Infinity
 
 /** Where the user has to go to fix the problem. Stage 25 groups the popup by this. */
-type ProblemScope = "DESIGN" | "SELECTION" | "INVENTORY" | "FORMULA_SET";
+export type ProblemScope = "DESIGN" | "SELECTION" | "INVENTORY" | "FORMULA_SET";
 
 /** Scope order for sorting — lower index = higher priority. */
 const SCOPE_ORDER: ProblemScope[] = ["DESIGN", "SELECTION", "INVENTORY", "FORMULA_SET"];
@@ -82,22 +82,38 @@ export class ProblemCollector {
   private readonly _seen = new Map<string, CalculationProblem>();
   private readonly _order: string[] = [];  // insertion order of first occurrence, for stable sort
 
-  /** Accept a problem, deduplicating on (kind, code, selectionId, fieldKey). Never throws. */
+  /**
+   * Accept a problem, deduplicating on (kind, code, selectionId, fieldKey). Never throws.
+   *
+   * `occurrenceCount` semantics:
+   * - First `add()` initialises `occurrenceCount` to `problem.occurrenceCount ?? 1`, so a
+   *   singleton problem always carries `1` (never `undefined`) — callers need not write `?? 1`.
+   * - Each subsequent `add()` for the same dedupe key accumulates `problem.occurrenceCount ?? 1`
+   *   (i.e. an INVENTORY-scope aggregate that already knows it was hit N times contributes N, not 1).
+   * - One call = one occurrence only when the caller leaves `problem.occurrenceCount` undefined.
+   */
   add(problem: CalculationProblem): void {
     const key = dedupeKey(problem);
     const existing = this._seen.get(key);
     if (existing) {
-      // Accumulate occurrence count and up to MAX_OCCURRENCES detail entries.
-      existing.occurrenceCount = (existing.occurrenceCount ?? 1) + 1;
+      // Accumulate occurrence count (caller's pre-count honoured) and up to MAX_OCCURRENCES entries.
+      // existing.occurrenceCount is always a number (set to >= 1 on first store), but the type is
+      // `number | undefined` per the CalculationProblem interface, so we guard defensively.
+      existing.occurrenceCount = (existing.occurrenceCount ?? 1) + (problem.occurrenceCount ?? 1);
       if (problem.occurrences && existing.occurrences) {
         if (existing.occurrences.length < MAX_OCCURRENCES) {
           existing.occurrences.push(...problem.occurrences.slice(0, MAX_OCCURRENCES - existing.occurrences.length));
         }
       } else if (problem.occurrences && !existing.occurrences) {
-        existing.occurrences = problem.occurrences.slice(0, MAX_OCCURRENCES);
+        existing.occurrences = [...problem.occurrences].slice(0, MAX_OCCURRENCES);
       }
     } else {
-      this._seen.set(key, { ...problem });
+      // Defensive copy: occurrences is a new array so the caller cannot mutate our internal state.
+      this._seen.set(key, {
+        ...problem,
+        occurrences: problem.occurrences ? [...problem.occurrences] : undefined,
+        occurrenceCount: problem.occurrenceCount ?? 1,
+      });
       this._order.push(key);
     }
   }
@@ -113,6 +129,13 @@ export class ProblemCollector {
    *
    * Sort order: scope (DESIGN < SELECTION < INVENTORY < FORMULA_SET), then kind (alpha within
    * scope), then insertion order within the same (scope, kind) pair.
+   *
+   * TODO (review-b2-1, MINOR): the tie-break within a (scope, kind) pair currently relies on
+   * insertion order, which equals the spec'd Floor → Room → Partition → section → cell order
+   * only when every producer traverses the design in stored order. No producer exists yet
+   * (Batch 4/5), but when they are written they MUST walk the design in stored array order or
+   * the determinism guarantee in formula-engine.md §8.3 is violated. Consider adding an explicit
+   * locus comparator (floorId/roomId/partitionId/sectionIndex/cellIndex) when Batch 5 lands.
    */
   report(): CalculationProblemReport {
     const problems = this._order

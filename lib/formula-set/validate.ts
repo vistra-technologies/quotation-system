@@ -190,9 +190,6 @@ export function validateFormulaSetBody(body: unknown): { ok: true } | { ok: fals
       errors.push(`formula "${id}": grain must be one of CELL, PARTITION, ROOM_SIDE, ROOM_JUNCTION`);
     } else if (!IMPLEMENTED_GRAINS.has(fRec.grain)) {
       errors.push(`formula "${id}": grain "${fRec.grain}" is not yet implemented`);
-    } else {
-      idToIndex.set(id, i);
-      idToGrain.set(id, fRec.grain as string);
     }
 
     // unit
@@ -224,7 +221,10 @@ export function validateFormulaSetBody(body: unknown): { ok: true } | { ok: fals
     }
 
     // ── grain namespace checks ────────────────────────────────────────────────────────────────
-    // cell.* must not appear in PARTITION-grain formulas; partition.* must not appear in CELL-grain
+    // cell.* must not appear in PARTITION-grain formulas; partition.* must not appear in CELL-grain.
+    // materialCode is plain string substitution (not expr-eval), so a stale namespace token there
+    // produces a literal code that surfaces as UNRESOLVED_CODE at runtime — intentionally out of
+    // scope for this namespace check per formula-engine.md §6 ("expression references").
     const grain = typeof fRec.grain === "string" ? fRec.grain : "";
     const exprsToScan: string[] = [];
     if (typeof fRec.condition === "string") exprsToScan.push(fRec.condition);
@@ -263,6 +263,9 @@ export function validateFormulaSetBody(body: unknown): { ok: true } | { ok: fals
     }
 
     // ── Validator 2 — calc.* references resolve backwards at same grain ───────────────────────
+    // NOTE: idToIndex/idToGrain registration for this formula happens *after* this scan so that
+    // a formula whose own condition/quantity references calc.<its own id> is correctly rejected as
+    // "forward reference or unknown formula id" (a self-reference is not a prior formula).
     const calcExprs: string[] = [];
     if (typeof fRec.condition === "string") calcExprs.push(fRec.condition);
     if (typeof fRec.quantity === "string") calcExprs.push(fRec.quantity);
@@ -270,7 +273,7 @@ export function validateFormulaSetBody(body: unknown): { ok: true } | { ok: fals
     for (const expr of calcExprs) {
       for (const refId of extractCalcRefs(expr)) {
         if (!idToIndex.has(refId)) {
-          // Either forward reference or unknown id (not yet registered at this point = forward)
+          // forward reference, self-reference, or unknown id — all rejected
           errors.push(`formula "${id}": calc.${refId} is a forward reference or unknown formula id`);
         } else {
           const refGrain = idToGrain.get(refId);
@@ -279,6 +282,13 @@ export function validateFormulaSetBody(body: unknown): { ok: true } | { ok: fals
           }
         }
       }
+    }
+
+    // Register this formula's id/grain only after its own calc.* references have been validated,
+    // ensuring backward-only references are enforced and self-references are caught above.
+    if (typeof fRec.id === "string" && typeof fRec.grain === "string" && IMPLEMENTED_GRAINS.has(fRec.grain)) {
+      idToIndex.set(fRec.id, i);
+      idToGrain.set(fRec.id, fRec.grain);
     }
   }
 
