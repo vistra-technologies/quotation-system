@@ -15,12 +15,12 @@ interface ItemPriceRow {
   price: string | number;
 }
 
-interface CatalogItemRow {
+interface InventoryItemRow {
   id: string;
   category: string;
   code: string;
   name: string;
-  unitOfMeasure: string;
+  measurementUnit: string;
   prices: ItemPriceRow[];
 }
 
@@ -55,8 +55,8 @@ export default async function PricingPage({
     redirect(await orgHref(orgSlug, "/login"));
   }
 
-  const items: CatalogItemRow[] = catalogRes.ok
-    ? ((await catalogRes.json()) as { items: CatalogItemRow[] }).items
+  const items: InventoryItemRow[] = catalogRes.ok
+    ? ((await catalogRes.json()) as { items: InventoryItemRow[] }).items
     : [];
 
   return (
@@ -113,7 +113,7 @@ export default async function PricingPage({
                     {item.name}
                   </td>
                   <td className="px-5 py-4 text-text-body">
-                    {item.unitOfMeasure}
+                    {item.measurementUnit}
                   </td>
                   <td className="px-5 py-4 text-text-body">
                     {item.prices.length === 0 ? (

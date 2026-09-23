@@ -6,7 +6,7 @@ import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 
 /**
- * Upsert (add or update) an ItemPrice for a specific CatalogItem + currency.
+ * Upsert (add or update) an ItemPrice for a specific InventoryItem + currency.
  *
  * Stage 12: thin marshaler — parses FormData, delegates to
  * POST /api/v1/orgs/[orgSlug]/catalog/[itemId]/prices via internalFetch.

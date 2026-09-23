@@ -376,7 +376,7 @@ async function main() {
   // ── 5. Catalog items and prices ─────────────────────────────────────────────
   // Representative items covering all categories.
   // PLACEHOLDER — replace with real client data before handover
-  const catalogItemDefs = [
+  const inventoryItemDefs = [
     {
       category: "WALL_TYPE",
       code: "WT-001",
@@ -471,18 +471,18 @@ async function main() {
   ];
 
   for (const org of allOrgs) {
-    for (const def of catalogItemDefs) {
-      const item = await prisma.catalogItem.upsert({
+    for (const def of inventoryItemDefs) {
+      const item = await prisma.inventoryItem.upsert({
         where: {
           organizationId_code: { organizationId: org.id, code: def.code },
         },
-        update: { name: def.name, unitOfMeasure: def.uom, attributes: def.attributes },
+        update: { name: def.name, measurementUnit: def.uom, attributes: def.attributes },
         create: {
           organizationId: org.id,
           category: def.category,
           code: def.code,
           name: def.name,
-          unitOfMeasure: def.uom,
+          measurementUnit: def.uom,
           attributes: def.attributes,
           active: true,
         },
@@ -491,15 +491,15 @@ async function main() {
       for (const p of priceDefs) {
         await prisma.itemPrice.upsert({
           where: {
-            catalogItemId_currency: {
-              catalogItemId: item.id,
+            inventoryItemId_currency: {
+              inventoryItemId: item.id,
               currency: p.currency,
             },
           },
           update: { price: p.amount, organizationId: org.id },
           create: {
             organizationId: org.id,
-            catalogItemId: item.id,
+            inventoryItemId: item.id,
             currency: p.currency,
             price: p.amount, // PLACEHOLDER — replace with real client data before handover
           },
@@ -507,7 +507,7 @@ async function main() {
       }
     }
   }
-  console.log(`CatalogItems + ItemPrices seeded for ${allOrgs.length} orgs`);
+  console.log(`InventoryItems + ItemPrices seeded for ${allOrgs.length} orgs`);
 
   // ── 6. SuperAdmin bootstrap accounts ────────────────────────────────────────
   // Reads SUPERADMIN_DEVADMIN_PASSWORD, SUPERADMIN_ISHAN_PASSWORD,
@@ -555,7 +555,7 @@ async function main() {
   const totalRoles = await prisma.role.count();
   const totalCompanies = await prisma.externalCompany.count();
   const totalUsers = await prisma.user.count();
-  const totalCatalogItems = await prisma.catalogItem.count();
+  const totalInventoryItems = await prisma.inventoryItem.count();
   const totalItemPrices = await prisma.itemPrice.count();
   const totalComponentTypesCount = await prisma.componentType.count();
 
@@ -572,10 +572,10 @@ async function main() {
     `Users:              ${totalUsers}  (4×${allOrgs.length}=${4 * allOrgs.length} expected)`,
   );
   console.log(
-    `Catalog items:      ${totalCatalogItems}  (${catalogItemDefs.length}×${allOrgs.length}=${catalogItemDefs.length * allOrgs.length} expected)`,
+    `Inventory items:    ${totalInventoryItems}  (${inventoryItemDefs.length}×${allOrgs.length}=${inventoryItemDefs.length * allOrgs.length} expected)`,
   );
   console.log(
-    `Item prices:        ${totalItemPrices}  (${priceDefs.length * catalogItemDefs.length}×${allOrgs.length}=${priceDefs.length * catalogItemDefs.length * allOrgs.length} expected)`,
+    `Item prices:        ${totalItemPrices}  (${priceDefs.length * inventoryItemDefs.length}×${allOrgs.length}=${priceDefs.length * inventoryItemDefs.length * allOrgs.length} expected)`,
   );
   console.log(
     `Component types:    ${totalComponentTypesCount}  (informational — see the note above; legacy codes on pre-existing orgs make a fixed "expected" figure meaningless)`,

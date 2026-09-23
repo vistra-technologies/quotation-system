@@ -7,7 +7,7 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { listCatalogItems } from "@/lib/data/catalog";
+import { listInventoryItems } from "@/lib/data/catalog";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 // ─── GET /api/v1/orgs/[orgSlug]/catalog ──────────────────────────────────────
 
 /**
- * List all active CatalogItems for the org, with their prices.
+ * List all active InventoryItems for the org, with their prices.
  * Ordered category → code, then prices by currency within each item.
  *
  * Auth: authenticated org member with MANAGE_PRICING permission.
@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic";
  * per the stage-12.md RBAC table: catalog/** reads and writes both require
  * MANAGE_PRICING.
  *
- * Tenancy: enforced by getApiSession() (403 on cross-org) and listCatalogItems()
+ * Tenancy: enforced by getApiSession() (403 on cross-org) and listInventoryItems()
  *          filtering on session.organizationId.
  */
 export async function GET(
@@ -56,10 +56,10 @@ export async function GET(
   }
 
   try {
-    const items = await listCatalogItems(session);
+    const items = await listInventoryItems(session);
     return NextResponse.json({ items });
   } catch (err) {
-    console.error("[GET /api/v1/orgs/[orgSlug]/catalog] listCatalogItems", err);
+    console.error("[GET /api/v1/orgs/[orgSlug]/catalog] listInventoryItems", err);
     return apiServerError();
   }
 }
