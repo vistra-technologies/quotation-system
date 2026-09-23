@@ -797,8 +797,8 @@ test("M2: GET /api/v1/orgs/vistra/catalog with vistra admin auth → 200 with in
     await apiSignIn(vistra3, VISTRA, "admin");
     const res = await vistra3.request.get(V("/catalog"));
     expect(res.status(), "authenticated /catalog → 200").toBe(200);
-    const body = (await res.json()) as { inventoryItems: unknown[] };
-    expect(Array.isArray(body.inventoryItems), "inventoryItems is an array").toBe(true);
+    const body = (await res.json()) as { items: unknown[] };
+    expect(Array.isArray(body.items), "items is an array").toBe(true);
   } finally {
     await vistraCtx3?.close();
   }
