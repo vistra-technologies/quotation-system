@@ -68,9 +68,18 @@ export interface CalculationProblemReport {
 /** Maximum occurrence entries stored per deduplicated problem (formula-engine.md §8.3). */
 const MAX_OCCURRENCES = 5;
 
-/** Key for deduplication: kind + code + selectionId + fieldKey. */
+/**
+ * Key for deduplication: kind + code + selectionId + fieldKey + formulaId.
+ *
+ * `formulaId` distinguishes two problems from _different_ formulas (e.g. two PARTITION-grain
+ * NON_FINITE_QUANTITY problems — one for "profileL", one for "profileI" — that both carry no code /
+ * selectionId / fieldKey). Without it they collapse to the same key and the second is silently dropped.
+ *
+ * For MISSING_PARAM and similar problems, cellBlankSeen / partitionBlankSeen already guarantee at most
+ * one `add()` call per (selectionId, fieldKey) pair, so the extra segment doesn't change their behaviour.
+ */
 function dedupeKey(p: CalculationProblem): string {
-  return `${p.kind}|${p.code ?? ""}|${p.locus?.selectionId ?? ""}|${p.locus?.fieldKey ?? ""}`;
+  return `${p.kind}|${p.code ?? ""}|${p.locus?.selectionId ?? ""}|${p.locus?.fieldKey ?? ""}|${p.locus?.formulaId ?? ""}`;
 }
 
 /**
@@ -83,7 +92,7 @@ export class ProblemCollector {
   private readonly _order: string[] = [];  // insertion order of first occurrence, for stable sort
 
   /**
-   * Accept a problem, deduplicating on (kind, code, selectionId, fieldKey). Never throws.
+   * Accept a problem, deduplicating on (kind, code, selectionId, fieldKey, formulaId). Never throws.
    *
    * `occurrenceCount` semantics:
    * - First `add()` initialises `occurrenceCount` to `problem.occurrenceCount ?? 1`, so a

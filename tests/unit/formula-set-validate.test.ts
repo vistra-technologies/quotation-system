@@ -287,3 +287,120 @@ describe("v2 hygiene checks", () => {
     assert.equal((result as { ok: false; errors: string[] }).errors.length, 1);
   });
 });
+
+// ── Forbidden logical operators (||, &&, !) ───────────────────────────────────────────────────
+
+describe("Forbidden logical operators in condition/quantity", () => {
+  test("condition containing || → rejected with error naming formula id and recommending 'or'", () => {
+    const body = minimalV2({ condition: "param.glassCode == 'A' || param.glassCode == 'B'" });
+    const result = validateFormulaSetBody(body);
+    assert.equal(result.ok, false);
+    const errors = (result as { ok: false; errors: string[] }).errors;
+    assert.ok(errors.some(e => e.includes("glassPanel") && e.includes("||") && e.includes("or")),
+      `expected error naming "glassPanel", "||", and "or"; got: ${errors.join("; ")}`);
+  });
+
+  test("quantity containing || → rejected", () => {
+    const body = minimalV2({ quantity: "1 || 2" });
+    const result = validateFormulaSetBody(body);
+    assert.equal(result.ok, false);
+    assert.ok(
+      (result as { ok: false; errors: string[] }).errors.some(e => e.includes("||")),
+    );
+  });
+
+  test("condition containing && → rejected with error recommending 'and'", () => {
+    const body = minimalV2({ condition: "param.glassCode == 'A' && param.glassCode != 'B'" });
+    const result = validateFormulaSetBody(body);
+    assert.equal(result.ok, false);
+    const errors = (result as { ok: false; errors: string[] }).errors;
+    assert.ok(errors.some(e => e.includes("&&") && e.includes("and")),
+      `expected error naming "&&" and "and"; got: ${errors.join("; ")}`);
+  });
+
+  test("condition containing ! (prefix logical-not attempt) → rejected with error recommending 'not'", () => {
+    // "!param.glassCode" — likely written as logical NOT; in expr-eval "!" is factorial
+    const body = minimalV2({ condition: "!param.glassCode" });
+    const result = validateFormulaSetBody(body);
+    assert.equal(result.ok, false);
+    const errors = (result as { ok: false; errors: string[] }).errors;
+    assert.ok(errors.some(e => e.includes("!") && e.includes("not")),
+      `expected error naming "!" and "not"; got: ${errors.join("; ")}`);
+  });
+
+  test("condition using != (valid inequality) → accepted", () => {
+    // "!=" is a valid comparison operator; should NOT be caught by the ! guard
+    const body = minimalV2({ condition: "param.glassCode != 'X'" });
+    const result = validateFormulaSetBody(body);
+    assert.equal(result.ok, true, `expected ok:true, got: ${result.ok ? "" : (result as { ok: false; errors: string[] }).errors.join("; ")}`);
+  });
+
+  test("condition using 'or'/'and'/'not' keywords → accepted", () => {
+    const body = {
+      schemaVersion: 2,
+      slots: { GLASS: { role: "glass", requiredParams: [{ key: "glassCode" }, { key: "otherCode" }] } },
+      formulas: [{
+        id: "glassPanel",
+        slot: "GLASS", grain: "CELL",
+        condition: "param.glassCode == 'A' or param.otherCode == 'B'",
+        materialCode: "{param.glassCode}", unit: "pieces", quantity: "1",
+      }],
+    };
+    const result = validateFormulaSetBody(body);
+    assert.equal(result.ok, true, `expected ok:true, got: ${result.ok ? "" : (result as { ok: false; errors: string[] }).errors.join("; ")}`);
+  });
+});
+
+// ── Validator 2: cross-slot calc.* reference ─────────────────────────────────────────────────
+
+describe("Validator 2 — cross-slot calc.* reference rejected", () => {
+  test("DOOR formula referencing calc.glassPanel (GLASS slot, same grain) → rejected", () => {
+    const body = {
+      schemaVersion: 2,
+      slots: {
+        GLASS: { role: "glass", requiredParams: [{ key: "glassCode" }] },
+        DOOR: { role: "door", requiredParams: [{ key: "frameCode" }] },
+      },
+      formulas: [
+        {
+          id: "glassPanel",
+          slot: "GLASS", grain: "CELL",
+          materialCode: "{param.glassCode}", unit: "pieces", quantity: "1",
+        },
+        {
+          id: "doorFrame",
+          slot: "DOOR", grain: "CELL",
+          materialCode: "{param.frameCode}", unit: "pieces",
+          quantity: "calc.glassPanel * 2",  // cross-slot reference
+        },
+      ],
+    };
+    const result = validateFormulaSetBody(body);
+    assert.equal(result.ok, false);
+    const errors = (result as { ok: false; errors: string[] }).errors;
+    assert.ok(errors.some(e => e.includes("doorFrame") && e.includes("calc.glassPanel") && e.includes("cross-slot")),
+      `expected cross-slot error for doorFrame; got: ${errors.join("; ")}`);
+  });
+
+  test("same-slot backward calc.* reference → still accepted", () => {
+    const body = {
+      schemaVersion: 2,
+      slots: { GLASS: { role: "glass", requiredParams: [{ key: "glassCode" }, { key: "frameCode" }] } },
+      formulas: [
+        {
+          id: "glassPanel",
+          slot: "GLASS", grain: "CELL",
+          materialCode: "{param.glassCode}", unit: "pieces", quantity: "1",
+        },
+        {
+          id: "glassGasket",
+          slot: "GLASS", grain: "CELL",
+          materialCode: "{param.frameCode}", unit: "metres",
+          quantity: "calc.glassPanel * 0.5",  // same-slot backward ref — valid
+        },
+      ],
+    };
+    const result = validateFormulaSetBody(body);
+    assert.equal(result.ok, true, `expected ok:true, got: ${result.ok ? "" : (result as { ok: false; errors: string[] }).errors.join("; ")}`);
+  });
+});

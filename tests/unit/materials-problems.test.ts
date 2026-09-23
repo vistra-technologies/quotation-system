@@ -94,6 +94,50 @@ describe("ProblemCollector — deduplication", () => {
   });
 });
 
+describe("ProblemCollector — PARTITION-grain dedupe (review-b4-2 regression)", () => {
+  // Two genuinely different broken PARTITION-grain formulas: same kind (NON_FINITE_QUANTITY),
+  // no code, no selectionId, no fieldKey — only formulaId distinguishes them.
+  // Without formulaId in the dedupe key both collapse to "NON_FINITE_QUANTITY|||" and the
+  // second problem is discarded entirely.
+  test("two PARTITION-grain problems with different formulaIds → two separate problems", () => {
+    const c = new ProblemCollector();
+    c.add({
+      kind: "NON_FINITE_QUANTITY",
+      scope: "FORMULA_SET",
+      message: 'Formula "profileL": condition threw an error: undefined variable: parm',
+      locus: { floorId: "f1", roomId: "r1", partitionId: "p1", formulaId: "profileL" },
+    });
+    c.add({
+      kind: "NON_FINITE_QUANTITY",
+      scope: "FORMULA_SET",
+      message: 'Formula "profileI": quantity is not finite (NaN) for partition "p7"',
+      locus: { floorId: "f1", roomId: "r2", partitionId: "p7", formulaId: "profileI" },
+    });
+    const r = c.report();
+    assert.equal(r.problems.length, 2, `expected 2 problems, got ${r.problems.length}: ${JSON.stringify(r.problems.map(p => p.locus?.formulaId))}`);
+  });
+
+  test("two PARTITION-grain problems with the SAME formulaId → dedupe to one with occurrenceCount:2", () => {
+    // Same formula, two different partitions — correctly dedupes (same formula broke in N places)
+    const c = new ProblemCollector();
+    const problem: CalculationProblem = {
+      kind: "NON_FINITE_QUANTITY",
+      scope: "FORMULA_SET",
+      message: 'Formula "profileL": quantity is not finite (NaN) for partition "p1"',
+      locus: { floorId: "f1", roomId: "r1", partitionId: "p1", formulaId: "profileL" },
+    };
+    c.add(problem);
+    c.add({
+      ...problem,
+      message: 'Formula "profileL": quantity is not finite (NaN) for partition "p2"',
+      locus: { ...problem.locus, partitionId: "p2" },
+    });
+    const r = c.report();
+    assert.equal(r.problems.length, 1, "same formula should dedupe");
+    assert.equal(r.problems[0].occurrenceCount, 2, "occurrenceCount should be 2");
+  });
+});
+
 describe("ProblemCollector — sort order", () => {
   test("shuffled input → report().problems sorted by scope (DESIGN < SELECTION < INVENTORY < FORMULA_SET), then kind", () => {
     const c = new ProblemCollector();
