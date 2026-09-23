@@ -497,8 +497,8 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
 118. **UNIT_MISMATCH problem kind (Stage 24 C4, deferred):** A design whose inventory item's
      `measurementUnit` disagrees with its formula's unit annotation should produce a `UNIT_MISMATCH`
      problem and refuse. Not automated (requires direct DB surgery to set up a synthetic unit mismatch
-     in the shared dev DB); covered by unit test `tests/unit/materials-resolve.test.ts` (the 3 × 0.4 → 1
-     ceil-aggregation case exercises the resolve path). Manual: seed an InventoryItem with a
+     in the shared dev DB); covered by unit test `tests/unit/materials-resolve.test.ts` (test case 5:
+     wrong-unit InventoryItem → UNIT_MISMATCH problem, no line, no division). Manual: seed an InventoryItem with a
      `measurementUnit` that mismatches its formula's expected unit, submit a design using it, and confirm
      a 422 with `kind = "UNIT_MISMATCH"` is returned and no calculation row is written.
 
