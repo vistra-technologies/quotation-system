@@ -473,3 +473,23 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      its detail page (UAE → "UAE"; no company → blank). A country control reappearing on a form is a
      tenancy regression, not a cosmetic one — an external user must not be able to set it.
      Automated: `stage14.spec.ts` — "destinationCountry: client-supplied value in POST body is ignored".
+
+## Stage 24 — Material-list formula engine
+
+116. **CatalogItem renamed to InventoryItem (Stage 24 Batch 1):** The `/pricing` routes and all API
+     references use `inventoryItem` / `inventoryItemId` / `measurementUnit`. A grep for
+     `CatalogItem`/`catalogItemId`/`unitOfMeasure` outside migration files must return zero results
+     in `app/`, `lib/`, and `prisma/` (excluding `migrations/`). The `/catalog` API route (unchanged
+     path) now responds with `{ inventoryItems: [...] }` rather than `{ catalogItems: [...] }`.
+     Automated: `stage24-materials.spec.ts` M1 (unauthenticated /catalog → 401), M2 (authenticated
+     /catalog → 200 with `inventoryItems` array).
+
+117. **Submit Design refused with a problem list when inventory data is incomplete (Stage 24, decision
+     10 reversal):** A design with unresolved material codes, inactive inventory items, or blank required
+     params no longer writes a row with `status: "FAILED"` — it returns 422 with a
+     `CalculationProblemReport` body (`{ error: string, problems: [{ kind, message, scope, ... }] }`).
+     The stored `ProjectCalculation` row is **untouched** when a refusal fires (G-3, option a). Both
+     Submit Design and Recompute share this gate. Includes the D-33 reversal: Recompute no longer writes
+     a FAILED row on a null-cell project — it also 422s.
+     Automated: `stage24-materials.spec.ts` C1 (UNRESOLVED_CODE), C2/I1 (INACTIVE_ITEM + Recompute),
+     C3 (MISSING_PARAM), D1–D3 (exhaustive/deterministic).

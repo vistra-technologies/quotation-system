@@ -164,6 +164,17 @@ export async function countProjectCalculations(organizationId: string): Promise<
   return runDbOp<number>("countProjectCalculations", { organizationId });
 }
 
+// ── Stage 24 Batch 6 ────────────────────────────────────────────────────────
+
+/**
+ * Activate or deactivate an InventoryItem by code + org slug.
+ * No API route exists for this. Callers MUST revert (active: true) in a finally block.
+ * Used by C2/I1 (INACTIVE_ITEM refuse-path tests).
+ */
+export async function setInventoryItemActive(code: string, orgSlug: string, active: boolean): Promise<void> {
+  runDbOp("setInventoryItemActive", { code, orgSlug, active });
+}
+
 /**
  * Kept as a no-op for API compatibility with callers' `afterAll` hooks — each `runDbOp` call now
  * owns a short-lived child process (and its own Prisma client) rather than a shared long-lived
