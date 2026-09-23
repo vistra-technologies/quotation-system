@@ -473,3 +473,44 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      its detail page (UAE → "UAE"; no company → blank). A country control reappearing on a form is a
      tenancy regression, not a cosmetic one — an external user must not be able to set it.
      Automated: `stage14.spec.ts` — "destinationCountry: client-supplied value in POST body is ignored".
+
+## Stage 24 — Material-list formula engine
+
+116. **CatalogItem renamed to InventoryItem (Stage 24 Batch 1):** The `/pricing` routes and all API
+     references use `inventoryItem` / `inventoryItemId` / `measurementUnit`. A grep for
+     `CatalogItem`/`catalogItemId`/`unitOfMeasure` outside migration files must return zero results
+     in `app/`, `lib/`, and `prisma/` (excluding `migrations/`). The `/catalog` API route (unchanged
+     path) now responds with `{ items: [...] }` (key unchanged from before the rename).
+     Automated: `stage24-materials.spec.ts` M1 (unauthenticated /catalog → 401), M2 (authenticated
+     /catalog → 200 with `items` array).
+
+117. **Submit Design refused with a problem list when inventory data is incomplete (Stage 24, decision
+     10 reversal):** A design with unresolved material codes, inactive inventory items, or blank required
+     params no longer writes a row with `status: "FAILED"` — it returns 422 with a
+     `CalculationProblemReport` body (`{ error: string, problems: [{ kind, message, scope, ... }] }`).
+     The stored `ProjectCalculation` row is **untouched** when a refusal fires (G-3, option a). Both
+     Submit Design and Recompute share this gate. Includes the D-33 reversal: Recompute no longer writes
+     a FAILED row on a null-cell project — it also 422s.
+     Automated: `stage24-materials.spec.ts` C1 (UNRESOLVED_CODE), C2/I1 (INACTIVE_ITEM + Recompute),
+     C3 (MISSING_PARAM), D1–D3 (exhaustive/deterministic).
+
+118. **UNIT_MISMATCH problem kind (Stage 24 C4, deferred):** A design whose inventory item's
+     `measurementUnit` disagrees with its formula's unit annotation should produce a `UNIT_MISMATCH`
+     problem and refuse. Not automated (requires direct DB surgery to set up a synthetic unit mismatch
+     in the shared dev DB); covered by unit test `tests/unit/materials-resolve.test.ts` (test case 5:
+     wrong-unit InventoryItem → UNIT_MISMATCH problem, no line, no division). Manual: seed an InventoryItem with a
+     `measurementUnit` that mismatches its formula's expected unit, submit a design using it, and confirm
+     a 422 with `kind = "UNIT_MISMATCH"` is returned and no calculation row is written.
+
+119. **Formula set body integrity guard (Stage 24 J2, deferred):** There is no direct route to PATCH a
+     `FormulaSet` body, so the guard that prevents activating a set whose `requiredParams` reference
+     keys no longer present in the ComponentType `fieldsSchema` cannot be tested via the API today.
+     Covered by unit tests: `tests/unit/formula-set-validate.test.ts` (publish-time validators).
+
+120. **Project-creation gate for cloisons material-code keys (Stage 24 K1, deferred):** When a cloisons
+     project is created, its `configSnapshot` is frozen from the org's current ComponentType config.
+     If an org's `fieldsSchema` is later changed to remove a key referenced in the formula set
+     `requiredParams`, future projects will have an incomplete snapshot and will 422 on Submit Design.
+     Not automated (mutating a shared org's `ComponentTypeOrgConfig` has blast radius); covered by the
+     `tests/unit/formula-compat.test.ts` unit tests. Manual: confirm that the project-creation step
+     correctly snapshots the active formula set's required keys.

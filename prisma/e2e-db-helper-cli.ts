@@ -200,6 +200,30 @@ async function main() {
         await db.project.update({ where: { id: projectId }, data: { status } });
         return null;
       }
+      // ── Stage 24 Batch 6 (tests/e2e/stage24-materials.spec.ts) ──────────────────────────────────
+      case "setInventoryItemActive": {
+        // Temporarily deactivate (or reactivate) an InventoryItem by code + org slug, for C2/I1
+        // INACTIVE_ITEM tests. No API route exists for this — the /catalog routes do not expose
+        // activate/deactivate. Callers MUST revert (active: true) in a finally block.
+        const { code, orgSlug, active } = input as { code: string; orgSlug: string; active: boolean };
+        const org = await db.organization.findUniqueOrThrow({ where: { slug: orgSlug }, select: { id: true } });
+        await db.inventoryItem.updateMany({
+          where: { organizationId: org.id, code },
+          data: { active },
+        });
+        return null;
+      }
+      case "readCalculation": {
+        // Read the full ProjectCalculation row for a project — used to verify what Submit Design
+        // and Recompute actually wrote (including materialByRoom, which is omitted from all API
+        // responses by lib/prisma.ts omit defaults). Returns null if no row exists.
+        const { projectId } = input as { projectId: string };
+        const row = await db.projectCalculation.findUnique({
+          where: { projectId },
+          select: { status: true, computedAt: true, materialList: true, materialByRoom: true },
+        });
+        return row;
+      }
       default:
         throw new Error(`Unknown operation: ${op}`);
     }

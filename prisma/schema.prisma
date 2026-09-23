@@ -235,7 +235,7 @@ model ExternalCompany {
 // Domain models — Stage 3: catalog items and pricing
 // ────────────────────────────────────────────────────────────
 
-// Inventory item definitions behind every design option (Stage 24 Batch 1 rename; see migration 20260924*).
+// Inventory item definitions behind every design option (Stage 24 Batch 1 rename; see migration 20260923000001_inventory_items_and_material_by_room).
 // category is a plain String (not enum) — open-ended list per data-model.md.
 // attributes is untyped JSONB in Stage 3; typed contract deferred.
 // perUnitQuantity: how many natural units one "counted" unit represents (e.g. 1 box = 50 screws);
