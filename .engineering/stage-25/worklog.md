@@ -10,11 +10,17 @@
   doc-accuracy items fixed directly by orchestrator (stale regression-checklist automation claims, stale
   by-page.sql note, orphaned i18n key, stale comment) and pushed straight to `release/stage-25` @
   `f9d5570` — pure text corrections, no code-behavior change, no separate review round needed.
-- **Active work item:** Batch 9 DONE — awaiting R4 review
-- **Latest artifacts:** `feature/s25-b9-problem-popup` @ `90370f8`; preview `quotation-system-4to4r16s1-vistra-indias-projects.vercel.app`
+- **Active work item:** none — **implement phase complete.** Batch 9 R4 review round-trip finished
+  (CHANGES-NEEDED → fix → APPROVE-WITH-NITS) and merged into `release/stage-25` @ `7581f23`. All 9
+  batches merged, all feature branches deleted (local + remote). `release/stage-25` is pushed and clean.
+- **Latest artifacts:** `release/stage-25` @ `7581f23` (merge of `feature/s25-b9-problem-popup`).
+  Execution Log + Deviations register written to `quotation-system-docs/development-cycles/stage-25.md`.
 - **Review cadence for this stage (non-default — see `profile.md`):** R1 after Batches 1–2, R2 after
-  3–5, R3 after 6 alone, R4 after 7–9. Functional verification deferred to one `engineering:test` pass
-  at the end, not per-batch.
+  3–5, R3 after 6 alone, R4 after 7–9. All four checkpoints complete. Functional verification deferred to
+  one `engineering:test` pass at the end, not per-batch — that is the next phase, not yet started.
+- **Handoff:** build is review-clean. Next phase is `engineering:test` against `test.easeetool.com`
+  (re-point happens as part of that phase's own kickoff, per root `CLAUDE.md`'s branching rules — not
+  done by this implement run). Do not deploy/promote from here.
 
 ## Work items
 
