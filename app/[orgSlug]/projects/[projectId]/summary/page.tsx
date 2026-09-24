@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { orgHref } from "@/lib/orgHref";
+import { orgHref, detectIsSubdomain } from "@/lib/orgHref";
 import { internalFetch } from "@/lib/internal-fetch";
 import { fetchProjectDetail } from "../_project-fetch";
 import type { Summary, MaterialListLine } from "@/lib/summary/types";
@@ -47,7 +47,10 @@ export default async function SummaryPage({
   const { orgSlug, projectId } = await params;
   const base = await orgHref(orgSlug, "");
 
-  const { status, project } = await fetchProjectDetail(orgSlug, projectId);
+  const [{ status, project }, isSubdomain] = await Promise.all([
+    fetchProjectDetail(orgSlug, projectId),
+    detectIsSubdomain(orgSlug),
+  ]);
 
   if (status === 401 || status === 403) {
     redirect(await orgHref(orgSlug, "/login"));
@@ -131,13 +134,25 @@ export default async function SummaryPage({
               </div>
             </div>
             <div className="mt-3.5">
-              <ActionRow isDraft={isDraft} showExport={false} />
+              <ActionRow
+                isDraft={isDraft}
+                showExport={false}
+                orgSlug={orgSlug}
+                projectId={projectId}
+                isSubdomain={isSubdomain}
+              />
             </div>
           </>
         ) : (
           // 200, status: OK — the real page.
           <>
-            <ActionRow isDraft={isDraft} showExport={true} />
+            <ActionRow
+              isDraft={isDraft}
+              showExport={true}
+              orgSlug={orgSlug}
+              projectId={projectId}
+              isSubdomain={isSubdomain}
+            />
             <SummaryTables
               summary={calc.summary}
               materialList={calc.materialList}

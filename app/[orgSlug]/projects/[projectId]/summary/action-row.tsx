@@ -1,72 +1,145 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { ProblemPopup } from "../_problem-popup";
+import { redirectToLogin } from "../design/login-redirect";
+import type { CalculationProblemReport } from "@/lib/materials/problems";
+
 /**
- * Summary page action row (Stage 26 Batch 2) — Recompute + Export PDF buttons, matching the
- * signed-off `mockup-batch0.html` section 1 (idle / not-DRAFT+tooltip states) translated to the
- * app's Tailwind tokens.
+ * Summary page action row (Stage 26 Batch 2 shape, Batch 3 wiring) — Recompute + Export PDF buttons,
+ * matching the signed-off `mockup-batch0.html` (idle / recomputing / not-DRAFT+tooltip states)
+ * translated to the app's Tailwind tokens.
  *
- * Both buttons are inert in this batch (no `onClick`, no loading state) — Batch 3 wires Recompute's
- * click/fetch/popup behavior and its "Recomputing…" spinner state onto this same file; Batch 4 wires
- * Export's real PDF generation. This file only owns the button *shape* (outline vs primary, icon,
- * disabled+tooltip vs enabled, row placement/order) — already approved at Batch 0 sign-off.
+ * Recompute is fully wired: POST .../recompute, 200 → router.refresh() (Batch 1's GET .../calculation
+ * re-fetch on the Server Component re-render supplies the fresh data), 422 → ProblemPopup (same pattern
+ * as design-workspace.tsx's handleSubmitDesign), 409/other → an inline message, 401/403 → redirect to
+ * login. Export PDF stays inert in this batch — Batch 4 wires its client-side PDF generation.
  */
 interface ActionRowProps {
   /** Gates Recompute per S26-8 — disabled+tooltip when the project is not DRAFT. */
   isDraft: boolean;
   /** False on the FAILED-row page state (no KPI/Material data to export). */
   showExport: boolean;
+  orgSlug: string;
+  projectId: string;
+  isSubdomain: boolean;
 }
 
-export function ActionRow({ isDraft, showExport }: ActionRowProps) {
+export function ActionRow({ isDraft, showExport, orgSlug, projectId, isSubdomain }: ActionRowProps) {
+  const router = useRouter();
+  const [recomputing, setRecomputing] = useState(false);
+  const [report, setReport] = useState<CalculationProblemReport | null>(null);
+  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
+
+  async function handleRecompute() {
+    if (!isDraft) return;
+    setConflictMessage(null);
+    setReport(null);
+    setRecomputing(true);
+    try {
+      const res = await fetch(
+        `/api/v1/orgs/${orgSlug}/projects/${projectId}/recompute`,
+        { method: "POST" },
+      );
+      if (res.status === 401 || res.status === 403) {
+        redirectToLogin(orgSlug, isSubdomain);
+        return;
+      }
+      // 422: calculation was refused — show the problem popup instead of a generic error.
+      if (res.status === 422) {
+        const body = (await res.json().catch(() => null)) as CalculationProblemReport | null;
+        if (body?.ok === false && Array.isArray(body.problems)) {
+          setReport(body);
+        } else {
+          setConflictMessage("Recompute failed — fix the problems and try again.");
+        }
+        return;
+      }
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        setConflictMessage(body.error ?? "Could not recompute — please try again.");
+        return;
+      }
+      // 200 — the stored row was updated. Re-render the Server Component so Batch 1's
+      // GET .../calculation supplies the fresh summary/material list/computedAt.
+      router.refresh();
+    } catch {
+      setConflictMessage("Network error — please try again.");
+    } finally {
+      setRecomputing(false);
+    }
+  }
+
   return (
-    <div className="mb-4 flex items-center justify-end gap-2.5">
-      <div className="group relative inline-flex">
-        {!isDraft && (
-          <div className="pointer-events-none absolute bottom-full right-0 mb-2 whitespace-nowrap rounded-md bg-text-heading px-2.5 py-1.5 text-[11.5px] font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100">
-            Recompute is only available while the project is in Draft
-          </div>
-        )}
-        <button
-          type="button"
-          disabled={!isDraft}
-          className="inline-flex items-center gap-2 rounded-sm border border-border bg-bg-white px-4 py-2 text-[13px] font-bold text-text-body hover:bg-primary-softer disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-bg-white"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-[15px] w-[15px]"
-            aria-hidden="true"
+    <div className="mb-4">
+      <div className="flex items-center justify-end gap-2.5">
+        <div className="group relative inline-flex">
+          {!isDraft && (
+            <div className="pointer-events-none absolute bottom-full right-0 mb-2 whitespace-nowrap rounded-md bg-text-heading px-2.5 py-1.5 text-[11.5px] font-semibold text-white opacity-0 transition-opacity group-hover:opacity-100">
+              Recompute is only available while the project is in Draft
+            </div>
+          )}
+          <button
+            type="button"
+            disabled={!isDraft || recomputing}
+            onClick={() => void handleRecompute()}
+            className="inline-flex items-center gap-2 rounded-sm border border-border bg-bg-white px-4 py-2 text-[13px] font-bold text-text-body hover:bg-primary-softer disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-bg-white"
           >
-            <path d="M23 4v6h-6M1 20v-6h6" />
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-          </svg>
-          <span>Recompute</span>
-        </button>
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`h-[15px] w-[15px] ${recomputing ? "animate-spin" : ""}`}
+              aria-hidden="true"
+            >
+              <path d="M23 4v6h-6M1 20v-6h6" />
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+            </svg>
+            <span>{recomputing ? "Recomputing…" : "Recompute"}</span>
+          </button>
+        </div>
+
+        {showExport && (
+          <button
+            type="button"
+            className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-[13px] font-bold text-text-on-primary hover:bg-primary-dark"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="h-[15px] w-[15px]"
+              aria-hidden="true"
+            >
+              <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
+            </svg>
+            <span>Export PDF</span>
+          </button>
+        )}
       </div>
 
-      {showExport && (
-        <button
-          type="button"
-          className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-[13px] font-bold text-text-on-primary hover:bg-primary-dark"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="h-[15px] w-[15px]"
-            aria-hidden="true"
-          >
-            <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
-          </svg>
-          <span>Export PDF</span>
-        </button>
+      {conflictMessage && (
+        <p role="alert" className="mt-2 text-right text-xs font-semibold text-text-muted">
+          {conflictMessage}
+        </p>
+      )}
+
+      {report && (
+        <ProblemPopup
+          report={report}
+          title="Recompute failed"
+          orgSlug={orgSlug}
+          projectId={projectId}
+          isSubdomain={isSubdomain}
+          onClose={() => setReport(null)}
+        />
       )}
     </div>
   );
