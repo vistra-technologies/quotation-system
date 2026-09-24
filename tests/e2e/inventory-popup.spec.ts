@@ -113,7 +113,7 @@ test("B8-3: Successful create — new item appears in the inventory list", async
   await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5_000 });
 
   createdItemCode = `${RUN_PREFIX}-T3`;
-  createdItemName = "B8 E2E Create Item";
+  createdItemName = `B8 Item ${RUN_PREFIX}`;
 
   await page.locator("#item-form-code").fill(createdItemCode);
   await page.locator("#item-form-name").fill(createdItemName);
