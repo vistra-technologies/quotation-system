@@ -96,20 +96,34 @@ export async function createSuperAdminComponentType(formData: FormData): Promise
   );
 }
 
+// ─── State type for updateSuperAdminComponentType (useActionState) ─────────────
+
+/**
+ * State returned by `updateSuperAdminComponentType` for use with `useActionState`.
+ * Mirrors the `AddUserState` pattern from the users actions (Stage 17 Item 4b).
+ */
+export type UpdateComponentTypeState = { error: string | null };
+
 /**
  * Update an existing ComponentType via the SuperAdmin API route.
  * Reads orgId, typeId, name, categoryId, fieldsSchema, active from FormData.
  * On success: revalidates the controls page and redirects back to ?orgId=xxx.
  * On 401: redirects to /controls/login.
+ * On any other error (including 409 from the formula-guard): returns { error }
+ * so the client form can display it inline without crashing to an error boundary.
  *
  * Stage 19 Batch 5 — SuperAdmin ComponentType management relocated to /controls.
+ * Stage 25 Batch 1 — switched to useActionState signature to fix crash on 409.
  */
-export async function updateSuperAdminComponentType(formData: FormData): Promise<void> {
+export async function updateSuperAdminComponentType(
+  prevState: UpdateComponentTypeState,
+  formData: FormData,
+): Promise<UpdateComponentTypeState> {
   const orgId = (formData.get("orgId") as string | null)?.trim();
   const typeId = formData.get("typeId") as string | null;
 
-  if (!orgId) throw new Error("orgId is required");
-  if (!typeId) throw new Error("typeId is required");
+  if (!orgId) return { error: "orgId is required" };
+  if (!typeId) return { error: "typeId is required" };
 
   // `code` is absent from FormData when the form disabled the input (reserved codes,
   // Stage 20 Batch 7) — omit it from the patch entirely rather than sending an empty string.
@@ -119,8 +133,8 @@ export async function updateSuperAdminComponentType(formData: FormData): Promise
   const fieldsSchema = parseFieldsSchema(formData.get("fieldsSchema") as string | null);
   const active = formData.get("active") === "true";
 
-  if (!name) throw new Error("Name is required");
-  if (!categoryId) throw new Error("Category is required");
+  if (!name) return { error: "Name is required" };
+  if (!categoryId) return { error: "Category is required" };
 
   const res = await internalFetch(
     `/api/v1/superadmin/component-types/${encodeURIComponent(typeId)}`,
@@ -134,7 +148,7 @@ export async function updateSuperAdminComponentType(formData: FormData): Promise
 
   if (!res.ok) {
     const body = (await res.json()) as { error?: string };
-    throw new Error(body.error ?? "Failed to update component type");
+    return { error: body.error ?? "Failed to update component type" };
   }
 
   revalidatePath("/controls/component-types");

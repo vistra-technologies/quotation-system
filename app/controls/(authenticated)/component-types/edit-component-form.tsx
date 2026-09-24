@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { useFormStatus } from "react-dom";
+import { useActionState, useState } from "react";
 import { SelectField } from "@/components/select-field";
-import { updateSuperAdminComponentType } from "./actions";
+import { updateSuperAdminComponentType, type UpdateComponentTypeState } from "./actions";
 import { validateFieldsSchema, clearDependentsOf } from "@/lib/validate-fields-schema";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
@@ -18,10 +17,13 @@ import type { FieldEntry } from "@/lib/types/field-entry";
  * 2026-09-02 — see app/controls/(authenticated)/roles/permission-toggle-button.tsx
  * for the original fix this mirrors; Stage 19 test-fix batch 1 fixes the
  * reintroduction of it here).
+ *
+ * Stage 25 Batch 1: switched from useFormStatus() to a `visible` prop, matching
+ * the pattern in create-user-form.tsx, so the component no longer needs to be
+ * a child of a <form> with a server action to read status correctly.
  */
-function PendingOverlay() {
-  const { pending } = useFormStatus();
-  if (!pending) return null;
+function PendingOverlay({ visible }: { visible: boolean }) {
+  if (!visible) return null;
 
   return (
     <div
@@ -38,12 +40,19 @@ function PendingOverlay() {
   );
 }
 
-function SubmitButton({ label, disabled: extraDisabled }: { label: string; disabled?: boolean }) {
-  const { pending } = useFormStatus();
+function SubmitButton({
+  label,
+  disabled: extraDisabled,
+  isPending,
+}: {
+  label: string;
+  disabled?: boolean;
+  isPending: boolean;
+}) {
   return (
     <button
       type="submit"
-      disabled={pending || extraDisabled}
+      disabled={isPending || extraDisabled}
       className="inline-flex items-center rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
     >
       {label}
@@ -521,6 +530,8 @@ interface EditComponentFormProps {
  * Key difference: takes `orgId` instead of `orgSlug`; submits to
  * `updateSuperAdminComponentType` (SuperAdmin API) instead of the org-scoped action.
  */
+const initialActionState: UpdateComponentTypeState = { error: null };
+
 export function EditComponentForm({
   orgId,
   typeId,
@@ -533,12 +544,26 @@ export function EditComponentForm({
   categories,
   labels,
 }: EditComponentFormProps) {
+  const [state, formAction, isPending] = useActionState(
+    updateSuperAdminComponentType,
+    initialActionState,
+  );
   const [fields, setFields] = useState<FieldEntry[]>(initialFields);
+  const [code, setCode] = useState(initialCode);
   const [active, setActive] = useState(initialActive);
   const [mode, setMode] = useState<"form" | "json">("form");
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
   const [moveWarning, setMoveWarning] = useState<string | null>(null);
+
+  // Pre-save calc warning: true when the code changed OR any initial field key
+  // is missing from the current field list (removed or renamed). Pure client read
+  // of already-available state — no extra API calls.
+  const initialFieldKeys = new Set(initialFields.map((f) => f.key).filter(Boolean));
+  const currentFieldKeys = new Set(fields.map((f) => f.key).filter(Boolean));
+  const showCalcWarning =
+    (!isCodeLocked && code !== initialCode) ||
+    [...initialFieldKeys].some((k) => !currentFieldKeys.has(k));
 
   const switchToJson = () => {
     if (mode !== "json") {
@@ -594,8 +619,8 @@ export function EditComponentForm({
     "rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary-soft focus:border-primary-soft";
 
   return (
-    <form action={updateSuperAdminComponentType} className="flex flex-col gap-5">
-      <PendingOverlay />
+    <form action={formAction} className="flex flex-col gap-5">
+      <PendingOverlay visible={isPending} />
 
       {/* orgId identifies the org (SuperAdmin context — not from session). */}
       <input type="hidden" name="orgId" value={orgId} />
@@ -617,7 +642,8 @@ export function EditComponentForm({
           name="code"
           type="text"
           required
-          defaultValue={initialCode}
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
           disabled={isCodeLocked}
           autoComplete="off"
           placeholder="e.g. WALL_TYPE"
@@ -768,7 +794,20 @@ export function EditComponentForm({
           Switch to Form mode to save.
         </p>
       )}
-      <SubmitButton label={labels.submitLabel} disabled={mode === "json"} />
+
+      {/* Calc-change advisory — shown when code or a referenced field key changed */}
+      {showCalcWarning && (
+        <p className="text-sm text-status-pending-text">
+          Saving this change may affect formula/BOQ calculations for this organization.
+        </p>
+      )}
+
+      {/* Server-action error (e.g. 409 from formula-guard) — inline, no crash */}
+      {state.error && (
+        <p className="text-sm text-status-failed-text">{state.error}</p>
+      )}
+
+      <SubmitButton label={labels.submitLabel} disabled={mode === "json"} isPending={isPending} />
     </form>
   );
 }
