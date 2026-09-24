@@ -10,8 +10,8 @@
   doc-accuracy items fixed directly by orchestrator (stale regression-checklist automation claims, stale
   by-page.sql note, orphaned i18n key, stale comment) and pushed straight to `release/stage-25` @
   `f9d5570` — pure text corrections, no code-behavior change, no separate review round needed.
-- **Active work item:** Batch 9 (Problem popup, mockup first)
-- **Latest artifacts:** mockup `design-docs/mockups/problem-popup-poc.html` (docs repo `969c255`)
+- **Active work item:** Batch 9 DONE — awaiting R4 review
+- **Latest artifacts:** `feature/s25-b9-problem-popup` @ `90370f8`; preview `quotation-system-4to4r16s1-vistra-indias-projects.vercel.app`
 - **Review cadence for this stage (non-default — see `profile.md`):** R1 after Batches 1–2, R2 after
   3–5, R3 after 6 alone, R4 after 7–9. Functional verification deferred to one `engineering:test` pass
   at the end, not per-batch.
@@ -28,7 +28,7 @@
 | 6 | Pricing → Inventory rename | DONE — `d94f42c`, preview READY, lint+tsc clean, S25-5 verified |
 | 7 | Inventory create/edit API | DONE — `8167282`, preview READY, 11/11 tests pass |
 | 8 | Inventory create/edit popup | DONE — `5d9e1e2`, preview READY, 7/7 tests pass |
-| 9 | Problem popup (mockup first) | MOCKUP DONE — `969c255` in docs repo, awaiting sign-off |
+| 9 | Problem popup (mockup first) | DONE — `90370f8`, preview READY, 3/3 tests pass |
 
 ## Activity log
 
@@ -611,4 +611,58 @@ Changed:
 Reused: `confirm-dialog.tsx` overlay pattern; status pill classes from `admin/users/page.tsx`
 Deviation noted: GET /inventory now returns ALL items (was active-only) — needed for management; listInventoryItems preserved for formula engine
 Verify: lint+tsc clean; Vercel preview ao5wfotaw READY; 7/7 inventory-popup tests pass; 4/4 inventory-stage25 regression tests pass
+Status: **DONE**
+
+---
+
+**2026-09-24 — developer — Batch 9: Problem popup**
+
+Role: developer (implement dispatch, mockup `problem-popup-poc.html` already approved)
+
+Previous dispatch was cut off at session rate limit; all 5 staged files (component, wiring, page,
+i18n, worklog.md) were intact in the git index and carried forward.
+
+Files added/changed (app repo):
+- NEW `app/[orgSlug]/projects/[projectId]/_problem-popup.tsx` — shared ProblemPopup client
+  component; groups CalculationProblemReport by scope (DESIGN/SELECTION/INVENTORY/FORMULA_SET) with
+  per-scope colour tokens matching the approved mockup; locus-aware Go links
+  (DESIGN/SELECTION → design?partition=<id>; INVENTORY → /inventory; FORMULA_SET → none);
+  Escape/overlay/X/footer Close buttons; auto-focus X on open.
+- MODIFIED `app/[orgSlug]/projects/[projectId]/design/design-workspace.tsx` — handleSubmitDesign()
+  now catches 422, parses CalculationProblemReport body, shows ProblemPopup via submitDesignReport
+  state; added initialPartitionId prop that on mount calls doEnterConfigureMode() to support the
+  "Go" deep-link back into Configure mode.
+- MODIFIED `app/[orgSlug]/projects/[projectId]/design/page.tsx` — reads searchParams.partition and
+  passes as initialPartitionId to DesignWorkspace.
+- MODIFIED `messages/en.json` — added designCannotBeSubmitted key (title text for the popup).
+- NEW `tests/e2e/stage25-b9-problem-popup.spec.ts` — 3 tests: API 422 + CELL_UNASSIGNED locus
+  check; UI popup appears with "Design cannot be submitted" title + DESIGN scope group; Go link href
+  correct + URL updates to include ?partition=<partitionId> after click.
+
+Reused: ProblemCollector / CalculationProblemReport from lib/materials/problems.ts;
+doEnterConfigureMode from design-workspace.tsx (unchanged); apiSignIn / orgUrl / apiUrl from
+tests/e2e/helpers.ts; newWall setup pattern from stage25-b2-pill-relock.spec.ts.
+
+Decisions baked in (per approved mockup + human sign-off):
+- Q1: SELECTION-scope Go link uses ?partition= deep-link (same as DESIGN).
+- Q2: INVENTORY Go link → generic /inventory page.
+- Q3: FORMULA_SET renders a 4th scope group when present, no Go link.
+
+Recompute-side wiring: deferred to Stage 26. A grep of app/[orgSlug]/** confirms no current UI
+button calls the recompute route — only documentation/comment references exist.
+
+SQL reference: no new Prisma calls added (UI-only wiring against existing API shape); by-page.sql
+not changed for this batch.
+
+Verify:
+- `npx tsc --noEmit` → clean (no output)
+- `npm run lint` → 0 new errors (4 pre-existing in .engineering/stage-22 gitignored file)
+- Vercel preview `quotation-system-4to4r16s1-vistra-indias-projects.vercel.app` → READY
+- /api/health → 200 database:connected
+- `stage25-b9-problem-popup.spec.ts`: **3/3 passed**
+  (1 intermediate fix: waitForURL regex matched design URL before ?partition= was appended;
+  switched to a URL predicate requiring partition=<id> and removed unused orgUrlPattern import)
+
+Branch: `feature/s25-b9-problem-popup` @ `90370f8` — pushed, not merged.
+
 Status: **DONE**
