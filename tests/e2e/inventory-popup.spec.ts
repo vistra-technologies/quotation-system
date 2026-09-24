@@ -157,9 +157,9 @@ test("B8-4: Duplicate code shows inline 409 error in the modal", async ({
 
   await page.getByRole("button", { name: "Save item" }).click();
 
-  // 409 inline banner must appear inside the dialog.
+  // 409 inline banner must appear inside the dialog — check for the error text.
   await expect(
-    page.getByRole("dialog").locator(".border-\\[var\\(--color-danger-border\\)\\]"),
+    page.getByRole("dialog").getByText(/already exists/i),
   ).toBeVisible({ timeout: 15_000 });
 
   // Per-field error on the code input.
