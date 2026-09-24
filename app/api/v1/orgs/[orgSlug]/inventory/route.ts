@@ -10,7 +10,7 @@ import {
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import {
-  listInventoryItems,
+  listAllInventoryItems,
   createInventoryItem,
   DuplicateInventoryCodeError,
 } from "@/lib/data/catalog";
@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 // ─── GET /api/v1/orgs/[orgSlug]/inventory ────────────────────────────────────
 
 /**
- * List all active InventoryItems for the org, with their prices.
+ * List ALL InventoryItems for the org (active + inactive), with their prices.
  * Ordered category → code, then prices by currency within each item.
  *
  * Auth: authenticated org member with MANAGE_PRICING permission.
@@ -31,10 +31,16 @@ export const dynamic = "force-dynamic";
  * per the stage-12.md RBAC table: catalog/** reads and writes both require
  * MANAGE_PRICING.
  *
- * Tenancy: enforced by getApiSession() (403 on cross-org) and listInventoryItems()
+ * Returns all items (including inactive) so the management page can display
+ * and edit inactive items (Stage 25 Batch 8). Formula-engine code uses
+ * loadInventoryMap() (lib/data/inventory.ts) which has its own active-only filter.
+ *
+ * Tenancy: enforced by getApiSession() (403 on cross-org) and listAllInventoryItems()
  *          filtering on session.organizationId.
  *
  * Stage 25 Batch 6 (S25-4): route moved from /catalog to /inventory.
+ * Stage 25 Batch 8: switched from listInventoryItems (active-only) to
+ * listAllInventoryItems so the management page shows inactive items for editing.
  * Old path /api/v1/orgs/[orgSlug]/catalog returns 404 (no redirect, S25-5).
  */
 export async function GET(
@@ -65,10 +71,10 @@ export async function GET(
   }
 
   try {
-    const items = await listInventoryItems(session);
+    const items = await listAllInventoryItems(session);
     return NextResponse.json({ items });
   } catch (err) {
-    console.error("[GET /api/v1/orgs/[orgSlug]/inventory] listInventoryItems", err);
+    console.error("[GET /api/v1/orgs/[orgSlug]/inventory] listAllInventoryItems", err);
     return apiServerError();
   }
 }

@@ -20,10 +20,29 @@ export class DuplicateInventoryCodeError extends Error {
 /**
  * List active inventory items for the session org, with their prices.
  * Ordered category → code, then prices by currency within each item.
+ *
+ * Active-only — suitable for formula engine use (formula references only
+ * resolve active items). For the management page (where admins need to see
+ * and edit inactive items too) use `listAllInventoryItems`.
  */
 export async function listInventoryItems(session: SessionData) {
   return prisma.inventoryItem.findMany({
     where: { organizationId: session.organizationId, active: true },
+    include: { prices: { orderBy: { currency: "asc" } } },
+    orderBy: [{ category: "asc" }, { code: "asc" }],
+  });
+}
+
+/**
+ * List ALL inventory items for the session org (active + inactive), with prices.
+ * Ordered category → code, then prices by currency within each item.
+ *
+ * Used by the inventory management page — admins need to see inactive items
+ * so they can edit/reactivate them (Stage 25 Batch 8).
+ */
+export async function listAllInventoryItems(session: SessionData) {
+  return prisma.inventoryItem.findMany({
+    where: { organizationId: session.organizationId },
     include: { prices: { orderBy: { currency: "asc" } } },
     orderBy: [{ category: "asc" }, { code: "asc" }],
   });
