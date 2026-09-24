@@ -32,7 +32,7 @@
  *   npx playwright test stage23-summary
  */
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
-import { apiUrl, apiSignIn } from "./helpers";
+import { apiUrl, apiSignIn, getSeededFormulaSetId } from "./helpers";
 import {
   readProjectState,
   setProjectStatus,
@@ -320,9 +320,11 @@ test.describe("SuperAdmin-only: fresh org pin + guard (3 paths) + hard-delete ca
   test.beforeAll(async ({ browser, request }) => {
     saToken = await loginAsSuperAdmin(request);
     orgSlug = `e2e-s23-fresh-${RUN}`;
+    // R2 fix (Finding 3): formulaSetId is now required on POST /orgs (Batch 5).
+    const formulaSetId = await getSeededFormulaSetId(request, saToken);
     const create = await request.post("/api/v1/superadmin/orgs", {
       headers: { Cookie: `qs-sa-token=${saToken}` },
-      data: { name: "E2E Stage 23 Fresh Org", slug: orgSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD },
+      data: { name: "E2E Stage 23 Fresh Org", slug: orgSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD, formulaSetId },
     });
     expect(create.status(), await create.text()).toBe(201);
     orgId = ((await create.json()) as { org: { id: string } }).org.id;

@@ -22,6 +22,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { getSeededFormulaSetId } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -62,10 +63,12 @@ async function createTestOrg(
   suffix: string,
 ): Promise<string> {
   const slug = `e2e-roles-${suffix}-${Date.now()}`.slice(0, 63);
+  // R2 fix (Finding 3): formulaSetId is now required on POST /orgs (Batch 5).
+  const formulaSetId = await getSeededFormulaSetId(request, token);
   const res = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
     // adminPassword required since Stage 17 item 4a (auto-created org-admin account).
-    data: { name: `E2E Roles Test Org ${suffix}`, slug, adminPassword: "TestPass1234!" },
+    data: { name: `E2E Roles Test Org ${suffix}`, slug, adminPassword: "TestPass1234!", formulaSetId },
   });
   if (res.status() !== 201) {
     throw new Error(`Failed to create test org ${suffix}: HTTP ${res.status()}`);

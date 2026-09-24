@@ -348,3 +348,70 @@ Preview: `https://quotation-system-o5ncza1np-vistra-indias-projects.vercel.app` 
 - `PATCH /api/v1/superadmin/orgs/any-id` → 401 (new endpoint auth gate confirmed)
 
 Status: **DONE**
+
+---
+
+**2026-09-24 — reviewer — R2 checkpoint (Batches 3–5)**
+
+Role: reviewer
+Verdict: **CHANGES-NEEDED** — 0 CRITICAL · 3 IMPORTANT · 5 MINOR
+Report: `.engineering/stage-25/review-r2.md`
+Static: `tsc --noEmit` clean, `eslint` on the changed areas clean. No migration in the diff (S25-10 OK).
+
+---
+
+**2026-09-24 — developer — R2 fix round (feature/s25-r2-fixes)**
+
+Role: developer
+Branch: `feature/s25-r2-fixes` (cut off `release/stage-25` with Batches 1–5 merged)
+Commit: `8860d72` (app); docs repo commit `6df6650` (by-page.sql only)
+Preview: `https://quotation-system-bo2okbq35-vistra-indias-projects.vercel.app` — READY, health ✓
+
+**Findings addressed:**
+
+- **Finding 1 (IMPORTANT)** — `app/controls/(authenticated)/formula-sets/_new-set-section.tsx`:
+  Added controlled `name`/`body` state (React 19 fix); replaced the broken `localValidationErrors`
+  flag with dismiss-by-identity pattern (`dismissed === state`). Create now re-enables after any
+  keystroke following a validation error; textarea content survives a failed submit.
+
+- **Finding 2 (IMPORTANT)** — `app/controls/(authenticated)/formula-sets/[setId]/_edit-form.tsx`:
+  Replaced sticky `bodyCleared` boolean with same dismiss-by-identity pattern; made `body` a
+  controlled `useState(initialBodyJson)` with `value`/`onChange`. Textarea no longer reverts to
+  original value on a failed save. UI-E1 test should now pass with SA creds.
+
+- **Finding 3 (IMPORTANT)** — `tests/e2e/helpers.ts`, `superadmin-orgs.spec.ts`,
+  `stage23-summary.spec.ts`, `superadmin-roles.spec.ts`:
+  Added shared `getSeededFormulaSetId(request, token)` to `helpers.ts` — filters formula-sets
+  list for `name === "glass-partition-standard"` and takes the highest version, bypassing any
+  junk e2e sets. Replaced `superadmin-orgs.spec.ts`'s private `getFirstFormulaSetId` with the
+  shared helper. Added `formulaSetId` to the org-create calls in `stage23-summary.spec.ts`
+  (beforeAll, SA section) and `superadmin-roles.spec.ts` (`createTestOrg`).
+
+- **Finding 5 (MINOR)** — `quotation-system-docs/design-docs/sql-queries/by-page.sql`:
+  Removed stale Step 1.5 (the `ACTIVE_FORMULA_SET_NAME` findFirst is gone; replaced with the
+  existence check the route now performs). Fixed `listAllOrganizations` SQL: replaced the
+  `LEFT JOIN ComponentType` (which produced N×M rows) with a correlated subquery.
+
+- **Finding 8 (MINOR)** — `app/controls/(authenticated)/orgs/[orgId]/edit-org-form.tsx`:
+  Updated both mismatch banner messages from "New projects will fail to compute until resolved"
+  to "New projects cannot be created under this org until this is resolved." (project creation
+  is refused 409, not silently allowed and then failing at compute time).
+
+**Not addressed (per scope):**
+- Finding 4 — test coverage nice-to-have; not in scope.
+- Finding 6 — snapshot-builder duplication; not in scope.
+- Finding 7 — **CARRY-FORWARD for human decision**: `app/controls/(authenticated)/orgs/[orgId]/page.tsx`
+  reads the DB directly via `getOrgForEdit()` instead of going through `app/api/v1/**`. This is an
+  architecture-pattern inconsistency (Stage 12 rule). Not a security hole (SuperAdmin layout still
+  guards it), and the stage doc doesn't require it to be fixed now. Decision: add a dedicated
+  `GET /api/v1/superadmin/orgs/[orgId]` route and fetch through it, or deliberately document the
+  exception. Recommend the human weighs in before Batch 7 or at end-of-stage cleanup.
+
+**Verify:**
+- `tsc --noEmit` — clean
+- `npm run lint` — 0 new errors (4 pre-existing `no-explicit-any` in `.engineering/stage-22/prod-recon-readonly.ts`)
+- E2E against preview: 22 passed, 41 skipped (SA creds absent in local env — expected),
+  0 failed. SA-gated tests (formula-set UI + org create + roles isolation) will exercise at
+  `engineering:test` on `test.easeetool.com` with real creds.
+
+Status: **DONE**
