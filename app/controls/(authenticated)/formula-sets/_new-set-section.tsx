@@ -27,15 +27,17 @@ export function NewSetSection({ existingNames }: NewSetSectionProps) {
     { error: null },
   );
 
-  // When the user edits the body textarea we clear local validation errors so
-  // Save re-enables (they'll get fresh errors on the next submit if still invalid).
-  const [localValidationErrors, setLocalValidationErrors] = useState<string[]>([]);
+  // Controlled field state — React 19 resets uncontrolled inputs after any
+  // <form action> finishes (success or error); without this the textarea is
+  // wiped on every failed submit (see profile.md "Recurring gotcha").
+  const [name, setName] = useState("");
+  const [body, setBody] = useState("");
 
-  // Sync local errors from the server action result.
-  const currentErrors =
-    localValidationErrors.length > 0
-      ? localValidationErrors
-      : (state.validationErrors ?? []);
+  // Dismiss errors by identity: once the user edits after a failed submit the
+  // current `state` object is "dismissed", so currentErrors becomes [].  A new
+  // submit produces a fresh state reference, so fresh errors re-appear.
+  const [dismissed, setDismissed] = useState<FormulaSetFormState | null>(null);
+  const currentErrors = dismissed === state ? [] : (state.validationErrors ?? []);
 
   const hasErrors = currentErrors.length > 0;
 
@@ -93,6 +95,8 @@ export function NewSetSection({ existingNames }: NewSetSectionProps) {
               list="existing-names-list"
               placeholder="e.g. glass-partition-standard"
               required
+              value={name}
+              onChange={(e) => setName(e.target.value)}
               className="w-full rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-heading outline-none focus:border-primary"
             />
             <datalist id="existing-names-list">
@@ -118,21 +122,15 @@ export function NewSetSection({ existingNames }: NewSetSectionProps) {
               name="bodyJson"
               placeholder={'{"slots":{"GLASS":{"role":"glass"}}}'}
               rows={10}
+              value={body}
               className={`w-full resize-y rounded-sm border px-3 py-2 font-mono text-xs text-text-heading outline-none focus:border-primary ${
                 hasErrors ? "border-status-failed-text" : "border-border"
               } bg-bg-white`}
-              onChange={() => {
-                // Clear local errors when the user edits the body.
-                if (localValidationErrors.length > 0) {
-                  setLocalValidationErrors([]);
-                }
-                if (state.validationErrors && state.validationErrors.length > 0) {
-                  // We can't mutate state, but clearing localValidationErrors
-                  // (which is empty) won't re-enable if state.validationErrors is
-                  // present. Work around by setting localValidationErrors to [] so
-                  // the currentErrors computed value is recalculated.
-                  setLocalValidationErrors([]);
-                }
+              onChange={(e) => {
+                setBody(e.target.value);
+                // Dismiss the current error set so Create re-enables while the
+                // user is editing; fresh errors will appear on the next submit.
+                setDismissed(state);
               }}
             />
 

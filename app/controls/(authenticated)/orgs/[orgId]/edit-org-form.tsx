@@ -51,10 +51,10 @@ export function EditOrgForm({
     <div className="flex flex-col gap-8">
       {/* ── Persistent mismatch banner (shown when mismatch is present) ── */}
       {hasMismatch && !state.saved && (
-        <MismatchBanner message="Formula set mismatch — the assigned set references ComponentType codes that are missing or inactive in this org. New projects will fail to compute until resolved." />
+        <MismatchBanner message="Formula set mismatch — the assigned set references ComponentType codes that are missing or inactive in this org. New projects cannot be created under this org until this is resolved." />
       )}
       {hasMismatch && state.saved && (
-        <MismatchBanner message="Formula set saved — but the assigned set references ComponentType codes that are missing or inactive in this org. New projects will fail to compute until resolved. See details below." />
+        <MismatchBanner message="Formula set saved — but the assigned set references ComponentType codes that are missing or inactive in this org. New projects cannot be created under this org until this is resolved. See details below." />
       )}
 
       {/* ── Main form card ── */}

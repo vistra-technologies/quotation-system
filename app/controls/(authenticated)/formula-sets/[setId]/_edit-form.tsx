@@ -36,14 +36,17 @@ export function EditFormulaSetForm({
     { error: null },
   );
 
-  // Track local validation-error clear on textarea change.
-  const [bodyCleared, setBodyCleared] = useState(false);
-
-  // Controlled name state so it survives a React 19 form-action reset after a 409.
+  // Controlled field state — React 19 resets uncontrolled inputs after any
+  // <form action> finishes (success or error); without this the textarea is
+  // wiped on a failed submit (see profile.md "Recurring gotcha").
   const [name, setName] = useState(initialName);
+  const [body, setBody] = useState(initialBodyJson);
 
-  // Use local clear flag to suppress errors after the user edits the body.
-  const currentErrors = bodyCleared ? [] : (state.validationErrors ?? []);
+  // Dismiss errors by identity: once the user edits after a failed submit the
+  // current `state` object is "dismissed", so currentErrors becomes [].  A new
+  // submit produces a fresh state reference, so fresh errors re-appear.
+  const [dismissed, setDismissed] = useState<FormulaSetFormState | null>(null);
+  const currentErrors = dismissed === state ? [] : (state.validationErrors ?? []);
   const hasErrors = currentErrors.length > 0;
 
   return (
@@ -121,13 +124,15 @@ export function EditFormulaSetForm({
             id="edit-body"
             name="bodyJson"
             rows={14}
-            defaultValue={initialBodyJson}
+            value={body}
             className={`w-full resize-y rounded-sm border px-3 py-2 font-mono text-xs text-text-heading outline-none focus:border-primary ${
               hasErrors ? "border-status-failed-text" : "border-border"
             } bg-bg-white`}
-            onChange={() => {
-              // Clear local errors when the user edits the body.
-              if (!bodyCleared) setBodyCleared(true);
+            onChange={(e) => {
+              setBody(e.target.value);
+              // Dismiss the current error set so Save re-enables while the
+              // user is editing; fresh errors will appear on the next submit.
+              setDismissed(state);
             }}
           />
 

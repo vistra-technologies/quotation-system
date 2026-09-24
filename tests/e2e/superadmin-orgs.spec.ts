@@ -19,6 +19,7 @@
  */
 
 import { test, expect } from "@playwright/test";
+import { getSeededFormulaSetId } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -72,21 +73,11 @@ async function loginAsSuperAdmin(
   return match[1];
 }
 
-// ── Helper: fetch the first available formula set ID (for create-org tests) ──
+// ── Helper: fetch the stable seeded formula set ID (for create-org tests) ───
 // Batch 5: org creation now requires an explicit formulaSetId.
-
-async function getFirstFormulaSetId(
-  request: import("@playwright/test").APIRequestContext,
-  token: string,
-): Promise<string> {
-  const res = await request.get("/api/v1/superadmin/formula-sets", {
-    headers: { Cookie: `qs-sa-token=${token}` },
-  });
-  if (res.status() !== 200) throw new Error("Could not fetch formula sets");
-  const body = (await res.json()) as { formulaSets: Array<{ id: string }> };
-  if (!body.formulaSets.length) throw new Error("No formula sets found in dev DB — run prisma db seed");
-  return body.formulaSets[0].id;
-}
+// R2 fix (Finding 3): use getSeededFormulaSetId from helpers.ts — filters for
+// the stable seeded name "glass-partition-standard" so junk e2e sets created
+// earlier in a suite run can't pollute the result.
 
 // ---------------------------------------------------------------------------
 // TIER 1 — API-only tests (per-branch preview URL)
@@ -160,7 +151,7 @@ test("POST /api/v1/superadmin/orgs — new org is isolated (userCount=1, auto-cr
 
   const token = await loginAsSuperAdmin(request);
   const uniqueSlug = `e2e-iso-${Date.now()}`;
-  const formulaSetId = await getFirstFormulaSetId(request, token);
+  const formulaSetId = await getSeededFormulaSetId(request, token);
 
   // Create a new org.
   const createRes = await request.post("/api/v1/superadmin/orgs", {
@@ -268,7 +259,7 @@ test("Batch E: suspend/reactivate lifecycle + proxy suspension check", async ({
 
   const token = await loginAsSuperAdmin(request);
   const uniqueSlug = `e2e-suspend-${Date.now()}`;
-  const formulaSetId = await getFirstFormulaSetId(request, token);
+  const formulaSetId = await getSeededFormulaSetId(request, token);
 
   // Create a test org.
   const createRes = await request.post("/api/v1/superadmin/orgs", {
@@ -391,7 +382,7 @@ test("DELETE /api/v1/superadmin/orgs/[orgId] — non-suspended org rejected → 
 
   const token = await loginAsSuperAdmin(request);
   const uniqueSlug = `verify-6a-gate-${Date.now()}`;
-  const formulaSetId = await getFirstFormulaSetId(request, token);
+  const formulaSetId = await getSeededFormulaSetId(request, token);
 
   // Create a fresh org (active by default).
   const createRes = await request.post("/api/v1/superadmin/orgs", {
@@ -443,7 +434,7 @@ test("Item 6a: create → suspend → hard-delete → org gone; vistra unaffecte
 
   const token = await loginAsSuperAdmin(request);
   const uniqueSlug = `verify-6a-${Date.now()}`;
-  const formulaSetId = await getFirstFormulaSetId(request, token);
+  const formulaSetId = await getSeededFormulaSetId(request, token);
 
   // --- Step 1: Create test org ---
   const createRes = await request.post("/api/v1/superadmin/orgs", {
@@ -573,7 +564,7 @@ test("Batch 5: POST /api/v1/superadmin/orgs — valid formulaSetId → 201 + war
   );
 
   const token = await loginAsSuperAdmin(request);
-  const formulaSetId = await getFirstFormulaSetId(request, token);
+  const formulaSetId = await getSeededFormulaSetId(request, token);
   const uniqueSlug = `b5-create-${Date.now()}`;
 
   const createRes = await request.post("/api/v1/superadmin/orgs", {
@@ -660,7 +651,7 @@ test("Batch 5: PATCH /api/v1/superadmin/orgs/[orgId] — valid name update → 2
   );
 
   const token = await loginAsSuperAdmin(request);
-  const formulaSetId = await getFirstFormulaSetId(request, token);
+  const formulaSetId = await getSeededFormulaSetId(request, token);
   const uniqueSlug = `b5-edit-${Date.now()}`;
 
   // Create a test org.

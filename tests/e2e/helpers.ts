@@ -239,3 +239,45 @@ export async function apiSignIn(page: Page, orgSlug: string, username: string): 
     },
   ]);
 }
+
+// ── SuperAdmin formula-set helper ────────────────────────────────────────────
+
+/** The platform's canonical seeded formula-set name. */
+const SEEDED_FORMULA_SET_NAME = "glass-partition-standard";
+
+/**
+ * Resolve the ID of the highest-version seeded formula set (name =
+ * "glass-partition-standard"), bypassing any junk e2e-created sets that may
+ * accumulate in the dev DB after the formula-set spec suite runs.
+ *
+ * Finding 3 fix (R2): `superadmin-orgs.spec.ts`'s private `getFirstFormulaSetId`
+ * returned `formulaSets[0]` (newest by createdAt), which could be an
+ * `e2e-fs-*` throwaway set after the formula-set specs run earlier in the
+ * suite. This helper always picks the stable seeded entry instead.
+ *
+ * Must be called with a valid SuperAdmin token (the formula-sets list endpoint
+ * is SA-only).
+ */
+export async function getSeededFormulaSetId(
+  request: import("@playwright/test").APIRequestContext,
+  token: string,
+): Promise<string> {
+  const res = await request.get("/api/v1/superadmin/formula-sets", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+  if (res.status() !== 200) {
+    throw new Error(`getSeededFormulaSetId: formula-sets list returned ${res.status()}`);
+  }
+  const body = (await res.json()) as {
+    formulaSets: Array<{ id: string; name: string; version: number }>;
+  };
+  const seeded = body.formulaSets
+    .filter((fs) => fs.name === SEEDED_FORMULA_SET_NAME)
+    .sort((a, b) => b.version - a.version);
+  if (!seeded.length) {
+    throw new Error(
+      `getSeededFormulaSetId: no formula set named "${SEEDED_FORMULA_SET_NAME}" in dev DB — run prisma db seed`,
+    );
+  }
+  return seeded[0].id;
+}
