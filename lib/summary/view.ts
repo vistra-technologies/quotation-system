@@ -92,9 +92,8 @@ export function buildMaterialSections(
   };
   let sharedHasLines = false;
 
-  // Pre-seed sections for every snapshot ComponentType, in snapshot order, so empty slots don't appear
-  // (only sections that actually have lines are returned — see the filter below) while ensuring the
-  // ones that do have lines come out in snapshot order.
+  // Index snapshot order (not pre-seeded — a section is only created below when a materialList line
+  // actually lands in it) so that whichever sections do end up with lines come out in snapshot order.
   const snapshotOrder = new Map<string, number>();
   (snapshot.componentTypes ?? []).forEach((ct, i) => snapshotOrder.set(ct.code, i));
 
@@ -136,9 +135,18 @@ export function buildMaterialSections(
 
 const EM_DASH = "—";
 
+/**
+ * `null` -> em dash, any real value passed through unchanged. Shared by every "show as stored, or a dash
+ * if unset" field (glass type, door category, door type, ...) so later batches reuse this instead of
+ * re-inlining `?? "—"` or reaching for `formatGlassLabel` on a non-glass field.
+ */
+export function orDash(value: string | null): string {
+  return value ?? EM_DASH;
+}
+
 /** `null` glassType renders as an em dash; a real value is shown as stored (no relabeling). */
 export function formatGlassLabel(glassType: string | null): string {
-  return glassType ?? EM_DASH;
+  return orDash(glassType);
 }
 
 const NUMERIC_THICKNESS = /^\d+(\.\d+)?$/;

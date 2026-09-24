@@ -10,9 +10,11 @@ import {
   formatThickness,
   formatAreaM2,
   formatUnit,
+  orDash,
   SHARED_MATERIALS_TITLE,
 } from "../../lib/summary/view";
-import type { Summary } from "../../lib/summary/types";
+import { buildSummary } from "../../lib/summary";
+import type { Summary, SummaryInput } from "../../lib/summary/types";
 import type { ConfigSnapshot } from "../../lib/config-snapshot";
 import type { MaterialListLine } from "../../lib/summary/types";
 
@@ -79,6 +81,75 @@ describe("rebuildDoorKpis", () => {
   test("empty summary produces no rows", () => {
     const summary = summaryWithDoors([]);
     assert.deepEqual(rebuildDoorKpis(summary), []);
+  });
+
+  test("real buildSummary() invariant (S26-3): rebuilt total ties to stored kpis.doorsByType, and the "
+    + "cloisons merge case (same doorType, different category) splits into two rows where the stored "
+    + "KPI collapsed to one", () => {
+    const DOOR_T = "type-door";
+    const snapshot: ConfigSnapshot = {
+      takenAt: "2026-09-24T00:00:00.000Z",
+      componentTypes: [
+        { id: DOOR_T, code: "DOOR", name: "Door", active: true, fieldsSchema: [], fieldOptionsConfig: {} },
+      ],
+    };
+    const formulaSetBody = {
+      slots: {
+        DOOR: { role: "door", requiredParams: [], summaryParams: { category: "category", doorType: "doorType" } },
+      },
+      formulas: [],
+    };
+    const selections = [
+      { id: "d-single", componentTypeId: DOOR_T, config: { category: "Single", doorType: "Simple Glass" } },
+      { id: "d-double", componentTypeId: DOOR_T, config: { category: "Double", doorType: "Simple Glass" } },
+    ];
+    const input: SummaryInput = {
+      formulaSetBody,
+      snapshot,
+      floors: [
+        {
+          id: "f1",
+          label: "Ground",
+          rooms: [
+            {
+              id: "r1",
+              label: "Room A",
+              partitions: [
+                {
+                  id: "p1",
+                  label: "Wall 1",
+                  widthMm: 0,
+                  heightMm: 0,
+                  design: {
+                    schemaVersion: 2,
+                    sections: [
+                      { id: "s1", widthMm: 900, cells: [{ id: "c1", heightMm: 2800, selectionId: "d-single" }] },
+                      { id: "s2", widthMm: 900, cells: [{ id: "c2", heightMm: 2800, selectionId: "d-double" }] },
+                    ],
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      selections,
+    };
+
+    const r = buildSummary(input);
+    assert.equal(r.status, "OK", r.errorDetail);
+
+    const storedSum = r.summary.kpis.doorsByType.reduce((sum, d) => sum + d.quantity, 0);
+    const rebuilt = rebuildDoorKpis(r.summary);
+    const rebuiltSum = rebuilt.reduce((sum, d) => sum + d.quantity, 0);
+
+    // (a) the rebuilt total ties to the stored KPI total.
+    assert.equal(rebuiltSum, storedSum);
+
+    // (b) the stored KPI (grouped by doorType only) collapses Single+Double into one row; the rebuild
+    // (grouped by category+doorType) keeps them separate.
+    assert.equal(r.summary.kpis.doorsByType.length, 1);
+    assert.equal(rebuilt.length, 2);
   });
 });
 
@@ -150,9 +221,26 @@ describe("buildMaterialSections", () => {
     const sections = buildMaterialSections(materialList, snapshot());
     assert.deepEqual(sections.map((s) => s.code), ["GLASS", "DOOR"]);
   });
+
+  test("full ordering rule: snapshot-matched sections first (in snapshot order), then unmatched slots "
+    + "in first-seen order, then Shared last", () => {
+    const materialList: MaterialListLine[] = [
+      line({ code: "SEAL-1", slot: "SEALANT" }), // absent from snapshot, seen first
+      line({ code: "GASKET-1", slot: ["GLASS", "DOOR"] }), // array slot -> Shared materials
+      line({ code: "D1", slot: "DOOR" }), // snapshot index 1
+      line({ code: "G1", slot: "GLASS" }), // snapshot index 0
+    ];
+    const sections = buildMaterialSections(materialList, snapshot());
+    assert.deepEqual(sections.map((s) => s.code), ["GLASS", "DOOR", "SEALANT", "shared"]);
+  });
 });
 
 // ─── Formatting helpers ─────────────────────────────────────────────────────
+
+describe("orDash", () => {
+  test("passes through a real value", () => assert.equal(orDash("Single"), "Single"));
+  test("null -> em dash", () => assert.equal(orDash(null), "—"));
+});
 
 describe("formatGlassLabel", () => {
   test("passes through a real value", () => assert.equal(formatGlassLabel("ID1"), "ID1"));
