@@ -2,11 +2,14 @@
 
 ## Status
 
-- **Phase:** implement — Batches 1–2 **R1 APPROVED** (`review-r1-v2.md`), merged into `release/stage-25`
-  @ `fec663a`. Batch 3 DONE (`493701e`). Batch 4 DONE (`2731f6a`). **Batch 5 DONE** (`6639049`,
-  branch `feature/s25-b5-org-formula-picker`, preview READY). R2 checkpoint covers Batches 3–5 together.
-- **Active work item:** Batch 5 DONE. R2 review pending (covers Batches 3–5). Next after R2: Batch 6.
-- **Latest artifacts:** `plan-b5.md` (implemented)
+- **Phase:** implement — Batches 1–2 **R1 APPROVED**. Batches 3–5 **R2 APPROVED** (`review-r2-v2.md`,
+  after two small fix rounds for form-reset/validation-error bugs, test 400s, stale docs, and copy
+  accuracy — see Activity log), merged into `release/stage-25` @ `48b4a2d`. Carry-forward noted for the
+  human: `orgs/[orgId]/page.tsx` reads the DB directly instead of via `app/api/v1/**` (Stage 12 pattern) —
+  not a bug, an architecture-consistency call to make later. Starting Batch 6 (Pricing → Inventory
+  rename, R3 alone per this stage's cadence — no redirects per S25-5, so this is a careful one).
+- **Active work item:** Batch 6 (Pricing → Inventory rename) — plan not yet written
+- **Latest artifacts:** `review-r2-v2.md` (APPROVE)
 - **Review cadence for this stage (non-default — see `profile.md`):** R1 after Batches 1–2, R2 after
   3–5, R3 after 6 alone, R4 after 7–9. Functional verification deferred to one `engineering:test` pass
   at the end, not per-batch.
@@ -20,7 +23,7 @@
 | 3 | Formula-set API + data layer | DONE — `493701e`, preview READY |
 | 4 | Formula-set SuperAdmin screens (mockup first) | DONE — `2731f6a`, preview READY |
 | 5 | Org create/edit formula picker (mockup first) | DONE — `6639049`, preview READY |
-| 6 | Pricing → Inventory rename | not started |
+| 6 | Pricing → Inventory rename | in progress (plan) |
 | 7 | Inventory create/edit API | not started |
 | 8 | Inventory create/edit popup (mockup first) | not started |
 | 9 | Problem popup (mockup first) | not started |
@@ -422,3 +425,25 @@ Status: **DONE**
 
 Role: reviewer · Verdict: **CHANGES-NEEDED** · 0 CRITICAL / 1 IMPORTANT / 1 MINOR · report: `review-r2-v2.md`.
 The R2 findings 1, 2, 3, 5 and 8 are verified fixed. New: the reserved-slug e2e test (`superadmin-orgs.spec.ts:112`) sends no `formulaSetId` and now fails, and the invalid-slug test passes for the wrong reason.
+
+---
+
+**2026-09-24 — developer — R2-v2 fix round (N1 + N2)**
+
+Role: developer
+Branch: `feature/s25-r2-fixes-2` (cut off `release/stage-25`) → commit `0d4c8eb`
+Preview: pushed; Vercel build in progress.
+
+**Findings addressed:**
+
+- **N1 (IMPORTANT)** — `tests/e2e/superadmin-orgs.spec.ts`: Added `formulaSetId: await getSeededFormulaSetId(request, token)` to both the reserved-slug test (~line 112) and the invalid-slug test (~line 132). Both tests now send a valid formulaSetId so the `formulaSetId is required` guard is satisfied and slug validation is actually exercised. Pattern is identical to the 4 other create-org calls in the same file.
+
+- **N2 (MINOR)** — `app/controls/(authenticated)/formula-sets/_new-set-section.tsx` (line 76) and `app/controls/(authenticated)/formula-sets/[setId]/_edit-form.tsx` (line 69): Changed banner guard from `state.error && !hasErrors` to `state.error && !state.validationErrors?.length`. The old guard used `hasErrors` (the dismissed view) so the banner popped up while the user was editing after inline errors were dismissed. The new guard checks the raw state, so the banner only shows when there are genuinely no validation errors in the server response (i.e. a non-validation error like a 500).
+
+**Verify:**
+- `npx eslint <3 changed files>` → 0 errors / 0 warnings
+- `tsc --noEmit` → clean (no output)
+- Branch pushed to `feature/s25-r2-fixes-2`; Vercel preview building.
+- SA creds absent in local env — e2e run of `superadmin-orgs.spec.ts` will exercise N1 fixes in the `engineering:test` pass on `test.easeetool.com` with real creds.
+
+Status: **DONE**
