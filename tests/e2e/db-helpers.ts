@@ -159,6 +159,11 @@ export async function setProjectStatus(projectId: string, status: string): Promi
   runDbOp("setProjectStatus", { projectId, status });
 }
 
+/** Stage 26 tester: flip a stored calculation to status FAILED with the given errorDetail. */
+export async function markCalculationFailed(projectId: string, errorDetail: string): Promise<void> {
+  runDbOp("markCalculationFailed", { projectId, errorDetail });
+}
+
 /** Count of ProjectCalculation rows for an org — used as an explicit before/after cascade-delete proof. */
 export async function countProjectCalculations(organizationId: string): Promise<number> {
   return runDbOp<number>("countProjectCalculations", { organizationId });

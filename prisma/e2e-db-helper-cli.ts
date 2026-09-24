@@ -192,6 +192,12 @@ async function main() {
         const { organizationId } = input as { organizationId: string };
         return db.projectCalculation.count({ where: { organizationId } });
       }
+      case "markCalculationFailed": {
+        // Stage 26 tester: flip a stored ProjectCalculation to FAILED (no route writes FAILED rows any more).
+        const { projectId, errorDetail } = input as { projectId: string; errorDetail: string };
+        await db.projectCalculation.update({ where: { projectId }, data: { status: "FAILED", errorDetail } });
+        return null;
+      }
       case "setProjectStatus": {
         // No API route can change Project.status this stage (Batch 5's own worklog note) — needed
         // only to exercise recompute's "non-DRAFT -> 409" gate (D-23). Test-only; callers must
