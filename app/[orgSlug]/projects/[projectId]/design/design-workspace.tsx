@@ -335,6 +335,20 @@ function DesignWorkspaceInner({
       console.error("Failed to open partition in Configure mode", err);
       return;
     }
+    // Navigate the left rail to the room that owns this partition so the rail
+    // stays in sync with Configure mode (otherwise the room selector stays on
+    // whatever room was previously selected while the centre shows a different
+    // partition — flagged in R4 finding #1 as the "same applies to mount-time" issue).
+    for (const floor of floors) {
+      const owningRoom = floor.rooms.find((r) =>
+        r.sides.some((s) => s.kind === "PARTITION" && s.partitionId === partitionId),
+      );
+      if (owningRoom) {
+        setSelectedFloorId(floor.id);
+        setSelectedRoomId(owningRoom.id);
+        break;
+      }
+    }
     setViewMode("configure");
     setLayoutSideSelection(null);
   }
@@ -754,7 +768,11 @@ function DesignWorkspaceInner({
           message is set at call-site so the component has no hardcoded copy. */}
       <Toast {...submitToast} />
 
-      {/* Stage 25 B9: problem popup — shown when Submit Design returns 422 + CalculationProblemReport. */}
+      {/* Stage 25 B9: problem popup — shown when Submit Design returns 422 + CalculationProblemReport.
+          onNavigateToPartition uses enterConfigureMode (which goes through runWithUnsavedGuard)
+          so the workspace enters Configure mode directly without a Link navigation — necessary
+          because same-page query-string-only navigation does not remount DesignWorkspace and
+          the mount-time useEffect that would enter Configure mode never re-fires. */}
       {submitDesignReport && (
         <ProblemPopup
           report={submitDesignReport}
@@ -763,6 +781,10 @@ function DesignWorkspaceInner({
           projectId={projectId}
           isSubdomain={isSubdomain}
           onClose={() => setSubmitDesignReport(null)}
+          onNavigateToPartition={(partitionId) => {
+            setSubmitDesignReport(null);
+            enterConfigureMode(partitionId);
+          }}
         />
       )}
     </>

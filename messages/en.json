@@ -424,11 +424,6 @@
   },
   "inventory": {
     "pageTitle": "Inventory Management",
-    "pageSubtitle": "Manage inventory items for your organization.",
-    "itemsTableHeading": "Inventory Items",
-    "colCategory": "Category",
-    "colCode": "Code",
-    "colName": "Name",
-    "colUOM": "Unit"
+    "pageSubtitle": "Manage inventory items for your organization."
   }
 }

@@ -180,6 +180,7 @@ function ProblemRow({
   isSubdomain,
   onClose,
   style,
+  onNavigateToPartition,
 }: {
   problem: CalculationProblem;
   orgSlug: string;
@@ -187,6 +188,7 @@ function ProblemRow({
   isSubdomain: boolean;
   onClose: () => void;
   style: ScopeStyle;
+  onNavigateToPartition?: (partitionId: string) => void;
 }) {
   const href = resolveGoHref(problem, orgSlug, projectId, isSubdomain);
 
@@ -209,8 +211,20 @@ function ProblemRow({
     locusLines.push(`Used in ${problem.occurrenceCount} partitions`);
   }
 
+  // When the caller provides onNavigateToPartition (Design page) and this problem
+  // has a partitionId, use a button so the workspace enters Configure mode directly
+  // without a Link navigation (which would not re-trigger the mount useEffect).
+  // When onNavigateToPartition is absent (future Stage 26 cross-page use), fall back
+  // to the <Link> so the real navigation still occurs.
+  const partitionId = problem.locus?.partitionId;
+  const useCallbackButton = !!onNavigateToPartition && !!partitionId && !!href &&
+    (problem.scope === "DESIGN" || problem.scope === "SELECTION");
+
   return (
-    <div className="flex items-start gap-[10px] border-b border-border bg-bg-white px-[14px] py-[10px] last:border-b-0 hover:bg-bg-hover">
+    <div
+      data-testid="problem-row"
+      className="flex items-start gap-[10px] border-b border-border bg-bg-white px-[14px] py-[10px] last:border-b-0 hover:bg-bg-hover"
+    >
       {/* Scope dot */}
       <div
         className="mt-[5px] h-[6px] w-[6px] flex-shrink-0 rounded-full"
@@ -238,8 +252,20 @@ function ProblemRow({
           </p>
         )}
       </div>
-      {/* Go link — only when navigable */}
-      {href && (
+      {/* Go control — button (Design page, same-page navigation) or Link (cross-page). */}
+      {useCallbackButton ? (
+        <button
+          type="button"
+          onClick={() => {
+            onNavigateToPartition!(partitionId!);
+            onClose();
+          }}
+          className="mt-[1px] inline-flex flex-shrink-0 items-center gap-[4px] whitespace-nowrap rounded-[3px] border border-border bg-bg-white px-[10px] py-[5px] text-[11px] font-bold text-text-body hover:border-[var(--color-border-strong)] hover:bg-primary-softer hover:text-text-heading"
+        >
+          <GoArrowIcon />
+          Go
+        </button>
+      ) : href ? (
         <Link
           href={href}
           onClick={onClose}
@@ -248,7 +274,7 @@ function ProblemRow({
           <GoArrowIcon />
           Go
         </Link>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -262,6 +288,7 @@ function ProblemGroup({
   projectId,
   isSubdomain,
   onClose,
+  onNavigateToPartition,
 }: {
   scope: ProblemScope;
   problems: CalculationProblem[];
@@ -269,6 +296,7 @@ function ProblemGroup({
   projectId: string;
   isSubdomain: boolean;
   onClose: () => void;
+  onNavigateToPartition?: (partitionId: string) => void;
 }) {
   const s = SCOPE_STYLES[scope];
 
@@ -320,6 +348,7 @@ function ProblemGroup({
             isSubdomain={isSubdomain}
             onClose={onClose}
             style={s}
+            onNavigateToPartition={onNavigateToPartition}
           />
         ))}
       </div>
@@ -337,6 +366,15 @@ export interface ProblemPopupProps {
   projectId: string;
   isSubdomain: boolean;
   onClose: () => void;
+  /**
+   * When provided (Design page), the "Go" control for DESIGN/SELECTION-scope problems renders as a
+   * button that calls this callback with the partitionId instead of a <Link> navigation. This is
+   * necessary because a same-page query-string-only navigation via <Link> does not remount the
+   * DesignWorkspace component, so the mount-time useEffect that enters Configure mode never re-fires.
+   *
+   * Absent on the future Stage 26 Summary page, where a real cross-page navigation is correct.
+   */
+  onNavigateToPartition?: (partitionId: string) => void;
 }
 
 const SCOPE_ORDER: ProblemScope[] = ["DESIGN", "SELECTION", "INVENTORY", "FORMULA_SET"];
@@ -354,6 +392,7 @@ export function ProblemPopup({
   projectId,
   isSubdomain,
   onClose,
+  onNavigateToPartition,
 }: ProblemPopupProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -439,6 +478,7 @@ export function ProblemPopup({
                 projectId={projectId}
                 isSubdomain={isSubdomain}
                 onClose={onClose}
+                onNavigateToPartition={onNavigateToPartition}
               />
             );
           })}

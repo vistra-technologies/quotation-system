@@ -107,10 +107,11 @@ export function ItemFormModal({
       name: name.trim(),
       measurementUnit: measurementUnit.trim(),
       active,
+      // Always send perUnitQuantity so the API doesn't silently preserve a stale
+      // value when the field is cleared. Blank → default of 1 (matching the hint
+      // "Defaults to 1" and the create-side default in lib/data/catalog.ts).
+      perUnitQuantity: perUnitQuantity !== "" ? Number(perUnitQuantity) : 1,
     };
-    if (perUnitQuantity !== "") {
-      body.perUnitQuantity = Number(perUnitQuantity);
-    }
 
     const url =
       mode === "create"
