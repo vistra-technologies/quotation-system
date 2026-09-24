@@ -50,12 +50,15 @@ export async function GET(request: Request): Promise<NextResponse> {
 // Create a new formula set. `body` is validated via validateFormulaSetBody()
 // before the row is written.
 // Auth: valid SuperAdmin session (qs-sa-token cookie).
-// Body: { name: string; version: number; body: object }
+// Body: { name: string; body: object }
+//   `version` is intentionally absent — the DAL auto-computes it:
+//   new name → v1; existing name → MAX(version)+1 inside a $transaction.
+//   If a client sends `version`, it is silently ignored.
 //
 // Returns 201 with { formulaSet } (full detail shape including body) on success.
 // Returns 400 on missing/invalid fields or body validation failure.
 // Returns 401 when not authenticated as SuperAdmin.
-// Returns 409 if (name, version) already exists.
+// Returns 409 in the extremely unlikely event of a concurrent-write race on (name, version).
 
 export async function POST(request: Request): Promise<NextResponse> {
   let sa;
@@ -85,9 +88,6 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (typeof b.name !== "string" || !b.name.trim()) {
     return apiBadRequest("name is required");
   }
-  if (typeof b.version !== "number" || !Number.isInteger(b.version) || b.version < 1) {
-    return apiBadRequest("version must be a positive integer");
-  }
   if (
     b.body === undefined ||
     b.body === null ||
@@ -98,7 +98,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const name = (b.name as string).trim();
-  const version = b.version as number;
+  // `version` is ignored if present — DAL computes it automatically.
   const formulaBody = b.body;
 
   // Validate the formula body before writing.
@@ -112,9 +112,10 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   let formulaSet;
   try {
-    formulaSet = await createFormulaSet({ name, version, body: formulaBody });
+    formulaSet = await createFormulaSet({ name, body: formulaBody });
   } catch (err) {
     // P2002 = unique constraint violation on @@unique([name, version]).
+    // Extremely unlikely (would require a concurrent create for the same name), but guarded.
     if (
       typeof err === "object" &&
       err !== null &&
