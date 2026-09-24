@@ -415,3 +415,10 @@ Preview: `https://quotation-system-bo2okbq35-vistra-indias-projects.vercel.app` 
   `engineering:test` on `test.easeetool.com` with real creds.
 
 Status: **DONE**
+
+---
+
+**2026-09-24 — reviewer — R2 re-review (fix round `8860d72` + docs `6df6650`)**
+
+Role: reviewer · Verdict: **CHANGES-NEEDED** · 0 CRITICAL / 1 IMPORTANT / 1 MINOR · report: `review-r2-v2.md`.
+The R2 findings 1, 2, 3, 5 and 8 are verified fixed. New: the reserved-slug e2e test (`superadmin-orgs.spec.ts:112`) sends no `formulaSetId` and now fails, and the invalid-slug test passes for the wrong reason.
