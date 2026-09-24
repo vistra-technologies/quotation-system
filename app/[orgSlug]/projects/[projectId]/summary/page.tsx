@@ -1,25 +1,43 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getTranslations } from "next-intl/server";
 import { orgHref } from "@/lib/orgHref";
+import { internalFetch } from "@/lib/internal-fetch";
 import { fetchProjectDetail } from "../_project-fetch";
+import type { Summary, MaterialListLine } from "@/lib/summary/types";
+import { ActionRow } from "./action-row";
+import { SummaryTables } from "./summary-tables";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
 
+/** Response shape from GET /api/v1/orgs/[orgSlug]/projects/[projectId]/calculation (Stage 26 Batch 1). */
+interface CalculationResult {
+  computedAt: string;
+  status: "OK" | "FAILED";
+  errorDetail?: string;
+  summary: Summary;
+  materialList: MaterialListLine[];
+  formulaSet: { name: string; version: number };
+}
+
+const dateTimeFmt = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
 /**
  * Summary page — Step 4 of the project wizard (Server Component).
  *
- * Inert placeholder. Floor/Partition data rendering (shop drawings, cut-list
- * tables) is deferred to a later stage (human decision, 2026-07-24).
+ * Stage 26 Batch 2: replaces the inert placeholder with the finalized mockup's KPI + Material List
+ * tables (rendered by the client-island `SummaryTables`), an `ActionRow` (Export/Recompute — inert in
+ * this batch, wired in Batch 3/4), a meta-footer with the real formula-set name/version + Computed at,
+ * and the restored Back/Next wizard footer. Branches on the Batch 1 `GET .../calculation` route into
+ * three renderable states (404 "no calc yet", 200 FAILED, 200 OK) — see stage-26.md Batch 2.
  *
- * Stage 11 (Batch 6): outer chrome restyled to Sage Ease tokens to match
- * summary-page-2026-07-23-v1.html — page heading, card wrapper, empty-state
- * placeholder, and card-footer navigation. No logic or data changes.
- *
- * Stage 19 Batch 4: added step-gating — redirects to Project Details if the
- * project has 0 Partitions (nothing to summarise yet). fetchProjectDetail is
- * React.cache()-shared with the layout — zero extra round-trips.
+ * fetchProjectDetail is React.cache()-shared with the layout — zero extra round-trips for project data.
  */
 export default async function SummaryPage({
   params,
@@ -42,43 +60,115 @@ export default async function SummaryPage({
   if (project.partitionCount === 0 || !project.designSubmittedAt) {
     redirect(await orgHref(orgSlug, `/projects/${projectId}`));
   }
-  const t = await getTranslations("wizard");
 
-  // Page heading removed — its copy now shows as a hover tooltip on the
-  // "Summary" pill in the wizard breadcrumb (project-wizard-breadcrumb.tsx),
-  // matching Design, which never had an on-page heading either.
+  const calcRes = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/projects/${projectId}/calculation`,
+  );
+  const calc: CalculationResult | null = calcRes.ok
+    ? ((await calcRes.json()) as CalculationResult)
+    : null;
+
+  const isDraft = project.status === "DRAFT";
+
   return (
     <div className="py-8">
-      {/* Content card */}
-      <div className="mb-6 rounded-md border border-border bg-bg-card shadow-card">
-        {/* Inert placeholder — matches empty-state from mockup JS fallback */}
-        <div className="m-5 rounded-md border border-dashed border-border px-6 py-16 text-center">
-          <div
-            className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-[10px] bg-primary-softer text-primary"
-            aria-hidden="true"
-          >
-            {/* Blueprint / ruler icon */}
-            <svg
-              width="22"
-              height="22"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+      <div className="mb-6 rounded-md border border-border bg-bg-card p-5 shadow-card">
+        {!calc ? (
+          // 404 — design submitted, but no ProjectCalculation row stored yet.
+          <div className="rounded-md border border-dashed border-border bg-bg-white px-6 py-16 text-center">
+            <div
+              className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-[10px] bg-primary-softer text-primary"
+              aria-hidden="true"
             >
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M3 9h18M9 3v18M13 9v3M17 9v5" />
-            </svg>
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="3" y="3" width="18" height="18" rx="2" />
+                <path d="M3 9h18M9 3v18M13 9v3M17 9v5" />
+              </svg>
+            </div>
+            <p className="text-sm font-bold text-text-heading">No calculation yet</p>
+            <p className="mx-auto mt-1 max-w-sm text-xs text-text-muted">
+              The design was submitted, but nothing has been computed for it. Go back to Design and
+              submit again to generate the material list.
+            </p>
+            <Link
+              href={`${base}/projects/${projectId}/design`}
+              className="mt-4 inline-flex items-center rounded-sm border border-border bg-bg-white px-4 py-2 text-xs font-bold text-text-body hover:bg-primary-softer"
+            >
+              ‹ Back to Design
+            </Link>
           </div>
-          <p className="text-sm font-bold text-text-heading">
-            {t("summaryPlaceholder")}
-          </p>
-          <p className="mt-1 text-xs text-text-muted">
-            Go back to Design and save a partition to see it summarized here.
-          </p>
-        </div>
+        ) : calc.status === "FAILED" ? (
+          // 200, status: FAILED — an old calculation row that failed. Error banner + Recompute only.
+          <>
+            <div className="flex gap-3 rounded-md bg-status-failed-bg p-4 text-status-failed-text">
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                className="mt-0.5 h-[22px] w-[22px] flex-shrink-0"
+                aria-hidden="true"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <path d="M12 8v5M12 16h.01" />
+              </svg>
+              <div className="flex-1">
+                <div className="mb-1 text-sm font-extrabold">Calculation failed</div>
+                <div className="whitespace-pre-wrap break-words rounded-md bg-white/50 px-2.5 py-2 font-mono text-xs">
+                  {calc.errorDetail}
+                </div>
+              </div>
+            </div>
+            <div className="mt-3.5">
+              <ActionRow isDraft={isDraft} showExport={false} />
+            </div>
+          </>
+        ) : (
+          // 200, status: OK — the real page.
+          <>
+            <ActionRow isDraft={isDraft} showExport={true} />
+            <SummaryTables
+              summary={calc.summary}
+              materialList={calc.materialList}
+              configSnapshot={project.configSnapshot}
+            />
+            <div className="mt-6 flex flex-wrap items-center gap-5 rounded-md border border-border bg-bg-card px-5 py-3.5">
+              <div className="flex flex-col gap-px">
+                <span className="text-[10.5px] font-extrabold uppercase tracking-wide text-text-muted">
+                  Formula Set
+                </span>
+                <span className="text-xs font-bold text-text-heading">{calc.formulaSet.name}</span>
+              </div>
+              <div className="h-[30px] w-px flex-shrink-0 bg-border" />
+              <div className="flex flex-col gap-px">
+                <span className="text-[10.5px] font-extrabold uppercase tracking-wide text-text-muted">
+                  Version
+                </span>
+                <span className="text-xs font-bold text-text-heading">v{calc.formulaSet.version}</span>
+              </div>
+              <div className="h-[30px] w-px flex-shrink-0 bg-border" />
+              <div className="flex flex-col gap-px">
+                <span className="text-[10.5px] font-extrabold uppercase tracking-wide text-text-muted">
+                  Computed at
+                </span>
+                <span className="text-xs font-bold text-text-heading">
+                  {dateTimeFmt.format(new Date(calc.computedAt))}
+                </span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Card footer — wizard step navigation */}
