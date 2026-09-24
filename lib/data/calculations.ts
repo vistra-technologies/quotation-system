@@ -19,8 +19,9 @@
 import type { Prisma } from "@/app/generated/prisma/client";
 import type { ConfigSnapshot } from "@/lib/config-snapshot";
 import { prisma } from "@/lib/prisma";
-import type { FormulaSetBody, MaterialByRoomEntry, MaterialListLine, SummaryInput, SummaryResult } from "@/lib/summary/types";
+import type { FormulaSetBody, MaterialByRoomEntry, MaterialListLine, Summary, SummaryInput, SummaryResult } from "@/lib/summary/types";
 import { ProblemCollector } from "@/lib/materials/problems";
+import type { SessionData } from "@/lib/session";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -307,4 +308,59 @@ export async function writeCalculation(
     create: { projectId, ...data },
     update: data,
   });
+}
+
+// ─── Reader (Stage 26 Batch 1) ────────────────────────────────────────────────
+
+export interface ProjectCalculationForRead {
+  computedAt: Date;
+  status: string;
+  errorDetail: string | null;
+  summary: Summary;
+  materialList: MaterialListLine[];
+  formulaSet: { name: string; version: number };
+}
+
+/**
+ * Read-only fetch of a project's stored ProjectCalculation, for the Summary page GET route (Stage 26
+ * Batch 1). This is the only place outside the write path (loadCalculationInput/writeCalculation) that
+ * reads ProjectCalculation. `materialByRoom` is never selected — omitted both by lib/prisma.ts's global
+ * client-level omit and this function's own explicit `select`, per stage-26.md's read-payload contract.
+ *
+ * Returns:
+ *   - `null` if the project doesn't exist or belongs to a different org (tenancy, same as getProjectById).
+ *   - `{ noCalculation: true }` if the project exists but has no ProjectCalculation row yet.
+ *   - the row otherwise.
+ */
+export async function getProjectCalculationForRead(
+  session: SessionData,
+  projectId: string,
+): Promise<ProjectCalculationForRead | { noCalculation: true } | null> {
+  const project = await prisma.project.findFirst({
+    where: { id: projectId, organizationId: session.organizationId },
+    select: { id: true },
+  });
+  if (!project) return null;
+
+  const calc = await prisma.projectCalculation.findUnique({
+    where: { projectId },
+    select: {
+      computedAt: true,
+      status: true,
+      errorDetail: true,
+      summary: true,
+      materialList: true,
+      formulaSet: { select: { name: true, version: true } },
+    },
+  });
+  if (!calc) return { noCalculation: true };
+
+  return {
+    computedAt: calc.computedAt,
+    status: calc.status,
+    errorDetail: calc.errorDetail,
+    summary: calc.summary as unknown as Summary,
+    materialList: calc.materialList as unknown as MaterialListLine[],
+    formulaSet: calc.formulaSet,
+  };
 }
