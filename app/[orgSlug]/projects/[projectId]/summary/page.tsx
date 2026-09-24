@@ -4,6 +4,7 @@ import { orgHref, detectIsSubdomain } from "@/lib/orgHref";
 import { internalFetch } from "@/lib/internal-fetch";
 import { fetchProjectDetail } from "../_project-fetch";
 import type { Summary, MaterialListLine } from "@/lib/summary/types";
+import { resolveClientField } from "@/lib/summary/pdf-rows";
 import { ActionRow } from "./action-row";
 import { SummaryTables } from "./summary-tables";
 
@@ -28,6 +29,14 @@ const dateTimeFmt = new Intl.DateTimeFormat("en-GB", {
   minute: "2-digit",
 });
 
+/** Browser-download-time date, not computedAt — a 3-line local helper, no shared util needed for one use. */
+function yyyyMmDd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 /**
  * Summary page — Step 4 of the project wizard (Server Component).
  *
@@ -47,9 +56,10 @@ export default async function SummaryPage({
   const { orgSlug, projectId } = await params;
   const base = await orgHref(orgSlug, "");
 
-  const [{ status, project }, isSubdomain] = await Promise.all([
+  const [{ status, project }, isSubdomain, meRes] = await Promise.all([
     fetchProjectDetail(orgSlug, projectId),
     detectIsSubdomain(orgSlug),
+    internalFetch(`/api/v1/orgs/${orgSlug}/me`),
   ]);
 
   if (status === 401 || status === 403) {
@@ -72,6 +82,19 @@ export default async function SummaryPage({
     : null;
 
   const isDraft = project.status === "DRAFT";
+
+  // PDF header fields (Batch 4, S26-9 — no formula set name/version here). Export shouldn't hard-fail the
+  // whole page over a cosmetic header field, so /me failures fall back to orgSlug (same fallback me/route.ts
+  // itself uses server-side when the org lookup comes back empty).
+  const orgName = meRes.ok
+    ? ((await meRes.json()) as { orgName?: string }).orgName ?? orgSlug
+    : orgSlug;
+  const { label: clientLabel, value: clientValue } = resolveClientField(
+    project.externalCompany?.name ?? null,
+    project.endClientName,
+  );
+  const projectLine = `${project.name} (#${project.projectNumber})`;
+  const filename = `summary-${project.projectNumber}-${yyyyMmDd(new Date())}.pdf`;
 
   return (
     <div className="py-8">
@@ -152,6 +175,15 @@ export default async function SummaryPage({
               orgSlug={orgSlug}
               projectId={projectId}
               isSubdomain={isSubdomain}
+              orgName={orgName}
+              projectLine={projectLine}
+              clientLabel={clientLabel}
+              clientValue={clientValue}
+              computedAtLabel={dateTimeFmt.format(new Date(calc.computedAt))}
+              summary={calc.summary}
+              materialList={calc.materialList}
+              configSnapshot={project.configSnapshot}
+              filename={filename}
             />
             <SummaryTables
               summary={calc.summary}

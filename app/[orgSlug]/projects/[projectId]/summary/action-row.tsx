@@ -5,16 +5,22 @@ import { useRouter } from "next/navigation";
 import { ProblemPopup } from "../_problem-popup";
 import { redirectToLogin } from "../design/login-redirect";
 import type { CalculationProblemReport } from "@/lib/materials/problems";
+import type { Summary, MaterialListLine } from "@/lib/summary/types";
+import type { ConfigSnapshot } from "@/lib/config-snapshot";
 
 /**
- * Summary page action row (Stage 26 Batch 2 shape, Batch 3 wiring) — Recompute + Export PDF buttons,
+ * Summary page action row (Stage 26 Batch 2 shape, Batch 3/4 wiring) — Recompute + Export PDF buttons,
  * matching the signed-off `mockup-batch0.html` (idle / recomputing / not-DRAFT+tooltip states)
  * translated to the app's Tailwind tokens.
  *
  * Recompute is fully wired: POST .../recompute, 200 → router.refresh() (Batch 1's GET .../calculation
  * re-fetch on the Server Component re-render supplies the fresh data), 422 → ProblemPopup (same pattern
  * as design-workspace.tsx's handleSubmitDesign), 409/other → an inline message, 401/403 → redirect to
- * login. Export PDF stays inert in this batch — Batch 4 wires its client-side PDF generation.
+ * login.
+ *
+ * Export PDF (Batch 4, S26-5): both `lib/summary/pdf-rows.ts` (pure data-shaping) and `lib/summary/pdf.ts`
+ * (the sole jsPDF import site) are dynamically imported inside `handleExport()` on click — the ~500 KB
+ * jsPDF bundle never loads on initial page render.
  */
 interface ActionRowProps {
   /** Gates Recompute per S26-8 — disabled+tooltip when the project is not DRAFT. */
@@ -24,11 +30,37 @@ interface ActionRowProps {
   orgSlug: string;
   projectId: string;
   isSubdomain: boolean;
+  /** Only needed (and only passed by the caller) when showExport is true. */
+  orgName?: string;
+  projectLine?: string;
+  clientLabel?: string;
+  clientValue?: string;
+  computedAtLabel?: string;
+  summary?: Summary;
+  materialList?: MaterialListLine[];
+  configSnapshot?: ConfigSnapshot | null;
+  filename?: string;
 }
 
-export function ActionRow({ isDraft, showExport, orgSlug, projectId, isSubdomain }: ActionRowProps) {
+export function ActionRow({
+  isDraft,
+  showExport,
+  orgSlug,
+  projectId,
+  isSubdomain,
+  orgName,
+  projectLine,
+  clientLabel,
+  clientValue,
+  computedAtLabel,
+  summary,
+  materialList,
+  configSnapshot,
+  filename,
+}: ActionRowProps) {
   const router = useRouter();
   const [recomputing, setRecomputing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [report, setReport] = useState<CalculationProblemReport | null>(null);
   const [conflictMessage, setConflictMessage] = useState<string | null>(null);
 
@@ -71,6 +103,33 @@ export function ActionRow({ isDraft, showExport, orgSlug, projectId, isSubdomain
     }
   }
 
+  async function handleExport() {
+    if (!summary || !materialList || !orgName || !projectLine || !clientLabel || !clientValue
+      || !computedAtLabel || !filename) {
+      return;
+    }
+    setConflictMessage(null);
+    setExporting(true);
+    try {
+      const [{ buildKpiPdfTables, buildMaterialPdfTables }, { generateSummaryPdf }] = await Promise.all([
+        import("@/lib/summary/pdf-rows"),
+        import("@/lib/summary/pdf"),
+      ]);
+      const kpi = buildKpiPdfTables(summary);
+      const material = buildMaterialPdfTables(materialList, configSnapshot ?? { takenAt: "", componentTypes: [] });
+      await generateSummaryPdf({
+        header: { orgName, projectLine, clientLabel, clientValue, computedAtLabel },
+        kpi,
+        material,
+        filename,
+      });
+    } catch {
+      setConflictMessage("Could not generate the PDF — please try again.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   return (
     <div className="mb-4">
       <div className="flex items-center justify-end gap-2.5">
@@ -106,7 +165,9 @@ export function ActionRow({ isDraft, showExport, orgSlug, projectId, isSubdomain
         {showExport && (
           <button
             type="button"
-            className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-[13px] font-bold text-text-on-primary hover:bg-primary-dark"
+            disabled={exporting}
+            onClick={() => void handleExport()}
+            className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-[13px] font-bold text-text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-primary"
           >
             <svg
               viewBox="0 0 24 24"
@@ -120,7 +181,7 @@ export function ActionRow({ isDraft, showExport, orgSlug, projectId, isSubdomain
             >
               <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
             </svg>
-            <span>Export PDF</span>
+            <span>{exporting ? "Generating…" : "Export PDF"}</span>
           </button>
         )}
       </div>
