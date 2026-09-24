@@ -11,7 +11,7 @@
  * the submit-design gate requires both to be present before it even runs Phase A.
  */
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
-import { apiUrl, orgUrl, orgUrlPattern, apiSignIn } from "./helpers";
+import { apiUrl, orgUrl, apiSignIn } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -201,8 +201,10 @@ test("UI: Go link in DESIGN scope group navigates to design?partition=<partition
   await goLink.click();
 
   // Assert the URL now contains the partition deep-link.
+  // Use a predicate (not a regex) so waitForURL doesn't match the current
+  // /design URL (which already satisfies a regex without the query param).
   await page.waitForURL(
-    orgUrlPattern(ACME, `/projects/${projectId}/design`),
+    (url) => url.toString().includes(`partition=${partitionId}`),
     { timeout: 15_000 },
   );
   const url = page.url();
