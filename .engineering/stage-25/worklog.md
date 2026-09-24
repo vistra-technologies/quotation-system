@@ -10,8 +10,8 @@
   doc-accuracy items fixed directly by orchestrator (stale regression-checklist automation claims, stale
   by-page.sql note, orphaned i18n key, stale comment) and pushed straight to `release/stage-25` @
   `f9d5570` — pure text corrections, no code-behavior change, no separate review round needed.
-- **Active work item:** Batch 7 (Inventory create/edit API, no mockup needed) — plan not yet written
-- **Latest artifacts:** `review-r3.md` (APPROVE-WITH-NITS)
+- **Active work item:** Batch 8 (Inventory create/edit popup, mockup first)
+- **Latest artifacts:** `plan-b7.md` (Batch 7 plan), commit `8167282` on `feature/s25-b7-inventory-api`
 - **Review cadence for this stage (non-default — see `profile.md`):** R1 after Batches 1–2, R2 after
   3–5, R3 after 6 alone, R4 after 7–9. Functional verification deferred to one `engineering:test` pass
   at the end, not per-batch.
@@ -26,7 +26,7 @@
 | 4 | Formula-set SuperAdmin screens (mockup first) | DONE — `2731f6a`, preview READY |
 | 5 | Org create/edit formula picker (mockup first) | DONE — `6639049`, preview READY |
 | 6 | Pricing → Inventory rename | DONE — `d94f42c`, preview READY, lint+tsc clean, S25-5 verified |
-| 7 | Inventory create/edit API | in progress (plan) |
+| 7 | Inventory create/edit API | DONE — `8167282`, preview READY, 11/11 tests pass |
 | 8 | Inventory create/edit popup (mockup first) | not started |
 | 9 | Problem popup (mockup first) | not started |
 
@@ -522,3 +522,31 @@ Report: `.engineering/stage-25/review-r3.md`. S25-4/5/6/7 were checked independe
 grep, a catch-all/redirect audit, and `prisma/`, `lib/`, and `admin/` diffs that came back empty. tsc
 is clean. The findings are about doc and claim accuracy (regression-checklist "Automated:" overclaims
 and a stale by-page.sql note), not code.
+
+---
+
+**2026-09-24 — developer — Batch 7: Inventory create/edit API**
+
+Role: developer · No mockup gate (S25-11 list excludes B7).
+Plan: `.engineering/stage-25/plan-b7.md`
+
+What changed:
+- `lib/data/catalog.ts`: added `DuplicateInventoryCodeError`, `CreateInventoryItemData`,
+  `UpdateInventoryItemData`, `createInventoryItem`, `updateInventoryItem`. Category defaults to `""`
+  (not in B7 spec but required by DB schema; B8 popup will expose it). Duplicate code detected via
+  P2002 on `@@unique([organizationId, code])`.
+- `app/api/v1/orgs/[orgSlug]/inventory/route.ts`: added POST (201/400/409, MANAGE_PRICING gated).
+- `app/api/v1/orgs/[orgSlug]/inventory/[itemId]/route.ts`: added PATCH (200/400/404/409, MANAGE_PRICING
+  gated; 0-rows-updated → 404 is the tenancy guard pattern via updateMany).
+- `tests/e2e/inventory-api.spec.ts`: 11 API tests (T1–T11): 401 without session, 403 without
+  MANAGE_PRICING, 400 validation, 201 create round-trip, 409 duplicate code, 200 update, 404 cross-org.
+- `quotation-system-docs/.../by-page.sql`: added POST INSERT and PATCH UPDATE+SELECT SQL.
+
+Reused: `getApiSession`/`ApiAuthError` pattern (existing routes), `apiSignIn`/`apiUrl` (helpers.ts),
+`apiConflict` (api-error.ts), `updateMany`-as-tenancy-guard pattern (rooms.ts).
+
+Verify: `npx eslint lib/data/catalog.ts app/api/v1/...` clean; `npx tsc --noEmit` clean; push @
+`8167282`; Vercel preview `https://quotation-system-dfzwpjata-vistra-indias-projects.vercel.app` READY
+(56s); health 200 + database:connected; POST/PATCH return 401 without session; 11/11 e2e tests pass.
+
+Status: **DONE**
