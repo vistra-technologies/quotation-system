@@ -26,7 +26,7 @@ export const CLOISONS_INVENTORY_DEFS: CloisonsInventoryItemDef[] = [
   // ── Glass profiles (3 items, GLASS slot — u_profile / i_profile / l_profile) ───────────────────
   {
     code: "I LUF-01",
-    name: "U Profile I LUF-01",
+    name: "U Profile",
     category: "GLASS_PROFILE",
     measurementUnit: "metres",
     perUnitQuantity: 3.0,
@@ -34,7 +34,7 @@ export const CLOISONS_INVENTORY_DEFS: CloisonsInventoryItemDef[] = [
   },
   {
     code: "I10 PDL",
-    name: "I Profile I10 PDL",
+    name: "I Profile",
     category: "GLASS_PROFILE",
     measurementUnit: "metres",
     perUnitQuantity: 3.0,
@@ -42,7 +42,7 @@ export const CLOISONS_INVENTORY_DEFS: CloisonsInventoryItemDef[] = [
   },
   {
     code: "I LUO-01",
-    name: "L Profile I LUO-01",
+    name: "L Profile",
     category: "GLASS_PROFILE",
     measurementUnit: "metres",
     perUnitQuantity: 3.0,
