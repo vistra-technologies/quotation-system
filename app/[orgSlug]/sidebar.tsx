@@ -332,10 +332,10 @@ export function Sidebar({
                     External Companies
                   </Link>
                   <Link
-                    href={href("/pricing")}
+                    href={href("/inventory")}
                     className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                   >
-                    Pricing
+                    Inventory
                   </Link>
                 </>
               )}

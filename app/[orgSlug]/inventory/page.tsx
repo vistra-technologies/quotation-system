@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { internalFetch } from "@/lib/internal-fetch";
@@ -9,27 +8,20 @@ export const dynamic = "force-dynamic";
 
 // ─── API response types ──────────────────────────────────────────────────────
 
-interface ItemPriceRow {
-  id: string;
-  currency: string;
-  price: string | number;
-}
-
 interface InventoryItemRow {
   id: string;
   category: string;
   code: string;
   name: string;
   measurementUnit: string;
-  prices: ItemPriceRow[];
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 /**
- * Pricing management list page (Server Component).
+ * Inventory management list page (Server Component).
  *
- * Lists all active catalog items for the org with their current prices.
+ * Lists all active inventory items for the org.
  * Gated on MANAGE_PRICING — wrong-role requests are redirected to the dashboard.
  *
  * Stage 11 (Batch 9): restyled to Sage Ease tokens; removed incorrect
@@ -37,26 +29,27 @@ interface InventoryItemRow {
  * Stage 12: switched from direct requireSession + DAL calls to internalFetch
  * against GET /api/v1/orgs/[orgSlug]/catalog. RBAC (MANAGE_PRICING) is
  * enforced by the route handler — 403 here redirects to login.
+ * Stage 25 Batch 6 (S25-4): renamed from /pricing to /inventory; removed
+ * prices column and Edit Prices link (S25-7); API route moved to /inventory.
  */
-export default async function PricingPage({
+export default async function InventoryPage({
   params,
 }: {
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const base = await orgHref(orgSlug, "");
 
-  const [catalogRes, t] = await Promise.all([
-    internalFetch(`/api/v1/orgs/${orgSlug}/catalog`),
-    getTranslations("pricing"),
+  const [inventoryRes, t] = await Promise.all([
+    internalFetch(`/api/v1/orgs/${orgSlug}/inventory`),
+    getTranslations("inventory"),
   ]);
 
-  if (catalogRes.status === 401 || catalogRes.status === 403) {
+  if (inventoryRes.status === 401 || inventoryRes.status === 403) {
     redirect(await orgHref(orgSlug, "/login"));
   }
 
-  const items: InventoryItemRow[] = catalogRes.ok
-    ? ((await catalogRes.json()) as { items: InventoryItemRow[] }).items
+  const items: InventoryItemRow[] = inventoryRes.ok
+    ? ((await inventoryRes.json()) as { items: InventoryItemRow[] }).items
     : [];
 
   return (
@@ -91,10 +84,6 @@ export default async function PricingPage({
                 <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-text-muted">
                   {t("colUOM")}
                 </th>
-                <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-text-muted">
-                  {t("colPrices")}
-                </th>
-                <th className="px-5 py-3.5" />
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -114,27 +103,6 @@ export default async function PricingPage({
                   </td>
                   <td className="px-5 py-4 text-text-body">
                     {item.measurementUnit}
-                  </td>
-                  <td className="px-5 py-4 text-text-body">
-                    {item.prices.length === 0 ? (
-                      <span className="text-text-muted">
-                        {t("noPrices")}
-                      </span>
-                    ) : (
-                      <span>
-                        {item.prices
-                          .map((p) => `${p.currency}: ${Number(p.price).toFixed(2)}`)
-                          .join(" · ")}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-5 py-4 text-right">
-                    <Link
-                      href={`${base}/pricing/${item.id}`}
-                      className="text-sm font-semibold text-primary hover:text-primary-dark"
-                    >
-                      {t("editPrices")}
-                    </Link>
                   </td>
                 </tr>
               ))}

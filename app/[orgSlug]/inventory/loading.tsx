@@ -1,13 +1,15 @@
 /**
- * Pricing list route — loading UI (Suspense boundary).
+ * Inventory list route — loading UI (Suspense boundary).
  *
- * Shown while the server renders the pricing list (session + DB round-trips).
+ * Shown while the server renders the inventory list (session + DB round-trips).
  * Eliminates the blank-screen pause on navigation by streaming the shell immediately.
  *
  * Stage 12: added as part of the /pricing route group touch.
  * Batch 8: restyled zinc-* classes to Sage Ease tokens.
+ * Stage 25 Batch 6 (S25-4): renamed from PricingLoading to InventoryLoading;
+ * removed the prices skeleton column (prices UI removed, S25-7).
  */
-export default function PricingLoading() {
+export default function InventoryLoading() {
   return (
     <div className="mx-auto w-full max-w-5xl px-6 py-8 animate-pulse">
       {/* Page heading */}
@@ -30,7 +32,6 @@ export default function PricingLoading() {
             <div className="h-4 w-20 rounded bg-primary-softer" />
             <div className="h-4 w-32 rounded bg-primary-softer" />
             <div className="h-4 w-12 rounded bg-primary-softer" />
-            <div className="h-4 w-24 rounded bg-primary-softer" />
           </div>
         ))}
       </div>

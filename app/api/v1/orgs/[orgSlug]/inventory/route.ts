@@ -12,7 +12,7 @@ import { listInventoryItems } from "@/lib/data/catalog";
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
 
-// ─── GET /api/v1/orgs/[orgSlug]/catalog ──────────────────────────────────────
+// ─── GET /api/v1/orgs/[orgSlug]/inventory ────────────────────────────────────
 
 /**
  * List all active InventoryItems for the org, with their prices.
@@ -21,12 +21,15 @@ export const dynamic = "force-dynamic";
  * Auth: authenticated org member with MANAGE_PRICING permission.
  *
  * Unlike component-types (where the list is open to all authenticated users
- * for the project configurator), catalog reads are fully gated at MANAGE_PRICING —
+ * for the project configurator), inventory reads are fully gated at MANAGE_PRICING —
  * per the stage-12.md RBAC table: catalog/** reads and writes both require
  * MANAGE_PRICING.
  *
  * Tenancy: enforced by getApiSession() (403 on cross-org) and listInventoryItems()
  *          filtering on session.organizationId.
+ *
+ * Stage 25 Batch 6 (S25-4): route moved from /catalog to /inventory.
+ * Old path /api/v1/orgs/[orgSlug]/catalog returns 404 (no redirect, S25-5).
  */
 export async function GET(
   request: Request,
@@ -43,7 +46,7 @@ export async function GET(
       if (err.status === 403) return apiForbidden(err.message);
       if (err.status === 404) return apiNotFound(err.message);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/catalog]", err);
+    console.error("[GET /api/v1/orgs/[orgSlug]/inventory]", err);
     return apiServerError();
   }
 
@@ -51,7 +54,7 @@ export async function GET(
     await requirePermission(session, PERMISSIONS.MANAGE_PRICING);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error("[GET /api/v1/orgs/[orgSlug]/catalog] requirePermission", err);
+    console.error("[GET /api/v1/orgs/[orgSlug]/inventory] requirePermission", err);
     return apiServerError();
   }
 
@@ -59,7 +62,7 @@ export async function GET(
     const items = await listInventoryItems(session);
     return NextResponse.json({ items });
   } catch (err) {
-    console.error("[GET /api/v1/orgs/[orgSlug]/catalog] listInventoryItems", err);
+    console.error("[GET /api/v1/orgs/[orgSlug]/inventory] listInventoryItems", err);
     return apiServerError();
   }
 }

@@ -37,25 +37,34 @@ checklist existed yet.
     environment (see Stage 2 bug report); currently verified only via curl (items 1–11 above).
 
 ## Stage 3 — Catalog & Pricing Foundation
-Automated: `tests/e2e/pricing-stage3.spec.ts` (serial mode, 90 s timeout per test).
+Automated: `tests/e2e/inventory-stage25.spec.ts` (serial mode, 90 s timeout per test).
+Note: `pricing-stage3.spec.ts` deleted in Stage 25 Batch 6 (S25-4); replaced by `inventory-stage25.spec.ts`.
 
-13. **MANAGE_PRICING gating — distributor:** `distributor` role navigating to `/{orgSlug}/pricing` is
-    server-redirected to `/{orgSlug}/dashboard`; the Pricing Management heading is never rendered.
+13. **MANAGE_PRICING gating — distributor:** `distributor` role navigating to `/{orgSlug}/inventory` is
+    server-redirected to `/{orgSlug}/dashboard`; the Inventory Management heading is never rendered.
+    (Path was `/{orgSlug}/pricing` before Stage 25 B6.)
+    Automated: `inventory-stage25.spec.ts`.
 14. **MANAGE_PRICING gating — architect:** same as item 13 for the `architect` role.
-15. **MANAGE_PRICING gating — item edit page:** unauthorized direct navigation to
-    `/{orgSlug}/pricing/{itemId}` (any role without MANAGE_PRICING) is redirected to
-    `/{orgSlug}/dashboard` before the item is looked up.
-16. **Pricing CRUD round-trip (company member):** a `member` (MANAGE_PRICING) can (a) add a new
-    `ItemPrice` for a catalog item via the form, (b) update it by submitting the same currency again
-    with a different amount (upsert), and (c) delete it; all three changes persist and reflect in the UI.
-17. **Seed data integrity:** after `npx prisma db seed`, the DB must have exactly 48 `CatalogItem` rows
+    Automated: `inventory-stage25.spec.ts`.
+15. **MANAGE_PRICING gating — inventory list:** unauthorized roles navigating to `/{orgSlug}/inventory`
+    are redirected to `/{orgSlug}/dashboard`. (The `/inventory/[itemId]` sub-page does not exist in
+    Stage 25 B6; item CRUD popup is added in Batches 7–8.)
+    Automated: `inventory-stage25.spec.ts`.
+16. **Inventory list renders (company member):** a `member` (MANAGE_PRICING) navigating to `/inventory`
+    sees the "Inventory Management" h1 and "Inventory Items" table heading. The price CRUD UI (Edit
+    Prices sub-page) was removed in Stage 25 B6 (S25-7); ItemPrice CRUD is no longer user-facing.
+    Automated: `inventory-stage25.spec.ts`.
+17. **Seed data integrity:** after `npx prisma db seed`, the DB must have exactly 48 `InventoryItem` rows
     and 96 `ItemPrice` rows (12 items × 4 orgs; 2 currencies × 12 items × 4 orgs). Each org must have
     exactly its own 12 items and 24 prices — no cross-org sharing.
-18. **Pricing tenancy isolation:** a session from one org cannot view or mutate another org's catalog
-    prices. A cross-org cookie replay on `/{orgSlug2}/pricing` → redirect to `/{orgSlug2}/login`.
-19. **next-intl strings:** all Stage 3 user-facing strings in the pricing pages render from the English
-    locale dictionary (no hardcoded display text visible in the pricing components, excepting decorative
-    UI characters like arrow symbols).
+    (Model renamed `CatalogItem` → `InventoryItem` in Stage 24; `/pricing` route renamed `/inventory`
+    in Stage 25 B6.)
+18. **Inventory tenancy isolation:** a session from one org cannot view or mutate another org's
+    inventory items. A cross-org cookie replay on `/{orgSlug2}/inventory` → redirect to
+    `/{orgSlug2}/login`. (Path was `/{orgSlug2}/pricing` before Stage 25 B6.)
+19. **next-intl strings:** all Stage 3 user-facing strings in the inventory pages render from the English
+    locale dictionary (no hardcoded display text visible in the inventory components, excepting decorative
+    UI characters like arrow symbols). Namespace is `"inventory"` (was `"pricing"` before Stage 25 B6).
 20. **Stage 2 regression after Stage 3 migration:** per-org login, cross-org session rejection,
     role-correct dashboard, and `/api/health` all still pass after the Stage 3 migration is applied.
     (Items 1, 3, 7, 11 verified; item 10 manual only — deactivation test requires a DB write.)
@@ -81,6 +90,7 @@ Automated: `tests/e2e/pricing-stage3.spec.ts` (serial mode, 90 s timeout per tes
 35. **Project tenancy:** org A's session cannot read org B's Projects.
 36. **Project `projectNumber` per-org:** org A and org B can each have a project #1 without conflict.
 37. **Stage 2/3/4 regression after DAL refactor:** per-org login, cross-org session rejection, pricing CRUD, instant deactivation, and admin user/role/permission flows all still pass.
+    Note: the pricing CRUD UI (Edit Prices sub-page) was removed in Stage 25 B6 (S25-7); "pricing CRUD" here refers to the ItemPrice API/data layer still being intact, not the UI. The `/inventory` list page still renders correctly for MANAGE_PRICING holders.
 38. **Cross-tenant ExternalCompany guard:** a crafted `createProject` API request containing another org's `externalCompanyId` UUID is rejected by the DAL (`lib/data/projects.ts` org-scoped `findFirst` guard) with `INVALID_EXTERNAL_COMPANY`, surfaced as 400 + `{ error: "Selected company is invalid." }` — no cross-tenant FK is created. Verified via `stage5.spec.ts` test 12 using `page.request.post()` directly to the API route (bypasses React form reconciler). Stage 12 test pass confirmed the DAL guard and route-handler error-propagation path are both correct; the original test failure was a test-design flaw (DOM injection did not survive React re-render before submit).
 
 ## Stage 6 — Selection, ComponentType overhaul, External Company UI
@@ -218,8 +228,10 @@ All checks: verify via the Vercel preview URL for the merged `release/stage-11` 
     (covered by `tests/e2e/superadmin-roles.spec.ts`).
 74. **Permissions cluster (Stage 16 Batch F — superseded):** `app/[orgSlug]/admin/permissions/` is
     deleted; these routes return 404. See item 73 above.
-75. **Pricing cluster renders correctly:** `/pricing` list and `/pricing/[itemId]` edit page render with
-    Sage Ease tokens (no stray `min-h-screen` wrapper); price CRUD still works.
+75. **Inventory cluster renders correctly:** `/inventory` list renders with
+    Sage Ease tokens (no stray `min-h-screen` wrapper). The `/pricing` path returns 404 (Stage 25 B6,
+    S25-4/S25-5). The `/pricing/[itemId]` edit page is deleted (S25-7); price CRUD UI no longer exists.
+    Automated: `inventory-stage25.spec.ts`.
 76. **Apex org selector renders correctly:** `/` renders the org-selector cards with Sage Ease tokens;
     clicking an org still navigates to that org's own subdomain login page (local `orgHref()` helper
     unchanged).
@@ -242,14 +254,17 @@ Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_UR
 
 79. **API tenancy isolation (cross-org 403):** every protected API route under
     `/api/v1/orgs/{orgA}/**` returns `403 {"error":"Access denied"}` when called with a valid
-    session from org B. Verified via curl for all key routes: users, inquiries, catalog,
+    session from org B. Verified via curl for all key routes: users, inquiries, inventory,
     external-companies, projects, component-types. `getApiSession()` cross-tenant guard is the
-    enforcement point.
+    enforcement point. (Route was `/catalog` before Stage 25 B6; renamed to `/inventory`.)
+    Automated: `stage24-materials.spec.ts` M2 (cross-org session gets 403 on vistra inventory).
 
 80. **API RBAC gating:** distributor session (no MANAGE_USERS, no MANAGE_PRICING) is denied
-    `GET /api/v1/orgs/{orgSlug}/admin/users` (403) and `GET /api/v1/orgs/{orgSlug}/catalog` (403).
+    `GET /api/v1/orgs/{orgSlug}/admin/users` (403) and `GET /api/v1/orgs/{orgSlug}/inventory` (403).
     Distributor IS allowed `GET /api/v1/orgs/{orgSlug}/inquiries` and
     `GET /api/v1/orgs/{orgSlug}/component-types` (no gate on GET).
+    (Route was `/catalog` before Stage 25 B6; renamed to `/inventory`.)
+    Automated: `stage24-materials.spec.ts` M1 (unauthenticated /inventory → 401).
 
 ### Dashboard redesign (Batch 7b)
 
@@ -385,9 +400,10 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      clicking External Companies navigates to `/admin/external-companies` with no slug prefix.
      Automated: `subdomain-navigation.spec.ts` — "flyout: External Companies".
 
-102. **Admin flyout — Pricing → /pricing (clean URL):** Hovering Admin, clicking Pricing navigates
-     to `/pricing` with no slug prefix, "Pricing Management" h1 renders.
-     Automated: `subdomain-navigation.spec.ts` — "flyout: Pricing".
+102. **Admin flyout — Inventory → /inventory (clean URL):** Hovering Admin, clicking Inventory navigates
+     to `/inventory` with no slug prefix, "Inventory Management" h1 renders.
+     (Label was "Pricing" → "/pricing" before Stage 25 B6.)
+     Automated: `subdomain-navigation.spec.ts` — "flyout: Inventory".
 
 103. **Admin flyout — Roles (Stage 16 Batch F — superseded):** The "Roles" sidebar flyout link is
      deleted; the org-admin flyout no longer contains a Roles entry. The automated test in
@@ -425,9 +441,10 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      Automated: `superadmin-component-types.spec.ts` — "controls component types: navigate to edit"
      (Tier 2 — runs on test.easeetool.com).
 
-110. **Pricing list→detail→back:** "Edit Prices" link href starts with `/pricing/` (no slug), click
-     navigates to pricing detail, "← Back to Pricing" back-link href = `/pricing`, click returns.
-     Automated: `subdomain-navigation.spec.ts` — "pricing: Edit Prices link + back-link".
+110. **Inventory list renders with clean subdomain URL:** `/inventory` renders with "Inventory
+     Management" h1, no slug prefix in the URL.
+     (Was "Pricing list→detail→back" before Stage 25 B6 — Edit Prices sub-page removed in S25-7.)
+     Automated: `subdomain-navigation.spec.ts` — "inventory: list page renders with clean subdomain URL".
 
 ### C. Project wizard breadcrumb
 
@@ -476,13 +493,15 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
 
 ## Stage 24 — Material-list formula engine
 
-116. **CatalogItem renamed to InventoryItem (Stage 24 Batch 1):** The `/pricing` routes and all API
+116. **CatalogItem renamed to InventoryItem (Stage 24 Batch 1):** The `/inventory` routes and all API
      references use `inventoryItem` / `inventoryItemId` / `measurementUnit`. A grep for
      `CatalogItem`/`catalogItemId`/`unitOfMeasure` outside migration files must return zero results
-     in `app/`, `lib/`, and `prisma/` (excluding `migrations/`). The `/catalog` API route (unchanged
-     path) now responds with `{ items: [...] }` (key unchanged from before the rename).
-     Automated: `stage24-materials.spec.ts` M1 (unauthenticated /catalog → 401), M2 (authenticated
-     /catalog → 200 with `items` array).
+     in `app/`, `lib/`, and `prisma/` (excluding `migrations/`). The `/inventory` API route responds
+     with `{ items: [...] }` (key unchanged from before the rename).
+     In Stage 25 B6 (S25-4/S25-5), the `/catalog` API path was renamed to `/inventory`; the old path
+     returns 404 (no redirect). The `/pricing` page path was renamed to `/inventory`.
+     Automated: `stage24-materials.spec.ts` M1 (unauthenticated /inventory → 401; old /catalog → 404),
+     M2 (authenticated /inventory → 200 with `items` array; old /catalog → 404).
 
 117. **Submit Design refused with a problem list when inventory data is incomplete (Stage 24, decision
      10 reversal):** A design with unresolved material codes, inactive inventory items, or blank required
@@ -514,3 +533,15 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      Not automated (mutating a shared org's `ComponentTypeOrgConfig` has blast radius); covered by the
      `tests/unit/formula-compat.test.ts` unit tests. Manual: confirm that the project-creation step
      correctly snapshots the active formula set's required keys.
+
+## Stage 25 — Bug fixes, formula-set authoring, Pricing → Inventory rename
+
+121. **Pricing → Inventory rename (S25-4/S25-5):** `/inventory` list renders correctly ("Inventory
+     Management" h1, "Inventory Items" table heading). `/pricing` returns 404 (no redirect). The sidebar
+     Admin flyout shows "Inventory" linking to `/inventory` (not "Pricing"). The i18n namespace is
+     `"inventory"` (not `"pricing"`).
+     `GET /api/v1/orgs/{orgSlug}/catalog` → 404 (no redirect, S25-5 guarantee).
+     `GET /api/v1/orgs/{orgSlug}/inventory` → 200 with `{ items: [...] }` for an authorized session.
+     Automated: `inventory-stage25.spec.ts` (RBAC gates + list renders), `subdomain-navigation.spec.ts`
+     (flyout link + inventory list clean URL), `stage24-materials.spec.ts` M1/M2 (old /catalog → 404;
+     new /inventory → 401/200).
