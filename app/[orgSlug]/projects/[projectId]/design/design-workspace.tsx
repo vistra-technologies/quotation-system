@@ -220,6 +220,9 @@ function DesignWorkspaceInner({
           setUnsavedModal(null);
           return;
         }
+        // Re-fetch the server-rendered layout so Summary/Quotation pills reflect
+        // the cleared designSubmittedAt immediately — no manual page reload needed.
+        router.refresh();
         setSelectedRoomPartitions((prev) =>
           prev.map((p) =>
             p.id === result.partition.id
@@ -328,6 +331,11 @@ function DesignWorkspaceInner({
       setSaveError(result.error);
       return;
     }
+    // Re-fetch the server-rendered layout (layout.tsx) so the wizard breadcrumb
+    // reflects the newly cleared designSubmittedAt immediately — no manual reload.
+    // The API's updatePartition() clears designSubmittedAt whenever design/heightMm
+    // is in the PATCH body (D-14/D-17); the refresh propagates that to the pills.
+    router.refresh();
     setSelectedRoomPartitions((prev) =>
       prev.map((p) =>
         p.id === result.partition.id
@@ -371,6 +379,9 @@ function DesignWorkspaceInner({
     // will stay as the deleted id momentarily — the FloorBar guard
     // (canDelete = visibleFloors.length > 1) prevents deleting the last floor,
     // so there is always at least one surviving floor.
+    // Floor delete cascades to Rooms + Partitions, clearing designSubmittedAt
+    // (D-20) — refresh the layout breadcrumb so pills lock immediately.
+    router.refresh();
   }
 
   function selectRoom(room: RoomRow) {
@@ -413,6 +424,9 @@ function DesignWorkspaceInner({
         setLayoutSideSelection(null);
       }
     }
+    // Room delete cascades to Partitions, clearing designSubmittedAt (D-20) —
+    // refresh the layout breadcrumb so pills lock immediately.
+    router.refresh();
   }
 
   function handleSideConverted(updatedRoom: RoomRow) {
@@ -440,6 +454,10 @@ function DesignWorkspaceInner({
       // PARTITION — conversion case, keep selected (QA bug #12 intent).
       return prev;
     });
+    // Side conversion always creates or removes a Partition, which clears
+    // designSubmittedAt via replaceSides() (D-18) — refresh the layout
+    // breadcrumb so the Summary/Quotation pills lock immediately.
+    router.refresh();
   }
 
   function handleRoomRenamed(updatedRoom: RoomRow) {
