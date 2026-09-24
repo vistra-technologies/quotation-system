@@ -1,3 +1,12 @@
+# Testing data rule (staging and production)
+
+Testers/QA/regression agents create data **only in the single dedicated Test Org** for that environment
+(create it once if missing; no ad-hoc per-run orgs). Never create, edit, or delete rows in any other org
+(e.g. `cloisons`). If a test must touch global/shared data (FormulaSets, ComponentTypes, platform or
+SuperAdmin state, org flags), record the original value first and **revert it exactly before the test
+ends, even on failure**; an unreverted change is a reportable bug. Full rule: workspace `CLAUDE.md`
+working agreement #9.
+
 <!-- BEGIN:nextjs-agent-rules -->
 # This is NOT the Next.js you know
 

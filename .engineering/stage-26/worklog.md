@@ -432,3 +432,22 @@ test confirmed on real `buildSummary()` + mutation-checked). Report: `review-b1-
     `stage26-pdf-export` (1), `stage26-summary-page` (1), `stage26-calculation-api` (4),
     `stage26-recompute` (2) — 8/8 pass, matching the R2 developer's original full regression set.
   - Status: **DONE**.
+
+---
+
+## Activity log — devops (2026-09-24): Stage 26 promoted to test environment
+
+- **Role:** devops
+- **Task:** Merge `release/stage-26` into `staging` and verify on `test.easeetool.com`.
+- **Pre-merge state:** `staging` @ `69ec0b3` (Stage 25 close-out), `release/stage-26` @ `38f2389` (one commit ahead of `81eea0c` — the "worklog status - implement complete" commit). Fast-forward possible: `staging` is an ancestor of `release/stage-26`.
+- **Merge:** `git merge --ff-only origin/release/stage-26` onto local `staging`, then `git push origin staging`. Clean fast-forward, no conflicts. `staging` pushed to `origin` @ `38f2389`.
+- **Migrations:** None — Stage 26 is code-only. Confirmed: no new migration files in the diff vs. prior staging head.
+- **Deployment:** `dpl_BzpbyAse6AWptpu5FuniY48ss8Ko` built from commit `38f2389` on `staging`. Build time: 1m 10s. State: **READY**.
+- **Aliases on deployment:** `test.easeetool.com`, `*.test.easeetool.com`, `quotation-system-git-staging-vistra-indias-projects.vercel.app`. `test.easeetool.com` auto-follows the `staging` branch (dashboard assignment) — no manual re-point needed.
+- **Health check:** `GET https://test.easeetool.com/api/health` → 200 `{"status":"ok","database":"connected","healthCheckRows":0}`.
+- **Route verification:**
+  - `/api/v1/orgs/[orgSlug]/projects/[projectId]/calculation` — confirmed via live fetch: `x-matched-path` = `/api/v1/orgs/[orgSlug]/projects/[projectId]/calculation`, 401 (auth-gated, route present).
+  - `/[orgSlug]/projects/[projectId]/summary` — confirmed via live fetch: `x-matched-path` = `/[orgSlug]/projects/[projectId]/summary`, 200 with login redirect (route present, `data-dpl-id="dpl_BzpbyAse6AWptpu5FuniY48ss8Ko"` in HTML confirms correct deployment).
+- **Status:** DONE — `test.easeetool.com` is now serving Stage 26 @ `38f2389`. Ready for `engineering:test`.
+
+- **tester (round 1)** - PASS - 0 CRITICAL / 0 MAJOR / 0 MINOR (2 informational notes) - see `.engineering/stage-26/bugs-1.md`. New tests on `feature/s26-tests` @ e84873d.
