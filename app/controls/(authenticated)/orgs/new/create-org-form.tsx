@@ -2,8 +2,14 @@
 
 import { useActionState } from "react";
 import { createOrg, type CreateOrgState } from "../actions";
+import { FormulaSetPicker, type FormulaSetPickerItem } from "../_formula-set-picker";
 
 const initialState: CreateOrgState = { error: null };
+
+interface CreateOrgFormProps {
+  /** Formula sets fetched server-side, passed down so the client component can group them. */
+  formulaSets: FormulaSetPickerItem[];
+}
 
 /**
  * Client Component form for creating a new organization.
@@ -15,9 +21,11 @@ const initialState: CreateOrgState = { error: null };
  * stripping non-alphanumeric chars), but remains editable. The canonical validation
  * happens server-side in the route handler.
  *
- * Stage 16 Batch C — F4.
+ * Batch 5: adds a required formula-set picker (two-step: name → version).
+ *
+ * Stage 16 Batch C — F4; updated Stage 25 Batch 5.
  */
-export function CreateOrgForm() {
+export function CreateOrgForm({ formulaSets }: CreateOrgFormProps) {
   const [state, formAction, isPending] = useActionState(createOrg, initialState);
 
   const inputCls =
@@ -112,6 +120,15 @@ export function CreateOrgForm() {
             Password for the auto-created <code className="font-mono">admin</code> account on this org. At least 8 characters.
           </p>
         </div>
+
+        {/* Divider */}
+        <hr className="border-border" />
+
+        {/* Formula set picker */}
+        <FormulaSetPicker
+          formulaSets={formulaSets}
+          hint="Pick a name, then a version. All new projects created under this org will use the selected version. Locked versions are still selectable — locking only prevents editing that version's body."
+        />
 
         <button
           type="submit"

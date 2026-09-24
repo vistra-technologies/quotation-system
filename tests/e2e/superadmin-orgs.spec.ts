@@ -72,6 +72,22 @@ async function loginAsSuperAdmin(
   return match[1];
 }
 
+// ── Helper: fetch the first available formula set ID (for create-org tests) ──
+// Batch 5: org creation now requires an explicit formulaSetId.
+
+async function getFirstFormulaSetId(
+  request: import("@playwright/test").APIRequestContext,
+  token: string,
+): Promise<string> {
+  const res = await request.get("/api/v1/superadmin/formula-sets", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+  if (res.status() !== 200) throw new Error("Could not fetch formula sets");
+  const body = (await res.json()) as { formulaSets: Array<{ id: string }> };
+  if (!body.formulaSets.length) throw new Error("No formula sets found in dev DB — run prisma db seed");
+  return body.formulaSets[0].id;
+}
+
 // ---------------------------------------------------------------------------
 // TIER 1 — API-only tests (per-branch preview URL)
 // ---------------------------------------------------------------------------
@@ -144,11 +160,12 @@ test("POST /api/v1/superadmin/orgs — new org is isolated (userCount=1, auto-cr
 
   const token = await loginAsSuperAdmin(request);
   const uniqueSlug = `e2e-iso-${Date.now()}`;
+  const formulaSetId = await getFirstFormulaSetId(request, token);
 
   // Create a new org.
   const createRes = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "E2E Isolation Test Org", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD },
+    data: { name: "E2E Isolation Test Org", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD, formulaSetId },
   });
   expect(createRes.status()).toBe(201);
   const created = (await createRes.json()) as { org: { id: string; slug: string } };
@@ -251,11 +268,12 @@ test("Batch E: suspend/reactivate lifecycle + proxy suspension check", async ({
 
   const token = await loginAsSuperAdmin(request);
   const uniqueSlug = `e2e-suspend-${Date.now()}`;
+  const formulaSetId = await getFirstFormulaSetId(request, token);
 
   // Create a test org.
   const createRes = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "E2E Suspend Test", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD },
+    data: { name: "E2E Suspend Test", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD, formulaSetId },
   });
   expect(createRes.status()).toBe(201);
   const created = (await createRes.json()) as { org: { id: string } };
@@ -373,11 +391,12 @@ test("DELETE /api/v1/superadmin/orgs/[orgId] — non-suspended org rejected → 
 
   const token = await loginAsSuperAdmin(request);
   const uniqueSlug = `verify-6a-gate-${Date.now()}`;
+  const formulaSetId = await getFirstFormulaSetId(request, token);
 
   // Create a fresh org (active by default).
   const createRes = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "6a Safety Gate Test", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD },
+    data: { name: "6a Safety Gate Test", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD, formulaSetId },
   });
   expect(createRes.status()).toBe(201);
   const { org } = (await createRes.json()) as { org: { id: string } };
@@ -424,11 +443,12 @@ test("Item 6a: create → suspend → hard-delete → org gone; vistra unaffecte
 
   const token = await loginAsSuperAdmin(request);
   const uniqueSlug = `verify-6a-${Date.now()}`;
+  const formulaSetId = await getFirstFormulaSetId(request, token);
 
   // --- Step 1: Create test org ---
   const createRes = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "6a Delete Lifecycle Test", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD },
+    data: { name: "6a Delete Lifecycle Test", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD, formulaSetId },
   });
   expect(createRes.status()).toBe(201);
   const { org } = (await createRes.json()) as { org: { id: string; slug: string } };
@@ -494,6 +514,221 @@ test("Item 6a: create → suspend → hard-delete → org gone; vistra unaffecte
     { headers: { Cookie: `qs-sa-token=${token}` } },
   );
   expect(deletedAgain.status()).toBe(404);
+});
+
+// ---------------------------------------------------------------------------
+// TIER 1 (continued) — Batch 5: Org formula-set assignment + PATCH endpoint
+// ---------------------------------------------------------------------------
+
+// B5-1. POST /api/v1/superadmin/orgs without formulaSetId → 400
+test("Batch 5: POST /api/v1/superadmin/orgs — missing formulaSetId → 400 (requires session)", async ({
+  request,
+}) => {
+  test.skip(
+    !hasBootstrapCreds,
+    "FLAG-B3: TEST_SA_USERNAME/TEST_SA_PASSWORD not set",
+  );
+
+  const token = await loginAsSuperAdmin(request);
+  const res = await request.post("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: { name: "No Formula Set Org", slug: `no-fs-${Date.now()}`, adminPassword: TEST_ORG_ADMIN_PASSWORD },
+  });
+  expect(res.status()).toBe(400);
+  const body = (await res.json()) as { error?: string };
+  expect(body.error).toMatch(/formulaSetId/i);
+});
+
+// B5-2. POST /api/v1/superadmin/orgs with nonexistent formulaSetId → 404
+test("Batch 5: POST /api/v1/superadmin/orgs — nonexistent formulaSetId → 404 (requires session)", async ({
+  request,
+}) => {
+  test.skip(
+    !hasBootstrapCreds,
+    "FLAG-B3: TEST_SA_USERNAME/TEST_SA_PASSWORD not set",
+  );
+
+  const token = await loginAsSuperAdmin(request);
+  const res = await request.post("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: {
+      name: "Bad Formula Org",
+      slug: `bad-fs-${Date.now()}`,
+      adminPassword: TEST_ORG_ADMIN_PASSWORD,
+      formulaSetId: "00000000-0000-0000-0000-000000000000",
+    },
+  });
+  expect(res.status()).toBe(404);
+  const body = (await res.json()) as { error?: string };
+  expect(body.error).toMatch(/formula set not found/i);
+});
+
+// B5-3. POST /api/v1/superadmin/orgs with valid formulaSetId → 201 + warnings array
+test("Batch 5: POST /api/v1/superadmin/orgs — valid formulaSetId → 201 + warnings field (requires session)", async ({
+  request,
+}) => {
+  test.skip(
+    !hasBootstrapCreds,
+    "FLAG-B3: TEST_SA_USERNAME/TEST_SA_PASSWORD not set",
+  );
+
+  const token = await loginAsSuperAdmin(request);
+  const formulaSetId = await getFirstFormulaSetId(request, token);
+  const uniqueSlug = `b5-create-${Date.now()}`;
+
+  const createRes = await request.post("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: { name: "B5 Create Test", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD, formulaSetId },
+  });
+  expect(createRes.status()).toBe(201);
+  const body = (await createRes.json()) as { org: { id: string }; warnings: unknown[] };
+  expect(body.org).toBeDefined();
+  expect(body.org.id).toBeTruthy();
+  expect(Array.isArray(body.warnings)).toBe(true);
+
+  // Cleanup
+  await request.post(`/api/v1/superadmin/orgs/${body.org.id}/suspend`, {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: { suspend: true },
+  });
+  await request.delete(`/api/v1/superadmin/orgs/${body.org.id}`, {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+});
+
+// B5-4. PATCH /api/v1/superadmin/orgs/[orgId] without cookie → 401
+test("Batch 5: PATCH /api/v1/superadmin/orgs/[orgId] — no cookie → 401", async ({ request }) => {
+  const res = await request.patch("/api/v1/superadmin/orgs/any-id", {
+    data: { name: "New Name" },
+  });
+  expect(res.status()).toBe(401);
+});
+
+// B5-5. PATCH /api/v1/superadmin/orgs/[orgId] — no updatable fields → 400
+test("Batch 5: PATCH /api/v1/superadmin/orgs/[orgId] — no fields supplied → 400 (requires session)", async ({
+  request,
+}) => {
+  test.skip(
+    !hasBootstrapCreds,
+    "FLAG-B3: TEST_SA_USERNAME/TEST_SA_PASSWORD not set",
+  );
+
+  const token = await loginAsSuperAdmin(request);
+  const res = await request.patch("/api/v1/superadmin/orgs/any-id", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: {},
+  });
+  expect(res.status()).toBe(400);
+  const body = (await res.json()) as { error?: string };
+  expect(body.error).toMatch(/name or formulaSetId/i);
+});
+
+// B5-6. PATCH /api/v1/superadmin/orgs/[orgId] — nonexistent formulaSetId → 404
+test("Batch 5: PATCH /api/v1/superadmin/orgs/[orgId] — nonexistent formulaSetId → 404 (requires session)", async ({
+  request,
+}) => {
+  test.skip(
+    !hasBootstrapCreds,
+    "FLAG-B3: TEST_SA_USERNAME/TEST_SA_PASSWORD not set",
+  );
+
+  const token = await loginAsSuperAdmin(request);
+  // Get a real org ID to target (vistra if present)
+  const listRes = await request.get("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+  const orgs = ((await listRes.json()) as { orgs: Array<{ id: string; slug: string }> }).orgs;
+  const target = orgs.find((o) => o.slug === "vistra") ?? orgs[0];
+  if (!target) return; // no orgs in DB — skip gracefully
+
+  const res = await request.patch(`/api/v1/superadmin/orgs/${target.id}`, {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: { formulaSetId: "00000000-0000-0000-0000-000000000000" },
+  });
+  expect(res.status()).toBe(404);
+  const body = (await res.json()) as { error?: string };
+  expect(body.error).toMatch(/formula set not found/i);
+});
+
+// B5-7. PATCH /api/v1/superadmin/orgs/[orgId] — valid update → 200 + org + warnings
+test("Batch 5: PATCH /api/v1/superadmin/orgs/[orgId] — valid name update → 200 + warnings (requires session)", async ({
+  request,
+}) => {
+  test.skip(
+    !hasBootstrapCreds,
+    "FLAG-B3: TEST_SA_USERNAME/TEST_SA_PASSWORD not set",
+  );
+
+  const token = await loginAsSuperAdmin(request);
+  const formulaSetId = await getFirstFormulaSetId(request, token);
+  const uniqueSlug = `b5-edit-${Date.now()}`;
+
+  // Create a test org.
+  const createRes = await request.post("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: { name: "B5 Edit Target", slug: uniqueSlug, adminPassword: TEST_ORG_ADMIN_PASSWORD, formulaSetId },
+  });
+  expect(createRes.status()).toBe(201);
+  const { org } = (await createRes.json()) as { org: { id: string } };
+
+  // PATCH: update name + re-confirm formula set.
+  const patchRes = await request.patch(`/api/v1/superadmin/orgs/${org.id}`, {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: { name: "B5 Edit Target Updated", formulaSetId },
+  });
+  expect(patchRes.status()).toBe(200);
+  const patchBody = (await patchRes.json()) as {
+    org: { id: string; name: string; activeFormulaSetId: string };
+    warnings: unknown[];
+  };
+  expect(patchBody.org.name).toBe("B5 Edit Target Updated");
+  expect(patchBody.org.activeFormulaSetId).toBe(formulaSetId);
+  expect(Array.isArray(patchBody.warnings)).toBe(true);
+
+  // Cleanup
+  await request.post(`/api/v1/superadmin/orgs/${org.id}/suspend`, {
+    headers: { Cookie: `qs-sa-token=${token}` },
+    data: { suspend: true },
+  });
+  await request.delete(`/api/v1/superadmin/orgs/${org.id}`, {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+});
+
+// B5-8. GET /api/v1/superadmin/orgs — list includes formulaSetLabel + hasMismatch fields
+test("Batch 5: GET /api/v1/superadmin/orgs — list includes formulaSetLabel and hasMismatch (requires session)", async ({
+  request,
+}) => {
+  test.skip(
+    !hasBootstrapCreds,
+    "FLAG-B3: TEST_SA_USERNAME/TEST_SA_PASSWORD not set",
+  );
+
+  const token = await loginAsSuperAdmin(request);
+  const listRes = await request.get("/api/v1/superadmin/orgs", {
+    headers: { Cookie: `qs-sa-token=${token}` },
+  });
+  expect(listRes.status()).toBe(200);
+  const body = (await listRes.json()) as {
+    orgs: Array<{
+      id: string;
+      slug: string;
+      formulaSetLabel: string | null;
+      hasMismatch: boolean;
+    }>;
+  };
+  expect(body.orgs.length).toBeGreaterThan(0);
+  // Every row must have the new fields.
+  for (const org of body.orgs) {
+    expect(typeof org.hasMismatch).toBe("boolean");
+    // formulaSetLabel is null or a non-empty string
+    expect(org.formulaSetLabel === null || typeof org.formulaSetLabel === "string").toBe(true);
+  }
+  // The seeded cloisons org should have a formulaSetLabel (it was seeded with a formula set).
+  const cloisons = body.orgs.find((o) => o.slug === "cloisons");
+  if (cloisons) {
+    expect(cloisons.formulaSetLabel).not.toBeNull();
+  }
 });
 
 // ---------------------------------------------------------------------------

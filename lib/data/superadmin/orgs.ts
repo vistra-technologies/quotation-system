@@ -13,7 +13,12 @@ import {
   COMPONENT_TYPE_ORG_CONFIG_DEFS,
   SEEDED_CATALOG_CATEGORY_NAME,
 } from "@/lib/component-catalog-seed";
-import { ACTIVE_FORMULA_SET_NAME } from "@/lib/formula-sets";
+import {
+  checkStructuralCompatibility,
+  type CompatResult,
+  type MissingParam,
+} from "@/lib/formula-compat";
+import type { FormulaSetBody } from "@/lib/summary/types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -24,7 +29,38 @@ export interface OrgRow {
   isSuspended: boolean;
   createdAt: Date;
   userCount: number;
+  /** null when the org has no active formula set assigned */
+  activeFormulaSetId: string | null;
+  /** Human-readable label e.g. "glass-partition-standard v1", or null if none assigned */
+  formulaSetLabel: string | null;
+  /** True when the assigned formula set references ComponentType codes/keys that don't exist or are inactive in this org */
+  hasMismatch: boolean;
 }
+
+/** Warning item returned in create/edit responses when a formula set is incompatible */
+export interface OrgFormulaWarning {
+  kind: "missing_code" | "missing_param";
+  code: string;
+  key?: string;
+  message: string;
+}
+
+/** Detail returned by getOrgForEdit — includes active formula set and component type info */
+export interface OrgForEditDetail {
+  id: string;
+  name: string;
+  slug: string;
+  isSuspended: boolean;
+  activeFormulaSetId: string | null;
+  activeFormulaSet: { id: string; name: string; version: number } | null;
+  /** Current mismatch state, computed on read */
+  mismatch: CompatResult;
+}
+
+/** Result type for updateOrgSettings */
+export type UpdateOrgResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" | "unknown_error"; message: string };
 
 /**
  * Typed result for createOrganizationWithDefaults.
@@ -33,6 +69,65 @@ export interface OrgRow {
 export type CreateOrgResult =
   | { ok: true; org: { id: string; slug: string; name: string }; adminUserId: string }
   | { ok: false; reason: "slug_conflict" | "unknown_error"; message: string };
+
+// ─── Private helpers ─────────────────────────────────────────────────────────
+
+/** Build ConfigSnapshot-compatible type list from Prisma componentTypes select */
+type ComponentTypeRow = { code: string; active: boolean; fieldsSchema: Prisma.JsonValue };
+
+/**
+ * Compute whether a formula set body has a structural mismatch with an org's component types.
+ * Returns true when the set references codes/keys that are missing or inactive.
+ * Returns false when body is null/undefined (no set assigned → no mismatch).
+ */
+function computeMismatchFlag(
+  body: Prisma.JsonValue | null | undefined,
+  componentTypes: ComponentTypeRow[],
+): boolean {
+  if (!body) return false;
+  const snapshot = {
+    takenAt: new Date().toISOString(),
+    componentTypes: componentTypes.map((ct) => ({
+      id: "",
+      code: ct.code,
+      name: "",
+      active: ct.active,
+      fieldsSchema: ct.fieldsSchema,
+      fieldOptionsConfig: {},
+    })),
+  };
+  const result = checkStructuralCompatibility(body as unknown as FormulaSetBody, snapshot);
+  return !result.ok;
+}
+
+/**
+ * Convert a CompatResult's failure details into the warnings array shape returned by
+ * the create/edit API responses (S25-13 — warnings, never blocking).
+ */
+export function compatResultToWarnings(
+  result: CompatResult,
+  setName: string,
+  setVersion: number,
+): OrgFormulaWarning[] {
+  if (result.ok) return [];
+  const warnings: OrgFormulaWarning[] = [];
+  for (const code of result.missingCodes) {
+    warnings.push({
+      kind: "missing_code",
+      code,
+      message: `Formula set ${setName} v${setVersion}: component type "${code}" is missing or inactive in this org.`,
+    });
+  }
+  for (const { code, key } of result.missingParams as MissingParam[]) {
+    warnings.push({
+      kind: "missing_param",
+      code,
+      key,
+      message: `Formula set ${setName} v${setVersion}: field key "${key}" on component type "${code}" is missing in this org.`,
+    });
+  }
+  return warnings;
+}
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
 
@@ -53,8 +148,59 @@ export async function getOrgById(
 }
 
 /**
- * List all organizations with suspension status and user count. Cross-org by design.
- * Used by the SuperAdmin console org list (/controls/orgs).
+ * Fetch org detail needed for the edit page — includes active formula set identity and
+ * the current mismatch state (computed on read, not stored).
+ *
+ * superadmin-only — intentionally cross-org
+ */
+export async function getOrgForEdit(orgId: string): Promise<OrgForEditDetail | null> {
+  // superadmin-only — intentionally cross-org
+  const row = await prisma.organization.findUnique({
+    where: { id: orgId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      isSuspended: true,
+      activeFormulaSetId: true,
+      activeFormulaSet: { select: { id: true, name: true, version: true, body: true } },
+      componentTypes: { select: { code: true, active: true, fieldsSchema: true } },
+    },
+  });
+  if (!row) return null;
+  const snapshot = {
+    takenAt: new Date().toISOString(),
+    componentTypes: row.componentTypes.map((ct) => ({
+      id: "",
+      code: ct.code,
+      name: "",
+      active: ct.active,
+      fieldsSchema: ct.fieldsSchema,
+      fieldOptionsConfig: {},
+    })),
+  };
+  const mismatch: CompatResult = row.activeFormulaSet
+    ? checkStructuralCompatibility(
+        row.activeFormulaSet.body as unknown as FormulaSetBody,
+        snapshot,
+      )
+    : { ok: true };
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    isSuspended: row.isSuspended,
+    activeFormulaSetId: row.activeFormulaSetId,
+    activeFormulaSet: row.activeFormulaSet
+      ? { id: row.activeFormulaSet.id, name: row.activeFormulaSet.name, version: row.activeFormulaSet.version }
+      : null,
+    mismatch,
+  };
+}
+
+/**
+ * List all organizations with suspension status, user count, formula set label, and mismatch flag.
+ * Cross-org by design. Used by the SuperAdmin console org list (/controls/orgs).
  *
  * superadmin-only — intentionally cross-org
  */
@@ -68,18 +214,30 @@ export async function listAllOrganizations(): Promise<OrgRow[]> {
       name: true,
       isSuspended: true,
       createdAt: true,
+      activeFormulaSetId: true,
       _count: { select: { users: true } },
+      activeFormulaSet: { select: { id: true, name: true, version: true, body: true } },
+      componentTypes: { select: { code: true, active: true, fieldsSchema: true } },
     },
   });
 
-  return rows.map((r) => ({
-    id: r.id,
-    slug: r.slug,
-    name: r.name,
-    isSuspended: r.isSuspended,
-    createdAt: r.createdAt,
-    userCount: r._count.users,
-  }));
+  return rows.map((r) => {
+    const formulaSetLabel = r.activeFormulaSet
+      ? `${r.activeFormulaSet.name} v${r.activeFormulaSet.version}`
+      : null;
+    const hasMismatch = computeMismatchFlag(r.activeFormulaSet?.body, r.componentTypes);
+    return {
+      id: r.id,
+      slug: r.slug,
+      name: r.name,
+      isSuspended: r.isSuspended,
+      createdAt: r.createdAt,
+      userCount: r._count.users,
+      activeFormulaSetId: r.activeFormulaSetId,
+      formulaSetLabel,
+      hasMismatch,
+    };
+  });
 }
 
 // ─── Mutations ────────────────────────────────────────────────────────────────
@@ -100,6 +258,7 @@ export async function createOrganizationWithDefaults(
   name: string,
   slug: string,
   adminPassword: string,
+  formulaSetId: string,
 ): Promise<CreateOrgResult> {
   // superadmin-only — intentionally cross-org
 
@@ -115,29 +274,13 @@ export async function createOrganizationWithDefaults(
   const permByCode = new Map(allPermissions.map((p) => [p.code, p.id]));
 
   try {
-    // Stage 23 Batch 2 (D-22): resolve the platform's seeded formula set upfront (read-only,
-    // outside the transaction body below but still inside this try so a lookup failure returns
-    // the normal { ok: false, reason: "unknown_error" } shape instead of an uncaught rejection —
-    // the route handler doesn't wrap this call in its own try/catch). A new org must never be
-    // created without a pin — fail loudly rather than silently leaving activeFormulaSetId null
-    // (that state is reserved for pre-Stage-23 orgs the backfill hasn't reached yet, never for a
-    // brand-new one).
-    const activeFormulaSet = await prisma.formulaSet.findFirst({
-      where: { name: ACTIVE_FORMULA_SET_NAME },
-      orderBy: { version: "desc" },
-      select: { id: true },
-    });
-    if (!activeFormulaSet) {
-      throw new Error(
-        `No FormulaSet found for name "${ACTIVE_FORMULA_SET_NAME}" — run \`npx prisma db seed\` ` +
-          "before creating a new organization.",
-      );
-    }
+    // Stage 25 Batch 5: formulaSetId is passed explicitly by the route handler,
+    // which has already validated it exists. Pin it directly on the new org.
 
     const { org, adminUserId } = await prisma.$transaction(async (tx) => {
       // 1. Create the organization row.
       const newOrg = await tx.organization.create({
-        data: { name, slug, activeFormulaSetId: activeFormulaSet.id },
+        data: { name, slug, activeFormulaSetId: formulaSetId },
         select: { id: true, slug: true, name: true },
       });
 
@@ -322,6 +465,93 @@ export async function toggleOrgSuspension(
       message: err instanceof Error ? err.message : "Unknown error",
     };
   }
+}
+
+/**
+ * Update org name and/or formula set assignment.
+ *
+ * At least one of `name` or `formulaSetId` must be supplied (validated by caller).
+ * Slug is never editable (it is the subdomain — changing it would invalidate all existing
+ * session cookies and subdomain routing). The formula set pin may be changed freely;
+ * existing Projects keep their own pinned formulaSetId and are not affected.
+ *
+ * Does NOT write the audit log — the caller is responsible for calling createOrgAuditLog().
+ *
+ * superadmin-only — intentionally cross-org
+ */
+export async function updateOrgSettings(
+  orgId: string,
+  patch: { name?: string; formulaSetId?: string },
+): Promise<UpdateOrgResult> {
+  // superadmin-only — intentionally cross-org
+  try {
+    await prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.formulaSetId !== undefined ? { activeFormulaSetId: patch.formulaSetId } : {}),
+      },
+      select: { id: true },
+    });
+    return { ok: true };
+  } catch (err) {
+    // Prisma P2025 = record not found
+    if (
+      err instanceof Error &&
+      "code" in err &&
+      (err as { code: string }).code === "P2025"
+    ) {
+      return { ok: false, reason: "not_found", message: `Organization "${orgId}" not found` };
+    }
+    return {
+      ok: false,
+      reason: "unknown_error",
+      message: err instanceof Error ? err.message : "Unknown error",
+    };
+  }
+}
+
+/**
+ * Compute mismatch warnings for a formula set assignment on a given org.
+ * Fetches the formula set body + org's component types, then runs checkStructuralCompatibility.
+ * Returns an empty array when the set is null/not found (treat as no-op).
+ *
+ * Used by both POST /orgs (create) and PATCH /orgs/[orgId] (edit) to return advisory warnings.
+ *
+ * superadmin-only — intentionally cross-org
+ */
+export async function computeOrgMismatchWarnings(
+  orgId: string,
+  formulaSetId: string,
+): Promise<OrgFormulaWarning[]> {
+  // superadmin-only — intentionally cross-org
+  const [formulaSet, componentTypes] = await Promise.all([
+    prisma.formulaSet.findUnique({
+      where: { id: formulaSetId },
+      select: { name: true, version: true, body: true },
+    }),
+    prisma.componentType.findMany({
+      where: { organizationId: orgId },
+      select: { code: true, active: true, fieldsSchema: true },
+    }),
+  ]);
+  if (!formulaSet) return []; // set not found — route already returned 404 before this
+  const snapshot = {
+    takenAt: new Date().toISOString(),
+    componentTypes: componentTypes.map((ct) => ({
+      id: "",
+      code: ct.code,
+      name: "",
+      active: ct.active,
+      fieldsSchema: ct.fieldsSchema,
+      fieldOptionsConfig: {},
+    })),
+  };
+  const result = checkStructuralCompatibility(
+    formulaSet.body as unknown as FormulaSetBody,
+    snapshot,
+  );
+  return compatResultToWarnings(result, formulaSet.name, formulaSet.version);
 }
 
 /**

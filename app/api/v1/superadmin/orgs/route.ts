@@ -4,6 +4,7 @@ import { RESERVED_ORG_SLUGS } from "@/lib/auth-utils";
 import {
   apiBadRequest,
   apiUnauthorized,
+  apiNotFound,
   apiConflict,
   apiServerError,
 } from "@/lib/api-error";
@@ -11,7 +12,9 @@ import {
   listAllOrganizations,
   createOrganizationWithDefaults,
   createOrgAuditLog,
+  computeOrgMismatchWarnings,
 } from "@/lib/data/superadmin/orgs";
+import { getFormulaSet } from "@/lib/data/superadmin/formula-sets";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -83,12 +86,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     typeof (body as Record<string, unknown>).slug !== "string" ||
     typeof (body as Record<string, unknown>).adminPassword !== "string"
   ) {
-    return apiBadRequest("name, slug, and adminPassword are required");
+    return apiBadRequest("name, slug, adminPassword, and formulaSetId are required");
   }
 
-  const name = ((body as Record<string, unknown>).name as string).trim();
-  const slug = ((body as Record<string, unknown>).slug as string).trim().toLowerCase();
-  const adminPassword = (body as Record<string, unknown>).adminPassword as string;
+  const b = body as Record<string, unknown>;
+  const name = (b.name as string).trim();
+  const slug = (b.slug as string).trim().toLowerCase();
+  const adminPassword = b.adminPassword as string;
+  const formulaSetId = typeof b.formulaSetId === "string" ? b.formulaSetId.trim() : null;
 
   if (!name) {
     return apiBadRequest("name is required");
@@ -98,6 +103,9 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
   if (adminPassword.length < 8) {
     return apiBadRequest("adminPassword must be at least 8 characters");
+  }
+  if (!formulaSetId) {
+    return apiBadRequest("formulaSetId is required");
   }
   if (slug.length > 63) {
     return apiBadRequest("slug must be 63 characters or fewer");
@@ -116,7 +124,13 @@ export async function POST(request: Request): Promise<NextResponse> {
     return apiBadRequest(`"${slug}" is a reserved slug and cannot be used`);
   }
 
-  const result = await createOrganizationWithDefaults(name, slug, adminPassword);
+  // Validate the formula set exists before creating the org.
+  const formulaSetRecord = await getFormulaSet(formulaSetId);
+  if (!formulaSetRecord) {
+    return apiNotFound("Formula set not found");
+  }
+
+  const result = await createOrganizationWithDefaults(name, slug, adminPassword, formulaSetId);
 
   if (!result.ok) {
     if (result.reason === "slug_conflict") {
@@ -133,6 +147,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   await createOrgAuditLog(sa.superAdminId, result.org.id, "org.create", {
     name: result.org.name,
     slug: result.org.slug,
+    formulaSetId,
   });
   await createOrgAuditLog(
     sa.superAdminId,
@@ -142,5 +157,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     "User",
   );
 
-  return NextResponse.json({ org: result.org }, { status: 201 });
+  // Compute mismatch warnings (S25-13 — advisory only, save succeeds regardless).
+  const warnings = await computeOrgMismatchWarnings(result.org.id, formulaSetId);
+
+  return NextResponse.json({ org: result.org, warnings }, { status: 201 });
 }
