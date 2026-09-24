@@ -550,6 +550,9 @@ export function EditComponentForm({
   );
   const [fields, setFields] = useState<FieldEntry[]>(initialFields);
   const [code, setCode] = useState(initialCode);
+  // Controlled (not defaultValue) so the value survives a 409 form-action reset — React 19 resets
+  // uncontrolled inputs after any <form action> completion regardless of outcome (review R1 #4).
+  const [name, setName] = useState(initialName);
   const [active, setActive] = useState(initialActive);
   const [mode, setMode] = useState<"form" | "json">("form");
   const [jsonText, setJsonText] = useState("");
@@ -667,7 +670,8 @@ export function EditComponentForm({
           name="name"
           type="text"
           required
-          defaultValue={initialName}
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           autoComplete="off"
           className={inputBase}
         />

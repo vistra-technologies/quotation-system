@@ -36,6 +36,7 @@
 
 import { test, expect } from "@playwright/test";
 import { COMPONENT_TYPE_DEFS } from "../../lib/component-catalog-seed";
+import { createTempFormulaSet, deleteTempFormulaSet } from "./db-helpers";
 
 test.describe.configure({ mode: "serial" });
 test.setTimeout(120_000);
@@ -695,10 +696,10 @@ test("formula-guard: PATCH removing a referenced field key → 409", async ({ re
     componentTypes: { id: string; code: string; fieldsSchema: { key: string }[] }[];
   };
   const glassType = listBody.componentTypes.find((ct) => ct.code === "GLASS");
-  if (!glassType) {
-    test.skip(true, "GLASS component type not found for acme-glass — cannot test formula guard");
-    return;
-  }
+  // Hard expect: the seed guarantees GLASS exists for acme-glass. A soft skip here would hide a
+  // broken seed silently — fail loudly instead (review R1 Finding #3).
+  expect(glassType, "GLASS component type not found for acme-glass — seed must guarantee it").toBeTruthy();
+  if (!glassType) return; // TypeScript narrowing only — never reached after the expect above.
 
   // Get the current fieldsSchema so we can remove one referenced key from it.
   const getRes = await request.get(
@@ -721,10 +722,11 @@ test("formula-guard: PATCH removing a referenced field key → 409", async ({ re
   // The glass-partition-standard v1 GLASS slot references "glassType" and "thickness".
   // Remove "glassType" — the guard must block this.
   const reducedSchema = currentType.fieldsSchema.filter((f) => f.key !== "glassType");
-  if (reducedSchema.length === currentType.fieldsSchema.length) {
-    test.skip(true, "GLASS type does not have a 'glassType' field — guard test cannot proceed");
-    return;
-  }
+  // Hard expect: the seed guarantees GLASS has a "glassType" field (review R1 Finding #3).
+  expect(
+    reducedSchema.length,
+    "GLASS type does not have a 'glassType' field — seed must guarantee it",
+  ).toBeLessThan(currentType.fieldsSchema.length);
 
   const patchRes = await request.patch(
     `/api/v1/superadmin/component-types/${encodeURIComponent(currentType.id)}`,
@@ -742,9 +744,13 @@ test("formula-guard: PATCH removing a referenced field key → 409", async ({ re
 
   expect(patchRes.status()).toBe(409);
   const patchBody = (await patchRes.json()) as { error?: string };
-  // Error message must mention the formula set (names the guard artifact per describeIncompatibility).
+  // Error message must name the formula set, its version, and the blocked key
+  // (describeGuardViolation format: "formula set <name> v<N> ... field "<key>" ...").
+  // review R1 Finding #3: assert all three, not just "formula set".
   expect(patchBody.error).toBeTruthy();
   expect(patchBody.error).toMatch(/formula set/i);
+  expect(patchBody.error).toMatch(/v\d+/);
+  expect(patchBody.error).toContain("glassType");
 });
 
 test("formula-guard: PATCH removing a key not referenced by the active formula set → 200", async ({
@@ -800,6 +806,87 @@ test("formula-guard: PATCH removing a key not referenced by the active formula s
     },
   );
   expect(patchRes.status()).toBe(200);
+});
+
+test("formula-guard: PATCH removing a key only an unassigned (older-version) formula set referenced → 200", async ({
+  request,
+}) => {
+  // Stage 25 R1 Finding #1: the guard must check the org's CURRENT active formula set only.
+  // An unassigned (never-active) set that references a key must NOT block a PATCH that removes it —
+  // otherwise old versions permanently lock keys, breaking the "check current version only" rule
+  // (stage-23.md Batch 6 decision, backlog 2026-09-19).
+  //
+  // Setup: create a new component type with a unique code (never a slot code in any seeded set),
+  // then create an unassigned temp FormulaSet whose slot for that code references one field key.
+  // PATCH to remove that key — expects 200 because the temp set is NOT the org's activeFormulaSetId.
+  if (!hasBootstrapCreds) {
+    test.skip(true, "TEST_SA_USERNAME / TEST_SA_PASSWORD not set");
+    return;
+  }
+
+  const saToken = await loginAsSuperAdmin(request);
+  const orgId = await getAcmeGlassOrgId(request, saToken);
+
+  // Create a temp component type with a unique code and one field key.
+  const uniqueCode = `SA_E2E_OLDVER_${Date.now()}`;
+  const fieldKey = `e2e_oldver_key_${Date.now()}`;
+  const created = await createTestComponentType(request, saToken, orgId, {
+    code: uniqueCode,
+    fieldsSchema: [
+      { key: fieldKey, label: "E2E OldVer Field", type: "field", required: false, basic: true },
+      { key: `${fieldKey}_b`, label: "E2E Extra Field", type: "field", required: false, basic: true },
+    ],
+  });
+
+  // Create an unassigned temp FormulaSet (never assigned as activeFormulaSetId anywhere) whose
+  // slot for uniqueCode references fieldKey via summaryParams. This simulates "an older version
+  // of the formula set" that used to reference this key but is no longer active.
+  const tempSetName = `e2e-oldver-guard-${Date.now()}`;
+  const tempSetId = await createTempFormulaSet(tempSetName, {
+    slots: {
+      [uniqueCode]: {
+        summaryParams: { someDisplay: fieldKey },
+        requiredParams: [],
+      },
+    },
+  });
+
+  try {
+    // Re-fetch the created type to get categoryId and current state.
+    const getRes = await request.get(
+      `/api/v1/superadmin/component-types/${encodeURIComponent(created.id)}?orgId=${encodeURIComponent(orgId)}`,
+      { headers: { Cookie: `qs-sa-token=${saToken}` } },
+    );
+    expect(getRes.status()).toBe(200);
+    const { componentType } = (await getRes.json()) as {
+      componentType: { name: string; categoryId: string; fieldsSchema: { key: string }[]; active: boolean };
+    };
+
+    // PATCH removing fieldKey — the unassigned set references it, but the org's active formula
+    // set has no slot for uniqueCode (it's a unique test code), so the guard must allow this.
+    const schemaWithoutKey = componentType.fieldsSchema.filter((f) => f.key !== fieldKey);
+    expect(schemaWithoutKey.length, "fieldKey should have been present in the schema").toBeLessThan(
+      componentType.fieldsSchema.length,
+    );
+
+    const patchRes = await request.patch(
+      `/api/v1/superadmin/component-types/${encodeURIComponent(created.id)}`,
+      {
+        headers: { Cookie: `qs-sa-token=${saToken}` },
+        data: {
+          orgId,
+          name: componentType.name,
+          categoryId: componentType.categoryId,
+          fieldsSchema: schemaWithoutKey,
+          active: componentType.active,
+        },
+      },
+    );
+    // Must be 200 — the unassigned set is NOT the org's active formula set, so the guard is silent.
+    expect(patchRes.status()).toBe(200);
+  } finally {
+    await deleteTempFormulaSet(tempSetId);
+  }
 });
 
 test("formula-guard: PATCH adding a field key is never blocked → 200", async ({ request }) => {
