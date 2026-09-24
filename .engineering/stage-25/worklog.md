@@ -11,7 +11,7 @@
   by-page.sql note, orphaned i18n key, stale comment) and pushed straight to `release/stage-25` @
   `f9d5570` — pure text corrections, no code-behavior change, no separate review round needed.
 - **Active work item:** Batch 9 (Problem popup, mockup first)
-- **Latest artifacts:** `plan-b8.md` (Batch 8 plan), commit `5d9e1e2` on `feature/s25-b8-inventory-popup`
+- **Latest artifacts:** mockup `design-docs/mockups/problem-popup-poc.html` (docs repo `969c255`)
 - **Review cadence for this stage (non-default — see `profile.md`):** R1 after Batches 1–2, R2 after
   3–5, R3 after 6 alone, R4 after 7–9. Functional verification deferred to one `engineering:test` pass
   at the end, not per-batch.
@@ -28,11 +28,34 @@
 | 6 | Pricing → Inventory rename | DONE — `d94f42c`, preview READY, lint+tsc clean, S25-5 verified |
 | 7 | Inventory create/edit API | DONE — `8167282`, preview READY, 11/11 tests pass |
 | 8 | Inventory create/edit popup | DONE — `5d9e1e2`, preview READY, 7/7 tests pass |
-| 9 | Problem popup (mockup first) | not started |
+| 9 | Problem popup (mockup first) | MOCKUP DONE — `969c255` in docs repo, awaiting sign-off |
 
 ## Activity log
 
 *(agents append their own thin entries below, in order)*
+
+---
+
+**2026-09-24 — developer — Batch 9 mockup**
+
+Role: developer (mockup-only dispatch per S25-11)
+Files changed: `quotation-system-docs/design-docs/mockups/problem-popup-poc.html` (docs repo, commit `969c255`)
+Reused: visual tokens + modal pattern from `inventory-item-popup-poc.html` (Batch 8)
+
+What the mockup shows:
+- Section 1: Design page (simplified 3-col layout) with Submit Design button at bottom of left rail, popup open on 422 refusal showing all three scope groups
+- Section 2: Summary page (Stage 26 shell) with Recompute button in calculation footer, same popup open — only dialog title differs
+- Section 3: Annotated anatomy of the popup component, calling out the two problem-row variants
+
+Key rendering rules illustrated:
+- DESIGN problem with full partition locus → "Go" link to configure mode
+- SELECTION problem with selectionId in locus → "Go" link to configure mode
+- SELECTION problem with NO selectionId (buildSummary FAILED path, backlog 2026-09-23) → no link, explanation text
+- INVENTORY problem with code → "Go" link to Inventory page
+
+Three open questions surfaced in the mockup for sign-off: link destination for SELECTION problems, link destination for INVENTORY problems, and whether FORMULA_SET scope should render a fourth group.
+
+Status: awaiting human sign-off before any component code.
 
 ---
 
