@@ -31,6 +31,8 @@ import { redirectToLogin } from "./login-redirect";
 import { makeDoorResolver, toPanelViewRow, toPanelViewRows } from "./partition-view";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Toast, useToast } from "@/components/toast";
+import { ProblemPopup } from "../_problem-popup";
+import type { CalculationProblemReport } from "@/lib/materials/problems";
 import type {
   FloorRow,
   FloorWithRooms,
@@ -47,6 +49,12 @@ interface DesignWorkspaceProps {
   initialFloors: FloorWithRooms[];
   selections: SelectionRow[];
   initialOpenRoomId: string | null;
+  /**
+   * Stage 25 B9: when set, the workspace enters Configure mode for this
+   * partition on mount (deep-link from the problem popup's "Go" link via
+   * design?partition=[partitionId]).
+   */
+  initialPartitionId: string | null;
 }
 
 /**
@@ -60,6 +68,7 @@ function DesignWorkspaceInner({
   initialFloors,
   selections,
   initialOpenRoomId,
+  initialPartitionId,
 }: DesignWorkspaceProps) {
   const t = useTranslations("design");
   const router = useRouter();
@@ -70,6 +79,8 @@ function DesignWorkspaceInner({
   const [floors, setFloors] = useState<FloorWithRooms[]>(initialFloors);
   const [submittingDesign, setSubmittingDesign] = useState(false);
   const [submitDesignError, setSubmitDesignError] = useState<string | null>(null);
+  // Stage 25 B9: when Submit Design returns 422, store the report and show the popup.
+  const [submitDesignReport, setSubmitDesignReport] = useState<CalculationProblemReport | null>(null);
 
   // Derived live from floors state (not a static prop) so it stays correct as
   // walls are converted/reverted in this session without waiting for a reload.
@@ -80,6 +91,7 @@ function DesignWorkspaceInner({
 
   async function handleSubmitDesign() {
     setSubmitDesignError(null);
+    setSubmitDesignReport(null);
     setSubmittingDesign(true);
     try {
       const res = await fetch(
@@ -88,6 +100,16 @@ function DesignWorkspaceInner({
       );
       if (res.status === 401 || res.status === 403) {
         redirectToLogin(orgSlug, isSubdomain);
+        return;
+      }
+      // 422: calculation was refused — show the problem popup instead of a generic error.
+      if (res.status === 422) {
+        const report = (await res.json().catch(() => null)) as CalculationProblemReport | null;
+        if (report?.ok === false && Array.isArray(report.problems)) {
+          setSubmitDesignReport(report);
+        } else {
+          setSubmitDesignError("Design cannot be submitted — fix the problems and try again.");
+        }
         return;
       }
       if (!res.ok) {
@@ -162,6 +184,14 @@ function DesignWorkspaceInner({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [viewMode, dispatch, unsavedModal]);
+
+  // Stage 25 B9: if the page was loaded with ?partition=<id> (from a problem popup "Go" link),
+  // enter Configure mode for that partition on mount — once only.
+  useEffect(() => {
+    if (initialPartitionId) void doEnterConfigureMode(initialPartitionId);
+    // Intentionally empty dep array — runs once on mount; initialPartitionId is stable from props.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch partitions for the selected room's PARTITION sides (layout-mode tooltip + left-rail preview).
   useEffect(() => {
@@ -304,6 +334,20 @@ function DesignWorkspaceInner({
     } catch (err) {
       console.error("Failed to open partition in Configure mode", err);
       return;
+    }
+    // Navigate the left rail to the room that owns this partition so the rail
+    // stays in sync with Configure mode (otherwise the room selector stays on
+    // whatever room was previously selected while the centre shows a different
+    // partition — flagged in R4 finding #1 as the "same applies to mount-time" issue).
+    for (const floor of floors) {
+      const owningRoom = floor.rooms.find((r) =>
+        r.sides.some((s) => s.kind === "PARTITION" && s.partitionId === partitionId),
+      );
+      if (owningRoom) {
+        setSelectedFloorId(floor.id);
+        setSelectedRoomId(owningRoom.id);
+        break;
+      }
     }
     setViewMode("configure");
     setLayoutSideSelection(null);
@@ -723,6 +767,26 @@ function DesignWorkspaceInner({
           translucent, auto-dismisses after 3 seconds. Reusable component;
           message is set at call-site so the component has no hardcoded copy. */}
       <Toast {...submitToast} />
+
+      {/* Stage 25 B9: problem popup — shown when Submit Design returns 422 + CalculationProblemReport.
+          onNavigateToPartition uses enterConfigureMode (which goes through runWithUnsavedGuard)
+          so the workspace enters Configure mode directly without a Link navigation — necessary
+          because same-page query-string-only navigation does not remount DesignWorkspace and
+          the mount-time useEffect that would enter Configure mode never re-fires. */}
+      {submitDesignReport && (
+        <ProblemPopup
+          report={submitDesignReport}
+          title={t("designCannotBeSubmitted")}
+          orgSlug={orgSlug}
+          projectId={projectId}
+          isSubdomain={isSubdomain}
+          onClose={() => setSubmitDesignReport(null)}
+          onNavigateToPartition={(partitionId) => {
+            setSubmitDesignReport(null);
+            enterConfigureMode(partitionId);
+          }}
+        />
+      )}
     </>
   );
 }
@@ -739,7 +803,15 @@ export function DesignWorkspace(props: DesignWorkspaceProps) {
           — child components still call useUnit() and the provider is the correct
           boundary for that hook, permanently fixed to "mm". */}
       <DraftProvider selections={props.selections}>
-        <DesignWorkspaceInner {...props} />
+        <DesignWorkspaceInner
+          orgSlug={props.orgSlug}
+          projectId={props.projectId}
+          isSubdomain={props.isSubdomain}
+          initialFloors={props.initialFloors}
+          selections={props.selections}
+          initialOpenRoomId={props.initialOpenRoomId}
+          initialPartitionId={props.initialPartitionId}
+        />
       </DraftProvider>
     </UnitProvider>
   );

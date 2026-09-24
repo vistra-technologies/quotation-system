@@ -10,8 +10,8 @@
   doc-accuracy items fixed directly by orchestrator (stale regression-checklist automation claims, stale
   by-page.sql note, orphaned i18n key, stale comment) and pushed straight to `release/stage-25` @
   `f9d5570` — pure text corrections, no code-behavior change, no separate review round needed.
-- **Active work item:** Batch 9 (Problem popup, mockup first)
-- **Latest artifacts:** `plan-b8.md` (Batch 8 plan), commit `5d9e1e2` on `feature/s25-b8-inventory-popup`
+- **Active work item:** Batch 9 DONE — awaiting R4 review
+- **Latest artifacts:** `feature/s25-b9-problem-popup` @ `90370f8`; preview `quotation-system-4to4r16s1-vistra-indias-projects.vercel.app`
 - **Review cadence for this stage (non-default — see `profile.md`):** R1 after Batches 1–2, R2 after
   3–5, R3 after 6 alone, R4 after 7–9. Functional verification deferred to one `engineering:test` pass
   at the end, not per-batch.
@@ -28,11 +28,34 @@
 | 6 | Pricing → Inventory rename | DONE — `d94f42c`, preview READY, lint+tsc clean, S25-5 verified |
 | 7 | Inventory create/edit API | DONE — `8167282`, preview READY, 11/11 tests pass |
 | 8 | Inventory create/edit popup | DONE — `5d9e1e2`, preview READY, 7/7 tests pass |
-| 9 | Problem popup (mockup first) | not started |
+| 9 | Problem popup (mockup first) | DONE — `90370f8`, preview READY, 3/3 tests pass |
 
 ## Activity log
 
 *(agents append their own thin entries below, in order)*
+
+---
+
+**2026-09-24 — developer — Batch 9 mockup**
+
+Role: developer (mockup-only dispatch per S25-11)
+Files changed: `quotation-system-docs/design-docs/mockups/problem-popup-poc.html` (docs repo, commit `969c255`)
+Reused: visual tokens + modal pattern from `inventory-item-popup-poc.html` (Batch 8)
+
+What the mockup shows:
+- Section 1: Design page (simplified 3-col layout) with Submit Design button at bottom of left rail, popup open on 422 refusal showing all three scope groups
+- Section 2: Summary page (Stage 26 shell) with Recompute button in calculation footer, same popup open — only dialog title differs
+- Section 3: Annotated anatomy of the popup component, calling out the two problem-row variants
+
+Key rendering rules illustrated:
+- DESIGN problem with full partition locus → "Go" link to configure mode
+- SELECTION problem with selectionId in locus → "Go" link to configure mode
+- SELECTION problem with NO selectionId (buildSummary FAILED path, backlog 2026-09-23) → no link, explanation text
+- INVENTORY problem with code → "Go" link to Inventory page
+
+Three open questions surfaced in the mockup for sign-off: link destination for SELECTION problems, link destination for INVENTORY problems, and whether FORMULA_SET scope should render a fourth group.
+
+Status: awaiting human sign-off before any component code.
 
 ---
 
@@ -589,3 +612,131 @@ Reused: `confirm-dialog.tsx` overlay pattern; status pill classes from `admin/us
 Deviation noted: GET /inventory now returns ALL items (was active-only) — needed for management; listInventoryItems preserved for formula engine
 Verify: lint+tsc clean; Vercel preview ao5wfotaw READY; 7/7 inventory-popup tests pass; 4/4 inventory-stage25 regression tests pass
 Status: **DONE**
+
+---
+
+**2026-09-24 — developer — Batch 9: Problem popup**
+
+Role: developer (implement dispatch, mockup `problem-popup-poc.html` already approved)
+
+Previous dispatch was cut off at session rate limit; all 5 staged files (component, wiring, page,
+i18n, worklog.md) were intact in the git index and carried forward.
+
+Files added/changed (app repo):
+- NEW `app/[orgSlug]/projects/[projectId]/_problem-popup.tsx` — shared ProblemPopup client
+  component; groups CalculationProblemReport by scope (DESIGN/SELECTION/INVENTORY/FORMULA_SET) with
+  per-scope colour tokens matching the approved mockup; locus-aware Go links
+  (DESIGN/SELECTION → design?partition=<id>; INVENTORY → /inventory; FORMULA_SET → none);
+  Escape/overlay/X/footer Close buttons; auto-focus X on open.
+- MODIFIED `app/[orgSlug]/projects/[projectId]/design/design-workspace.tsx` — handleSubmitDesign()
+  now catches 422, parses CalculationProblemReport body, shows ProblemPopup via submitDesignReport
+  state; added initialPartitionId prop that on mount calls doEnterConfigureMode() to support the
+  "Go" deep-link back into Configure mode.
+- MODIFIED `app/[orgSlug]/projects/[projectId]/design/page.tsx` — reads searchParams.partition and
+  passes as initialPartitionId to DesignWorkspace.
+- MODIFIED `messages/en.json` — added designCannotBeSubmitted key (title text for the popup).
+- NEW `tests/e2e/stage25-b9-problem-popup.spec.ts` — 3 tests: API 422 + CELL_UNASSIGNED locus
+  check; UI popup appears with "Design cannot be submitted" title + DESIGN scope group; Go link href
+  correct + URL updates to include ?partition=<partitionId> after click.
+
+Reused: ProblemCollector / CalculationProblemReport from lib/materials/problems.ts;
+doEnterConfigureMode from design-workspace.tsx (unchanged); apiSignIn / orgUrl / apiUrl from
+tests/e2e/helpers.ts; newWall setup pattern from stage25-b2-pill-relock.spec.ts.
+
+Decisions baked in (per approved mockup + human sign-off):
+- Q1: SELECTION-scope Go link uses ?partition= deep-link (same as DESIGN).
+- Q2: INVENTORY Go link → generic /inventory page.
+- Q3: FORMULA_SET renders a 4th scope group when present, no Go link.
+
+Recompute-side wiring: deferred to Stage 26. A grep of app/[orgSlug]/** confirms no current UI
+button calls the recompute route — only documentation/comment references exist.
+
+SQL reference: no new Prisma calls added (UI-only wiring against existing API shape); by-page.sql
+not changed for this batch.
+
+Verify:
+- `npx tsc --noEmit` → clean (no output)
+- `npm run lint` → 0 new errors (4 pre-existing in .engineering/stage-22 gitignored file)
+- Vercel preview `quotation-system-4to4r16s1-vistra-indias-projects.vercel.app` → READY
+- /api/health → 200 database:connected
+- `stage25-b9-problem-popup.spec.ts`: **3/3 passed**
+  (1 intermediate fix: waitForURL regex matched design URL before ?partition= was appended;
+  switched to a URL predicate requiring partition=<id> and removed unused orgUrlPattern import)
+
+Branch: `feature/s25-b9-problem-popup` @ `90370f8` — pushed, not merged.
+
+Status: **DONE**
+
+---
+
+**2026-09-24 — reviewer — R4 (Batches 7 + 8 + 9)**
+
+Role: reviewer · Verdict: **CHANGES-NEEDED** · Findings: 0 CRITICAL, 1 IMPORTANT, 4 MINOR, 1 NIT.
+Report: `.engineering/stage-25/review-r4.md`. tsc and eslint (changed files) are clean. The flagged
+GET /inventory change (it now includes inactive items) is safe: the inventory page is its only consumer.
+The IMPORTANT finding is that the problem popup's Go link from the Design page doesn't enter Configure mode.
+
+---
+
+**2026-09-24 — developer — R4 fix round**
+
+Role: developer (fix-round dispatch for R4 CHANGES-NEEDED)
+Branch: `feature/s25-b9-problem-popup` @ `c354443`
+Preview: `https://quotation-system-q74jw5ri0-vistra-indias-projects.vercel.app` (READY, health 200)
+
+Findings addressed:
+
+**[IMPORTANT] 1 — Go link doesn't open Configure mode on Design page:**
+- `_problem-popup.tsx`: added `onNavigateToPartition?: (partitionId: string) => void` to
+  `ProblemPopupProps`; threaded down through `ProblemGroup` → `ProblemRow`; when provided and
+  the problem has a `partitionId` (DESIGN/SELECTION scope), renders a `<button>` that calls the
+  callback + `onClose()` instead of a `<Link>`. The `<Link>` fallback is kept for Stage 26's
+  cross-page use where `onNavigateToPartition` will be absent.
+- `design-workspace.tsx`: passes `onNavigateToPartition={(id) => { setSubmitDesignReport(null); enterConfigureMode(id); }}` to `<ProblemPopup>` — goes through `runWithUnsavedGuard`.
+  Also enhanced `doEnterConfigureMode` to search `floors` for the room owning the partition and
+  call `setSelectedFloorId`/`setSelectedRoomId` before entering Configure mode — fixes left-rail
+  sync for both the popup callback and the mount-time `?partition=` deep-link path.
+
+**[MINOR] 2 — Stale/wrong comments:**
+- `route.ts` (inventory): fixed "active-only filter" claim → documents that `loadInventoryMap` loads all items including inactive to detect `INACTIVE_ITEM`.
+- `catalog.ts`: removed dead `listInventoryItems` (zero callers); fixed `CreateInventoryItemData.category` comment (removed stale "Batch 8 popup will expose it").
+
+**[MINOR] 4 — Batch 9 e2e coverage:**
+- `stage25-b9-problem-popup.spec.ts`: replaced `.flex.items-start` row locator with `[data-testid="problem-row"]` (added to ProblemRow outer div); added `[aria-label="Back to Room Layout"]` Configure-mode assertion (appears only in `<ConfigureMode>`, proves mode actually switched, not just URL); added SELECTION-scope test (project with blank GLASS config → MISSING_PARAM, `"Fill in these fields"` group visible); test count 3→5.
+
+**[MINOR] 5 — Qty per unit clears silently:**
+- `_item-form-modal.tsx`: always sends `perUnitQuantity` in the PATCH body; defaults to 1 when field is blank.
+
+**[NIT] 6 — Dead inventory i18n keys:**
+- `messages/en.json`: removed 5 unused `inventory.*` keys (`itemsTableHeading`, `colCategory`, `colCode`, `colName`, `colUOM`); page.tsx already uses `pageTitle`/`pageSubtitle` directly.
+
+**[MINOR] 3 — Active toggle help text:** NOT fixed — deferred to backlog as a human copy/UX decision per the task brief. Already logged in backlog.md.
+
+Files changed:
+- `app/[orgSlug]/projects/[projectId]/_problem-popup.tsx`
+- `app/[orgSlug]/projects/[projectId]/design/design-workspace.tsx`
+- `app/api/v1/orgs/[orgSlug]/inventory/route.ts`
+- `lib/data/catalog.ts`
+- `app/[orgSlug]/inventory/_item-form-modal.tsx`
+- `tests/e2e/stage25-b9-problem-popup.spec.ts`
+- `messages/en.json`
+
+Verify:
+- `npx tsc --noEmit` → clean
+- `npx eslint <changed files>` → 0 errors, 0 warnings (4 pre-existing errors in gitignored .engineering file)
+- Vercel preview `quotation-system-q74jw5ri0-vistra-indias-projects.vercel.app` → READY
+- `/api/health` → 200 `database:connected`
+- `stage25-b9-problem-popup.spec.ts`: **5/5 passed** (↑ from 3/3)
+- `stage24-materials.spec.ts` + `stage25-b2-pill-relock.spec.ts`: **24/24 passed** (no regressions)
+
+Status: **DONE**
+
+---
+
+**2026-09-24 — reviewer — R4 v2 (fix-round re-review)**
+
+Role: reviewer · Verdict: **APPROVE-WITH-NITS** · Findings: 0 CRITICAL, 0 IMPORTANT, 0 MINOR, 1 NIT.
+Report: `.engineering/stage-25/review-r4-v2.md`. Scope: `364765a..c354443`. tsc and eslint are clean.
+The IMPORTANT finding is fixed: the Go button now calls enterConfigureMode, and the Link fallback is kept for Stage 26.
+MINORs 2, 4, 5 and NIT 6 are fixed. MINOR 3 was deferred to the backlog on purpose.
+The one NIT: the new SELECTION e2e has no Go control to click, because the buildSummary-failure problem carries no locus.

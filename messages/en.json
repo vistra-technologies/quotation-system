@@ -407,7 +407,8 @@
     "deleteRoomConfirmMsg": "Delete \"{name}\" and all its partitions? This cannot be undone.",
     "convertedWalls": "{converted}/{total} walls",
     "noRoomsYet": "No rooms on this floor yet.",
-    "loadingPartitions": "Loading…"
+    "loadingPartitions": "Loading…",
+    "designCannotBeSubmitted": "Design cannot be submitted"
   },
   "wizard": {
     "step1": "Project Details",
@@ -423,11 +424,6 @@
   },
   "inventory": {
     "pageTitle": "Inventory Management",
-    "pageSubtitle": "Manage inventory items for your organization.",
-    "itemsTableHeading": "Inventory Items",
-    "colCategory": "Category",
-    "colCode": "Code",
-    "colName": "Name",
-    "colUOM": "Unit"
+    "pageSubtitle": "Manage inventory items for your organization."
   }
 }

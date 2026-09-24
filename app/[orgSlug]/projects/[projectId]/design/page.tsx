@@ -33,7 +33,7 @@ export default async function DesignPage({
   searchParams,
 }: {
   params: Promise<{ orgSlug: string; projectId: string }>;
-  searchParams: Promise<{ openRoom?: string }>;
+  searchParams: Promise<{ openRoom?: string; partition?: string }>;
 }) {
   const { orgSlug, projectId } = await params;
   const sp = await searchParams;
@@ -113,6 +113,7 @@ export default async function DesignPage({
       initialFloors={floorsWithRooms}
       selections={selections}
       initialOpenRoomId={sp.openRoom ?? null}
+      initialPartitionId={sp.partition ?? null}
     />
   );
 }

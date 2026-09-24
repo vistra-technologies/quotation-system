@@ -18,22 +18,6 @@ export class DuplicateInventoryCodeError extends Error {
 // ─── Reads ───────────────────────────────────────────────────────────────────
 
 /**
- * List active inventory items for the session org, with their prices.
- * Ordered category → code, then prices by currency within each item.
- *
- * Active-only — suitable for formula engine use (formula references only
- * resolve active items). For the management page (where admins need to see
- * and edit inactive items too) use `listAllInventoryItems`.
- */
-export async function listInventoryItems(session: SessionData) {
-  return prisma.inventoryItem.findMany({
-    where: { organizationId: session.organizationId, active: true },
-    include: { prices: { orderBy: { currency: "asc" } } },
-    orderBy: [{ category: "asc" }, { code: "asc" }],
-  });
-}
-
-/**
  * List ALL inventory items for the session org (active + inactive), with prices.
  * Ordered category → code, then prices by currency within each item.
  *
@@ -70,7 +54,7 @@ export interface CreateInventoryItemData {
   /**
    * Open-ended category string (WALL_TYPE | GLASS | DOOR_TYPE | …).
    * Not listed in the Batch 7 spec fields but required by the DB schema.
-   * Defaults to "" when omitted; the Batch 8 popup will expose it as a field.
+   * Defaults to "" when omitted.
    */
   category?: string;
   perUnitQuantity?: number;

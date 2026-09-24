@@ -33,7 +33,8 @@ export const dynamic = "force-dynamic";
  *
  * Returns all items (including inactive) so the management page can display
  * and edit inactive items (Stage 25 Batch 8). Formula-engine code uses
- * loadInventoryMap() (lib/data/inventory.ts) which has its own active-only filter.
+ * loadInventoryMap() (lib/data/inventory.ts) which also loads ALL items
+ * (active + inactive) so it can emit INACTIVE_ITEM problems for inactive codes.
  *
  * Tenancy: enforced by getApiSession() (403 on cross-org) and listAllInventoryItems()
  *          filtering on session.organizationId.
