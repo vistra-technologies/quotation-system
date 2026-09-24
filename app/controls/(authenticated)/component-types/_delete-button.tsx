@@ -70,7 +70,7 @@ export function DeleteComponentTypeButton({
       <ConfirmDialog
         isOpen={isConfirmOpen}
         title="Delete component type"
-        message={`Permanently delete "${typeName}" (${typeCode})? Any configurations using this type in projects will lose their component-type reference. This cannot be undone.`}
+        message={`Permanently delete "${typeName}" (${typeCode})? Any configurations using this type in projects will lose their component-type reference. Deleting a component type can also affect this organization's formula/material/BOQ calculations. This cannot be undone.`}
         confirmLabel="Delete permanently"
         cancelLabel="Cancel"
         onConfirm={handleConfirm}
