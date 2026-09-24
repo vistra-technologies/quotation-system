@@ -666,3 +666,77 @@ Verify:
 Branch: `feature/s25-b9-problem-popup` @ `90370f8` — pushed, not merged.
 
 Status: **DONE**
+
+---
+
+**2026-09-24 — reviewer — R4 (Batches 7 + 8 + 9)**
+
+Role: reviewer · Verdict: **CHANGES-NEEDED** · Findings: 0 CRITICAL, 1 IMPORTANT, 4 MINOR, 1 NIT.
+Report: `.engineering/stage-25/review-r4.md`. tsc and eslint (changed files) are clean. The flagged
+GET /inventory change (it now includes inactive items) is safe: the inventory page is its only consumer.
+The IMPORTANT finding is that the problem popup's Go link from the Design page doesn't enter Configure mode.
+
+---
+
+**2026-09-24 — developer — R4 fix round**
+
+Role: developer (fix-round dispatch for R4 CHANGES-NEEDED)
+Branch: `feature/s25-b9-problem-popup` @ `c354443`
+Preview: `https://quotation-system-q74jw5ri0-vistra-indias-projects.vercel.app` (READY, health 200)
+
+Findings addressed:
+
+**[IMPORTANT] 1 — Go link doesn't open Configure mode on Design page:**
+- `_problem-popup.tsx`: added `onNavigateToPartition?: (partitionId: string) => void` to
+  `ProblemPopupProps`; threaded down through `ProblemGroup` → `ProblemRow`; when provided and
+  the problem has a `partitionId` (DESIGN/SELECTION scope), renders a `<button>` that calls the
+  callback + `onClose()` instead of a `<Link>`. The `<Link>` fallback is kept for Stage 26's
+  cross-page use where `onNavigateToPartition` will be absent.
+- `design-workspace.tsx`: passes `onNavigateToPartition={(id) => { setSubmitDesignReport(null); enterConfigureMode(id); }}` to `<ProblemPopup>` — goes through `runWithUnsavedGuard`.
+  Also enhanced `doEnterConfigureMode` to search `floors` for the room owning the partition and
+  call `setSelectedFloorId`/`setSelectedRoomId` before entering Configure mode — fixes left-rail
+  sync for both the popup callback and the mount-time `?partition=` deep-link path.
+
+**[MINOR] 2 — Stale/wrong comments:**
+- `route.ts` (inventory): fixed "active-only filter" claim → documents that `loadInventoryMap` loads all items including inactive to detect `INACTIVE_ITEM`.
+- `catalog.ts`: removed dead `listInventoryItems` (zero callers); fixed `CreateInventoryItemData.category` comment (removed stale "Batch 8 popup will expose it").
+
+**[MINOR] 4 — Batch 9 e2e coverage:**
+- `stage25-b9-problem-popup.spec.ts`: replaced `.flex.items-start` row locator with `[data-testid="problem-row"]` (added to ProblemRow outer div); added `[aria-label="Back to Room Layout"]` Configure-mode assertion (appears only in `<ConfigureMode>`, proves mode actually switched, not just URL); added SELECTION-scope test (project with blank GLASS config → MISSING_PARAM, `"Fill in these fields"` group visible); test count 3→5.
+
+**[MINOR] 5 — Qty per unit clears silently:**
+- `_item-form-modal.tsx`: always sends `perUnitQuantity` in the PATCH body; defaults to 1 when field is blank.
+
+**[NIT] 6 — Dead inventory i18n keys:**
+- `messages/en.json`: removed 5 unused `inventory.*` keys (`itemsTableHeading`, `colCategory`, `colCode`, `colName`, `colUOM`); page.tsx already uses `pageTitle`/`pageSubtitle` directly.
+
+**[MINOR] 3 — Active toggle help text:** NOT fixed — deferred to backlog as a human copy/UX decision per the task brief. Already logged in backlog.md.
+
+Files changed:
+- `app/[orgSlug]/projects/[projectId]/_problem-popup.tsx`
+- `app/[orgSlug]/projects/[projectId]/design/design-workspace.tsx`
+- `app/api/v1/orgs/[orgSlug]/inventory/route.ts`
+- `lib/data/catalog.ts`
+- `app/[orgSlug]/inventory/_item-form-modal.tsx`
+- `tests/e2e/stage25-b9-problem-popup.spec.ts`
+- `messages/en.json`
+
+Verify:
+- `npx tsc --noEmit` → clean
+- `npx eslint <changed files>` → 0 errors, 0 warnings (4 pre-existing errors in gitignored .engineering file)
+- Vercel preview `quotation-system-q74jw5ri0-vistra-indias-projects.vercel.app` → READY
+- `/api/health` → 200 `database:connected`
+- `stage25-b9-problem-popup.spec.ts`: **5/5 passed** (↑ from 3/3)
+- `stage24-materials.spec.ts` + `stage25-b2-pill-relock.spec.ts`: **24/24 passed** (no regressions)
+
+Status: **DONE**
+
+---
+
+**2026-09-24 — reviewer — R4 v2 (fix-round re-review)**
+
+Role: reviewer · Verdict: **APPROVE-WITH-NITS** · Findings: 0 CRITICAL, 0 IMPORTANT, 0 MINOR, 1 NIT.
+Report: `.engineering/stage-25/review-r4-v2.md`. Scope: `364765a..c354443`. tsc and eslint are clean.
+The IMPORTANT finding is fixed: the Go button now calls enterConfigureMode, and the Link fallback is kept for Stage 26.
+MINORs 2, 4, 5 and NIT 6 are fixed. MINOR 3 was deferred to the backlog on purpose.
+The one NIT: the new SELECTION e2e has no Go control to click, because the buildSummary-failure problem carries no locus.
