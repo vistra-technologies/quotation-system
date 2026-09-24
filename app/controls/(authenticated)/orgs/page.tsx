@@ -2,6 +2,7 @@ import Link from "next/link";
 import { internalFetch } from "@/lib/internal-fetch";
 import { SuspendOrgButton } from "./_suspend-button";
 import { DeleteOrgButton } from "./_delete-button";
+import { MismatchChip } from "./_mismatch-chip";
 
 // Always render live — reads the SuperAdminSession table (via guard layout) and live DB.
 export const dynamic = "force-dynamic";
@@ -15,6 +16,9 @@ interface OrgRow {
   isSuspended: boolean;
   createdAt: string; // ISO string from JSON
   userCount: number;
+  activeFormulaSetId: string | null;
+  formulaSetLabel: string | null;
+  hasMismatch: boolean;
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -22,8 +26,8 @@ interface OrgRow {
 /**
  * SuperAdmin org list page (Server Component).
  *
- * Lists all organizations across the platform with name, slug, suspension status,
- * user count, and creation date.
+ * Lists all organizations across the platform with name, slug, formula set assignment
+ * (including mismatch chip), suspension status, user count, and creation date.
  *
  * Auth: enforced by app/controls/(authenticated)/layout.tsx — any request that
  * reaches this page has already passed requireSuperAdmin(). Do not call it again.
@@ -32,11 +36,7 @@ interface OrgRow {
  * via internalFetch, forwarding the qs-sa-token cookie so the route handler's
  * requireSuperAdminFromRequest() sees the session.
  *
- * Pagination: at wireframe stage this renders all orgs (no UI pagination controls).
- * The API supports an arbitrary future limit via the DAL; the page renders whatever
- * the API returns.
- *
- * Stage 16 Batch C — F2.
+ * Stage 16 Batch C — F2; updated Stage 25 Batch 5 (formula set column + edit link).
  */
 export default async function OrgsPage() {
   const res = await internalFetch("/api/v1/superadmin/orgs");
@@ -120,6 +120,9 @@ function OrgsTable({
                 Slug
               </th>
               <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
+                Formula Set
+              </th>
+              <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
                 Status
               </th>
               <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
@@ -137,7 +140,7 @@ function OrgsTable({
             {orgs.length === 0 ? (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-5 py-8 text-center text-sm text-text-muted"
                 >
                   {emptyMessage}
@@ -154,6 +157,18 @@ function OrgsTable({
                   </td>
                   <td className="px-5 py-4 font-mono text-sm text-text-body">
                     {org.slug}
+                  </td>
+                  <td className="px-5 py-4">
+                    {org.formulaSetLabel ? (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-sm text-text-body">{org.formulaSetLabel}</span>
+                        <MismatchChip show={org.hasMismatch} />
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center rounded-pill bg-bg-subtle px-2.5 py-0.5 text-xs font-bold text-text-muted">
+                        None assigned
+                      </span>
+                    )}
                   </td>
                   <td className="px-5 py-4">
                     {org.isSuspended ? (
@@ -175,7 +190,13 @@ function OrgsTable({
                     })}
                   </td>
                   <td className="px-5 py-4">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
+                      <Link
+                        href={`/controls/orgs/${org.id}`}
+                        className="text-xs font-bold text-primary hover:text-primary-dark"
+                      >
+                        Edit
+                      </Link>
                       <SuspendOrgButton
                         orgId={org.id}
                         orgName={org.name}
