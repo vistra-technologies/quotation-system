@@ -77,6 +77,11 @@ export default async function SummaryPage({
   const calcRes = await internalFetch(
     `/api/v1/orgs/${orgSlug}/projects/${projectId}/calculation`,
   );
+  // M3 (Stage 26 R2 review): only a real 404 means "no calculation yet" — any other failure (e.g. a 500)
+  // is a genuine error and shouldn't tell the user to go back and resubmit the design.
+  if (!calcRes.ok && calcRes.status !== 404) {
+    throw new Error(`Failed to load calculation (status ${calcRes.status})`);
+  }
   const calc: CalculationResult | null = calcRes.ok
     ? ((await calcRes.json()) as CalculationResult)
     : null;

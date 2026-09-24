@@ -27,6 +27,7 @@ export async function generateSummaryPdf(input: GenerateSummaryPdfInput): Promis
 
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
 
   // ─── Header (mockup-batch0.html §3, minus the Formula Set row per S26-9) ────
   doc.setFont("helvetica", "bold");
@@ -68,6 +69,14 @@ export async function generateSummaryPdf(input: GenerateSummaryPdfInput): Promis
   let startY = metaY + 24;
 
   function drawTable(table: PdfTable) {
+    // M1 (Stage 26 R2 review): if the title plus the head row plus one body row won't fit above the
+    // bottom margin, jspdf-autotable will push the whole table to the next page on its own, leaving an
+    // orphaned title behind on this one — force the page break ourselves first instead.
+    if (startY + 60 > pageHeight - PAGE_MARGIN) {
+      doc.addPage();
+      startY = PAGE_MARGIN;
+    }
+
     doc.setFont("helvetica", "bold");
     doc.setFontSize(11);
     doc.text(table.title, PAGE_MARGIN, startY);
