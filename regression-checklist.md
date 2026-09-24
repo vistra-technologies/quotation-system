@@ -257,14 +257,15 @@ Run against the deployment's own `*.vercel.app` hash URL via `PLAYWRIGHT_BASE_UR
     session from org B. Verified via curl for all key routes: users, inquiries, inventory,
     external-companies, projects, component-types. `getApiSession()` cross-tenant guard is the
     enforcement point. (Route was `/catalog` before Stage 25 B6; renamed to `/inventory`.)
-    Automated: `stage24-materials.spec.ts` M2 (cross-org session gets 403 on vistra inventory).
+    Manual — no automated cross-org 403 check exists for `/inventory` (M2 only covers a same-org
+    200 fetch, not a cross-org session).
 
 80. **API RBAC gating:** distributor session (no MANAGE_USERS, no MANAGE_PRICING) is denied
     `GET /api/v1/orgs/{orgSlug}/admin/users` (403) and `GET /api/v1/orgs/{orgSlug}/inventory` (403).
     Distributor IS allowed `GET /api/v1/orgs/{orgSlug}/inquiries` and
     `GET /api/v1/orgs/{orgSlug}/component-types` (no gate on GET).
     (Route was `/catalog` before Stage 25 B6; renamed to `/inventory`.)
-    Automated: `stage24-materials.spec.ts` M1 (unauthenticated /inventory → 401).
+    Manual — M1 only checks an unauthenticated 401, not the distributor-role 403 this item describes.
 
 ### Dashboard redesign (Batch 7b)
 
@@ -543,5 +544,6 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      `GET /api/v1/orgs/{orgSlug}/catalog` → 404 (no redirect, S25-5 guarantee).
      `GET /api/v1/orgs/{orgSlug}/inventory` → 200 with `{ items: [...] }` for an authorized session.
      Automated: `inventory-stage25.spec.ts` (RBAC gates + list renders), `subdomain-navigation.spec.ts`
-     (flyout link + inventory list clean URL), `stage24-materials.spec.ts` M1/M2 (old /catalog → 404;
-     new /inventory → 401/200).
+     (flyout link + inventory list clean URL), `stage24-materials.spec.ts` M1/M2 (old /catalog API → 404;
+     new /inventory → 401/200). The `/pricing` **page** 404 is manual-only (verified once via curl) — no
+     spec requests `/pricing`.

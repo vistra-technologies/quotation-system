@@ -22,7 +22,9 @@ interface InventoryItemRow {
  * Inventory management list page (Server Component).
  *
  * Lists all active inventory items for the org.
- * Gated on MANAGE_PRICING — wrong-role requests are redirected to the dashboard.
+ * Gated on MANAGE_PRICING — wrong-role requests get a 403 from the API route,
+ * which this page turns into a redirect to /login; a logged-in user then
+ * bounces from there to the dashboard.
  *
  * Stage 11 (Batch 9): restyled to Sage Ease tokens; removed incorrect
  * min-h-screen outer wrapper (page renders inside the org app shell).
