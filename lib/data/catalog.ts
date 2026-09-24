@@ -1,5 +1,19 @@
+import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
+
+// ─── Domain errors ────────────────────────────────────────────────────────────
+
+/**
+ * Thrown by createInventoryItem / updateInventoryItem when the (organizationId, code)
+ * unique constraint is violated — maps to a 409 response in the route handler.
+ */
+export class DuplicateInventoryCodeError extends Error {
+  constructor(code: string) {
+    super(`An inventory item with code "${code}" already exists in this organization`);
+    this.name = "DuplicateInventoryCodeError";
+  }
+}
 
 // ─── Reads ───────────────────────────────────────────────────────────────────
 
@@ -27,6 +41,101 @@ export async function getInventoryItemById(session: SessionData, itemId: string)
 }
 
 // ─── Mutations ───────────────────────────────────────────────────────────────
+
+// ── Inventory item CRUD (Stage 25 Batch 7) ───────────────────────────────────
+
+export interface CreateInventoryItemData {
+  code: string;
+  name: string;
+  measurementUnit: string;
+  /**
+   * Open-ended category string (WALL_TYPE | GLASS | DOOR_TYPE | …).
+   * Not listed in the Batch 7 spec fields but required by the DB schema.
+   * Defaults to "" when omitted; the Batch 8 popup will expose it as a field.
+   */
+  category?: string;
+  perUnitQuantity?: number;
+  active?: boolean;
+  /** Untyped JSONB — defaults to {} when omitted. */
+  attributes?: object;
+}
+
+export interface UpdateInventoryItemData {
+  code?: string;
+  name?: string;
+  measurementUnit?: string;
+  perUnitQuantity?: number;
+  active?: boolean;
+}
+
+/**
+ * Create a new InventoryItem for the session org.
+ * Throws DuplicateInventoryCodeError if (organizationId, code) already exists.
+ */
+export async function createInventoryItem(
+  session: SessionData,
+  data: CreateInventoryItemData,
+) {
+  try {
+    return await prisma.inventoryItem.create({
+      data: {
+        organizationId: session.organizationId,
+        category: data.category ?? "",
+        code: data.code.trim(),
+        name: data.name,
+        measurementUnit: data.measurementUnit,
+        perUnitQuantity: data.perUnitQuantity ?? 1,
+        active: data.active ?? true,
+        attributes: (data.attributes ?? {}) as Prisma.InputJsonValue,
+      },
+    });
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      throw new DuplicateInventoryCodeError(data.code);
+    }
+    throw err;
+  }
+}
+
+/**
+ * Update an existing InventoryItem that belongs to the session org.
+ * Returns null if the item is not found or belongs to a different org (tenancy guard).
+ * Throws DuplicateInventoryCodeError if the new code collides with an existing item.
+ */
+export async function updateInventoryItem(
+  session: SessionData,
+  itemId: string,
+  data: UpdateInventoryItemData,
+): Promise<object | null> {
+  // Build the update payload — only include fields explicitly supplied.
+  const update: Record<string, unknown> = {};
+  if (data.code !== undefined) update.code = data.code.trim();
+  if (data.name !== undefined) update.name = data.name;
+  if (data.measurementUnit !== undefined) update.measurementUnit = data.measurementUnit;
+  if (data.perUnitQuantity !== undefined) update.perUnitQuantity = data.perUnitQuantity;
+  if (data.active !== undefined) update.active = data.active;
+
+  try {
+    const result = await prisma.inventoryItem.updateMany({
+      where: { id: itemId, organizationId: session.organizationId },
+      data: update,
+    });
+    if (result.count === 0) return null; // not found or wrong org
+    // Re-read for the response (includes computed/defaulted fields).
+    return getInventoryItemById(session, itemId);
+  } catch (err) {
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      throw new DuplicateInventoryCodeError(data.code ?? "");
+    }
+    throw err;
+  }
+}
 
 /**
  * Tenancy guard: assert an InventoryItem belongs to the given org.
