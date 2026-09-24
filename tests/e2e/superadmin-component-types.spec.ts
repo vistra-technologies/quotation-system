@@ -660,6 +660,190 @@ test("tenancy isolation: typeId from org A with org B's orgId → 404", async ({
   expect(crossRes.status()).toBe(404);
 });
 
+// ── Batch 1 (Stage 25): Formula-guard 409 path tests ─────────────────────────
+//
+// Three API-level tests for the ComponentTypeGuard (lib/formula-compat.ts).
+// The guard fires when PATCH would remove a field key referenced by the org's
+// activeFormulaSet (D-26, D-36). The acme-glass seed org receives the
+// "glass-partition-standard" v1 formula set whose GLASS slot references
+// summaryParams { glassType, thickness }. GLASS is therefore the easiest target.
+//
+// Test A: removing a referenced field key → 409 (formula-guard blocks it).
+// Test B: removing a field key NOT referenced by the active formula set → 200.
+// Test C: adding a field key → 200 (additions are never blocked).
+//
+// NB: Test A does NOT mutate the DB — the 409 means the PATCH was rejected.
+// Tests B and C create temporary component types; those rows accumulate in the
+// dev DB across runs (same known limitation as earlier tests in this file).
+
+test("formula-guard: PATCH removing a referenced field key → 409", async ({ request }) => {
+  if (!hasBootstrapCreds) {
+    test.skip(true, "TEST_SA_USERNAME / TEST_SA_PASSWORD not set");
+    return;
+  }
+
+  const saToken = await loginAsSuperAdmin(request);
+  const orgId = await getAcmeGlassOrgId(request, saToken);
+
+  // Get the list of component types for acme-glass and find GLASS.
+  const listRes = await request.get(
+    `/api/v1/superadmin/component-types?orgId=${encodeURIComponent(orgId)}`,
+    { headers: { Cookie: `qs-sa-token=${saToken}` } },
+  );
+  expect(listRes.status()).toBe(200);
+  const listBody = (await listRes.json()) as {
+    componentTypes: { id: string; code: string; fieldsSchema: { key: string }[] }[];
+  };
+  const glassType = listBody.componentTypes.find((ct) => ct.code === "GLASS");
+  if (!glassType) {
+    test.skip(true, "GLASS component type not found for acme-glass — cannot test formula guard");
+    return;
+  }
+
+  // Get the current fieldsSchema so we can remove one referenced key from it.
+  const getRes = await request.get(
+    `/api/v1/superadmin/component-types/${encodeURIComponent(glassType.id)}?orgId=${encodeURIComponent(orgId)}`,
+    { headers: { Cookie: `qs-sa-token=${saToken}` } },
+  );
+  expect(getRes.status()).toBe(200);
+  const getBody = (await getRes.json()) as {
+    componentType: {
+      id: string;
+      code: string;
+      name: string;
+      categoryId: string;
+      fieldsSchema: { key: string; label: string; type: string; required: boolean; basic: boolean }[];
+      active: boolean;
+    };
+  };
+  const currentType = getBody.componentType;
+
+  // The glass-partition-standard v1 GLASS slot references "glassType" and "thickness".
+  // Remove "glassType" — the guard must block this.
+  const reducedSchema = currentType.fieldsSchema.filter((f) => f.key !== "glassType");
+  if (reducedSchema.length === currentType.fieldsSchema.length) {
+    test.skip(true, "GLASS type does not have a 'glassType' field — guard test cannot proceed");
+    return;
+  }
+
+  const patchRes = await request.patch(
+    `/api/v1/superadmin/component-types/${encodeURIComponent(currentType.id)}`,
+    {
+      headers: { Cookie: `qs-sa-token=${saToken}` },
+      data: {
+        orgId,
+        name: currentType.name,
+        categoryId: currentType.categoryId,
+        fieldsSchema: reducedSchema,
+        active: currentType.active,
+      },
+    },
+  );
+
+  expect(patchRes.status()).toBe(409);
+  const patchBody = (await patchRes.json()) as { error?: string };
+  // Error message must mention the formula set (names the guard artifact per describeIncompatibility).
+  expect(patchBody.error).toBeTruthy();
+  expect(patchBody.error).toMatch(/formula set/i);
+});
+
+test("formula-guard: PATCH removing a key not referenced by the active formula set → 200", async ({
+  request,
+}) => {
+  if (!hasBootstrapCreds) {
+    test.skip(true, "TEST_SA_USERNAME / TEST_SA_PASSWORD not set");
+    return;
+  }
+
+  const saToken = await loginAsSuperAdmin(request);
+  const orgId = await getAcmeGlassOrgId(request, saToken);
+
+  // Create a new component type with a custom code (not GLASS/DOOR — no formula slot for it).
+  // The active formula set's guard only fires for codes it has a slot for, so removing keys
+  // from a type with an unknown code must return 200.
+  const fieldKey = `e2e_unreffed_${Date.now()}`;
+  const created = await createTestComponentType(request, saToken, orgId, {
+    fieldsSchema: [
+      { key: fieldKey, label: "E2E Unreffed Field", type: "field", required: false, basic: true },
+      { key: `${fieldKey}_b`, label: "E2E Extra Field", type: "field", required: false, basic: true },
+    ],
+  });
+
+  // Re-fetch to get categoryId and current state (createTestComponentType returns only id/code/name).
+  const getRes = await request.get(
+    `/api/v1/superadmin/component-types/${encodeURIComponent(created.id)}?orgId=${encodeURIComponent(orgId)}`,
+    { headers: { Cookie: `qs-sa-token=${saToken}` } },
+  );
+  expect(getRes.status()).toBe(200);
+  const { componentType } = (await getRes.json()) as {
+    componentType: {
+      name: string;
+      categoryId: string;
+      fieldsSchema: { key: string }[];
+      active: boolean;
+    };
+  };
+
+  // PATCH removing one field — guard should not fire (no slot for this code in the formula set).
+  const schemaWithoutFirst = componentType.fieldsSchema.filter((f) => f.key !== fieldKey);
+  const patchRes = await request.patch(
+    `/api/v1/superadmin/component-types/${encodeURIComponent(created.id)}`,
+    {
+      headers: { Cookie: `qs-sa-token=${saToken}` },
+      data: {
+        orgId,
+        name: componentType.name,
+        categoryId: componentType.categoryId,
+        fieldsSchema: schemaWithoutFirst,
+        active: componentType.active,
+      },
+    },
+  );
+  expect(patchRes.status()).toBe(200);
+});
+
+test("formula-guard: PATCH adding a field key is never blocked → 200", async ({ request }) => {
+  if (!hasBootstrapCreds) {
+    test.skip(true, "TEST_SA_USERNAME / TEST_SA_PASSWORD not set");
+    return;
+  }
+
+  const saToken = await loginAsSuperAdmin(request);
+  const orgId = await getAcmeGlassOrgId(request, saToken);
+
+  // Create a test type with no fields.
+  const created = await createTestComponentType(request, saToken, orgId, { fieldsSchema: [] });
+
+  // Re-fetch to get categoryId.
+  const getRes = await request.get(
+    `/api/v1/superadmin/component-types/${encodeURIComponent(created.id)}?orgId=${encodeURIComponent(orgId)}`,
+    { headers: { Cookie: `qs-sa-token=${saToken}` } },
+  );
+  expect(getRes.status()).toBe(200);
+  const { componentType } = (await getRes.json()) as {
+    componentType: { name: string; categoryId: string; active: boolean; fieldsSchema: unknown[] };
+  };
+
+  // PATCH adding a brand-new field — should always succeed.
+  const newFieldKey = `e2e_added_${Date.now()}`;
+  const patchRes = await request.patch(
+    `/api/v1/superadmin/component-types/${encodeURIComponent(created.id)}`,
+    {
+      headers: { Cookie: `qs-sa-token=${saToken}` },
+      data: {
+        orgId,
+        name: componentType.name,
+        categoryId: componentType.categoryId,
+        fieldsSchema: [
+          { key: newFieldKey, label: "Added Field", type: "field", required: false, basic: true },
+        ],
+        active: componentType.active,
+      },
+    },
+  );
+  expect(patchRes.status()).toBe(200);
+});
+
 // ── TIER 2 TESTS (page-level, run against PLAYWRIGHT_BASE_URL's own origin) ───
 
 // ── Test 7: Controls page loads + org picker renders ─────────────────────────
