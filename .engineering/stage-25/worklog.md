@@ -10,8 +10,8 @@
   doc-accuracy items fixed directly by orchestrator (stale regression-checklist automation claims, stale
   by-page.sql note, orphaned i18n key, stale comment) and pushed straight to `release/stage-25` @
   `f9d5570` — pure text corrections, no code-behavior change, no separate review round needed.
-- **Active work item:** Batch 8 (Inventory create/edit popup, mockup first)
-- **Latest artifacts:** `plan-b7.md` (Batch 7 plan), commit `8167282` on `feature/s25-b7-inventory-api`
+- **Active work item:** Batch 9 (Problem popup, mockup first)
+- **Latest artifacts:** `plan-b8.md` (Batch 8 plan), commit `5d9e1e2` on `feature/s25-b8-inventory-popup`
 - **Review cadence for this stage (non-default — see `profile.md`):** R1 after Batches 1–2, R2 after
   3–5, R3 after 6 alone, R4 after 7–9. Functional verification deferred to one `engineering:test` pass
   at the end, not per-batch.
@@ -27,7 +27,7 @@
 | 5 | Org create/edit formula picker (mockup first) | DONE — `6639049`, preview READY |
 | 6 | Pricing → Inventory rename | DONE — `d94f42c`, preview READY, lint+tsc clean, S25-5 verified |
 | 7 | Inventory create/edit API | DONE — `8167282`, preview READY, 11/11 tests pass |
-| 8 | Inventory create/edit popup (mockup first) | not started |
+| 8 | Inventory create/edit popup | DONE — `5d9e1e2`, preview READY, 7/7 tests pass |
 | 9 | Problem popup (mockup first) | not started |
 
 ## Activity log
@@ -549,4 +549,43 @@ Verify: `npx eslint lib/data/catalog.ts app/api/v1/...` clean; `npx tsc --noEmit
 `8167282`; Vercel preview `https://quotation-system-dfzwpjata-vistra-indias-projects.vercel.app` READY
 (56s); health 200 + database:connected; POST/PATCH return 401 without session; 11/11 e2e tests pass.
 
+Status: **DONE**
+
+---
+
+**2026-09-24 — developer — Batch 8 mockup (inventory popup)**
+
+Role: developer (mockup-only dispatch, S25-11 requirement)
+Branch: `feature/s25-b8-inventory-popup`
+
+File created: `quotation-system-docs/design-docs/mockups/inventory-item-popup-poc.html`
+
+Four-section static HTML mockup (jump-nav at top):
+1. List page — "New item" primary button in card header right, new "Edit" button per row (rightmost column). Category column remains read-only (not in Batch 7 API spec).
+2. Create popup (blank) — modal over blurred page; fields: Code (required), Name (required), Unit of measure (required), Qty per unit (optional, defaults 1), Active toggle (default ON).
+3. Edit popup (pre-filled) — same form with values loaded from "Standard Hinge Set" row; title reads "Edit inventory item".
+4. Validation error state — duplicate code (409): inline error banner at top of dialog body + field-level red highlight on Code input. Also shows a client-side required-field error below Unit of measure for comparison.
+
+Implementation notes embedded at page bottom: category not in form; React 19 controlled-inputs rule; error-banner vs field-error layering; list refresh via router.refresh/revalidatePath; modal follows confirm-dialog.tsx z-50/overlay/Escape-to-close pattern; max-w-lg width for the form.
+
+One open question flagged (not blocking sign-off): category field is not in the Batch 7 API but IS shown in the list. If it should be editable, that needs a decision before component code.
+
+Status: **DONE** — mockup at `inventory-item-popup-poc.html`, awaiting human sign-off before component code.
+
+---
+
+**2026-09-24 — developer — Batch 8: Inventory create/edit popup**
+
+Role: developer (implement dispatch, mockup already approved)
+Changed:
+- NEW `app/[orgSlug]/inventory/_item-form-modal.tsx` — Client Component modal; controlled inputs (React 19 gotcha); client-side required-field validation per-field; fetch() to POST/PATCH API; 409 inline banner + code field error; Escape/overlay-click to close
+- NEW `app/[orgSlug]/inventory/_inventory-list.tsx` — Client Component; renders Inventory Items table with Qty/unit + Status columns, New item + per-row Edit buttons, router.refresh() after save
+- MODIFIED `app/[orgSlug]/inventory/page.tsx` — delegates interactive table to InventoryList; server component retains internalFetch data fetching; extended InventoryItemRow type
+- MODIFIED `lib/data/catalog.ts` — added listAllInventoryItems (no active filter) for management use; existing listInventoryItems preserved for formula engine
+- MODIFIED `app/api/v1/orgs/[orgSlug]/inventory/route.ts` — GET now uses listAllInventoryItems (shows inactive items for editing)
+- NEW `tests/e2e/inventory-popup.spec.ts` — 7 tests: B8-1 blank create modal, B8-2 client validation, B8-3 create+list refresh, B8-4 409 inline, B8-5 edit pre-fill, B8-6 edit+list refresh, B8-7 Escape-close
+- MODIFIED `quotation-system-docs/design-docs/sql-queries/by-page.sql` — updated GET /[orgSlug]/inventory and GET /api/v1/.../inventory sections for listAllInventoryItems
+Reused: `confirm-dialog.tsx` overlay pattern; status pill classes from `admin/users/page.tsx`
+Deviation noted: GET /inventory now returns ALL items (was active-only) — needed for management; listInventoryItems preserved for formula engine
+Verify: lint+tsc clean; Vercel preview ao5wfotaw READY; 7/7 inventory-popup tests pass; 4/4 inventory-stage25 regression tests pass
 Status: **DONE**
