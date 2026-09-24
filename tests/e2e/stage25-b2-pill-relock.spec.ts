@@ -224,6 +224,25 @@ test("API: Selection config PATCH invalidates", async () => {
 
 test("UI: submit design → edit partition height → Summary/Quotation pills lock without reload", async () => {
   const { projectId, partitionId } = await newWall("ui-relock");
+
+  // The Design page redirects to Project Details when selectionCount === 0 (Stage 19 Batch 4 gate).
+  // Add a glass Selection so the page renders rather than redirecting.
+  const types = await page.request.get(A("/component-types"));
+  const glass = (
+    (await types.json()) as { componentTypes: { id: string; code: string }[] }
+  ).componentTypes.find((c) => c.code === "GLASS");
+  expect(glass, "acme-glass has a GLASS ComponentType for the UI test").toBeTruthy();
+  const selRes = await page.request.post(A("/selections"), {
+    data: {
+      projectId,
+      componentTypeId: glass!.id,
+      label: `${PREFIX} g-ui`,
+      config: {},
+      orderIndex: 0,
+    },
+  });
+  expect(selRes.status(), await selRes.text()).toBe(201);
+
   await arm(projectId);
 
   // Navigate to the Design page.
