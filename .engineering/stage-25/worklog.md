@@ -6,9 +6,12 @@
   after two small fix rounds for form-reset/validation-error bugs, test 400s, stale docs, and copy
   accuracy — see Activity log), merged into `release/stage-25` @ `48b4a2d`. Carry-forward noted for the
   human: `orgs/[orgId]/page.tsx` reads the DB directly instead of via `app/api/v1/**` (Stage 12 pattern) —
-  not a bug, an architecture-consistency call to make later. **Batch 6 DONE** — awaiting R3 review.
-- **Active work item:** Batch 6 review (R3 checkpoint)
-- **Latest artifacts:** `plan-b6.md` (approved); commit `d94f42c` on `feature/s25-b6-pricing-to-inventory`
+  not a bug, an architecture-consistency call to make later. **Batch 6 R3 APPROVE-WITH-NITS** (`review-r3.md`) — no redirect-leak issues found; 4 minor/nit
+  doc-accuracy items fixed directly by orchestrator (stale regression-checklist automation claims, stale
+  by-page.sql note, orphaned i18n key, stale comment) and pushed straight to `release/stage-25` @
+  `f9d5570` — pure text corrections, no code-behavior change, no separate review round needed.
+- **Active work item:** Batch 7 (Inventory create/edit API, no mockup needed) — plan not yet written
+- **Latest artifacts:** `review-r3.md` (APPROVE-WITH-NITS)
 - **Review cadence for this stage (non-default — see `profile.md`):** R1 after Batches 1–2, R2 after
   3–5, R3 after 6 alone, R4 after 7–9. Functional verification deferred to one `engineering:test` pass
   at the end, not per-batch.
@@ -23,7 +26,7 @@
 | 4 | Formula-set SuperAdmin screens (mockup first) | DONE — `2731f6a`, preview READY |
 | 5 | Org create/edit formula picker (mockup first) | DONE — `6639049`, preview READY |
 | 6 | Pricing → Inventory rename | DONE — `d94f42c`, preview READY, lint+tsc clean, S25-5 verified |
-| 7 | Inventory create/edit API | not started |
+| 7 | Inventory create/edit API | in progress (plan) |
 | 8 | Inventory create/edit popup (mockup first) | not started |
 | 9 | Problem popup (mockup first) | not started |
 
@@ -509,3 +512,13 @@ zero `getTranslations("pricing")` calls, zero `"pricing"` namespace key in messa
 Branch: `feature/s25-b6-pricing-to-inventory` @ `d94f42c`
 Status: **DONE_WITH_CONCERNS** — one `subdomain-navigation.spec.ts` test failure is expected
 pre-merge (spec uses hardcoded staging URL, passes post-merge to staging). All other verifications clean.
+
+---
+
+**2026-09-24 — reviewer — R3 (Batch 6: Pricing → Inventory rename)**
+
+Role: reviewer · Verdict: **APPROVE-WITH-NITS** · Findings: 0 CRITICAL, 0 IMPORTANT, 2 MINOR, 2 NIT.
+Report: `.engineering/stage-25/review-r3.md`. S25-4/5/6/7 were checked independently with a tree-wide
+grep, a catch-all/redirect audit, and `prisma/`, `lib/`, and `admin/` diffs that came back empty. tsc
+is clean. The findings are about doc and claim accuracy (regression-checklist "Automated:" overclaims
+and a stale by-page.sql note), not code.
