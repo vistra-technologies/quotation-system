@@ -804,31 +804,48 @@ test("L1: vistra session cannot read cloisons project calculation (tenancy isola
   }
 });
 
-// ── Group M — pricing route regression ───────────────────────────────────────
+// ── Group M — inventory route regression (Stage 25 B6: /catalog → /inventory) ─────────────
 
-test("M1: GET /api/v1/orgs/vistra/catalog without auth → 401 (route live after rename)", async () => {
-  // Uses a fresh context (no auth) to verify the route exists and is protected
+// M1/M2 updated in Stage 25 Batch 6 (S25-4/S25-5): the /catalog route was renamed to
+// /inventory. Tests now assert both that /inventory works correctly AND that the old /catalog
+// path returns 404 (positive S25-5 proof — no redirects, the old path must be gone).
+
+test("M1: GET /api/v1/orgs/vistra/inventory without auth → 401; old /catalog → 404", async () => {
+  // Uses a fresh context (no auth) to verify the new route exists and is protected,
+  // and the old route is gone.
   let noAuthCtx: BrowserContext | null = null;
   try {
     noAuthCtx = await cloisons.context().browser()!.newContext();
     const noAuth = await noAuthCtx.newPage();
-    const res = await noAuth.request.get(V("/catalog"));
-    expect(res.status(), "unauthenticated /catalog → 401").toBe(401);
+
+    // New route: unauthenticated → 401 (route exists but requires auth)
+    const inventoryRes = await noAuth.request.get(V("/inventory"));
+    expect(inventoryRes.status(), "unauthenticated /inventory → 401").toBe(401);
+
+    // Old route: must be gone → 404 (S25-5: no redirect)
+    const catalogRes = await noAuth.request.get(V("/catalog"));
+    expect(catalogRes.status(), "old /catalog path → 404 (route deleted, S25-5)").toBe(404);
   } finally {
     await noAuthCtx?.close();
   }
 });
 
-test("M2: GET /api/v1/orgs/vistra/catalog with vistra admin auth → 200 with items array", async () => {
+test("M2: GET /api/v1/orgs/vistra/inventory with vistra admin auth → 200 with items array; old /catalog → 404", async () => {
   let vistraCtx3: BrowserContext | null = null;
   try {
     vistraCtx3 = await cloisons.context().browser()!.newContext();
     const vistra3 = await vistraCtx3.newPage();
     await apiSignIn(vistra3, VISTRA, "admin");
-    const res = await vistra3.request.get(V("/catalog"));
-    expect(res.status(), "authenticated /catalog → 200").toBe(200);
-    const body = (await res.json()) as { items: unknown[] };
+
+    // New route: authenticated vistra admin → 200 with items
+    const inventoryRes = await vistra3.request.get(V("/inventory"));
+    expect(inventoryRes.status(), "authenticated /inventory → 200").toBe(200);
+    const body = (await inventoryRes.json()) as { items: unknown[] };
     expect(Array.isArray(body.items), "items is an array").toBe(true);
+
+    // Old route: must be gone even with valid auth → 404 (S25-5: no redirect)
+    const catalogRes = await vistra3.request.get(V("/catalog"));
+    expect(catalogRes.status(), "authenticated /catalog → 404 (route deleted, S25-5)").toBe(404);
   } finally {
     await vistraCtx3?.close();
   }

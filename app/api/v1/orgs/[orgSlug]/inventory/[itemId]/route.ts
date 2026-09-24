@@ -12,7 +12,7 @@ import { getInventoryItemById } from "@/lib/data/catalog";
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
 
-// ─── GET /api/v1/orgs/[orgSlug]/catalog/[itemId] ─────────────────────────────
+// ─── GET /api/v1/orgs/[orgSlug]/inventory/[itemId] ───────────────────────────
 
 /**
  * Get a single InventoryItem by ID, scoped to the org, with its prices.
@@ -25,6 +25,9 @@ export const dynamic = "force-dynamic";
  * Tenancy: enforced by getApiSession() (403 on cross-org) and getInventoryItemById()
  *          filtering on session.organizationId — returns null for items that
  *          belong to a different org, surfaced as 404.
+ *
+ * Stage 25 Batch 6 (S25-4): route moved from /catalog/[itemId] to /inventory/[itemId].
+ * Old path /api/v1/orgs/[orgSlug]/catalog/[itemId] returns 404 (no redirect, S25-5).
  */
 export async function GET(
   request: Request,
@@ -41,7 +44,7 @@ export async function GET(
       if (err.status === 403) return apiForbidden(err.message);
       if (err.status === 404) return apiNotFound(err.message);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/catalog/[itemId]]", err);
+    console.error("[GET /api/v1/orgs/[orgSlug]/inventory/[itemId]]", err);
     return apiServerError();
   }
 
@@ -50,7 +53,7 @@ export async function GET(
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
     console.error(
-      "[GET /api/v1/orgs/[orgSlug]/catalog/[itemId]] requirePermission",
+      "[GET /api/v1/orgs/[orgSlug]/inventory/[itemId]] requirePermission",
       err,
     );
     return apiServerError();
@@ -64,7 +67,7 @@ export async function GET(
     return NextResponse.json({ item });
   } catch (err) {
     console.error(
-      "[GET /api/v1/orgs/[orgSlug]/catalog/[itemId]] getInventoryItemById",
+      "[GET /api/v1/orgs/[orgSlug]/inventory/[itemId]] getInventoryItemById",
       err,
     );
     return apiServerError();

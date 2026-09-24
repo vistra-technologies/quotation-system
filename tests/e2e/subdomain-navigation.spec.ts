@@ -192,16 +192,17 @@ test("sidebar admin flyout: External Companies link → admin/external-companies
   await page.close();
 });
 
-test("sidebar admin flyout: Pricing link → /pricing (clean URL)", async () => {
+// Stage 25 Batch 6 (S25-4): "Pricing" sidebar link renamed to "Inventory", path → /inventory.
+test("sidebar admin flyout: Inventory link → /inventory (clean URL)", async () => {
   const page = await ctx.newPage();
   await page.goto(DASHBOARD);
   await page.getByRole("button", { name: "Admin" }).hover();
-  const pricingLink = page.getByRole("link", { name: "Pricing" });
-  await expect(pricingLink).toBeVisible({ timeout: 5_000 });
-  await pricingLink.click();
-  await page.waitForURL(`${BASE}/pricing`, { timeout: 15_000 });
-  assertCleanSubdomainUrl(page.url(), "/pricing");
-  await expect(page.getByRole("heading", { name: /Pricing/i })).toBeVisible({
+  const inventoryLink = page.getByRole("link", { name: "Inventory" });
+  await expect(inventoryLink).toBeVisible({ timeout: 5_000 });
+  await inventoryLink.click();
+  await page.waitForURL(`${BASE}/inventory`, { timeout: 15_000 });
+  assertCleanSubdomainUrl(page.url(), "/inventory");
+  await expect(page.getByRole("heading", { name: /Inventory/i })).toBeVisible({
     timeout: 10_000,
   });
   await page.close();
@@ -327,43 +328,18 @@ test("admin users: Actions link + back-link navigate with clean subdomain URLs",
 // SuperAdmin navigation at /controls/component-types (covered by
 // superadmin-component-types.spec.ts — "controls component types: navigate to edit").
 
-test("pricing: Edit Prices link + back-link navigate with clean subdomain URLs", async () => {
+// NOTE (Stage 25 Batch 6, S25-4/S25-7): "pricing: Edit Prices link + back-link" test removed.
+// The Edit Prices sub-page (/pricing/[itemId]) and the "← Back to Pricing" link are gone —
+// price UI removed in S25-7. The /pricing path itself returns 404. Replaced by the test below.
+
+test("inventory: list page renders with clean subdomain URL", async () => {
   const page = await ctx.newPage();
 
-  await page.goto(`${BASE}/pricing`);
-  await expect(page.getByRole("heading", { name: /Pricing/i })).toBeVisible({
+  await page.goto(`${BASE}/inventory`);
+  assertCleanSubdomainUrl(page.url(), "/inventory");
+  await expect(page.getByRole("heading", { name: /Inventory/i })).toBeVisible({
     timeout: 15_000,
   });
-
-  // "Edit Prices" is the link text for catalog item rows (t("editPageTitle") in pricing namespace).
-  // 12 catalog items are seeded; use the first.
-  const editLink = page.getByRole("link", { name: /Edit Prices/i }).first();
-  await expect(editLink).toBeVisible({ timeout: 10_000 });
-  const href = await editLink.getAttribute("href");
-  expect(
-    href,
-    `Pricing item link must not contain /vistra/ prefix`,
-  ).not.toMatch(/^\/vistra\//);
-  expect(href).toMatch(/^\/pricing\//);
-
-  await editLink.click();
-  await page.waitForURL(/vistra\.test\.easeetool\.com\/pricing\/[^/]+$/, {
-    timeout: 15_000,
-  });
-  assertCleanSubdomainUrl(page.url(), "/pricing/");
-  await expect(page.locator("h1")).toBeVisible({ timeout: 10_000 });
-
-  // Back link: "← Back to Pricing"
-  const backLink = page.getByRole("link", { name: /Back to Pricing/i });
-  await expect(backLink).toBeVisible({ timeout: 5_000 });
-  const backHref = await backLink.getAttribute("href");
-  expect(
-    backHref,
-    `Back link href must be "/pricing", got: "${backHref}"`,
-  ).toBe("/pricing");
-  await backLink.click();
-  await page.waitForURL(`${BASE}/pricing`, { timeout: 15_000 });
-  assertCleanSubdomainUrl(page.url(), "/pricing");
 
   await page.close();
 });
