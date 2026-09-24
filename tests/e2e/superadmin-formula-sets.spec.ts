@@ -43,8 +43,10 @@ let saToken = "";
 let createdSetId = "";
 
 /**
- * A name+version unique to this test run. All creates use this name with
- * version=1; the new-version test (T10) will produce version=2.
+ * A name unique to this test run. T3 creates it as v1 (no version sent —
+ * auto-computed); T10's new-version call will produce v2 after T8 has not
+ * changed the version. T4a/T4b use completely separate name families to avoid
+ * conflicting with T8 (which tests a PATCH on the T3 set).
  */
 const TEST_SET_NAME = `e2e-fs-${Date.now()}`;
 
@@ -133,17 +135,19 @@ test("T2: GET /formula-sets with SA session → 200, formulaSets array", async (
 
 // ─── T3: Create ───────────────────────────────────────────────────────────────
 
-test("T3: POST /formula-sets valid body → 201 detail shape", async ({ request }) => {
+test("T3: POST /formula-sets valid body (no version field) → 201, version=1", async ({
+  request,
+}) => {
   if (!hasBootstrapCreds) {
     test.skip();
     return;
   }
 
+  // Note: no `version` field in the request — version is auto-computed by the DAL.
   const res = await request.post("/api/v1/superadmin/formula-sets", {
     headers: { Cookie: `qs-sa-token=${saToken}` },
     data: {
       name: TEST_SET_NAME,
-      version: 1,
       body: VALID_BODY,
     },
   });
@@ -152,7 +156,7 @@ test("T3: POST /formula-sets valid body → 201 detail shape", async ({ request 
   expect(body.formulaSet).toBeTruthy();
   expect(typeof body.formulaSet.id).toBe("string");
   expect(body.formulaSet.name).toBe(TEST_SET_NAME);
-  expect(body.formulaSet.version).toBe(1);
+  expect(body.formulaSet.version).toBe(1); // auto-computed: new name → v1
   expect(typeof body.formulaSet.body).toBe("object");
   expect(body.formulaSet.locked).toBe(false);
   expect((body.formulaSet.inUseBy as Record<string, unknown>).orgCount).toBe(0);
@@ -160,25 +164,62 @@ test("T3: POST /formula-sets valid body → 201 detail shape", async ({ request 
   createdSetId = body.formulaSet.id as string;
 });
 
-// ─── T4: Duplicate name+version → 409 ────────────────────────────────────────
+// ─── T4a: New name auto-assigned v1 ──────────────────────────────────────────
+//
+// Replacing the old T4 "same name+version → 409" test. The client no longer
+// supplies version; these tests verify the auto-version logic instead.
+//
+// T4a/T4b use SEPARATE name families to avoid interfering with TEST_SET_NAME,
+// which is used by T7/T8/T10 with no version collision.
 
-test("T4: POST /formula-sets same name+version → 409", async ({ request }) => {
+test("T4a: POST /formula-sets brand-new name → version=1 automatically", async ({ request }) => {
   if (!hasBootstrapCreds) {
     test.skip();
     return;
   }
 
+  const newName = `${TEST_SET_NAME}-v1check`;
   const res = await request.post("/api/v1/superadmin/formula-sets", {
     headers: { Cookie: `qs-sa-token=${saToken}` },
-    data: {
-      name: TEST_SET_NAME,
-      version: 1,
-      body: VALID_BODY,
-    },
+    data: { name: newName, body: VALID_BODY },
   });
-  expect(res.status()).toBe(409);
-  const body = (await res.json()) as { error: string };
-  expect(body.error).toContain("already exists");
+  expect(res.status()).toBe(201);
+  const body = (await res.json()) as { formulaSet: Record<string, unknown> };
+  expect(body.formulaSet.name).toBe(newName);
+  expect(body.formulaSet.version).toBe(1); // new name → always v1
+});
+
+// ─── T4b: Existing name auto-increments to next version ──────────────────────
+
+test("T4b: POST /formula-sets existing name → version auto-increments to v2", async ({
+  request,
+}) => {
+  if (!hasBootstrapCreds) {
+    test.skip();
+    return;
+  }
+
+  // Use a separate name family so this doesn't affect TEST_SET_NAME's version count.
+  const incrName = `${TEST_SET_NAME}-incr`;
+
+  // First create → v1.
+  const res1 = await request.post("/api/v1/superadmin/formula-sets", {
+    headers: { Cookie: `qs-sa-token=${saToken}` },
+    data: { name: incrName, body: VALID_BODY },
+  });
+  expect(res1.status()).toBe(201);
+  const b1 = (await res1.json()) as { formulaSet: Record<string, unknown> };
+  expect(b1.formulaSet.version).toBe(1);
+
+  // Second create with same name → v2.
+  const res2 = await request.post("/api/v1/superadmin/formula-sets", {
+    headers: { Cookie: `qs-sa-token=${saToken}` },
+    data: { name: incrName, body: VALID_BODY },
+  });
+  expect(res2.status()).toBe(201);
+  const b2 = (await res2.json()) as { formulaSet: Record<string, unknown> };
+  expect(b2.formulaSet.name).toBe(incrName);
+  expect(b2.formulaSet.version).toBe(2); // auto-incremented
 });
 
 // ─── T5: Invalid body content → 400 + validationErrors ───────────────────────

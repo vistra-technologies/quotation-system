@@ -31,6 +31,16 @@ export interface FormulaSetInput {
 }
 
 /**
+ * Input for creating a new FormulaSet. Version is intentionally absent —
+ * `createFormulaSet` computes version automatically inside a $transaction:
+ * new name → v1, existing name → MAX(version)+1.
+ */
+export interface CreateFormulaSetInput {
+  name: string;
+  body: unknown;
+}
+
+/**
  * Thrown when an update is attempted on a FormulaSet that is currently in use
  * (activeForOrgs > 0 || pinnedProjects > 0 || calculations > 0).
  * Route layer returns 409 with { error, inUseBy }.
@@ -146,20 +156,33 @@ export async function getFormulaSet(setId: string): Promise<FormulaSetDetail | n
 // ─── Mutations ────────────────────────────────────────────────────────────────
 
 /**
- * Create a new FormulaSet row.
+ * Create a new FormulaSet row with auto-computed version.
+ *
+ * Version logic (inside a $transaction to avoid a race on the unique constraint):
+ *   - If no row exists with this name → version = 1.
+ *   - If rows exist with this name → version = MAX(version for name) + 1.
+ *
  * Caller validates the body before calling. P2002 (@@unique([name, version]))
- * propagates to the route layer which returns 409.
+ * is theoretically possible under a race but is extremely unlikely on a
+ * low-traffic solo-admin console; it propagates to the route layer as 409.
  *
  * superadmin-only — intentionally cross-org
  */
-export async function createFormulaSet(input: FormulaSetInput): Promise<FormulaSetDetail> {
+export async function createFormulaSet(input: CreateFormulaSetInput): Promise<FormulaSetDetail> {
   // superadmin-only — intentionally cross-org
-  const row = await prisma.formulaSet.create({
-    data: {
-      name: input.name,
-      version: input.version,
-      body: input.body as Prisma.InputJsonValue,
-    },
+  const row = await prisma.$transaction(async (tx) => {
+    const agg = await tx.formulaSet.aggregate({
+      where: { name: input.name },
+      _max: { version: true },
+    });
+    const version = (agg._max.version ?? 0) + 1;
+    return tx.formulaSet.create({
+      data: {
+        name: input.name,
+        version,
+        body: input.body as Prisma.InputJsonValue,
+      },
+    });
   });
   // Re-fetch with counts (new row always has 0 counts — consistent with detail shape).
   const detail = await getFormulaSet(row.id);
