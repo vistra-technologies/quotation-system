@@ -383,3 +383,56 @@
   `tests/e2e/stage23-wiring.spec.ts`, `tests/e2e/db-helpers.ts`, `prisma/e2e-db-helper-cli.ts`,
   `lib/summary/index.ts`, `lib/data/partitions.ts`, `tests/unit/summary-builder.test.ts`,
   `tests/unit/calculations-preflight.test.ts`; docs repo (10 files, commit `9bad21e`).
+
+---
+
+## Activity log — engineering:test (round 1)
+
+- **Role: tester.** Ran the formal `engineering:test` pass against `https://test.easeetool.com`
+  (commit `8ac388b`, `staging`). Static: `tsc --noEmit` clean, `npm run test:unit` 115/115 pass,
+  `npm run lint` clean except 4 pre-existing errors in a gitignored Stage-22 script outside this
+  stage's diff. E2E against the live preview (`--workers=1`, real SuperAdmin creds from
+  `superadmin-creds-DO-NOT-COMMIT.md`): `stage23-summary.spec.ts` 8/8 and `stage23-wiring.spec.ts` 6/6,
+  14/14 total, 0 skipped. Manual DB spot-checks (guarded, dev-endpoint-only, read-only, no residue
+  left): confirmed a single immutable `FormulaSet` row, 710/710 projects pinned, 0 `ProjectCalculation`
+  rows leaked or left behind, and tenancy scoping intact on every calculation read path. No new
+  automated tests added — existing Batch 7 coverage already matched the full test brief.
+  **Verdict: PASS** — 0 CRITICAL, 0 MAJOR, 2 MINOR (both non-blocking, pre-existing/informational, not
+  Stage 23 regressions). Full report: `bugs-1.md`.
+
+## Activity log — production promotion (devops, Step 3 of stage-23-prod-runbook.md)
+
+- **Role: devops.** Human explicitly approved production promotion. Scope: ONLY runbook Step 3
+  (merge + deploy + verify). Steps 4-6 (seed, backfill, smoke test) are explicitly human-run
+  (production `DATABASE_URL` is Sensitive; agents never hold prod credentials) — not attempted.
+- **Pre-check:** `git fetch origin` — confirmed `origin/staging` @ `8ac388b` (merge of
+  `release/stage-23`), `origin/master` @ `cf130ca` (behind, as expected).
+- **Merge:** local `staging` checkout had an uncommitted local-only addition to this same worklog file
+  (the tester's round-1 entry, never committed/pushed) — stashed it before switching branches so it
+  wasn't lost or accidentally bundled into the deploy, restored after. Checked out `master`,
+  `git merge --ff-only origin/staging` (clean fast-forward, no merge commit needed — `cf130ca..8ac388b`),
+  `git push origin master`. **`master` is now at `8ac388b`** (same commit as `staging`).
+- **Deploy:** Vercel auto-built on push. Deployment `dpl_6NkLLcQNTFjTPaUFVnxAbjcEehSt`
+  (`quotation-system-kyllkm0qx-vistra-indias-projects.vercel.app`), target `production`,
+  commit `8ac388b`. Polled via `get_deployment` (BUILDING -> BUILDING -> READY, ~53s wall-clock
+  build+deploy). Final state **READY**, aliased to `easeetool.com`/`*.easeetool.com`/`v-quote.vercel.app`.
+- **Build-log verification** (`npx vercel inspect <id> --logs --scope=vistra-indias-projects`, NOT just
+  READY+200 per CLAUDE.md's "Verify a deploy properly"):
+  - Migration: `Applying migration \`20260921000001_add_formula_sets\`` -> `All migrations have been
+    successfully applied.` No `P1002`, no error. (Ran via `scripts/build.mjs`'s existing
+    `DATABASE_URL_UNPOOLED` override, per D-18 — unchanged this stage.)
+  - Route list: confirmed `├ ƒ /api/v1/orgs/[orgSlug]/projects/[projectId]/recompute` present (alongside
+    the existing `submit-design` route and all other expected routes) — not a stale/cached build.
+- **Health check:** `web_fetch_vercel_url` on `https://easeetool.com/api/health` -> 200
+  `{"status":"ok","database":"connected","healthCheckRows":0,"timestamp":"2026-09-21T19:33:09.625Z"}`.
+- **Functional page-render check (runbook Step 3 item 3): NOT PERFORMED — blocked, needs the human.**
+  Confirmed via `profile.md` ("Agents never hold prod credentials") and the Batch 7 SuperAdmin creds file
+  (explicitly scoped "dev/preview env only — never use against production") that no credentials valid
+  against **production** are available to this agent. Did not attempt the flagged, not-yet-rotated
+  `SUPERADMIN_DEVADMIN_PASSWORD` placeholder either (security-relevant, out of scope, already flagged to
+  the human separately). This is the one runbook Step 3 item left undone — the human (or an agent handed
+  temporary prod org credentials) needs to sign in and confirm a project's Design page and Configuration
+  page still render before Step 4 (seed) proceeds.
+- **Outcome:** merge + deploy + build-log + health verification all DONE and green. Sign-in page-render
+  check is the one open item, blocked on credentials only (not a deploy defect). Did NOT run
+  `prisma db seed` or the backfill script, and did not set `PROD_URL` — per scope.
