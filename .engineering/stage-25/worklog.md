@@ -3,10 +3,10 @@
 ## Status
 
 - **Phase:** implement — Batches 1–2 **R1 APPROVED** (`review-r1-v2.md`), merged into `release/stage-25`
-  @ `fec663a`. Batch 3 DONE (`493701e`). Batch 4 DONE (`2731f6a`, on `feature/s25-b4-formula-screens`).
-  Next: Batch 5 (org create/edit formula picker). R2 checkpoint covers Batches 3–5 together.
-- **Active work item:** Batch 4 DONE. Next: Batch 5 (org picker).
-- **Latest artifacts:** `plan-b4.md` (implemented)
+  @ `fec663a`. Batch 3 DONE (`493701e`). Batch 4 DONE (`2731f6a`). **Batch 5 DONE** (`6639049`,
+  branch `feature/s25-b5-org-formula-picker`, preview READY). R2 checkpoint covers Batches 3–5 together.
+- **Active work item:** Batch 5 DONE. R2 review pending (covers Batches 3–5). Next after R2: Batch 6.
+- **Latest artifacts:** `plan-b5.md` (implemented)
 - **Review cadence for this stage (non-default — see `profile.md`):** R1 after Batches 1–2, R2 after
   3–5, R3 after 6 alone, R4 after 7–9. Functional verification deferred to one `engineering:test` pass
   at the end, not per-batch.
@@ -19,7 +19,7 @@
 | 2 | Bug 2: pills don't re-lock | DONE — `aada016`, preview READY, 7/7 tests pass |
 | 3 | Formula-set API + data layer | DONE — `493701e`, preview READY |
 | 4 | Formula-set SuperAdmin screens (mockup first) | DONE — `2731f6a`, preview READY |
-| 5 | Org create/edit formula picker (mockup first) | MOCKUP DONE — awaiting sign-off |
+| 5 | Org create/edit formula picker (mockup first) | DONE — `6639049`, preview READY |
 | 6 | Pricing → Inventory rename | not started |
 | 7 | Inventory create/edit API | not started |
 | 8 | Inventory create/edit popup (mockup first) | not started |
@@ -301,3 +301,50 @@ Five-tab static HTML mockup showing:
 Design tokens and shell layout match `formula-sets-poc.html` exactly. No real app code touched.
 
 Status: **DONE** (mockup) — awaiting human sign-off before component code
+
+---
+
+**2026-09-24 — developer — Batch 5 implementation**
+
+Role: developer (implement dispatch)
+Branch: `feature/s25-b5-org-formula-picker` → commit `6639049`
+Preview: `https://quotation-system-o5ncza1np-vistra-indias-projects.vercel.app` (READY, ~1m build, health 200)
+
+**Files added:**
+- `app/controls/(authenticated)/orgs/_formula-set-picker.tsx` — shared client component. Two native `<select>` elements (name 2fr / version 1fr grid). Groups flat formula-set list by name with `useMemo`, sorts versions newest-first. Version select is disabled until a name is chosen. Auto-selects the first version when a name is picked. Hidden `<input name="formulaSetId">` carries the selected ID into form actions. Accepts `initialSetId` prop for pre-selection on the edit form.
+- `app/controls/(authenticated)/orgs/_mismatch-chip.tsx` — server-renderable amber badge. Uses `status-pending-*` Tailwind tokens (amber, matching existing usage in component-types page).
+- `app/controls/(authenticated)/orgs/[orgId]/page.tsx` — new org edit page (Server Component). Fetches org detail + formula sets in parallel. Computes initial mismatch warnings server-side via `getOrgForEdit` + `compatResultToWarnings`. Renders `EditOrgForm` with all props.
+- `app/controls/(authenticated)/orgs/[orgId]/edit-org-form.tsx` — client component. `useActionState(editOrg)`. Editable name + `FormulaSetPicker` pre-selected to `activeFormulaSetId`. Read-only slug with subdomain note. Mismatch banner shown when `initialMismatches.length > 0` or after-save warnings arrive. Mismatch detail panel lists each warning item inline. "Saved" indicator appears after successful save. Suspend/reactivate section below (reuses existing `SuspendOrgButton`).
+
+**Files modified:**
+- `lib/data/superadmin/orgs.ts` — extended `OrgRow` type with `activeFormulaSetId`, `formulaSetLabel`, `hasMismatch`; updated `listAllOrganizations` to include `activeFormulaSet` + `componentTypes` in select and compute mismatch flag; added `getOrgForEdit` (returns detail + mismatch `CompatResult`); added `updateOrgSettings`; added `computeOrgMismatchWarnings` (fetches set body + org component types, calls `checkStructuralCompatibility`); added `compatResultToWarnings` (converts `CompatResult` to `OrgFormulaWarning[]`); new exported types `OrgFormulaWarning`, `OrgForEditDetail`, `UpdateOrgResult`. `createOrganizationWithDefaults` signature changed from `(name, slug, adminPassword)` to `(name, slug, adminPassword, formulaSetId: string)` — removes internal `findFirst` by `ACTIVE_FORMULA_SET_NAME`.
+- `app/api/v1/superadmin/orgs/route.ts` — POST: now requires `formulaSetId` in body (400 if absent); validates it exists via `getFormulaSet` (404 if not); passes to `createOrganizationWithDefaults`; computes mismatch warnings after creation; returns `{ org, warnings }`.
+- `app/api/v1/superadmin/orgs/[orgId]/route.ts` — new PATCH handler: `{ name?, formulaSetId? }` (400 if neither); validates formula set via `getFormulaSet`; calls `updateOrgSettings`; writes audit log; returns `{ org, warnings }`.
+- `app/controls/(authenticated)/orgs/actions.ts` — `createOrg` now extracts and forwards `formulaSetId`; redirects to `/controls/orgs/[orgId]` on success (not `/controls/orgs`). New `editOrg` server action returns `{ saved, warnings, error }` state.
+- `app/controls/(authenticated)/orgs/new/create-org-form.tsx` — accepts `formulaSets` prop; adds divider + `FormulaSetPicker` below admin password field.
+- `app/controls/(authenticated)/orgs/new/page.tsx` — loads formula sets via `internalFetch` server-side; passes to `CreateOrgForm`; shows an advisory banner when no formula sets exist.
+- `app/controls/(authenticated)/orgs/page.tsx` — adds "Formula Set" column (label + `MismatchChip` when mismatched, "None assigned" pill when null); adds "Edit" link per row to `/controls/orgs/[orgId]`; colSpan updated to 7.
+- `tests/e2e/superadmin-orgs.spec.ts` — added `getFirstFormulaSetId` helper; updated all 4 existing create-org calls to include `formulaSetId`; added 8 new Batch 5 tests (B5-1 through B5-8): missing formulaSetId → 400; nonexistent formulaSetId → 404; valid create → 201 + warnings array; PATCH no cookie → 401; PATCH no fields → 400; PATCH nonexistent formulaSetId → 404; PATCH valid update → 200 + org + warnings; GET list includes formulaSetLabel + hasMismatch.
+
+**Docs repo (`quotation-system-docs`):**
+- `design-docs/sql-queries/by-page.sql` — appended `[Stage 25 Batch 5]` section (SQL for listAllOrganizations extended, getOrgForEdit, updateOrgSettings, computeOrgMismatchWarnings, org.update audit log). Commit `ab62c7a`.
+
+**Reused:**
+- `checkStructuralCompatibility` from `lib/formula-compat.ts` (exact reuse — no duplication of mismatch logic per stage-25.md requirement)
+- `listFormulaSets` / `getFormulaSet` from `lib/data/superadmin/formula-sets.ts`
+- `requireSuperAdminFromRequest` + `apiUnauthorized` / `apiBadRequest` / `apiNotFound` from `lib/superadmin-guard.ts` + `lib/api-error.ts`
+- `SuspendOrgButton` from `../_suspend-button.tsx` (reused as-is on edit page)
+- `internalFetch` from `lib/internal-fetch.ts`
+- `useActionState` + `isPending` pattern from `edit-component-form.tsx` / existing `create-org-form.tsx`
+
+**Decision taken:** `formulaSetId` is required on POST /orgs (not optional with fallback to `ACTIVE_FORMULA_SET_NAME`). The `ACTIVE_FORMULA_SET_NAME` import removed from `lib/data/superadmin/orgs.ts`. Org creation now always requires an explicit choice — this is correct per S25-3 and the approved mockup's "formula set field is required" note.
+
+**Verify:**
+- `npm run lint` → 0 new errors (4 pre-existing in `.engineering/stage-22/prod-recon-readonly.ts`, gitignored file, unchanged)
+- `tsc --noEmit` → clean (no output)
+- Vercel preview `quotation-system-o5ncza1np-vistra-indias-projects.vercel.app` → READY (~1min build)
+- `/api/health` → 200 `database:connected`
+- `GET /api/v1/superadmin/orgs` → 401 (auth gate confirmed)
+- `PATCH /api/v1/superadmin/orgs/any-id` → 401 (new endpoint auth gate confirmed)
+
+Status: **DONE**
