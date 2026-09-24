@@ -6,10 +6,9 @@
   after two small fix rounds for form-reset/validation-error bugs, test 400s, stale docs, and copy
   accuracy — see Activity log), merged into `release/stage-25` @ `48b4a2d`. Carry-forward noted for the
   human: `orgs/[orgId]/page.tsx` reads the DB directly instead of via `app/api/v1/**` (Stage 12 pattern) —
-  not a bug, an architecture-consistency call to make later. Starting Batch 6 (Pricing → Inventory
-  rename, R3 alone per this stage's cadence — no redirects per S25-5, so this is a careful one).
-- **Active work item:** Batch 6 (Pricing → Inventory rename) — plan not yet written
-- **Latest artifacts:** `review-r2-v2.md` (APPROVE)
+  not a bug, an architecture-consistency call to make later. **Batch 6 DONE** — awaiting R3 review.
+- **Active work item:** Batch 6 review (R3 checkpoint)
+- **Latest artifacts:** `plan-b6.md` (approved); commit `d94f42c` on `feature/s25-b6-pricing-to-inventory`
 - **Review cadence for this stage (non-default — see `profile.md`):** R1 after Batches 1–2, R2 after
   3–5, R3 after 6 alone, R4 after 7–9. Functional verification deferred to one `engineering:test` pass
   at the end, not per-batch.
@@ -23,7 +22,7 @@
 | 3 | Formula-set API + data layer | DONE — `493701e`, preview READY |
 | 4 | Formula-set SuperAdmin screens (mockup first) | DONE — `2731f6a`, preview READY |
 | 5 | Org create/edit formula picker (mockup first) | DONE — `6639049`, preview READY |
-| 6 | Pricing → Inventory rename | in progress (plan) |
+| 6 | Pricing → Inventory rename | DONE — `d94f42c`, preview READY, lint+tsc clean, S25-5 verified |
 | 7 | Inventory create/edit API | not started |
 | 8 | Inventory create/edit popup (mockup first) | not started |
 | 9 | Problem popup (mockup first) | not started |
@@ -421,6 +420,28 @@ Status: **DONE**
 
 ---
 
+**2026-09-24 — developer — Batch 6 plan**
+
+Role: developer (plan-only dispatch)
+Outcome: plan written to `.engineering/stage-25/plan-b6.md`.
+
+Discovery pass:
+- Page routes to move: `app/[orgSlug]/pricing/` (5 files: page, loading, actions, [itemId]/page, [itemId]/loading)
+- API routes to move: `app/api/v1/orgs/[orgSlug]/catalog/` (3 files: route, [itemId]/route, [itemId]/prices/route)
+- Other file content changes: `app/[orgSlug]/sidebar.tsx` (1 link label/href), `messages/en.json` (namespace rename + key removals)
+- Test files: `tests/e2e/pricing-stage3.spec.ts` (deleted+replaced), `tests/e2e/subdomain-navigation.spec.ts` (2 tests updated), `tests/e2e/stage24-materials.spec.ts` M1/M2 (updated to assert old path 404s)
+- Docs: `regression-checklist.md` (11 entries updated), `by-page.sql` (route heading rename)
+
+No catch-all routes exist under `app/[orgSlug]/` or API. No middleware. No rewrites in next.config.ts. S25-5 404s will be native Next.js behavior (no matching page.tsx/route.ts = 404), confirmed with a positive API hit on the preview (old path must return 404, not 401).
+
+One call flagged at top of plan (non-blocking): `lib/data/catalog.ts` filename not renamed (S25-4 covers routes, not lib internals; function names are already inventory-vocabulary from Stage 24).
+
+Decision flagged: the `pricing/[itemId]/` sub-page (Edit Prices) is deleted, not moved — it is the price UI that S25-7 removes. No `inventory/[itemId]/` folder is created in this batch; Batch 8 adds a popup (not a sub-page).
+
+Status: **DONE** — plan at `plan-b6.md`, ready for R3 gate before implementation.
+
+---
+
 **2026-09-24 — reviewer — R2 re-review (fix round `8860d72` + docs `6df6650`)**
 
 Role: reviewer · Verdict: **CHANGES-NEEDED** · 0 CRITICAL / 1 IMPORTANT / 1 MINOR · report: `review-r2-v2.md`.
@@ -447,3 +468,44 @@ Preview: pushed; Vercel build in progress.
 - SA creds absent in local env — e2e run of `superadmin-orgs.spec.ts` will exercise N1 fixes in the `engineering:test` pass on `test.easeetool.com` with real creds.
 
 Status: **DONE**
+
+---
+
+**2026-09-24 — developer — Batch 6: Pricing → Inventory rename**
+
+Role: developer (implement dispatch, plan-b6.md approved)
+
+Files changed (quotation-system):
+- Deleted: `app/[orgSlug]/pricing/` (page.tsx, loading.tsx, actions.ts, [itemId]/ — all removed)
+- Deleted: `app/api/v1/orgs/[orgSlug]/catalog/` (route.ts, [itemId]/route.ts, [itemId]/prices/route.ts)
+- Added: `app/[orgSlug]/inventory/page.tsx`, `app/[orgSlug]/inventory/loading.tsx`
+- Added: `app/api/v1/orgs/[orgSlug]/inventory/route.ts`, `inventory/[itemId]/route.ts`
+- Edited: `app/[orgSlug]/sidebar.tsx` — "Pricing" → "Inventory", /pricing → /inventory
+- Edited: `messages/en.json` — "pricing" namespace → "inventory"; removed price-UI keys (S25-7)
+- Deleted: `tests/e2e/pricing-stage3.spec.ts`; added `tests/e2e/inventory-stage25.spec.ts`
+- Edited: `tests/e2e/subdomain-navigation.spec.ts` — flyout test updated; Edit-Prices test replaced
+- Edited: `tests/e2e/stage24-materials.spec.ts` — M1/M2 now assert old /catalog → 404 (S25-5)
+- Edited: `regression-checklist.md` — items 13–19, 37, 75, 79, 80, 102, 110, 116; added item 121
+
+Files changed (quotation-system-docs):
+- Edited: `design-docs/sql-queries/by-page.sql` — route headings /catalog→/inventory; deletion notices
+
+Verification:
+- `npm run lint` → 0 errors in new/changed files (4 pre-existing in wall-canvas.tsx, unrelated)
+- `tsc --noEmit` → clean
+- Vercel preview `dpl_GpTD53ke18w4HMQffYWRL1mr5v8A` READY in ~1 min
+- S25-5 curl check: `/catalog` → 404, `/catalog/some-id` → 404, `/catalog/some-id/prices` → 404
+- New routes: `/inventory` → 401 (unauthenticated), `/inventory/some-id` → 401 (unauthenticated)
+- Old page `/vistra/pricing` → 404; new `/vistra/inventory` → 200
+- `inventory-stage25.spec.ts`: 4/4 PASS
+- `stage24-materials.spec.ts` M1/M2: 2/2 PASS (automated S25-5 proof)
+- `subdomain-navigation.spec.ts` inventory tests: 1 FAIL (expected — spec hardcodes
+  `BASE = "https://vistra.test.easeetool.com"` and ignores PLAYWRIGHT_BASE_URL; the
+  "Inventory" link doesn't exist on staging yet; test passes once merged to staging)
+
+Grep sweeps: zero remaining `/pricing` URL paths in app/lib, zero `/api/v1/.../catalog` fetch calls,
+zero `getTranslations("pricing")` calls, zero `"pricing"` namespace key in messages.
+
+Branch: `feature/s25-b6-pricing-to-inventory` @ `d94f42c`
+Status: **DONE_WITH_CONCERNS** — one `subdomain-navigation.spec.ts` test failure is expected
+pre-merge (spec uses hardcoded staging URL, passes post-merge to staging). All other verifications clean.
