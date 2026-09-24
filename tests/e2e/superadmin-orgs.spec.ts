@@ -108,10 +108,11 @@ test('POST /api/v1/superadmin/orgs — "platform" slug rejected → 400', async 
   );
 
   const token = await loginAsSuperAdmin(request);
+  const formulaSetId = await getSeededFormulaSetId(request, token);
 
   const res = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "Platform Org", slug: "platform", adminPassword: TEST_ORG_ADMIN_PASSWORD },
+    data: { name: "Platform Org", slug: "platform", adminPassword: TEST_ORG_ADMIN_PASSWORD, formulaSetId },
   });
   expect(res.status()).toBe(400);
   const body = await res.json();
@@ -128,10 +129,11 @@ test("POST /api/v1/superadmin/orgs — invalid slug format → 400 (requires ses
   );
 
   const token = await loginAsSuperAdmin(request);
+  const formulaSetId = await getSeededFormulaSetId(request, token);
 
   const res = await request.post("/api/v1/superadmin/orgs", {
     headers: { Cookie: `qs-sa-token=${token}` },
-    data: { name: "Bad Slug", slug: "Bad Slug!!!", adminPassword: TEST_ORG_ADMIN_PASSWORD },
+    data: { name: "Bad Slug", slug: "Bad Slug!!!", adminPassword: TEST_ORG_ADMIN_PASSWORD, formulaSetId },
   });
   expect(res.status()).toBe(400);
 });

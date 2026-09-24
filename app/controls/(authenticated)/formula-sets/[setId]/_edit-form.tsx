@@ -66,7 +66,7 @@ export function EditFormulaSetForm({
       )}
 
       {/* Top-level error (non-validation) */}
-      {state.error && !hasErrors && (
+      {state.error && !state.validationErrors?.length && (
         <div className="mb-4 rounded-sm border border-status-failed-border bg-status-failed-bg px-4 py-3 text-sm font-semibold text-status-failed-text">
           {state.error}
         </div>
