@@ -348,3 +348,12 @@ Preview: `https://quotation-system-o5ncza1np-vistra-indias-projects.vercel.app` 
 - `PATCH /api/v1/superadmin/orgs/any-id` → 401 (new endpoint auth gate confirmed)
 
 Status: **DONE**
+
+---
+
+**2026-09-24 — reviewer — R2 checkpoint (Batches 3–5)**
+
+Role: reviewer
+Verdict: **CHANGES-NEEDED** — 0 CRITICAL · 3 IMPORTANT · 5 MINOR
+Report: `.engineering/stage-25/review-r2.md`
+Static: `tsc --noEmit` clean, `eslint` on the changed areas clean. No migration in the diff (S25-10 OK).
