@@ -558,7 +558,7 @@ function DesignWorkspaceInner({
           ) : (
             <>
               {/* Bug 3: "Rooms" h2 label moved into RoomList so it appears
-                  below the "+ Add Room" button. No h2 here any more. */}
+                  below the "Add Room" button. No h2 here any more. */}
               {selectedFloor ? (
                 <RoomList
                   orgSlug={orgSlug}

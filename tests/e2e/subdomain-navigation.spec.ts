@@ -505,7 +505,7 @@ test("new-entry-point buttons across all list pages navigate to clean subdomain 
     assertCleanSubdomainUrl(page.url(), new URL(expectedNewUrl).pathname);
   }
 
-  // + New Inquiry
+  // New Inquiry
   await checkNewButton(
     `${BASE}/inquiries`,
     /Inquiries/i,
@@ -513,7 +513,7 @@ test("new-entry-point buttons across all list pages navigate to clean subdomain 
     `${BASE}/inquiries/new`,
   );
 
-  // + New Project
+  // New Project
   await checkNewButton(
     `${BASE}/projects`,
     /Projects/i,
@@ -521,7 +521,7 @@ test("new-entry-point buttons across all list pages navigate to clean subdomain 
     `${BASE}/projects/new`,
   );
 
-  // + Create User (admin users list — page h1 is "User Management", button = t("createUser") = "Create User")
+  // Create User (admin users list — page h1 is "User Management", button = t("createUser") = "Create User")
   await checkNewButton(
     `${BASE}/admin/users`,
     /User Management/i,
@@ -532,7 +532,7 @@ test("new-entry-point buttons across all list pages navigate to clean subdomain 
   // NOTE (Stage 16 Batch F): admin/roles and admin/permissions checkNewButton calls removed.
   // Those routes are deleted — roles/permissions admin moved to /controls/roles.
 
-  // + Create Company (admin external-companies list — button text is t("createCompany") = "Create Company")
+  // Create Company (admin external-companies list — button text is t("createCompany") = "Create Company")
   await checkNewButton(
     `${BASE}/admin/external-companies`,
     /External Companies/i,

@@ -255,7 +255,7 @@ async function enterWallConfigure(page: Page) {
   const wallRow = page.locator("[role='button']").filter({ hasText: "Wall" }).filter({ hasText: "panel" });
   await expect(wallRow.first()).toBeVisible({ timeout: 15_000 });
   await wallRow.first().click();
-  await expect(page.getByRole("button", { name: "+ Add Panel" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Add Panel" })).toBeVisible({ timeout: 15_000 });
 }
 
 // ===========================================================================
@@ -281,7 +281,7 @@ test.describe("Configure mode draft isolation", () => {
     // (810b368) and never matched anything draft-driven.
     const panelChips = page.locator("[role='button'][aria-selected]");
     await expect(panelChips).toHaveCount(3);
-    await page.getByRole("button", { name: "+ Add Panel" }).click();
+    await page.getByRole("button", { name: "Add Panel" }).click();
     await expect(panelChips).toHaveCount(4);
     await expect(page.getByText(/4 panels/)).toHaveCount(0);
     await expect(page.getByText(/3 panels$/).first()).toBeVisible();
@@ -332,7 +332,7 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
     // Add a panel — the wall total is locked, so the existing 2400 is redivided across 4 panels
     // (4 x 600), not grown.
     const panelButtons = page.locator("[role='button'][aria-selected]");
-    await page.getByRole("button", { name: "+ Add Panel" }).click();
+    await page.getByRole("button", { name: "Add Panel" }).click();
     await expect(panelButtons).toHaveCount(4);
     let body = await page.locator("body").innerText();
     let width = Number(await widthFieldValue(page));
@@ -419,7 +419,7 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
     // reflects persisted data, so it can't be used to observe an unsaved Add Panel.
     const chips = page.locator("[role='button'][aria-selected]");
     const chipsBefore = await chips.count();
-    await page.getByRole("button", { name: "+ Add Panel" }).click();
+    await page.getByRole("button", { name: "Add Panel" }).click();
     await expect(chips).toHaveCount(chipsBefore + 1);
 
     // Back button is aria-labelled "Back to Room Layout" (a bare "←" match also hits other arrows).
@@ -427,7 +427,7 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
     await expect(page.getByRole("button", { name: "Discard Changes" })).toBeVisible({ timeout: 5_000 });
     await page.getByRole("button", { name: "Discard Changes" }).click();
     // Discard resumes the back navigation: Configure mode (its toolbar) is gone.
-    await expect(page.getByRole("button", { name: "+ Add Panel" })).toHaveCount(0, { timeout: 15_000 });
+    await expect(page.getByRole("button", { name: "Add Panel" })).toHaveCount(0, { timeout: 15_000 });
 
     const afterRes = await page.request.get(apiUrl(ORG, `/api/v1/orgs/${ORG}/partitions/${partitionId}`));
     const { partition: after } = (await afterRes.json()) as { partition: { design: { sections: unknown[] } } };

@@ -15,7 +15,7 @@ interface NewRoomFormProps {
 }
 
 /**
- * S21-A4: Inline "+ Add Room" form.
+ * S21-A4: Inline "Add Room" form.
  *
  * Matches design-step-poc.html's renderAddRoomZone inline-add-form pattern:
  * one flex row — input + Add button + ✕ cancel button. Enter submits,
@@ -23,7 +23,7 @@ interface NewRoomFormProps {
  *
  * Used in two places:
  *   1. Left-rail add-room zone (room-list.tsx) — shown in place of the
- *      "+ Add Room" button when the user clicks it.
+ *      "Add Room" button when the user clicks it.
  *   2. Center-panel empty state (design-workspace.tsx) — same component,
  *      same props, same behaviour.
  *

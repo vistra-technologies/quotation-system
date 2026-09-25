@@ -62,7 +62,7 @@ interface RoomListProps {
    * A4↔B1 wiring note (for reviewers):
    * Track B's B1 empty-state CTA triggers `addingRoomForEmptyState` state in
    * design-workspace.tsx (already implemented, frozen). That shows the
-   * NewRoomForm inline in the center column. The left-rail "+ Add Room" form
+   * NewRoomForm inline in the center column. The left-rail "Add Room" form
    * (this component) is a separate button that users click directly in the rail.
    * No cross-component prop needed for B1 since workspace.tsx already handles
    * its own empty-state variant of the form independently.
@@ -243,7 +243,7 @@ export function RoomList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {/* Bug 3: "+ Add Room" zone moved ABOVE the "Rooms" section label — the
+      {/* Bug 3: "Add Room" zone moved ABOVE the "Rooms" section label — the
           user's explicit request (bugs-3.md Bug 3). The h2 label previously
           lived in design-workspace.tsx above <RoomList>; it now lives here
           so both elements are ordered correctly within the same component. */}

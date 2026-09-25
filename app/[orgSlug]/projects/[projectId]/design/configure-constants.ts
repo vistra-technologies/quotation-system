@@ -14,7 +14,7 @@ export const MIN_DOOR_HEIGHT_MM = 914; // 36in * 25.4
 /** design-step-poc.html: `defH = Math.round(w.heightIn * 0.85)`. */
 export const DEFAULT_DOOR_HEIGHT_RATIO = 0.85;
 
-/** design-step-poc.html: `+ Add Panel` -> `widthIn: 24`. */
+/** design-step-poc.html: `Add Panel` -> `widthIn: 24`. */
 export const DEFAULT_PANEL_WIDTH_MM = 610; // 24in * 25.4, rounded
 
 /** design-step-poc.html: split disabled when `widthIn < 16`. */

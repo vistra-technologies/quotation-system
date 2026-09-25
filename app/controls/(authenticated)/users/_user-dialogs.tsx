@@ -15,7 +15,7 @@ interface RoleOption {
 // ─── Add user ────────────────────────────────────────────────────────────────
 
 /**
- * "+ Add user" button that opens the existing add-user form in a popup
+ * "Add user" button that opens the existing add-user form in a popup
  * (hotfix 2026-09-25, H-5 — was an inline form under the table).
  */
 export function AddUserButton({
@@ -37,7 +37,7 @@ export function AddUserButton({
         onClick={() => setOpen(true)}
         className="inline-flex items-center rounded-sm bg-primary px-4 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark"
       >
-        + Add user
+        Add user
       </button>
       <Modal isOpen={open} title="Add new user" onClose={close}>
         <CreateUserForm

@@ -185,7 +185,7 @@ export default async function InquiriesPage({
           href={`${base}/inquiries/new`}
           className="rounded-sm bg-primary px-4 py-[9px] text-[13px] font-semibold text-text-on-primary hover:bg-primary-dark"
         >
-          + New Inquiry
+          New Inquiry
         </Link>
       </div>
 

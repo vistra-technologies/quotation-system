@@ -83,7 +83,7 @@ export function Sidebar({
   return (
     <aside
       style={{ width: collapsed ? "100px" : "252px" }}
-      className="sticky top-0 flex h-screen shrink-0 flex-col border-r border-border bg-bg-card transition-all duration-200"
+      className="sticky top-0 z-40 flex h-screen shrink-0 flex-col border-r border-border bg-bg-card transition-all duration-200"
     >
       {/* ── Sidebar top: logo mark + collapse button ── */}
       <div

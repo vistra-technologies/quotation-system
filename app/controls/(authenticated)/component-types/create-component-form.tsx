@@ -383,7 +383,7 @@ function SectionEditor({
           onClick={addField}
           className="rounded-sm border border-border px-2.5 py-1 text-xs font-bold text-text-body hover:border-primary-soft hover:bg-primary-softer"
         >
-          + {addFieldLabel}
+          {addFieldLabel}
         </button>
       </div>
       {sectionEntries.length === 0 ? (

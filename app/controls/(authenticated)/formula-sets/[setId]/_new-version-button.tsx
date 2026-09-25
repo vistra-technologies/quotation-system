@@ -20,7 +20,7 @@ export function NewVersionButton({ setId }: NewVersionButtonProps) {
       href={`/controls/formula-sets/${encodeURIComponent(setId)}/new-version`}
       className="inline-flex items-center rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark"
     >
-      + Create new version
+      Create new version
     </Link>
   );
 }

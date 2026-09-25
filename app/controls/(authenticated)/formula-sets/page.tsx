@@ -66,7 +66,7 @@ export default async function FormulaSetsPage() {
           href="#create-form"
           className="inline-flex shrink-0 items-center gap-1.5 rounded-sm bg-primary px-4 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark"
         >
-          + New Formula Set
+          New Formula Set
         </a>
       </div>
 
