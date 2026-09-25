@@ -208,8 +208,8 @@ export async function signIn(
  *
  * Same 429-retry shape as signIn() above (better-auth's in-memory rate limit under parallel workers).
  */
-export async function apiSignIn(page: Page, orgSlug: string, username: string): Promise<void> {
-  const password = process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!";
+export async function apiSignIn(page: Page, orgSlug: string, username: string, password?: string): Promise<void> {
+  password ??= process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!";
   let resp;
   for (let attempt = 1; attempt <= 4; attempt++) {
     resp = await page.request.post(apiUrl(orgSlug, "/api/auth/sign-in/email"), {
