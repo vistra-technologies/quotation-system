@@ -85,12 +85,13 @@ export function CreateUserForm({ orgId, roles, externalCompanies, onSuccess }: C
         </div>
       )}
 
-      <form action={formAction} className="flex flex-col gap-5">
+      {/* Two-column grid so the add-user popup fits without scrolling (hotfix 2026-09-25). */}
+      <form action={formAction} className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         {/* Hidden fields */}
         <input type="hidden" name="orgId" value={orgId} />
 
         {/* First Name + Last Name — side by side */}
-        <div className="flex gap-4">
+        <div className="flex gap-4 sm:col-span-2">
           <div className="flex flex-1 flex-col gap-1">
             <label htmlFor="sa-firstName" className={labelCls}>
               First Name
@@ -230,7 +231,7 @@ export function CreateUserForm({ orgId, roles, externalCompanies, onSuccess }: C
         <button
           type="submit"
           disabled={isPending}
-          className="rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
+          className="rounded-sm bg-primary px-4 py-2 text-sm font-bold sm:col-span-2 text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
         >
           Add User
         </button>

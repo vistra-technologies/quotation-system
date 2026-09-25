@@ -91,11 +91,9 @@ export default async function FormulaSetDetailPage({
               v{formulaSet.version}
             </span>
           </h1>
-          <p className="mt-1 text-sm text-text-muted">
-            {formulaSet.locked
-              ? "Read-only — this set is in use."
-              : "Unlocked — editable in place."}
-          </p>
+          {formulaSet.locked && (
+            <p className="mt-1 text-sm text-text-muted">Read-only — this set is in use.</p>
+          )}
         </div>
         {/* "Create new version" CTA visible in header for locked sets */}
         {formulaSet.locked && (

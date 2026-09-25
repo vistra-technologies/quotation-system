@@ -35,7 +35,7 @@ export function Modal({ isOpen, title, onClose, children }: ModalProps) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-md border border-border bg-bg-white p-6 shadow-[0_24px_48px_-16px_rgba(27,40,30,.4)]"
+        className="max-h-[95vh] w-full max-w-2xl overflow-y-auto rounded-md border border-border bg-bg-white p-6 text-left font-normal shadow-[0_24px_48px_-16px_rgba(27,40,30,.4)]"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-4">

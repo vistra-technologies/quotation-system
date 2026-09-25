@@ -45,18 +45,6 @@ export function NewSetSection({ existingNames }: NewSetSectionProps) {
     <section id="create-form" className="mt-8" aria-label="Create new formula set">
       <h3 className="text-sm font-extrabold text-text-heading">Create new formula set</h3>
 
-      {/* Info banner: version is automatic */}
-      <div className="mt-3 flex items-start gap-3 rounded-sm border border-primary-soft bg-primary-softer px-4 py-3 text-sm text-primary-dark">
-        <span aria-hidden="true" className="mt-0.5 shrink-0 text-base">ℹ</span>
-        <div>
-          <strong className="block font-extrabold">Version is automatic</strong>
-          <p className="mt-0.5 text-xs opacity-90">
-            New name → saved as v1. Existing name → saved as the next version
-            automatically. Body validation runs before saving either way.
-          </p>
-        </div>
-      </div>
-
       <div className="mt-3 rounded-md border border-border bg-bg-card px-5 py-5 shadow-card">
         {isPending && (
           <div

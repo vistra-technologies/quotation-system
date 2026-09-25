@@ -127,7 +127,7 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-message"
-        className="mx-4 w-full max-w-sm rounded-md border border-border bg-bg-white p-6 shadow-[0_24px_48px_-16px_rgba(27,40,30,.4)]"
+        className="mx-4 w-full max-w-sm rounded-md border border-border bg-bg-white p-6 text-left font-normal shadow-[0_24px_48px_-16px_rgba(27,40,30,.4)]"
         onClick={(e) => e.stopPropagation()}
       >
         <h2
