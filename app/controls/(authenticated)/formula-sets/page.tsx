@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { internalFetch } from "@/lib/internal-fetch";
 import { NewSetSection } from "./_new-set-section";
+import { DeleteFormulaSetButton } from "./_delete-button";
 import type { FormulaSetListItem } from "@/lib/data/superadmin/formula-sets";
 
 // Always render live — reads the SuperAdminSession table (via guard layout) and live DB.
@@ -135,12 +136,23 @@ export default async function FormulaSetsPage() {
                       {formatDate(fs.createdAt)}
                     </td>
                     <td className="px-5 py-4 text-right">
-                      <Link
-                        href={`/controls/formula-sets/${encodeURIComponent(fs.id)}`}
-                        className="text-sm font-bold text-primary hover:text-primary-dark"
-                      >
-                        {fs.locked ? "View" : "Edit"}
-                      </Link>
+                      <div className="flex items-center justify-end gap-4">
+                        <Link
+                          href={`/controls/formula-sets/${encodeURIComponent(fs.id)}`}
+                          className="text-sm font-bold text-primary hover:text-primary-dark"
+                        >
+                          {fs.locked ? "View" : "Edit"}
+                        </Link>
+                        {/* Hotfix 2026-09-25 H-1: delete only offered for unused sets. */}
+                        {!fs.locked && (
+                          <DeleteFormulaSetButton
+                            setId={fs.id}
+                            name={fs.name}
+                            version={fs.version}
+                            variant="link"
+                          />
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

@@ -312,7 +312,7 @@ export async function createProject(
       }
 
       // Stage 22 B4: freeze the org's ComponentType config in the SAME tx as the Project row (write-once;
-      // no update path touches configSnapshot). A load failure aborts the create — no null-snapshot project.
+      // only resetProject re-freezes it). A load failure aborts the create — no null-snapshot project.
       const configSnapshot = await loadConfigSnapshot(tx, session.organizationId);
       // Stage 23 B3 (D-21/D-22): pin the org's active formula set in the same tx, after the 13a structural
       // check against the snapshot just loaded. Throws FormulaPinError (-> 409) and aborts the create.
@@ -714,6 +714,28 @@ export async function recomputeProject(
 }
 
 /**
+ * Delete everything under a Project except the row itself, in FK-safe order.
+ * Shared by deleteProject and resetProject; must run inside their transaction.
+ *
+ *   1. Selection  — references Project (FK_RESTRICT)
+ *   2. Room       — references Floor (Cascade from Floor, but explicit for
+ *                   belt-and-braces per lib/data/superadmin/orgs.ts ordering);
+ *                   Partition rows cascade from Room at the DB
+ *   3. Floor      — references Project (FK_RESTRICT); Rooms/Partitions already gone
+ *   4. ProjectCalculation — Cascade from Project at the DB, explicit here (Stage 23 D-20)
+ */
+async function wipeProjectData(
+  tx: Prisma.TransactionClient,
+  organizationId: string,
+  projectId: string,
+) {
+  await tx.selection.deleteMany({ where: { projectId, organizationId } });
+  await tx.room.deleteMany({ where: { floor: { projectId }, organizationId } });
+  await tx.floor.deleteMany({ where: { projectId, organizationId } });
+  await tx.projectCalculation.deleteMany({ where: { projectId, organizationId } });
+}
+
+/**
  * Delete a DRAFT Project and all its children in a FK-safe transaction.
  *
  * Guards:
@@ -779,29 +801,8 @@ export async function deleteProject(session: SessionData, projectId: string) {
       }
     }
 
-    // 1. Selections — references Project (RESTRICT)
-    await tx.selection.deleteMany({
-      where: { projectId, organizationId: session.organizationId },
-    });
-
-    // 2. Rooms — references Floor (Cascade, but explicit belt-and-braces per
-    //    the precedent in lib/data/superadmin/orgs.ts FK-safe ordering)
-    await tx.room.deleteMany({
-      where: {
-        floor: { projectId },
-        organizationId: session.organizationId,
-      },
-    });
-
-    // 3. Floors — references Project (RESTRICT); Rooms/Partitions already gone
-    await tx.floor.deleteMany({
-      where: { projectId, organizationId: session.organizationId },
-    });
-
-    // 4. ProjectCalculation — Cascade from Project at the DB, but explicit first (Stage 23 D-20)
-    await tx.projectCalculation.deleteMany({
-      where: { projectId, organizationId: session.organizationId },
-    });
+    // 1–4. Selections, Rooms (+ Partitions), Floors, ProjectCalculation
+    await wipeProjectData(tx, session.organizationId, projectId);
 
     // 5. Project itself
     await tx.project.delete({ where: { id: projectId }, select: { id: true } });
@@ -810,4 +811,49 @@ export async function deleteProject(session: SessionData, projectId: string) {
   if (!found) return null;
   if (!isDraft) return { notDeletable: true as const };
   return { id: projectId };
+}
+
+/**
+ * Reset a DRAFT Project to its just-created state (hotfix 2026-09-25, H-3).
+ *
+ * In one org-scoped transaction:
+ *   1. wipeProjectData — Selections, Rooms/Partitions, Floors, ProjectCalculation.
+ *   2. Re-freeze `configSnapshot` from the org's current component config and
+ *      re-pin `formulaSetId` to the org's current active set — the same helpers
+ *      createProject uses, so a reset project is "as if newly created". This is
+ *      the one deliberate exception to configSnapshot being write-once.
+ *      resolveFormulaSetPin throws FormulaPinError (caller -> 409) and the whole
+ *      reset rolls back.
+ *   3. Clear `designSubmittedAt` (Summary/Quotation re-lock).
+ * The project row, number, intake fields, status, company and Inquiry link are kept.
+ *
+ * Returns null if not found / other org (-> 404), { notResettable: true } if not
+ * DRAFT (-> 409), otherwise { id }.
+ */
+export async function resetProject(session: SessionData, projectId: string) {
+  return prisma.$transaction(async (tx) => {
+    // Existence + DRAFT re-checked inside the tx (same TOCTOU reasoning as deleteProject).
+    const existing = await tx.project.findFirst({
+      where: { id: projectId, organizationId: session.organizationId },
+      select: { id: true, status: true },
+    });
+    if (!existing) return null;
+    if (existing.status !== "DRAFT") return { notResettable: true as const };
+
+    await wipeProjectData(tx, session.organizationId, projectId);
+
+    const configSnapshot = await loadConfigSnapshot(tx, session.organizationId);
+    const formulaSetId = await resolveFormulaSetPin(tx, session.organizationId, configSnapshot);
+
+    await tx.project.update({
+      where: { id: projectId },
+      select: { id: true },
+      data: {
+        configSnapshot: configSnapshot as unknown as Prisma.InputJsonValue,
+        formulaSetId,
+        designSubmittedAt: null,
+      },
+    });
+    return { id: projectId };
+  });
 }

@@ -1,6 +1,6 @@
 import { internalFetch } from "@/lib/internal-fetch";
 import { OrgPicker } from "../roles/org-picker";
-import { CreateUserForm } from "./create-user-form";
+import { AddUserButton, EditUserButton } from "./_user-dialogs";
 
 // Always render live — reads the SuperAdminSession table (via guard layout) and live DB.
 export const dynamic = "force-dynamic";
@@ -49,7 +49,8 @@ interface RoleRow {
  * UI/API separation (Stage 12 pattern): data fetched via internalFetch so
  * the qs-sa-token cookie is forwarded to route handlers.
  *
- * Scope: add-only. No edit, deactivate, or delete (Stage 17 scope boundary).
+ * Scope: add + edit (hotfix 2026-09-25, H-5 lifted the Stage 17 add-only boundary),
+ * both in popups. No delete.
  *
  * Stage 17 Item 4b.
  */
@@ -126,8 +127,8 @@ export default async function UsersPage({
       <div>
         <h1 className="text-2xl font-bold text-text-heading">Users</h1>
         <p className="mt-1 text-sm text-text-muted">
-          Add users to any organization. Select an org to see its current
-          members and add a new one.
+          Add or edit users in any organization. Select an org to see its
+          current members.
         </p>
       </div>
 
@@ -143,9 +144,18 @@ export default async function UsersPage({
       {/* ── Users section (only when an org is selected) ── */}
       {orgId && selectedOrg && (
         <div className="mt-8">
-          <h2 className="text-lg font-bold text-text-heading">
-            {selectedOrg.name}
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-bold text-text-heading">
+              {selectedOrg.name}
+            </h2>
+            {roles && roles.length > 0 && (
+              <AddUserButton
+                orgId={orgId}
+                roles={roles}
+                externalCompanies={externalCompanies ?? []}
+              />
+            )}
+          </div>
 
           {/* ── Users table ── */}
           {users && users.length > 0 ? (
@@ -165,6 +175,9 @@ export default async function UsersPage({
                       </th>
                       <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
                         Status
+                      </th>
+                      <th className="px-5 py-3.5 text-right text-xs font-bold uppercase tracking-wider text-text-muted">
+                        Actions
                       </th>
                     </tr>
                   </thead>
@@ -191,6 +204,11 @@ export default async function UsersPage({
                             </span>
                           )}
                         </td>
+                        <td className="px-5 py-4 text-right">
+                          {roles && roles.length > 0 && (
+                            <EditUserButton orgId={orgId} user={user} roles={roles} />
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -201,20 +219,6 @@ export default async function UsersPage({
             <p className="mt-4 text-sm text-text-muted">
               No users found for this organization.
             </p>
-          )}
-
-          {/* ── Add user form ── */}
-          {roles && roles.length > 0 && (
-            <div className="mt-8">
-              <h3 className="text-sm font-bold text-text-heading">Add new user</h3>
-              <div className="mt-3 max-w-md rounded-md border border-border bg-bg-card px-5 py-4 shadow-card">
-                <CreateUserForm
-                  orgId={orgId}
-                  roles={roles}
-                  externalCompanies={externalCompanies ?? []}
-                />
-              </div>
-            </div>
           )}
 
           {roles && roles.length === 0 && (

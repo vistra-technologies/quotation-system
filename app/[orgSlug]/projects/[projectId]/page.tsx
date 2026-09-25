@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { orgHref } from "@/lib/orgHref";
 import { formatBudget } from "@/lib/format-currency";
 import { fetchProjectDetail } from "./_project-fetch";
+import { ProjectActions } from "./_project-actions";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -184,7 +185,20 @@ export default async function ProjectDetailPage({
             "Back to Projects" removed Stage 19 Batch 4 (item 14) — the wizard
             breadcrumb is the navigation surface; a card-footer back link is
             redundant and inconsistent with the other 4 wizard steps. */}
-        <div className="flex items-center justify-end gap-3 border-t border-border px-6 py-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border px-6 py-4">
+          {/* Hotfix 2026-09-25 (H-2/H-3): destructive actions on the left, DRAFT only
+              (both API routes re-check DRAFT and 409 otherwise). */}
+          {project.status === "DRAFT" ? (
+            <ProjectActions
+              orgSlug={orgSlug}
+              projectId={projectId}
+              projectLabel={`${projectLabel} · ${project.name}`}
+              projectsHref={`${base}/projects`}
+            />
+          ) : (
+            <span />
+          )}
+          <div className="flex items-center gap-3">
           {/* Edit link — only shown while the project is still DRAFT */}
           {project.status === "DRAFT" && (
             <Link
@@ -201,6 +215,7 @@ export default async function ProjectDetailPage({
           >
             Next: Configuration →
           </Link>
+          </div>
         </div>
       </div>
     </div>

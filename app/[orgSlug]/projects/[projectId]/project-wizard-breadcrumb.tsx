@@ -29,8 +29,8 @@ interface ProjectWizardBreadcrumbProps {
  * design/add-wall) highlight the correct step.
  *
  * Stage 10 (Task 1.6): restyled to Sage Ease pill stepper. Active step gets
- * bg-primary; completed steps show a checkmark and text-primary-dark; future
- * steps are text-text-muted. Logic, hrefs, and aria-current are unchanged.
+ * bg-primary; every other unlocked step shows a green checkmark pill (hotfix
+ * 2026-09-25, H-6 — was "steps before the active one"); locked steps are muted.
  *
  * namespace: "wizard" — wired in app/[orgSlug]/projects/layout.tsx clientMessages.
  */
@@ -103,7 +103,7 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain, selec
     summaryQuotationLocked,    // step 4: Quotation
   ];
 
-  // Derive the active index so earlier steps can be shown as "done".
+  // Derive the active index (highlighted step).
   // Uses step.linkHref (which equals hrefBase-derived paths) to match against
   // usePathname()'s output. In subdomain mode, usePathname() returns paths without
   // the org-slug prefix (e.g. /projects/{id}/configuration); step.linkHref also
@@ -126,8 +126,12 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain, selec
       <ol className="mx-auto flex w-fit max-w-full items-center gap-1.5 rounded-pill bg-primary-softer p-2">
         {steps.map((step, index) => {
           const isActive = index === activeIndex;
-          const isDone = activeIndex > -1 && index < activeIndex;
           const isLocked = locked[index];
+          // Hotfix 2026-09-25 (H-6): every unlocked, non-current step shows the
+          // green ✓ "available" style — before or after the current step alike.
+          // Previously this was positional (index < activeIndex), so an unlocked
+          // Summary/Quotation looked the same as a locked "future" step.
+          const isDone = !isActive && !isLocked;
 
           // Build step className based on state. Locked steps reuse the future-step
           // muted style; the outer span adds cursor-not-allowed + opacity.

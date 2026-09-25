@@ -15,7 +15,8 @@ interface ThirdAction {
 interface ConfirmDialogProps {
   isOpen: boolean;
   title: string;
-  message: string;
+  /** Plain string, or rich content (e.g. a bullet list) — hotfix 2026-09-25. */
+  message: React.ReactNode;
   /**
    * Optional inline error to render as a red alert between the message and the
    * button row — e.g. a blocked-delete "still in use" response. Keeps the
@@ -135,12 +136,12 @@ export function ConfirmDialog({
         >
           {title}
         </h2>
-        <p
+        <div
           id="confirm-dialog-message"
           className="mb-4 text-sm text-text-body"
         >
           {message}
-        </p>
+        </div>
 
         {errorMessage && (
           <div className="mb-4 rounded-sm border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3.5 py-2.5 text-sm font-semibold text-[var(--color-status-failed-text)]">

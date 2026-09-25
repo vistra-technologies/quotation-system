@@ -10,6 +10,7 @@ import {
 import {
   getFormulaSet,
   updateFormulaSet,
+  deleteFormulaSet,
   createFormulaSetAuditLog,
   FormulaSetInUseError,
 } from "@/lib/data/superadmin/formula-sets";
@@ -174,4 +175,70 @@ export async function PATCH(
   });
 
   return NextResponse.json({ formulaSet });
+}
+
+// ─── DELETE /api/v1/superadmin/formula-sets/[setId] ───────────────────────────
+//
+// Hard-delete a formula set that is not in use (hotfix 2026-09-25, H-1).
+// The in-use check and the delete run in a single $transaction (no race).
+// Auth: valid SuperAdmin session (qs-sa-token cookie).
+//
+// Returns 200 with { id } on success.
+// Returns 401 when not authenticated as SuperAdmin.
+// Returns 404 if the set is not found.
+// Returns 409 with inUseBy counts if the set is in use (locked).
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ setId: string }> },
+): Promise<NextResponse> {
+  let sa;
+  try {
+    sa = await requireSuperAdminFromRequest(request);
+  } catch (err) {
+    if (err instanceof SuperAdminUnauthorizedError) {
+      return apiUnauthorized("SuperAdmin authentication required");
+    }
+    console.error("[DELETE /api/v1/superadmin/formula-sets/[setId]] auth error", err);
+    return apiServerError();
+  }
+
+  const { setId } = await params;
+
+  let deleted;
+  try {
+    deleted = await deleteFormulaSet(setId);
+  } catch (err) {
+    if (err instanceof FormulaSetInUseError) {
+      return NextResponse.json(
+        {
+          error: "Formula set is in use and cannot be deleted",
+          inUseBy: err.inUseBy,
+        },
+        { status: 409 },
+      );
+    }
+    if (err instanceof Error && err.message === "NOT_FOUND") {
+      return apiNotFound("FormulaSet not found");
+    }
+    // P2003 = FK restrict violation — a reference appeared that the count missed.
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as { code: string }).code === "P2003"
+    ) {
+      return apiConflict("Formula set is in use and cannot be deleted");
+    }
+    console.error("[DELETE /api/v1/superadmin/formula-sets/[setId]] deleteFormulaSet", err);
+    return apiServerError();
+  }
+
+  // Write audit log after the mutation committed.
+  await createFormulaSetAuditLog(sa.superAdminId, setId, "formulaSet.delete", {
+    name: deleted.name,
+    version: deleted.version,
+  });
+
+  return NextResponse.json({ id: setId });
 }

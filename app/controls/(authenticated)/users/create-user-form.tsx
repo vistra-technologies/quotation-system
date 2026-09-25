@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { addUser, type AddUserState } from "./actions";
 import { SelectField } from "@/components/select-field";
 
@@ -12,7 +12,7 @@ import { SelectField } from "@/components/select-field";
  * crashes to app/global-error.tsx (same failure mode already hotfixed once
  * in permission-toggle-button.tsx — Stage 16 post-deploy bug, 2026-09-02).
  */
-function PendingOverlay({ visible }: { visible: boolean }) {
+export function PendingOverlay({ visible }: { visible: boolean }) {
   if (!visible) return null;
 
   return (
@@ -40,6 +40,8 @@ interface CreateUserFormProps {
   orgId: string;
   roles: RoleOption[];
   externalCompanies: { id: string; name: string }[];
+  /** Called after a successful add — the popup closes (hotfix 2026-09-25, H-5). */
+  onSuccess?: () => void;
 }
 
 const initialState: AddUserState = { error: null };
@@ -56,8 +58,13 @@ const initialState: AddUserState = { error: null };
  *
  * Stage 17 Item 4b.
  */
-export function CreateUserForm({ orgId, roles, externalCompanies }: CreateUserFormProps) {
+export function CreateUserForm({ orgId, roles, externalCompanies, onSuccess }: CreateUserFormProps) {
   const [state, formAction, isPending] = useActionState(addUser, initialState);
+
+  // Each successful submit yields a fresh state object with ok: true.
+  useEffect(() => {
+    if (state.ok) onSuccess?.();
+  }, [state, onSuccess]);
 
   // Track the selected role to drive the External Company requirement (U3 parity).
   const [selectedRoleId, setSelectedRoleId] = useState(roles[0]?.id ?? "");

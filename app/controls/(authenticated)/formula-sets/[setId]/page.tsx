@@ -2,6 +2,7 @@ import Link from "next/link";
 import { internalFetch } from "@/lib/internal-fetch";
 import { EditFormulaSetForm } from "./_edit-form";
 import { NewVersionButton } from "./_new-version-button";
+import { DeleteFormulaSetButton } from "../_delete-button";
 import type { FormulaSetDetail } from "@/lib/data/superadmin/formula-sets";
 
 // Always render live — reads the SuperAdminSession table (via guard layout) and live DB.
@@ -98,7 +99,17 @@ export default async function FormulaSetDetailPage({
         </div>
         {/* "Create new version" CTA visible in header for locked sets */}
         {formulaSet.locked && (
-          <NewVersionButton setId={formulaSet.id} currentVersion={formulaSet.version} />
+          <NewVersionButton setId={formulaSet.id} />
+        )}
+        {/* Hotfix 2026-09-25 H-1: unused sets can be deleted. */}
+        {!formulaSet.locked && (
+          <DeleteFormulaSetButton
+            setId={formulaSet.id}
+            name={formulaSet.name}
+            version={formulaSet.version}
+            variant="button"
+            redirectTo="/controls/formula-sets"
+          />
         )}
       </div>
 
@@ -218,7 +229,7 @@ export default async function FormulaSetDetailPage({
 
           {/* Footer: only "Create new version", no Save */}
           <div className="flex items-center gap-3 border-t border-border pt-5">
-            <NewVersionButton setId={formulaSet.id} currentVersion={formulaSet.version} />
+            <NewVersionButton setId={formulaSet.id} />
             <Link
               href="/controls/formula-sets"
               className="rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer"

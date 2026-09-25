@@ -284,6 +284,46 @@ export async function newVersionOfFormulaSet(
   return detail;
 }
 
+/**
+ * Hard-delete a FormulaSet that is not in use (hotfix 2026-09-25, H-1).
+ *
+ * Same in-use rule as updateFormulaSet (S25-2): the counts are re-read and the
+ * delete runs in one $transaction, so a set that becomes referenced between
+ * page load and click is refused. The Restrict FKs on Organization / Project /
+ * ProjectCalculation backstop this at the DB level.
+ *
+ * Throws Error("NOT_FOUND") if the set does not exist, FormulaSetInUseError if in use.
+ * Returns the deleted row's name + version (for the audit log).
+ *
+ * superadmin-only — intentionally cross-org
+ */
+export async function deleteFormulaSet(
+  setId: string,
+): Promise<{ name: string; version: number }> {
+  // superadmin-only — intentionally cross-org
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.formulaSet.findUnique({
+      where: { id: setId },
+      select: {
+        name: true,
+        version: true,
+        _count: {
+          select: { activeForOrgs: true, pinnedProjects: true, calculations: true },
+        },
+      },
+    });
+    if (!existing) throw new Error("NOT_FOUND");
+
+    const inUseBy = computeInUseBy(existing._count);
+    if (computeLocked(inUseBy)) {
+      throw new FormulaSetInUseError(inUseBy);
+    }
+
+    await tx.formulaSet.delete({ where: { id: setId } });
+    return { name: existing.name, version: existing.version };
+  });
+}
+
 // ─── Audit log ────────────────────────────────────────────────────────────────
 
 /**

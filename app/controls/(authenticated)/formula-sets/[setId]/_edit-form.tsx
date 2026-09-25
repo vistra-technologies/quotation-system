@@ -2,13 +2,25 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
-import { updateSuperAdminFormulaSet, type FormulaSetFormState } from "../actions";
+import {
+  createSuperAdminFormulaSet,
+  updateSuperAdminFormulaSet,
+  type FormulaSetFormState,
+} from "../actions";
 
 interface EditFormulaSetFormProps {
   setId: string;
   initialName: string;
   version: number;
   initialBodyJson: string;
+  /**
+   * "edit" (default) PATCHes this set in place. "newVersion" (hotfix 2026-09-25,
+   * H-4) is an unsaved draft of the next version: nothing is written until Save,
+   * which POSTs a new row under the same name (the API assigns MAX(version)+1).
+   */
+  mode?: "edit" | "newVersion";
+  /** Cancel destination. Defaults to the list. */
+  cancelHref?: string;
 }
 
 /**
@@ -30,9 +42,12 @@ export function EditFormulaSetForm({
   initialName,
   version,
   initialBodyJson,
+  mode = "edit",
+  cancelHref = "/controls/formula-sets",
 }: EditFormulaSetFormProps) {
+  const isDraft = mode === "newVersion";
   const [state, formAction, isPending] = useActionState<FormulaSetFormState, FormData>(
-    updateSuperAdminFormulaSet,
+    isDraft ? createSuperAdminFormulaSet : updateSuperAdminFormulaSet,
     { error: null },
   );
 
@@ -90,8 +105,12 @@ export function EditFormulaSetForm({
               type="text"
               required
               value={name}
+              // A new version stays in the same name family — the name is fixed.
+              readOnly={isDraft}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-heading outline-none focus:border-primary"
+              className={`w-full rounded-sm border border-border px-3 py-2 text-sm outline-none focus:border-primary ${
+                isDraft ? "bg-bg-subtle text-text-muted" : "bg-bg-white text-text-heading"
+              }`}
             />
           </div>
           <div>
@@ -167,10 +186,10 @@ export function EditFormulaSetForm({
             disabled={isPending || hasErrors}
             className="inline-flex items-center rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Save Changes
+            {isDraft ? `Save as v${version}` : "Save Changes"}
           </button>
           <Link
-            href="/controls/formula-sets"
+            href={cancelHref}
             className="rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer"
           >
             Cancel

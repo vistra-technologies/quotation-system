@@ -234,3 +234,111 @@ export async function createUserInOrg(
     };
   }
 }
+
+// ─── Update (hotfix 2026-09-25, H-5) ─────────────────────────────────────────
+
+export type UpdateUserInOrgInput = {
+  firstName?: string;
+  lastName?: string;
+  mobile?: string | null;
+  profileEmail?: string | null;
+  roleId?: string;
+  active?: boolean;
+  /** Optional new password (≥8, validated by the route). Never logged or returned. */
+  newPassword?: string;
+};
+
+export type UpdateUserInOrgResult =
+  | { ok: true; changedFields: string[] }
+  | {
+      ok: false;
+      reason: "user_not_found" | "role_not_in_org" | "company_required";
+      message: string;
+    };
+
+/**
+ * Edit an existing user in the given org from the SuperAdmin console.
+ * Username is not editable (login identity + synthetic auth email).
+ *
+ * Tenancy invariants (even cross-org): the user must belong to orgId, and a new
+ * roleId must belong to orgId. U3 parity: moving to an external role requires
+ * the user to already have an external company.
+ *
+ * A new password is hashed with better-auth's hasher and written to the
+ * credential Account row. Deactivating or resetting the password also deletes
+ * the user's Session rows so it takes effect immediately (active is also
+ * re-checked on every request).
+ *
+ * superadmin-only — intentionally cross-org
+ */
+export async function updateUserInOrg(
+  orgId: string,
+  userId: string,
+  input: UpdateUserInOrgInput,
+): Promise<UpdateUserInOrgResult> {
+  // superadmin-only — intentionally cross-org
+  const user = await prisma.user.findFirst({
+    where: { id: userId, organizationId: orgId },
+    select: { firstName: true, lastName: true, externalCompanyId: true },
+  });
+  if (!user) {
+    return { ok: false, reason: "user_not_found", message: "User not found in this organization" };
+  }
+
+  if (input.roleId !== undefined) {
+    const role = await prisma.role.findFirst({
+      where: { id: input.roleId, organizationId: orgId },
+      select: { isInternalRole: true },
+    });
+    if (!role) {
+      return {
+        ok: false,
+        reason: "role_not_in_org",
+        message: "roleId does not belong to this organization",
+      };
+    }
+    if (!role.isInternalRole && !user.externalCompanyId) {
+      return {
+        ok: false,
+        reason: "company_required",
+        message: "This role requires an external company, and this user has none",
+      };
+    }
+  }
+
+  const data: Record<string, unknown> = {};
+  if (input.firstName !== undefined) data.firstName = input.firstName;
+  if (input.lastName !== undefined) data.lastName = input.lastName;
+  if (input.mobile !== undefined) data.mobile = input.mobile;
+  if (input.profileEmail !== undefined) data.profileEmail = input.profileEmail;
+  if (input.roleId !== undefined) data.roleId = input.roleId;
+  if (input.active !== undefined) data.active = input.active;
+  // Keep better-auth's `name` display field in sync (same as lib/data/users.ts).
+  if (input.firstName !== undefined || input.lastName !== undefined) {
+    data.name = `${input.firstName ?? user.firstName} ${input.lastName ?? user.lastName}`;
+  }
+
+  const passwordHash =
+    input.newPassword !== undefined
+      ? await (await auth.$context).password.hash(input.newPassword)
+      : null;
+
+  await prisma.$transaction(async (tx) => {
+    if (Object.keys(data).length > 0) {
+      await tx.user.updateMany({ where: { id: userId, organizationId: orgId }, data });
+    }
+    if (passwordHash !== null) {
+      await tx.account.updateMany({
+        where: { userId, providerId: "credential" },
+        data: { password: passwordHash },
+      });
+    }
+    if (passwordHash !== null || input.active === false) {
+      await tx.session.deleteMany({ where: { userId } });
+    }
+  });
+
+  const changedFields = Object.keys(data).filter((k) => k !== "name");
+  if (passwordHash !== null) changedFields.push("password");
+  return { ok: true, changedFields };
+}

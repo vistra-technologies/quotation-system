@@ -188,7 +188,7 @@ test("UI-D1: Locked set detail shows read-only fields and 'Create new version' b
   await expect(page.locator("text=This formula set is locked")).toBeVisible();
 
   // "Create new version" button should be present.
-  await expect(page.locator("button", { hasText: /Create new version/i }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /Create new version/i }).first()).toBeVisible();
 
   // "Save Changes" button must NOT be present (locked sets are read-only).
   await expect(page.locator("button", { hasText: /Save Changes/i })).toHaveCount(0);
