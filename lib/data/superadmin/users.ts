@@ -277,53 +277,56 @@ export async function updateUserInOrg(
   input: UpdateUserInOrgInput,
 ): Promise<UpdateUserInOrgResult> {
   // superadmin-only — intentionally cross-org
-  const user = await prisma.user.findFirst({
-    where: { id: userId, organizationId: orgId },
-    select: { firstName: true, lastName: true, externalCompanyId: true },
-  });
-  if (!user) {
-    return { ok: false, reason: "user_not_found", message: "User not found in this organization" };
-  }
-
-  if (input.roleId !== undefined) {
-    const role = await prisma.role.findFirst({
-      where: { id: input.roleId, organizationId: orgId },
-      select: { isInternalRole: true },
-    });
-    if (!role) {
-      return {
-        ok: false,
-        reason: "role_not_in_org",
-        message: "roleId does not belong to this organization",
-      };
-    }
-    if (!role.isInternalRole && !user.externalCompanyId) {
-      return {
-        ok: false,
-        reason: "company_required",
-        message: "This role requires an external company, and this user has none",
-      };
-    }
-  }
-
-  const data: Record<string, unknown> = {};
-  if (input.firstName !== undefined) data.firstName = input.firstName;
-  if (input.lastName !== undefined) data.lastName = input.lastName;
-  if (input.mobile !== undefined) data.mobile = input.mobile;
-  if (input.profileEmail !== undefined) data.profileEmail = input.profileEmail;
-  if (input.roleId !== undefined) data.roleId = input.roleId;
-  if (input.active !== undefined) data.active = input.active;
-  // Keep better-auth's `name` display field in sync (same as lib/data/users.ts).
-  if (input.firstName !== undefined || input.lastName !== undefined) {
-    data.name = `${input.firstName ?? user.firstName} ${input.lastName ?? user.lastName}`;
-  }
-
+  // Hash outside the transaction (slow scrypt); checks + writes run inside it so a
+  // concurrent org/user/role delete can't make us audit a write that never happened.
   const passwordHash =
     input.newPassword !== undefined
       ? await (await auth.$context).password.hash(input.newPassword)
       : null;
 
-  await prisma.$transaction(async (tx) => {
+  type Failure = Extract<UpdateUserInOrgResult, { ok: false }>;
+  const outcome = await prisma.$transaction(async (tx): Promise<Failure | Record<string, unknown>> => {
+    const user = await tx.user.findFirst({
+      where: { id: userId, organizationId: orgId },
+      select: { firstName: true, lastName: true, externalCompanyId: true },
+    });
+    if (!user) {
+      return { ok: false, reason: "user_not_found", message: "User not found in this organization" };
+    }
+
+    if (input.roleId !== undefined) {
+      const role = await tx.role.findFirst({
+        where: { id: input.roleId, organizationId: orgId },
+        select: { isInternalRole: true },
+      });
+      if (!role) {
+        return {
+          ok: false,
+          reason: "role_not_in_org",
+          message: "roleId does not belong to this organization",
+        };
+      }
+      if (!role.isInternalRole && !user.externalCompanyId) {
+        return {
+          ok: false,
+          reason: "company_required",
+          message: "This role requires an external company, and this user has none",
+        };
+      }
+    }
+
+    const data: Record<string, unknown> = {};
+    if (input.firstName !== undefined) data.firstName = input.firstName;
+    if (input.lastName !== undefined) data.lastName = input.lastName;
+    if (input.mobile !== undefined) data.mobile = input.mobile;
+    if (input.profileEmail !== undefined) data.profileEmail = input.profileEmail;
+    if (input.roleId !== undefined) data.roleId = input.roleId;
+    if (input.active !== undefined) data.active = input.active;
+    // Keep better-auth's `name` display field in sync (same as lib/data/users.ts).
+    if (input.firstName !== undefined || input.lastName !== undefined) {
+      data.name = `${input.firstName ?? user.firstName} ${input.lastName ?? user.lastName}`;
+    }
+
     if (Object.keys(data).length > 0) {
       await tx.user.updateMany({ where: { id: userId, organizationId: orgId }, data });
     }
@@ -336,7 +339,11 @@ export async function updateUserInOrg(
     if (passwordHash !== null || input.active === false) {
       await tx.session.deleteMany({ where: { userId } });
     }
+    return data;
   });
+
+  if ("ok" in outcome && outcome.ok === false) return outcome as Failure;
+  const data = outcome;
 
   const changedFields = Object.keys(data).filter((k) => k !== "name");
   if (passwordHash !== null) changedFields.push("password");
