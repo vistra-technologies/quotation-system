@@ -211,6 +211,64 @@ export async function changeUserRole(formData: FormData): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// setUserPasswordModal (H-18)
+// ---------------------------------------------------------------------------
+
+export type SetPasswordModalState = { error: string | null; success: boolean };
+
+/**
+ * Admin-set password for a user from within the Edit User modal.
+ *
+ * Returns state (no redirect) so the modal can show success/error inline.
+ * Blank password is a no-op success — the caller's hint reads "Leave blank to
+ * keep current password." All tenancy enforcement lives in the route handler.
+ *
+ * Hotfix 2026-09-28 H-18.
+ */
+export async function setUserPasswordModal(
+  prevState: SetPasswordModalState,
+  formData: FormData,
+): Promise<SetPasswordModalState> {
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
+  const userId = (formData.get("userId") as string | null) ?? "";
+  const password = (formData.get("password") as string | null) ?? "";
+
+  if (!userId) return { error: "User ID is missing", success: false };
+  // Blank = keep current — treat as a no-op success so the form feedback is
+  // consistent with the SA modal's behaviour (SA action skips the PATCH too).
+  if (!password.trim()) return { error: null, success: true };
+  if (password.length < 8) {
+    return { error: "Password must be at least 8 characters", success: false };
+  }
+
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/users/${userId}/password`,
+    {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    },
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    return { error: errorMessage, success: false };
+  }
+
+  revalidatePath(`/${orgSlug}/admin/users`);
+  return { error: null, success: true };
+}
+
+// ---------------------------------------------------------------------------
 // setUserPassword
 // ---------------------------------------------------------------------------
 

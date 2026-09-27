@@ -59,11 +59,13 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
         </div>
       )}
 
-      <form action={formAction} className="flex flex-col gap-5">
+      {/* H-19: 2-column grid — (First name, Last name), (Username, Role),
+          (Initial password, Mobile), (Email, External company). */}
+      <form action={formAction} className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <input type="hidden" name="orgSlug" value={orgSlug} />
 
-        {/* First Name + Last Name — side by side */}
-        <div className="flex gap-4">
+        {/* First Name + Last Name — side by side, spanning both columns */}
+        <div className="flex gap-4 sm:col-span-2">
           <div className="flex flex-1 flex-col gap-1">
             <label htmlFor="firstName" className={labelCls}>
               {t("fieldFirstName")}
@@ -92,7 +94,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
           </div>
         </div>
 
-        {/* Username */}
+        {/* Username (col 1) */}
         <div className="flex flex-col gap-1">
           <label htmlFor="username" className={labelCls}>
             {t("fieldUsername")}
@@ -107,7 +109,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
           />
         </div>
 
-        {/* Role — changing this updates the External Company requirement */}
+        {/* Role (col 2) — changing this updates the External Company requirement */}
         <div className="flex flex-col gap-1">
           <label htmlFor="roleId" className={labelCls}>
             {t("fieldRole")}
@@ -128,7 +130,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
           </SelectField>
         </div>
 
-        {/* Initial password */}
+        {/* Initial password (col 1) */}
         <div className="flex flex-col gap-1">
           <label htmlFor="password" className={labelCls}>
             {t("fieldPassword")}
@@ -145,7 +147,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
           <p className="text-xs text-text-muted">{t("fieldPasswordHint")}</p>
         </div>
 
-        {/* Mobile (optional) */}
+        {/* Mobile (col 2, optional) */}
         <div className="flex flex-col gap-1">
           <label htmlFor="mobile" className={labelCls}>
             {t("fieldMobile")}
@@ -159,7 +161,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
           />
         </div>
 
-        {/* Email (optional) */}
+        {/* Email (col 1, optional) */}
         <div className="flex flex-col gap-1">
           <label htmlFor="profileEmail" className={labelCls}>
             {t("fieldEmail")}
@@ -173,7 +175,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
           />
         </div>
 
-        {/* External Company — required for external roles (U3) */}
+        {/* External Company (col 2) — required for external roles (U3) */}
         <div className="flex flex-col gap-1">
           <label htmlFor="externalCompanyId" className={labelCls}>
             {companyRequired
@@ -205,7 +207,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
         <button
           type="submit"
           disabled={isPending}
-          className="rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
+          className="rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50 sm:col-span-2"
         >
           {t("submitCreate")}
         </button>

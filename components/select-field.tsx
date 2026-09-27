@@ -33,6 +33,14 @@ import React, { useEffect, useId, useRef, useState } from "react";
  * The `className` prop replaces the standard trigger style entirely — use it
  * for selects that need non-standard sizing or appearance (e.g. floor-bar's
  * compact UI control, or field-editor rows that use a smaller inputBase).
+ *
+ * **Dropdown containment (H-18):** the open listbox renders at `position:
+ * fixed` using coordinates derived from the trigger's `getBoundingClientRect()`
+ * — this makes it escape any `overflow: auto` / `overflow: hidden` ancestor
+ * (including modal scroll containers) without a React portal. z-index is
+ * `z-[9999]` so it always renders above overlays like modals (z-40). Position
+ * is recomputed on every window scroll (capture phase) and resize while open,
+ * so the listbox tracks the trigger even when the modal itself is scrolled.
  */
 
 // Structural layout classes the trigger always needs (flex row, label + chevron
@@ -125,6 +133,14 @@ export function SelectField({
 
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  // H-18: fixed-position coordinates for the open listbox — lets it escape any
+  // overflow:auto ancestor (modal scroll container) without a React portal.
+  const [listboxPos, setListboxPos] = useState<{
+    top: number;
+    left: number;
+    width: number;
+  } | null>(null);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
@@ -147,6 +163,24 @@ export function SelectField({
     }
   };
 
+  // H-18: recompute fixed-position coords on scroll (capture: true catches modal
+  // inner-scroll) and resize while the listbox is open, so it tracks the trigger.
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      if (triggerRef.current) {
+        const rect = triggerRef.current.getBoundingClientRect();
+        setListboxPos({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+      }
+    };
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
+
   // Keep the highlighted option scrolled into view during keyboard nav — the
   // popup now scrolls (max-h + overflow-y-auto) instead of growing unbounded.
   useEffect(() => {
@@ -165,6 +199,12 @@ export function SelectField({
   const currentIndex = options.findIndex((o) => o.value === currentValue);
 
   const openAt = (index: number | null) => {
+    // H-18: compute the fixed position from the trigger's viewport rect so the
+    // listbox escapes modal overflow containers.
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setListboxPos({ top: rect.bottom + 6, left: rect.left, width: rect.width });
+    }
     setOpen(true);
     setActiveIndex(index ?? (currentIndex >= 0 ? currentIndex : 0));
   };
@@ -276,11 +316,20 @@ export function SelectField({
         </svg>
       </button>
 
-      {open && (
+      {/* H-18: rendered at position:fixed with viewport-relative coordinates so
+          this element escapes any overflow:auto/hidden ancestor (modal card).
+          z-[9999] keeps it above the modal overlay (z-40). */}
+      {open && listboxPos && (
         <div
           id={`${resolvedId}-listbox`}
           role="listbox"
-          className="absolute left-0 top-[calc(100%+6px)] z-20 max-h-64 min-w-[160px] overflow-y-auto rounded-md border border-border bg-bg-white p-[7px] shadow-[0_16px_34px_-12px_rgba(27,40,30,0.28)]"
+          style={{
+            position: "fixed",
+            top: listboxPos.top,
+            left: listboxPos.left,
+            width: listboxPos.width,
+          }}
+          className="z-[9999] max-h-64 min-w-[160px] overflow-y-auto rounded-md border border-border bg-bg-white p-[7px] shadow-[0_16px_34px_-12px_rgba(27,40,30,0.28)]"
         >
           {options.map((opt, i) => (
             <button

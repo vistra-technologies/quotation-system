@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useState, useTransition } from "react";
+import { useActionState, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
@@ -10,7 +10,9 @@ import { CreateUserForm } from "./new/create-user-form";
 import {
   updateUserProfile,
   changeUserRole,
+  setUserPasswordModal,
   type UpdateUserProfileState,
+  type SetPasswordModalState,
 } from "./actions";
 
 // ─── Shared types ─────────────────────────────────────────────────────────────
@@ -125,7 +127,7 @@ export function EditUserButton({
           />
         </svg>
       </button>
-      <Modal isOpen={open} title={`Edit user — ${user.username}`} onClose={close}>
+      <Modal isOpen={open} title="Update User" onClose={close}>
         <OrgEditUserForm
           orgSlug={orgSlug}
           user={user}
@@ -141,6 +143,7 @@ export function EditUserButton({
 // ─── Inline edit form ─────────────────────────────────────────────────────────
 
 const initialProfileState: UpdateUserProfileState = { error: null, success: false };
+const initialPasswordState: SetPasswordModalState = { error: null, success: false };
 
 /**
  * Edit form used inside the EditUserButton modal.
@@ -170,17 +173,31 @@ function OrgEditUserForm({
     updateUserProfile,
     initialProfileState,
   );
+  const [passwordState, passwordAction, passwordPending] = useActionState(
+    setUserPasswordModal,
+    initialPasswordState,
+  );
   const [rolePending, startRole] = useTransition();
   const [selectedRoleId, setSelectedRoleId] = useState(
     user.roleId ?? user.role.id,
   );
   const selectedRole = roles.find((r) => r.id === selectedRoleId);
   const companyRequired = selectedRole ? !selectedRole.isInternalRole : false;
+  // Ref to clear the password input after a successful password save.
+  const passwordInputRef = useRef<HTMLInputElement>(null);
 
   // Close modal after a successful profile save.
   useEffect(() => {
     if (profileState.success) onClose();
   }, [profileState.success, onClose]);
+
+  // Clear the password input after a successful password save (don't close — the
+  // user may still want to save profile fields).
+  useEffect(() => {
+    if (passwordState.success && passwordInputRef.current) {
+      passwordInputRef.current.value = "";
+    }
+  }, [passwordState.success]);
 
   function handleRoleChange(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -194,7 +211,7 @@ function OrgEditUserForm({
     });
   }
 
-  const anyPending = profilePending || rolePending;
+  const anyPending = profilePending || rolePending || passwordPending;
 
   const inputCls =
     "w-full rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]";
@@ -341,6 +358,52 @@ function OrgEditUserForm({
           className="self-start rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
         >
           {t("changeRoleSubmit")}
+        </button>
+      </form>
+
+      {/* Divider */}
+      <hr className="my-5 border-border" />
+
+      {/* Password — separate form; blank = keep current (H-18). */}
+      <p className="mb-3 text-xs font-bold uppercase tracking-wide text-text-muted">
+        Password
+      </p>
+      {passwordState.error && (
+        <div className="mb-3 rounded-sm border border-status-failed-bg bg-status-failed-bg px-4 py-3">
+          <p className="text-sm text-status-failed-text">{passwordState.error}</p>
+        </div>
+      )}
+      {passwordState.success && (
+        <div className="mb-3 rounded-sm border border-status-ok-bg bg-status-ok-bg px-4 py-3">
+          <p className="text-sm text-status-ok-text">Password updated.</p>
+        </div>
+      )}
+      <form action={passwordAction} className="flex flex-col gap-3">
+        <input type="hidden" name="orgSlug" value={orgSlug} />
+        <input type="hidden" name="userId" value={user.id} />
+        <div className="flex flex-col gap-1">
+          <label htmlFor="edit-newPassword" className={labelCls}>
+            New password
+          </label>
+          <input
+            ref={passwordInputRef}
+            id="edit-newPassword"
+            name="password"
+            type="password"
+            minLength={8}
+            autoComplete="new-password"
+            className={inputCls}
+          />
+          <p className="text-xs text-text-muted">
+            Leave blank to keep the current password. Setting one signs this user out everywhere.
+          </p>
+        </div>
+        <button
+          type="submit"
+          disabled={anyPending}
+          className="self-start rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
+        >
+          Set password
         </button>
       </form>
     </>

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { SelectField } from "@/components/select-field";
 import { TrashIcon } from "@/components/trash-icon";
 import { Toast, useToast } from "@/components/toast";
 import { ItemFormModal } from "./_item-form-modal";
@@ -194,17 +195,19 @@ export function InventoryList({ items, orgSlug, componentTypes }: InventoryListP
             </span>
           </div>
           <div className="flex items-center gap-2.5">
-            {/* H-15: sort control */}
-            <select
-              value={sortKey}
-              onChange={(e) => setSortKey(e.target.value as SortKey)}
-              aria-label="Sort items by"
-              className="rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs font-bold text-text-body hover:border-[#b9c2ae] focus:border-primary focus:outline-none focus:shadow-[0_0_0_2px_rgba(78,127,88,.15)]"
-            >
-              <option value="lastAdded">Last added</option>
-              <option value="component">Component</option>
-              <option value="name">Name</option>
-            </select>
+            {/* H-20: "Sort by:" label + shared SelectField replacing native <select> */}
+            <span className="text-xs font-bold text-text-muted">Sort by:</span>
+            <div className="w-36">
+              <SelectField
+                value={sortKey}
+                onChange={(e) => setSortKey(e.target.value as SortKey)}
+                className="rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs font-bold text-text-body hover:border-[#b9c2ae] focus:border-primary focus:outline-none focus:shadow-[0_0_0_2px_rgba(78,127,88,.15)]"
+              >
+                <option value="lastAdded">Last added</option>
+                <option value="component">Component</option>
+                <option value="name">Name</option>
+              </SelectField>
+            </div>
             <button
               type="button"
               onClick={openCreate}

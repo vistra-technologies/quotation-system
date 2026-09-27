@@ -98,7 +98,7 @@ export function EditUserButton({
       >
         Edit
       </button>
-      <Modal isOpen={open} title={`Edit user — ${user.username}`} onClose={close}>
+      <Modal isOpen={open} title="Update User" onClose={close}>
         <EditUserForm orgId={orgId} user={user} roles={roles} onSuccess={close} deactivateHint={deactivateHint} passwordHint={passwordHint} />
       </Modal>
     </>
@@ -145,6 +145,9 @@ function EditUserForm({
   return (
     <>
       <PendingOverlay visible={isPending} />
+
+      {/* Username subtitle — shown below the "Update User" modal title (H-18). */}
+      <p className="mb-4 text-sm text-text-muted">@{user.username}</p>
 
       {state.error && (
         <div className="mb-4 rounded-sm border border-status-failed-bg bg-status-failed-bg px-4 py-3">
