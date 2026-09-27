@@ -23,6 +23,10 @@ interface AttributeStepEditorProps {
   fieldKey: string;
   draftConfig: FieldOptionsConfig;
   searchQuery: string;
+  /** Whether this step is part of an active multi-step cascade (`AttributeEditorModal`'s `flow`
+   *  is non-null) — mirrors the mockup's `!!ed.flow`. Gates the "new lists only" focused view so a
+   *  field opened directly with pre-existing empty groups doesn't get mislabeled "New". */
+  inFlow: boolean;
   /** Replaces the whole draft config — the modal re-syncs and marks the session dirty. */
   onChange: (nextConfig: FieldOptionsConfig) => void;
 }
@@ -45,6 +49,7 @@ export function AttributeStepEditor({
   fieldKey,
   draftConfig,
   searchQuery,
+  inFlow,
   onChange,
 }: AttributeStepEditorProps) {
   const field = findAttr(fieldsSchema, fieldKey) as FieldEntry;
@@ -194,7 +199,10 @@ export function AttributeStepEditor({
             onBlur={() => doRename(groupKey, value, renameText)}
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-              if (e.key === "Escape") setEditingChip(null);
+              if (e.key === "Escape") {
+                e.stopPropagation();
+                setEditingChip(null);
+              }
             }}
             aria-label={`Rename ${value}`}
             className="min-w-[40px] border-none bg-transparent p-0 text-[13.5px] font-semibold text-text-heading outline-none"
@@ -310,7 +318,7 @@ export function AttributeStepEditor({
   // ─── Dependent field: one list per currently-live parent value ───────────
   const keys = parentValuesOf(fieldsSchema, draftConfig, field);
   const newKeys = newKeysAtOpen.filter((k) => keys.includes(k));
-  const focusNew = newKeys.length > 0 && !showAll;
+  const focusNew = inFlow && newKeys.length > 0 && !showAll;
   const shown = focusNew ? newKeys : keys;
   const filterActive = !focusNew ? filterText.trim().toLowerCase() : "";
   const visibleKeys = shown.filter((k) => !filterActive || k.toLowerCase().includes(filterActive));
@@ -462,7 +470,7 @@ export function AttributeStepEditor({
           Show {keys.length - newKeys.length} existing list{keys.length - newKeys.length === 1 ? "" : "s"} ›
         </button>
       )}
-      {!focusNew && newKeys.length > 0 && showAll && (
+      {inFlow && !focusNew && newKeys.length > 0 && showAll && (
         <button
           type="button"
           onClick={() => setShowAll(false)}

@@ -76,6 +76,7 @@ export function AttributeEditorModal({
   }
 
   function requestClose() {
+    if (saving) return; // a PUT is in flight — don't let Cancel promise a discard that won't happen
     if (dirty) {
       setPendingDiscard(true);
       return;
@@ -87,12 +88,16 @@ export function AttributeEditorModal({
     function onKeyDown(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
       if (pendingDiscard) return; // the discard confirm owns Escape while it's open (disabled there)
+      // A nested dialog (e.g. the removal-impact confirm in AttributeStepEditor) also listens for
+      // Escape and owns it while open — this modal's own root card carries role="dialog" too, so
+      // more than one such element means a child dialog is on top and should handle it instead.
+      if (document.querySelectorAll('[role="dialog"]').length > 1) return;
       requestClose();
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingDiscard, dirty]);
+  }, [pendingDiscard, dirty, saving]);
 
   async function commit(finalFlow: FlowState) {
     setSaving(true);
@@ -268,6 +273,7 @@ export function AttributeEditorModal({
               fieldKey={currentFieldKey}
               draftConfig={draftConfig}
               searchQuery=""
+              inFlow={flow !== null}
               onChange={handleMutate}
               key={currentFieldKey}
             />
@@ -281,7 +287,8 @@ export function AttributeEditorModal({
             <button
               type="button"
               onClick={requestClose}
-              className="rounded-sm border border-border bg-bg-white px-3.5 py-2 text-[13px] font-bold text-text-body hover:border-primary-soft"
+              disabled={saving}
+              className="rounded-sm border border-border bg-bg-white px-3.5 py-2 text-[13px] font-bold text-text-body hover:border-primary-soft disabled:cursor-not-allowed disabled:opacity-55"
             >
               {closeLabel}
             </button>

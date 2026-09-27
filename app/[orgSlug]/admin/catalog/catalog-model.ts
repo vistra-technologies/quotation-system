@@ -100,17 +100,30 @@ export function emptyGroupCount(schema: FieldEntry[], config: FieldOptionsConfig
  * Keep every dependent field's `valueMap` in step with its parent's current live values: drop
  * orphaned keys, add empty lists for new parent values. Depth-ordered so a change several hops up
  * the chain propagates all the way down in one pass — mirrors the mockup's `sync`.
+ *
+ * Also normalizes the *shape* of the output to exactly the current schema: only fields that are
+ * currently dropdown/radio (`choiceFields`) get an entry, each in the shape its *current*
+ * `dependsOn` implies (`options` for a flat field, `valueMap` for a dependent one). Any key in
+ * `config` for a field that's been deleted, retyped away from dropdown/radio, or had its
+ * `dependsOn` removed/added is dropped rather than carried through — mirrors the old
+ * `catalog-type-editor.tsx`'s `choiceFields`-only PUT body, which this replaced. Without this, a
+ * schema edit made elsewhere (SuperAdmin) leaves a stale/mismatched key in the stored config that
+ * this page would otherwise round-trip back to the server on every later save, and the API 400s.
  */
 export function sync(schema: FieldEntry[], config: FieldOptionsConfig): FieldOptionsConfig {
-  const out: FieldOptionsConfig = { ...config };
-  const dependent = schema
-    .filter((f) => f.dependsOn)
+  const out: FieldOptionsConfig = {};
+  const fields = choiceFields(schema)
     .slice()
     .sort((a, b) => depth(schema, a) - depth(schema, b));
-  for (const f of dependent) {
-    const parent = findAttr(schema, f.dependsOn as string);
+  for (const f of fields) {
+    if (!f.dependsOn) {
+      const entry = config[f.key];
+      out[f.key] = { options: entry && "options" in entry ? entry.options : [] };
+      continue;
+    }
+    const parent = findAttr(schema, f.dependsOn);
     const parentValues = parent ? valuesOf(schema, out, parent) : [];
-    const entry = out[f.key];
+    const entry = config[f.key];
     const oldMap = entry && "valueMap" in entry ? entry.valueMap : {};
     const newMap: Record<string, string[]> = {};
     for (const k of parentValues) {
