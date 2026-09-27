@@ -3,7 +3,7 @@ import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
-import { CatalogTypeEditor } from "./catalog-type-editor";
+import { CatalogExplorer } from "./catalog-explorer";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ interface ComponentTypeRow {
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 /**
- * Catalog page (Server Component) — Stage 20 Batch 3.
+ * Catalog page (Server Component) — Stage 20 Batch 3, UI replaced in Stage 27.
  *
  * Nav label locked as "Catalog" (decision #2, stage-20.md). Lets an org admin fill in the
  * option values for every dropdown/radio field on every ComponentType — the SuperAdmin-authored
@@ -39,6 +39,12 @@ interface ComponentTypeRow {
  * `lib/data/components.ts` `listComponentTypes` — see review-B3 MINOR #3/#4). Batch 3 originally
  * did one extra `.../field-values` GET per configurable type (N+1, observed N=34 on acme-glass);
  * that round-trip is gone now that the list response already carries the config.
+ *
+ * Stage 27: the per-type flat-list `<CatalogTypeEditor>` (one instance per ComponentType) was
+ * replaced by a single `<CatalogExplorer>` client component that owns segment tabs + a visual
+ * dependency-tree canvas across all configurable types at once (segment tabs are cross-type, so
+ * the client component needs the whole array, not one instance per type). This server component's
+ * fetch/gate/filter logic is otherwise unchanged.
  */
 export default async function FieldValuesPage({
   params,
@@ -93,18 +99,8 @@ export default async function FieldValuesPage({
           No component type currently has a dropdown or radio field to configure.
         </p>
       ) : (
-        <div className="mt-6 flex flex-col gap-6">
-          {withConfig.map((ct) => (
-            <CatalogTypeEditor
-              key={ct.id}
-              orgSlug={orgSlug}
-              typeId={ct.id}
-              code={ct.code}
-              name={ct.name}
-              fieldsSchema={ct.fieldsSchema}
-              initialFieldOptionsConfig={ct.fieldOptionsConfig}
-            />
-          ))}
+        <div className="mt-6">
+          <CatalogExplorer orgSlug={orgSlug} componentTypes={withConfig} />
         </div>
       )}
     </div>
