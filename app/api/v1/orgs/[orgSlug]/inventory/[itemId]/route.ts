@@ -12,6 +12,7 @@ import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import {
   getInventoryItemById,
   updateInventoryItem,
+  deleteInventoryItem,
   DuplicateInventoryCodeError,
 } from "@/lib/data/catalog";
 
@@ -181,6 +182,66 @@ export async function PATCH(
     }
     console.error(
       "[PATCH /api/v1/orgs/[orgSlug]/inventory/[itemId]] updateInventoryItem",
+      err,
+    );
+    return apiServerError();
+  }
+}
+
+// ─── DELETE /api/v1/orgs/[orgSlug]/inventory/[itemId] ────────────────────────
+
+/**
+ * Delete an InventoryItem from the org, including its ItemPrice rows (Cascade).
+ *
+ * Auth: authenticated org member with MANAGE_PRICING permission.
+ *
+ * Returns 204 on success.
+ * Returns 404 if the item is not found in the org (tenancy guard: wrong-org items
+ *   are indistinguishable from missing items).
+ *
+ * ItemPrice rows cascade-delete automatically (onDelete: Cascade on the FK).
+ *
+ * Hotfix 2026-09-27 H-6.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ orgSlug: string; itemId: string }> },
+) {
+  const { orgSlug, itemId } = await params;
+
+  let session;
+  try {
+    session = await getApiSession(request, orgSlug);
+  } catch (err) {
+    if (err instanceof ApiAuthError) {
+      if (err.status === 401) return apiUnauthorized(err.message);
+      if (err.status === 403) return apiForbidden(err.message);
+      if (err.status === 404) return apiNotFound(err.message);
+    }
+    console.error("[DELETE /api/v1/orgs/[orgSlug]/inventory/[itemId]]", err);
+    return apiServerError();
+  }
+
+  try {
+    await requirePermission(session, PERMISSIONS.MANAGE_PRICING);
+  } catch (err) {
+    if (err instanceof ForbiddenError) return apiForbidden(err.message);
+    console.error(
+      "[DELETE /api/v1/orgs/[orgSlug]/inventory/[itemId]] requirePermission",
+      err,
+    );
+    return apiServerError();
+  }
+
+  try {
+    const deleted = await deleteInventoryItem(session, itemId);
+    if (!deleted) {
+      return apiNotFound("Inventory item not found");
+    }
+    return new NextResponse(null, { status: 204 });
+  } catch (err) {
+    console.error(
+      "[DELETE /api/v1/orgs/[orgSlug]/inventory/[itemId]] deleteInventoryItem",
       err,
     );
     return apiServerError();

@@ -62,11 +62,10 @@ test("B8-1: New item button opens blank create modal", async ({ page }) => {
 
   // Code field is blank.
   await expect(page.locator("#item-form-code")).toHaveValue("");
-  // Active toggle defaults to checked (aria-checked="true").
-  await expect(page.getByRole("switch", { name: "Active" })).toHaveAttribute(
-    "aria-checked",
-    "true",
-  );
+  // H-3 removed the Active toggle — assert it is absent from the modal.
+  await expect(
+    page.getByRole("dialog").getByRole("switch", { name: "Active" }),
+  ).not.toBeVisible();
 });
 
 // ─── B8-2: Client-side required-field validation ─────────────────────────────

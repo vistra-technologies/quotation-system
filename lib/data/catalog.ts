@@ -141,6 +141,27 @@ export async function updateInventoryItem(
 }
 
 /**
+ * Delete an InventoryItem that belongs to the session org.
+ * Returns true if the item was deleted, false if it was not found or belongs
+ * to a different org (tenancy guard — wrong-org items are indistinguishable
+ * from missing ones).
+ *
+ * ItemPrice rows are removed automatically via the Cascade FK defined on
+ * ItemPrice.inventoryItemId → no explicit child-delete needed.
+ *
+ * Hotfix 2026-09-27 H-6.
+ */
+export async function deleteInventoryItem(
+  session: SessionData,
+  itemId: string,
+): Promise<boolean> {
+  const result = await prisma.inventoryItem.deleteMany({
+    where: { id: itemId, organizationId: session.organizationId },
+  });
+  return result.count > 0;
+}
+
+/**
  * Tenancy guard: assert an InventoryItem belongs to the given org.
  * Throws a generic error on failure to prevent enumeration of other orgs' items.
  */
