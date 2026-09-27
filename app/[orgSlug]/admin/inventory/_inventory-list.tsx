@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "@/components/confirm-dialog";
+import { LoadingOverlay } from "@/components/loading-overlay";
+import { TrashIcon } from "@/components/trash-icon";
 import { ItemFormModal } from "./_item-form-modal";
-import type { ItemFormData } from "./_item-form-modal";
+import type { ItemFormData, ComponentTypeOption } from "./_item-form-modal";
+import { deleteInventoryItem } from "./actions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -22,6 +26,75 @@ export interface InventoryItemRow {
 interface InventoryListProps {
   items: InventoryItemRow[];
   orgSlug: string;
+  componentTypes: ComponentTypeOption[];
+}
+
+// ─── Delete button ────────────────────────────────────────────────────────────
+
+/**
+ * Per-row delete action for inventory items.
+ *
+ * Icon-only trash button opens a themed ConfirmDialog naming the item's
+ * Code + Name. On confirmation, calls the deleteInventoryItem server action.
+ *
+ * Hotfix 2026-09-27 H-6.
+ */
+function DeleteInventoryItemButton({
+  orgSlug,
+  itemId,
+  itemCode,
+  itemName,
+}: {
+  orgSlug: string;
+  itemId: string;
+  itemCode: string;
+  itemName: string;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  function handleDeleteConfirm() {
+    setIsConfirmOpen(false);
+    setErrorMessage(null);
+    const formData = new FormData();
+    formData.set("orgSlug", orgSlug);
+    formData.set("itemId", itemId);
+    startTransition(async () => {
+      try {
+        await deleteInventoryItem(formData);
+      } catch (err) {
+        setErrorMessage(
+          err instanceof Error ? err.message : "Delete failed — please try again.",
+        );
+      }
+    });
+  }
+
+  return (
+    <>
+      <LoadingOverlay visible={isPending} />
+      <ConfirmDialog
+        isOpen={isConfirmOpen}
+        title={`Delete ${itemCode}`}
+        message={`Delete inventory item "${itemCode} — ${itemName}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setIsConfirmOpen(false)}
+        errorMessage={errorMessage}
+      />
+      <button
+        type="button"
+        onClick={() => setIsConfirmOpen(true)}
+        disabled={isPending}
+        aria-label={`Delete item ${itemCode}`}
+        title={`Delete item ${itemCode}`}
+        className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-red-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+      >
+        <TrashIcon />
+      </button>
+    </>
+  );
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -30,13 +103,16 @@ interface InventoryListProps {
  * Interactive inventory list (Client Component).
  *
  * Renders the "Inventory Items" card with the table, the "New item" primary
- * button in the card header, and per-row "Edit" action buttons. Manages modal
- * open/close state and triggers `router.refresh()` after a successful save so
- * the parent Server Component re-fetches the updated list from the API.
+ * button in the card header, and per-row Edit and Delete action buttons.
+ * Manages modal open/close state and triggers `router.refresh()` after a
+ * successful save so the parent Server Component re-fetches the updated list.
  *
- * Stage 25 Batch 8.
+ * Changes vs. original (hotfix 2026-09-27):
+ *   H-3: Status (active/inactive) column removed entirely.
+ *   H-5: "Category" column header renamed to "Component".
+ *   H-6: Delete action added per row.
  */
-export function InventoryList({ items, orgSlug }: InventoryListProps) {
+export function InventoryList({ items, orgSlug, componentTypes }: InventoryListProps) {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ItemFormData | null>(null);
@@ -51,9 +127,9 @@ export function InventoryList({ items, orgSlug }: InventoryListProps) {
       id: item.id,
       code: item.code,
       name: item.name,
+      category: item.category,
       measurementUnit: item.measurementUnit,
       perUnitQuantity: item.perUnitQuantity,
-      active: item.active,
     });
     setModalOpen(true);
   }
@@ -65,14 +141,13 @@ export function InventoryList({ items, orgSlug }: InventoryListProps) {
 
   function handleSuccess() {
     closeModal();
-    // Re-run the Server Component to re-fetch the updated list.
     router.refresh();
   }
 
   return (
     <>
       <div className="rounded-md border border-border bg-bg-card shadow-card">
-        {/* Card header — "Inventory Items" heading + item count pill + "New item" button */}
+        {/* Card header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <div className="flex items-center gap-2.5">
             <h2 className="text-sm font-bold text-text-body">
@@ -109,8 +184,9 @@ export function InventoryList({ items, orgSlug }: InventoryListProps) {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left">
+                {/* H-5: "Category" → "Component" */}
                 <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Category
+                  Component
                 </th>
                 <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-text-muted">
                   Code
@@ -124,10 +200,8 @@ export function InventoryList({ items, orgSlug }: InventoryListProps) {
                 <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-text-muted">
                   Qty / unit
                 </th>
-                <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Status
-                </th>
-                {/* Actions column — no heading per mockup */}
+                {/* H-3: Status column removed */}
+                {/* Actions column — no heading */}
                 <th className="px-5 py-3.5" />
               </tr>
             </thead>
@@ -149,25 +223,24 @@ export function InventoryList({ items, orgSlug }: InventoryListProps) {
                   <td className="px-5 py-4 text-text-body">
                     {item.perUnitQuantity}
                   </td>
-                  <td className="px-5 py-4">
-                    {item.active ? (
-                      <span className="inline-flex items-center rounded-pill bg-status-paid-bg px-2.5 py-0.5 text-xs font-bold text-status-paid-text">
-                        Active
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center rounded-pill bg-border px-2.5 py-0.5 text-xs font-bold text-text-muted">
-                        Inactive
-                      </span>
-                    )}
-                  </td>
+                  {/* H-3: no Status cell */}
                   <td className="px-3 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => openEdit(item)}
-                      className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-bg-white px-3 py-1.5 text-xs font-bold text-text-body hover:border-[#b9c2ae] hover:text-text-heading"
-                    >
-                      Edit
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => openEdit(item)}
+                        className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-bg-white px-3 py-1.5 text-xs font-bold text-text-body hover:border-[#b9c2ae] hover:text-text-heading"
+                      >
+                        Edit
+                      </button>
+                      {/* H-6: delete action */}
+                      <DeleteInventoryItemButton
+                        orgSlug={orgSlug}
+                        itemId={item.id}
+                        itemCode={item.code}
+                        itemName={item.name}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -182,6 +255,7 @@ export function InventoryList({ items, orgSlug }: InventoryListProps) {
           mode={editingItem ? "edit" : "create"}
           item={editingItem ?? undefined}
           orgSlug={orgSlug}
+          componentTypes={componentTypes}
           onSuccess={handleSuccess}
           onClose={closeModal}
         />

@@ -1,9 +1,10 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { DeleteUserButton } from "./delete-user-button";
+import { AddUserButton, EditUserButton } from "./_user-dialogs";
+import type { EditableUser } from "./_user-dialogs";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -15,8 +16,18 @@ interface UserRow {
   username: string;
   firstName: string;
   lastName: string;
+  mobile: string | null;
+  profileEmail: string | null;
+  externalCompanyId: string | null;
   active: boolean;
-  role: { name: string };
+  roleId: string;
+  role: { id: string; name: string };
+}
+
+interface RoleOption {
+  id: string;
+  name: string;
+  isInternalRole: boolean;
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -26,14 +37,10 @@ interface UserRow {
  *
  * Lists all users within the session's org, ordered alphabetically.
  *
- * Stage 12: switched from direct requireSession + DAL calls to internalFetch
- * against GET /api/v1/orgs/[orgSlug]/users. RBAC (MANAGE_USERS) is enforced
- * by the route handler — 401/403 here redirects to login.
- *
- * Batch 7g: added Full Name column; added Delete row action (client component
- * with window.confirm() before proceeding).
- *
- * Stage 11 Batch 8: restyled to Sage Ease tokens.
+ * Hotfix 2026-09-27 H-8: replaced full-page Add/Edit navigation with popup
+ * modals (AddUserButton, EditUserButton from _user-dialogs.tsx). The existing
+ * Delete action (DeleteUserButton) is unchanged. Fetches roles and external
+ * companies to populate the modal dropdowns.
  */
 export default async function UsersPage({
   params,
@@ -41,10 +48,11 @@ export default async function UsersPage({
   params: Promise<{ orgSlug: string }>;
 }) {
   const { orgSlug } = await params;
-  const base = await orgHref(orgSlug, "");
 
-  const [usersRes, t] = await Promise.all([
+  const [usersRes, rolesRes, companiesRes, t] = await Promise.all([
     internalFetch(`/api/v1/orgs/${orgSlug}/users`),
+    internalFetch(`/api/v1/orgs/${orgSlug}/roles`),
+    internalFetch(`/api/v1/orgs/${orgSlug}/external-companies`),
     getTranslations("users"),
   ]);
 
@@ -54,6 +62,14 @@ export default async function UsersPage({
 
   const users: UserRow[] = usersRes.ok
     ? ((await usersRes.json()) as { users: UserRow[] }).users
+    : [];
+
+  const roles: RoleOption[] = rolesRes.ok
+    ? ((await rolesRes.json()) as { roles: RoleOption[] }).roles
+    : [];
+
+  const externalCompanies: { id: string; name: string }[] = companiesRes.ok
+    ? ((await companiesRes.json()) as { companies: { id: string; name: string }[] }).companies
     : [];
 
   return (
@@ -67,12 +83,12 @@ export default async function UsersPage({
             {t("pageSubtitle")}
           </p>
         </div>
-        <Link
-          href={`${base}/admin/users/new`}
-          className="rounded-sm bg-primary px-4 py-2 text-sm font-bold text-text-on-primary hover:bg-primary-dark"
-        >
-          {t("createUser")}
-        </Link>
+        {/* H-8: replaced Link to /admin/users/new with AddUserButton modal */}
+        <AddUserButton
+          orgSlug={orgSlug}
+          roles={roles}
+          externalCompanies={externalCompanies}
+        />
       </div>
 
       <div className="mt-6 rounded-md border border-border bg-bg-card shadow-card">
@@ -96,64 +112,63 @@ export default async function UsersPage({
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
-                <tr
-                  key={user.id}
-                  className="border-b border-border last:border-0 hover:bg-primary-softer/40"
-                >
-                  <td className="px-5 py-4 font-bold text-text-heading">
-                    {user.username}
-                  </td>
-                  <td className="px-5 py-4 text-text-body">
-                    {user.firstName} {user.lastName}
-                  </td>
-                  <td className="px-5 py-4 text-text-body">
-                    {user.role.name}
-                  </td>
-                  <td className="px-5 py-4">
-                    <span
-                      className={
-                        user.active
-                          ? "inline-flex items-center rounded-pill bg-status-paid-bg px-2.5 py-0.5 text-xs font-bold text-status-paid-text"
-                          : "inline-flex items-center rounded-pill bg-border px-2.5 py-0.5 text-xs font-bold text-text-muted"
-                      }
-                    >
-                      {user.active ? t("statusActive") : t("statusInactive")}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      <Link
-                        href={`${base}/admin/users/${user.id}`}
-                        aria-label={t("editAction")}
-                        title={t("editAction")}
-                        className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-primary-dark hover:bg-primary-softer hover:text-primary"
+              {users.map((user) => {
+                const editableUser: EditableUser = {
+                  id: user.id,
+                  username: user.username,
+                  firstName: user.firstName,
+                  lastName: user.lastName,
+                  mobile: user.mobile,
+                  profileEmail: user.profileEmail,
+                  roleId: user.roleId ?? user.role.id,
+                  role: user.role,
+                  externalCompanyId: user.externalCompanyId,
+                };
+                return (
+                  <tr
+                    key={user.id}
+                    className="border-b border-border last:border-0 hover:bg-primary-softer/40"
+                  >
+                    <td className="px-5 py-4 font-bold text-text-heading">
+                      {user.username}
+                    </td>
+                    <td className="px-5 py-4 text-text-body">
+                      {user.firstName} {user.lastName}
+                    </td>
+                    <td className="px-5 py-4 text-text-body">
+                      {user.role.name}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={
+                          user.active
+                            ? "inline-flex items-center rounded-pill bg-status-paid-bg px-2.5 py-0.5 text-xs font-bold text-status-paid-text"
+                            : "inline-flex items-center rounded-pill bg-border px-2.5 py-0.5 text-xs font-bold text-text-muted"
+                        }
                       >
-                        {/* Pencil icon 16×16 */}
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 16 16"
-                          fill="none"
-                          aria-hidden="true"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path
-                            d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm1.414 1.06a.25.25 0 0 0-.354 0L2.543 12.023l-.625 2.185 2.185-.625L13.64 4.047a.25.25 0 0 0 0-.354l-1.213-1.206Z"
-                            fill="currentColor"
-                          />
-                        </svg>
-                      </Link>
-                      <DeleteUserButton
-                        orgSlug={orgSlug}
-                        userId={user.id}
-                        username={user.username}
-                        confirmMessage={t("deleteConfirm", { username: user.username })}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {user.active ? t("statusActive") : t("statusInactive")}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        {/* H-8: replaced Link to /admin/users/[userId] with EditUserButton modal */}
+                        <EditUserButton
+                          orgSlug={orgSlug}
+                          user={editableUser}
+                          roles={roles}
+                          externalCompanies={externalCompanies}
+                        />
+                        <DeleteUserButton
+                          orgSlug={orgSlug}
+                          userId={user.id}
+                          username={user.username}
+                          confirmMessage={t("deleteConfirm", { username: user.username })}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

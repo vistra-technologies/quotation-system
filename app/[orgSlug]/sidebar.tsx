@@ -332,7 +332,7 @@ export function Sidebar({
                     External Companies
                   </Link>
                   <Link
-                    href={href("/inventory")}
+                    href={href("/admin/inventory")}
                     className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                   >
                     Inventory
@@ -347,7 +347,7 @@ export function Sidebar({
                * screen — narrower than the old link (values only, not shape/CRUD). */}
               {canManageFeatures && (
                 <Link
-                  href={href("/admin/field-values")}
+                  href={href("/admin/catalog")}
                   className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                 >
                   Catalog

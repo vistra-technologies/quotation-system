@@ -1,6 +1,6 @@
 import { internalFetch } from "@/lib/internal-fetch";
 import { OrgPicker } from "../roles/org-picker";
-import { AddUserButton, EditUserButton } from "./_user-dialogs";
+import { AddUserButton, EditUserButton, DeleteSAUserButton } from "./_user-dialogs";
 
 // Always render live — reads the SuperAdminSession table (via guard layout) and live DB.
 export const dynamic = "force-dynamic";
@@ -179,6 +179,8 @@ export default async function UsersPage({
                       <th className="px-5 py-3.5 text-right text-xs font-bold uppercase tracking-wider text-text-muted">
                         Actions
                       </th>
+                      {/* H-9: delete column — no heading */}
+                      <th className="px-5 py-3.5" />
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -208,6 +210,14 @@ export default async function UsersPage({
                           {roles && roles.length > 0 && (
                             <EditUserButton orgId={orgId} user={user} roles={roles} />
                           )}
+                        </td>
+                        {/* H-9: delete action */}
+                        <td className="px-3 py-4">
+                          <DeleteSAUserButton
+                            orgId={orgId}
+                            userId={user.id}
+                            username={user.username}
+                          />
                         </td>
                       </tr>
                     ))}

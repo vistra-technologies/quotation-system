@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useState } from "react";
+import { useActionState, useCallback, useEffect, useState, useTransition } from "react";
 import { SelectField } from "@/components/select-field";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Modal } from "./_modal";
 import { CreateUserForm, PendingOverlay } from "./create-user-form";
-import { editUser, type EditUserState } from "./actions";
+import { editUser, deleteSAUser, type EditUserState } from "./actions";
 
 interface RoleOption {
   id: string;
@@ -216,6 +217,93 @@ function EditUserForm({
           Save changes
         </button>
       </form>
+    </>
+  );
+}
+
+// ─── Delete user ─────────────────────────────────────────────────────────────
+
+/**
+ * Per-row delete action for the SuperAdmin users console.
+ *
+ * Trash icon button opens a ConfirmDialog naming the user. On confirmation,
+ * calls the deleteSAUser server action which DELETEs via the API route,
+ * cascades Account/Session, writes an audit log entry, and revalidates the page.
+ *
+ * Uses PendingOverlay (NOT the shared LoadingOverlay — /controls has no i18n
+ * provider; see AGENTS.md). ConfirmDialog has no i18n dependency.
+ *
+ * Hotfix 2026-09-27 H-9.
+ */
+export function DeleteSAUserButton({
+  orgId,
+  userId,
+  username,
+}: {
+  orgId: string;
+  userId: string;
+  username: string;
+}) {
+  const [isPending, startTransition] = useTransition();
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  function handleDeleteConfirm() {
+    setIsConfirmOpen(false);
+    setErrorMessage(null);
+    const formData = new FormData();
+    formData.set("orgId", orgId);
+    formData.set("userId", userId);
+    startTransition(async () => {
+      try {
+        await deleteSAUser(formData);
+      } catch (err) {
+        setErrorMessage(
+          err instanceof Error ? err.message : "Delete failed — please try again.",
+        );
+      }
+    });
+  }
+
+  return (
+    <>
+      <PendingOverlay visible={isPending} />
+      <ConfirmDialog
+        isOpen={isConfirmOpen}
+        title={`Delete ${username}`}
+        message={`Delete user "${username}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={handleDeleteConfirm}
+        onCancel={() => setIsConfirmOpen(false)}
+        errorMessage={errorMessage}
+      />
+      <button
+        type="button"
+        onClick={() => setIsConfirmOpen(true)}
+        disabled={isPending}
+        aria-label={`Delete user ${username}`}
+        title={`Delete user ${username}`}
+        className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-red-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+      >
+        {/* Trash icon 16×16 — same as org-admin delete-user-button.tsx */}
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          aria-hidden="true"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M6 2h4a1 1 0 0 1 1 1H5a1 1 0 0 1 1-1Z"
+            fill="currentColor"
+          />
+          <path
+            d="M2 4.5a.5.5 0 0 1 .5-.5h11a.5.5 0 0 1 0 1H13l-.8 7.2A1.5 1.5 0 0 1 10.71 13H5.29A1.5 1.5 0 0 1 3.8 12.2L3 5H2.5a.5.5 0 0 1-.5-.5ZM4.02 5l.76 6.83a.5.5 0 0 0 .5.17h5.44a.5.5 0 0 0 .5-.17L11.98 5H4.02Z"
+            fill="currentColor"
+          />
+        </svg>
+      </button>
     </>
   );
 }

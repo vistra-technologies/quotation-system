@@ -4,14 +4,19 @@ import { useEffect, useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+export interface ComponentTypeOption {
+  code: string;
+  name: string;
+}
+
 export interface ItemFormData {
   id: string;
   code: string;
   name: string;
+  category: string;
   measurementUnit: string;
   /** Decimal from Prisma serialises to string via JSON; accept both. */
   perUnitQuantity: number | string;
-  active: boolean;
 }
 
 interface ItemFormModalProps {
@@ -19,9 +24,20 @@ interface ItemFormModalProps {
   /** Pre-populated item for edit mode. Omit for create. */
   item?: ItemFormData;
   orgSlug: string;
+  componentTypes: ComponentTypeOption[];
   onSuccess: () => void;
   onClose: () => void;
 }
+
+// Fixed Unit of Measure options (H-4). Values are stored in the DB as-is.
+const UOM_OPTIONS = [
+  { value: "m²", label: "m² — Square metre" },
+  { value: "m", label: "m — Metre" },
+  { value: "mm", label: "mm — Millimetre" },
+  { value: "ft", label: "ft — Feet" },
+  { value: "set", label: "set" },
+  { value: "piece", label: "piece" },
+] as const;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -32,6 +48,12 @@ interface ItemFormModalProps {
  * modes. All form fields are controlled state (React 19 uncontrolled-input
  * reset gotcha — see profile.md "Recurring gotcha").
  *
+ * Changes vs. original (hotfix 2026-09-27):
+ *   H-2: Placeholder/hint text removed from Code, Name, and Qty per unit.
+ *   H-3: Active toggle removed; create always sends active:true, edit omits active.
+ *   H-4: Unit of measure is now a fixed dropdown (not free text).
+ *   H-5: Component dropdown added (maps to the category column via ComponentType codes).
+ *
  * Error handling:
  *   - Client-side required-field errors appear per-field before any API call.
  *   - API-level errors (409 duplicate code, unexpected 500) appear as an inline
@@ -39,26 +61,25 @@ interface ItemFormModalProps {
  *
  * Follows the `confirm-dialog.tsx` overlay pattern: fixed inset-0 z-50 bg-black/40,
  * Escape-to-close, click-outside-to-close, stop-propagation on the dialog card.
- *
- * Stage 25 Batch 8.
  */
 export function ItemFormModal({
   mode,
   item,
   orgSlug,
+  componentTypes,
   onSuccess,
   onClose,
 }: ItemFormModalProps) {
   // ── Controlled field state ────────────────────────────────────────────────
   const [code, setCode] = useState(item?.code ?? "");
   const [name, setName] = useState(item?.name ?? "");
+  const [category, setCategory] = useState(item?.category ?? "");
   const [measurementUnit, setMeasurementUnit] = useState(
     item?.measurementUnit ?? "",
   );
   const [perUnitQuantity, setPerUnitQuantity] = useState(
     item?.perUnitQuantity != null ? String(item.perUnitQuantity) : "",
   );
-  const [active, setActive] = useState(item?.active ?? true);
 
   // ── Error state ───────────────────────────────────────────────────────────
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -79,8 +100,8 @@ export function ItemFormModal({
     const errors: Record<string, string> = {};
     if (!code.trim()) errors.code = "Code is required.";
     if (!name.trim()) errors.name = "Name is required.";
-    if (!measurementUnit.trim())
-      errors.measurementUnit = "Unit of measure is required.";
+    if (!category) errors.category = "Component is required.";
+    if (!measurementUnit) errors.measurementUnit = "Unit of measure is required.";
     if (
       perUnitQuantity !== "" &&
       (isNaN(Number(perUnitQuantity)) || Number(perUnitQuantity) <= 0)
@@ -105,13 +126,17 @@ export function ItemFormModal({
     const body: Record<string, unknown> = {
       code: code.trim(),
       name: name.trim(),
-      measurementUnit: measurementUnit.trim(),
-      active,
+      category: category,
+      measurementUnit: measurementUnit,
       // Always send perUnitQuantity so the API doesn't silently preserve a stale
-      // value when the field is cleared. Blank → default of 1 (matching the hint
-      // "Defaults to 1" and the create-side default in lib/data/catalog.ts).
+      // value when the field is cleared. Blank → default of 1.
       perUnitQuantity: perUnitQuantity !== "" ? Number(perUnitQuantity) : 1,
     };
+
+    // H-3: always send active:true on create; never touch active on edit.
+    if (mode === "create") {
+      body.active = true;
+    }
 
     const url =
       mode === "create"
@@ -137,7 +162,6 @@ export function ItemFormModal({
         (data as { error?: string }).error ?? "An unexpected error occurred.";
 
       if (res.status === 409) {
-        // Duplicate code — show banner + highlight the code field.
         setApiError(message);
         setFieldErrors((prev) => ({
           ...prev,
@@ -269,18 +293,12 @@ export function ItemFormModal({
                   value={code}
                   onChange={(e) => {
                     setCode(e.target.value);
-                    // Clear both the field error and the API banner when the
-                    // user starts correcting the duplicate-code field.
                     setApiError(null);
                     setFieldErrors((prev) => ({ ...prev, code: "" }));
                   }}
-                  placeholder="e.g. GL-CLR-10"
                   className={inputClass("code")}
                   autoComplete="off"
                 />
-                <span className="text-[11px] text-text-muted">
-                  Unique within your org. Used in formula references.
-                </span>
                 {fieldErrors.code && (
                   <span
                     role="alert"
@@ -312,7 +330,6 @@ export function ItemFormModal({
                     setName(e.target.value);
                     setFieldErrors((prev) => ({ ...prev, name: "" }));
                   }}
-                  placeholder="e.g. Clear Glass 10mm"
                   className={inputClass("name")}
                 />
                 {fieldErrors.name && (
@@ -324,6 +341,46 @@ export function ItemFormModal({
                   </span>
                 )}
               </div>
+            </div>
+
+            {/* Component dropdown (H-5) */}
+            <div className="flex flex-col gap-1.5">
+              <label
+                htmlFor="item-form-category"
+                className="text-xs font-extrabold text-text-heading"
+              >
+                Component{" "}
+                <span
+                  className="text-[var(--color-status-failed-text)]"
+                  aria-hidden="true"
+                >
+                  *
+                </span>
+              </label>
+              <select
+                id="item-form-category"
+                value={category}
+                onChange={(e) => {
+                  setCategory(e.target.value);
+                  setFieldErrors((prev) => ({ ...prev, category: "" }));
+                }}
+                className={inputClass("category")}
+              >
+                <option value="">Select component…</option>
+                {componentTypes.map((ct) => (
+                  <option key={ct.code} value={ct.code}>
+                    {ct.code} — {ct.name}
+                  </option>
+                ))}
+              </select>
+              {fieldErrors.category && (
+                <span
+                  role="alert"
+                  className="text-xs font-bold text-[var(--color-status-failed-text)]"
+                >
+                  {fieldErrors.category}
+                </span>
+              )}
             </div>
 
             {/* Unit of measure + Qty per unit row */}
@@ -341,20 +398,22 @@ export function ItemFormModal({
                     *
                   </span>
                 </label>
-                <input
+                <select
                   id="item-form-uom"
-                  type="text"
                   value={measurementUnit}
                   onChange={(e) => {
                     setMeasurementUnit(e.target.value);
                     setFieldErrors((prev) => ({ ...prev, measurementUnit: "" }));
                   }}
-                  placeholder="e.g. m², m, set, unit"
                   className={inputClass("measurementUnit")}
-                />
-                <span className="text-[11px] text-text-muted">
-                  Free text — matches what your formulas expect.
-                </span>
+                >
+                  <option value="">Select unit…</option>
+                  {UOM_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
                 {fieldErrors.measurementUnit && (
                   <span
                     role="alert"
@@ -385,7 +444,6 @@ export function ItemFormModal({
                   placeholder="1"
                   className={inputClass("perUnitQuantity")}
                 />
-                <span className="text-[11px] text-text-muted">Defaults to 1.</span>
                 {fieldErrors.perUnitQuantity && (
                   <span
                     role="alert"
@@ -395,38 +453,6 @@ export function ItemFormModal({
                   </span>
                 )}
               </div>
-            </div>
-
-            {/* Active toggle */}
-            <div className="flex items-center justify-between rounded-sm border border-border bg-bg-card px-3.5 py-3">
-              <div>
-                <p className="text-sm font-bold text-text-heading">Active</p>
-                <p className="mt-0.5 text-xs text-text-muted">
-                  Inactive items are hidden from formula references in new
-                  projects.
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={active}
-                aria-label="Active"
-                onClick={() => setActive((a) => !a)}
-                className={[
-                  "relative inline-flex h-6 w-[42px] shrink-0 cursor-pointer rounded-full",
-                  "border-2 border-transparent transition-colors",
-                  "focus:outline-none focus-visible:ring-2 focus-visible:ring-primary",
-                  active ? "bg-primary" : "bg-[#C4C9BC]",
-                ].join(" ")}
-              >
-                <span
-                  className={[
-                    "inline-block h-[18px] w-[18px] transform rounded-full bg-white shadow",
-                    "transition-transform",
-                    active ? "translate-x-[18px]" : "translate-x-0",
-                  ].join(" ")}
-                />
-              </button>
             </div>
           </div>
 

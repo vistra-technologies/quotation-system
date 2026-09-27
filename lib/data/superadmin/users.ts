@@ -349,3 +349,43 @@ export async function updateUserInOrg(
   if (passwordHash !== null) changedFields.push("password");
   return { ok: true, changedFields };
 }
+
+// ─── Delete (hotfix 2026-09-27, H-9) ─────────────────────────────────────────
+
+export type DeleteUserFromOrgResult =
+  | { ok: true; username: string }
+  | { ok: false; reason: "user_not_found"; message: string };
+
+/**
+ * Delete a user from the given org, including their credential Account row and
+ * Session rows (which cascade automatically via onDelete: Cascade in schema).
+ *
+ * Returns { ok: false, reason: "user_not_found" } if the user does not exist
+ * in this org so the route can return 404 cleanly.
+ *
+ * superadmin-only — intentionally cross-org
+ */
+export async function deleteUserFromOrg(
+  orgId: string,
+  userId: string,
+): Promise<DeleteUserFromOrgResult> {
+  // superadmin-only — intentionally cross-org
+
+  const user = await prisma.user.findFirst({
+    where: { id: userId, organizationId: orgId },
+    select: { id: true, username: true },
+  });
+
+  if (!user) {
+    return {
+      ok: false,
+      reason: "user_not_found",
+      message: "User not found in this organization",
+    };
+  }
+
+  // Account and Session rows cascade automatically (onDelete: Cascade in schema).
+  await prisma.user.delete({ where: { id: userId } });
+
+  return { ok: true, username: user.username };
+}

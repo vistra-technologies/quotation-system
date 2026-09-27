@@ -10,7 +10,11 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { createOrgAuditLog } from "@/lib/data/superadmin/orgs";
-import { updateUserInOrg, type UpdateUserInOrgInput } from "@/lib/data/superadmin/users";
+import {
+  updateUserInOrg,
+  deleteUserFromOrg,
+  type UpdateUserInOrgInput,
+} from "@/lib/data/superadmin/users";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -123,4 +127,69 @@ export async function PATCH(
   );
 
   return NextResponse.json({ user: { id: userId }, changedFields: result.changedFields });
+}
+
+// ─── DELETE /api/v1/superadmin/orgs/[orgId]/users/[userId] ────────────────────
+//
+// Delete a user from the given org (hotfix 2026-09-27, H-9).
+// Deletes the User row; Account and Session rows cascade automatically.
+// Writes a SuperAdminAuditLog row: action "user.delete", metadata includes
+// the deleted username.
+//
+// Guard: a SuperAdmin cannot delete the account they are currently signed in as.
+// In practice SuperAdmin entities are separate from org User entities and their
+// IDs cannot match, but the guard is coded defensively as specified.
+//
+// Auth: valid SuperAdmin session (qs-sa-token cookie).
+// Returns 200 { deleted: true } on success.
+// Returns 400 if the SuperAdmin attempts self-delete.
+// Returns 401 when not authenticated as SuperAdmin.
+// Returns 404 if the user is not found in this org.
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ orgId: string; userId: string }> },
+): Promise<NextResponse> {
+  let sa;
+  try {
+    sa = await requireSuperAdminFromRequest(request);
+  } catch (err) {
+    if (err instanceof SuperAdminUnauthorizedError) {
+      return apiUnauthorized("SuperAdmin authentication required");
+    }
+    console.error("[DELETE /api/v1/superadmin/orgs/[orgId]/users/[userId]] auth error", err);
+    return apiServerError();
+  }
+
+  const { orgId, userId } = await params;
+
+  // Self-delete guard — defensive; SA and User entities are separate models so
+  // IDs cannot match in practice, but the guard is applied as specified.
+  if (sa.superAdminId === userId) {
+    return apiBadRequest("Cannot delete your own account");
+  }
+
+  let result;
+  try {
+    result = await deleteUserFromOrg(orgId, userId);
+  } catch (err) {
+    console.error("[DELETE /api/v1/superadmin/orgs/[orgId]/users/[userId]] deleteUserFromOrg", err);
+    return apiServerError();
+  }
+
+  if (!result.ok) {
+    if (result.reason === "user_not_found") return apiNotFound(result.message);
+    return apiServerError();
+  }
+
+  // Audit after commit — failed audit write surfaces as 500.
+  await createOrgAuditLog(
+    sa.superAdminId,
+    userId,
+    "user.delete",
+    { organizationId: orgId, deletedUsername: result.username },
+    "User",
+  );
+
+  return NextResponse.json({ deleted: true });
 }

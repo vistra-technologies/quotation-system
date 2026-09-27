@@ -150,3 +150,43 @@ export async function editUser(
   revalidatePath(`/controls/users`);
   return { error: null, ok: true };
 }
+
+// ─── deleteSAUser (hotfix 2026-09-27, H-9) ───────────────────────────────────
+
+/**
+ * Delete a user from an org via the SuperAdmin console.
+ *
+ * Thin marshaler: delegates to
+ * DELETE /api/v1/superadmin/orgs/[orgId]/users/[userId] via internalFetch.
+ * Account/Session cascade + audit log live in the route handler + DAL.
+ *
+ * Throws on error so the caller (DeleteSAUserButton) can surface it.
+ */
+export async function deleteSAUser(formData: FormData): Promise<void> {
+  const orgId = (formData.get("orgId") as string | null)?.trim();
+  const userId = (formData.get("userId") as string | null)?.trim();
+
+  if (!orgId || !userId) throw new Error("Organization or user ID is missing");
+
+  const res = await internalFetch(
+    `/api/v1/superadmin/orgs/${encodeURIComponent(orgId)}/users/${encodeURIComponent(userId)}`,
+    { method: "DELETE" },
+  );
+
+  if (res.status === 401) {
+    redirect("/controls/login");
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    throw new Error(errorMessage);
+  }
+
+  revalidatePath(`/controls/users`);
+}

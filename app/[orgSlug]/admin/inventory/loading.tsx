@@ -4,10 +4,7 @@
  * Shown while the server renders the inventory list (session + DB round-trips).
  * Eliminates the blank-screen pause on navigation by streaming the shell immediately.
  *
- * Stage 12: added as part of the /pricing route group touch.
- * Batch 8: restyled zinc-* classes to Sage Ease tokens.
- * Stage 25 Batch 6 (S25-4): renamed from PricingLoading to InventoryLoading;
- * removed the prices skeleton column (prices UI removed, S25-7).
+ * Hotfix 2026-09-27 H-1: moved from /inventory to /admin/inventory.
  */
 export default function InventoryLoading() {
   return (

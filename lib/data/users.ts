@@ -9,7 +9,7 @@ import type { SessionData } from "@/lib/session";
 export async function listUsers(session: SessionData) {
   return prisma.user.findMany({
     where: { organizationId: session.organizationId },
-    include: { role: { select: { name: true } } },
+    include: { role: { select: { id: true, name: true } } },
     orderBy: { username: "asc" },
   });
 }
