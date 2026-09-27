@@ -66,6 +66,12 @@ export interface CreateInventoryItemData {
 export interface UpdateInventoryItemData {
   code?: string;
   name?: string;
+  /**
+   * ComponentType code stored as the item's category.
+   * Hotfix 2026-09-27: added so PATCH /inventory/[itemId] can update category
+   * when the user changes the Component dropdown in the edit modal.
+   */
+  category?: string;
   measurementUnit?: string;
   perUnitQuantity?: number;
   active?: boolean;
@@ -117,6 +123,9 @@ export async function updateInventoryItem(
   const update: Record<string, unknown> = {};
   if (data.code !== undefined) update.code = data.code.trim();
   if (data.name !== undefined) update.name = data.name;
+  // Hotfix 2026-09-27: category was missing from UpdateInventoryItemData and the
+  // update payload, so Component changes in the edit modal were silently discarded.
+  if (data.category !== undefined) update.category = data.category;
   if (data.measurementUnit !== undefined) update.measurementUnit = data.measurementUnit;
   if (data.perUnitQuantity !== undefined) update.perUnitQuantity = data.perUnitQuantity;
   if (data.active !== undefined) update.active = data.active;

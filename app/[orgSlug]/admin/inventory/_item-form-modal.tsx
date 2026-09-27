@@ -100,7 +100,10 @@ export function ItemFormModal({
     const errors: Record<string, string> = {};
     if (!code.trim()) errors.code = "Code is required.";
     if (!name.trim()) errors.name = "Name is required.";
-    if (!category) errors.category = "Component is required.";
+    // Component is required only when the org actually has ComponentTypes to choose from.
+    // If the org has none (no options in the dropdown), skip the requirement so the form
+    // remains usable — matches the DB semantics where category defaults to "".
+    if (!category && componentTypes.length > 0) errors.category = "Component is required.";
     if (!measurementUnit) errors.measurementUnit = "Unit of measure is required.";
     if (
       perUnitQuantity !== "" &&
@@ -369,7 +372,7 @@ export function ItemFormModal({
                 <option value="">Select component…</option>
                 {componentTypes.map((ct) => (
                   <option key={ct.code} value={ct.code}>
-                    {ct.code} — {ct.name}
+                    {ct.code}
                   </option>
                 ))}
               </select>
@@ -467,7 +470,13 @@ export function ItemFormModal({
             </button>
             <button
               type="submit"
-              disabled={isPending}
+              disabled={
+                isPending ||
+                // Disable when a required dropdown has no selection.
+                // Component is only required when the org has ComponentTypes to choose from.
+                (!category && componentTypes.length > 0) ||
+                !measurementUnit
+              }
               className="rounded-sm border border-primary-dark bg-primary px-5 py-2 text-sm font-bold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isPending ? "Saving…" : "Save item"}

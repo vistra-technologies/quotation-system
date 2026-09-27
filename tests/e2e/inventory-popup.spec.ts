@@ -82,9 +82,13 @@ test("B8-2: Client-side required-field error when code is blank", async ({
   await page.getByRole("button", { name: "New item" }).click();
   await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5_000 });
 
-  // Fill name + unit but leave code blank.
+  // Fill name + Component + unit but leave code blank.
+  // H-4: UOM is now a <select>; use selectOption, not fill.
+  // H-5: Component dropdown is required when ComponentTypes exist; select one so
+  //      Save becomes enabled and the Code-missing validation can actually fire.
   await page.locator("#item-form-name").fill("E2E No Code Item");
-  await page.locator("#item-form-uom").fill("m²");
+  await page.locator("#item-form-category").selectOption("GLASS");
+  await page.locator("#item-form-uom").selectOption("m²");
 
   await page.getByRole("button", { name: "Save item" }).click();
 
@@ -116,7 +120,10 @@ test("B8-3: Successful create — new item appears in the inventory list", async
 
   await page.locator("#item-form-code").fill(createdItemCode);
   await page.locator("#item-form-name").fill(createdItemName);
-  await page.locator("#item-form-uom").fill("m²");
+  // H-5: Component dropdown is required when ComponentTypes exist; select one.
+  await page.locator("#item-form-category").selectOption("GLASS");
+  // H-4: UOM is now a <select>; use selectOption, not fill.
+  await page.locator("#item-form-uom").selectOption("m²");
 
   await page.getByRole("button", { name: "Save item" }).click();
 
@@ -150,9 +157,12 @@ test("B8-4: Duplicate code shows inline 409 error in the modal", async ({
   await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5_000 });
 
   // Use the same code as the item created in B8-3.
+  // H-4: UOM is now a <select>; use selectOption, not fill.
+  // H-5: Component is required when ComponentTypes exist; select one to enable Save.
   await page.locator("#item-form-code").fill(createdItemCode);
   await page.locator("#item-form-name").fill("Duplicate Name");
-  await page.locator("#item-form-uom").fill("m");
+  await page.locator("#item-form-category").selectOption("GLASS");
+  await page.locator("#item-form-uom").selectOption("m");
 
   await page.getByRole("button", { name: "Save item" }).click();
 
@@ -198,6 +208,10 @@ test("B8-5: Edit button opens pre-filled modal for the created item", async ({
   // Fields pre-populated from the row.
   await expect(page.locator("#item-form-code")).toHaveValue(createdItemCode);
   await expect(page.locator("#item-form-name")).toHaveValue(createdItemName);
+  // H-5: Component dropdown should be pre-filled with the code saved during B8-3.
+  await expect(page.locator("#item-form-category")).toHaveValue("GLASS");
+  // H-4: UOM dropdown should be pre-filled with the value saved during B8-3.
+  await expect(page.locator("#item-form-uom")).toHaveValue("m²");
 });
 
 // ─── B8-6: Successful edit — list reflects updated name ──────────────────────

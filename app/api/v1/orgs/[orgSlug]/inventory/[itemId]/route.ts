@@ -148,6 +148,11 @@ export async function PATCH(
   if (b.name !== undefined && (typeof b.name !== "string" || (b.name as string).trim() === "")) {
     return apiBadRequest("name must be a non-empty string");
   }
+  // Hotfix 2026-09-27: category was not extracted/validated/forwarded before this fix,
+  // so Component changes in the edit modal were silently dropped.
+  if (b.category !== undefined && typeof b.category !== "string") {
+    return apiBadRequest("category must be a string");
+  }
   if (b.measurementUnit !== undefined && (typeof b.measurementUnit !== "string" || (b.measurementUnit as string).trim() === "")) {
     return apiBadRequest("measurementUnit must be a non-empty string");
   }
@@ -158,7 +163,7 @@ export async function PATCH(
     return apiBadRequest("active must be a boolean");
   }
 
-  const updateFields = ["code", "name", "measurementUnit", "perUnitQuantity", "active"];
+  const updateFields = ["code", "name", "category", "measurementUnit", "perUnitQuantity", "active"];
   const hasAnyField = updateFields.some((f) => b[f] !== undefined);
   if (!hasAnyField) {
     return apiBadRequest("At least one field must be provided for update");
@@ -168,6 +173,7 @@ export async function PATCH(
     const item = await updateInventoryItem(session, itemId, {
       code: b.code as string | undefined,
       name: b.name as string | undefined,
+      category: b.category as string | undefined,
       measurementUnit: b.measurementUnit as string | undefined,
       perUnitQuantity: b.perUnitQuantity as number | undefined,
       active: b.active as boolean | undefined,
