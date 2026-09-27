@@ -6,6 +6,7 @@ import {
   apiForbidden,
   apiNotFound,
   apiConflict,
+  apiUnprocessable,
   apiServerError,
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
@@ -14,6 +15,7 @@ import {
   updateInventoryItem,
   deleteInventoryItem,
   DuplicateInventoryCodeError,
+  InvalidComponentTypeError,
 } from "@/lib/data/catalog";
 
 // Never cached — reads session cookie and live DB data.
@@ -185,6 +187,9 @@ export async function PATCH(
   } catch (err) {
     if (err instanceof DuplicateInventoryCodeError) {
       return apiConflict(err.message);
+    }
+    if (err instanceof InvalidComponentTypeError) {
+      return apiUnprocessable(err.message);
     }
     console.error(
       "[PATCH /api/v1/orgs/[orgSlug]/inventory/[itemId]] updateInventoryItem",

@@ -15,6 +15,20 @@ export class DuplicateInventoryCodeError extends Error {
   }
 }
 
+/**
+ * Thrown by createInventoryItem / updateInventoryItem when the supplied componentTypeId
+ * does not exist in the caller's org — maps to a 422 response in the route handler.
+ *
+ * The DB FK only checks that the row exists, not which org owns it; this guard prevents
+ * org A from silently linking org B's ComponentType to its own InventoryItem.
+ */
+export class InvalidComponentTypeError extends Error {
+  constructor() {
+    super("ComponentType not found or belongs to a different org");
+    this.name = "InvalidComponentTypeError";
+  }
+}
+
 // ─── Reads ───────────────────────────────────────────────────────────────────
 
 /**
@@ -96,6 +110,17 @@ export async function createInventoryItem(
   session: SessionData,
   data: CreateInventoryItemData,
 ) {
+  // Tenancy guard: ensure the supplied componentTypeId belongs to the caller's org.
+  // The DB FK only checks row existence, not org ownership — without this check, org A
+  // could silently link org B's ComponentType to its own InventoryItem.
+  if (data.componentTypeId) {
+    const ct = await prisma.componentType.findFirst({
+      where: { id: data.componentTypeId, organizationId: session.organizationId },
+      select: { id: true },
+    });
+    if (!ct) throw new InvalidComponentTypeError();
+  }
+
   try {
     return await prisma.inventoryItem.create({
       data: {
@@ -147,6 +172,17 @@ export async function updateInventoryItem(
   // H-17: componentTypeId is a nullable FK — explicitly include it in the sentinel
   // so `hasAnyField` checks still work correctly.
   if (data.componentTypeId !== undefined) update.componentTypeId = data.componentTypeId ?? null;
+
+  // Tenancy guard: ensure the supplied componentTypeId belongs to the caller's org.
+  // Null means "clear the FK" — skip the check. Undefined means "leave unchanged" — also skip.
+  // Only check when a real ID is being set.
+  if (data.componentTypeId) {
+    const ct = await prisma.componentType.findFirst({
+      where: { id: data.componentTypeId, organizationId: session.organizationId },
+      select: { id: true },
+    });
+    if (!ct) throw new InvalidComponentTypeError();
+  }
 
   try {
     const result = await prisma.inventoryItem.updateMany({

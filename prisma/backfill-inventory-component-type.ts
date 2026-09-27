@@ -115,11 +115,25 @@ async function main() {
 
         if (fc.options) {
           for (const code of fc.options) {
+            if (codeMap.has(code)) {
+              const existingTypeId = codeMap.get(code)!;
+              const existingCt = allComponentTypes.find((c) => c.id === existingTypeId);
+              console.warn(
+                `[WARN] Item code "${code}" appears in both ComponentType "${existingCt?.code ?? existingTypeId}" and "${ct.code}" — last-writer-wins (${ct.code} will win).`,
+              );
+            }
             codeMap.set(code, ct.id);
           }
         } else if (fc.valueMap) {
           for (const codes of Object.values(fc.valueMap)) {
             for (const code of codes) {
+              if (codeMap.has(code)) {
+                const existingTypeId = codeMap.get(code)!;
+                const existingCt = allComponentTypes.find((c) => c.id === existingTypeId);
+                console.warn(
+                  `[WARN] Item code "${code}" appears in both ComponentType "${existingCt?.code ?? existingTypeId}" and "${ct.code}" — last-writer-wins (${ct.code} will win).`,
+                );
+              }
               codeMap.set(code, ct.id);
             }
           }
