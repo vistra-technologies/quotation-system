@@ -52,6 +52,11 @@ export default async function AdminLayout({
     permissions: allMessages.permissions,
     components: allMessages.components,
     externalCompanies: allMessages.externalCompanies,
+    // Stage 27: the Catalog page's option-editor modal reuses the shared <Toast> component for its
+    // save-success toast — Toast calls useTranslations("toast") internally regardless of whether a
+    // custom `message` is passed, so the namespace must be forwarded here or it silently fails to
+    // hydrate (see AGENTS.md's useTranslations namespace-forwarding gotcha).
+    toast: allMessages.toast,
   };
 
   return (
