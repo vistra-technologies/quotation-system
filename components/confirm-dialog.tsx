@@ -104,13 +104,16 @@ export function ConfirmDialog({
     if (!isOpen || disableEscapeClose) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
-      // Stop this Escape from also reaching any other `document`-level keydown listener a caller
-      // may have registered behind this dialog (e.g. a parent modal's own close-on-Escape) — this
-      // dialog is the topmost surface while open and should own the keypress outright. A plain
-      // stopPropagation() on a native `document.addEventListener` event doesn't help here (there's
-      // no DOM ancestor relationship between sibling `document` listeners to stop propagation
-      // through); stopImmediatePropagation() is what actually suppresses other listeners on the
-      // same target. Stage 27 review-1.md MINOR-1.
+      // Stop this Escape from also reaching any `document`-level keydown listener registered
+      // *after* this one (e.g. a caller that opens this dialog and only then attaches its own
+      // close-on-Escape). A plain stopPropagation() on a native `document.addEventListener` event
+      // doesn't help here (there's no DOM ancestor relationship between sibling `document`
+      // listeners to stop propagation through); stopImmediatePropagation() is what actually
+      // suppresses other same-target listeners registered after this one. It has no effect on
+      // listeners already registered before this dialog opened — a caller relying on Escape not
+      // reaching its own earlier-registered listener needs its own guard (see
+      // attribute-editor-modal.tsx's role="dialog" count check). Stage 27 review-1.md MINOR-1,
+      // review-2.md new-finding 1.
       e.stopImmediatePropagation();
       onCancel();
     }
