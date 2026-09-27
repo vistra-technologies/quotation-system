@@ -109,7 +109,6 @@ export function EditOrgForm({
             <FormulaSetPicker
               formulaSets={formulaSets}
               initialSetId={activeFormulaSetId ?? undefined}
-              hint="Pick a name, then a version. Only new projects created under this org will use a changed version. Existing projects keep their pinned formula set version and are not affected."
             />
 
             {/* Mismatch detail panel — shown when there's a structural mismatch */}

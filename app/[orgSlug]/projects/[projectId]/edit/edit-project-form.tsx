@@ -229,7 +229,7 @@ export function EditProjectForm({
                   required
                   defaultValue={initialProjectLocation ?? ""}
                   autoComplete="off"
-                  placeholder="e.g. Dubai, UAE"
+                  placeholder={t("fieldProjectLocationPlaceholder")}
                   className={inputCls}
                 />
               </div>
@@ -270,7 +270,7 @@ export function EditProjectForm({
                     reformatBudget(newCurrency);
                   }}
                   className={selectCls}
-                  placeholder="Select currency..."
+                  placeholder="Select currency"
                 >
                   <option value="INR">INR</option>
                   <option value="AED">AED</option>

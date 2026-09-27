@@ -1,4 +1,5 @@
 import { internalFetch } from "@/lib/internal-fetch";
+import { getTranslations } from "next-intl/server";
 import { OrgPicker } from "../roles/org-picker";
 import { AddUserButton, EditUserButton, DeleteSAUserButton } from "./_user-dialogs";
 
@@ -60,6 +61,7 @@ export default async function UsersPage({
   searchParams: Promise<{ orgId?: string }>;
 }) {
   const { orgId } = await searchParams;
+  const tUsers = await getTranslations("users");
 
   // Always fetch the org list for the picker.
   const orgsRes = await internalFetch("/api/v1/superadmin/orgs");
@@ -208,7 +210,13 @@ export default async function UsersPage({
                         </td>
                         <td className="px-5 py-4 text-right">
                           {roles && roles.length > 0 && (
-                            <EditUserButton orgId={orgId} user={user} roles={roles} />
+                            <EditUserButton
+                              orgId={orgId}
+                              user={user}
+                              roles={roles}
+                              deactivateHint={tUsers("editDeactivateHint")}
+                              passwordHint={tUsers("editPasswordHint")}
+                            />
                           )}
                         </td>
                         {/* H-9: delete action */}

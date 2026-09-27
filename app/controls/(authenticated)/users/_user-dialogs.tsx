@@ -74,10 +74,16 @@ export function EditUserButton({
   orgId,
   user,
   roles,
+  deactivateHint,
+  passwordHint,
 }: {
   orgId: string;
   user: EditableUser;
   roles: RoleOption[];
+  /** Translated hint shown below the Active toggle (H-14). */
+  deactivateHint: string;
+  /** Translated hint shown below the new password input (H-14). */
+  passwordHint: string;
 }) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
@@ -93,7 +99,7 @@ export function EditUserButton({
         Edit
       </button>
       <Modal isOpen={open} title={`Edit user — ${user.username}`} onClose={close}>
-        <EditUserForm orgId={orgId} user={user} roles={roles} onSuccess={close} />
+        <EditUserForm orgId={orgId} user={user} roles={roles} onSuccess={close} deactivateHint={deactivateHint} passwordHint={passwordHint} />
       </Modal>
     </>
   );
@@ -106,11 +112,15 @@ function EditUserForm({
   user,
   roles,
   onSuccess,
+  deactivateHint,
+  passwordHint,
 }: {
   orgId: string;
   user: EditableUser;
   roles: RoleOption[];
   onSuccess: () => void;
+  deactivateHint: string;
+  passwordHint: string;
 }) {
   const [state, formAction, isPending] = useActionState(editUser, initialEditState);
 
@@ -193,7 +203,7 @@ function EditUserForm({
               <option value="true">Active</option>
               <option value="false">Inactive</option>
             </SelectField>
-            <p className="text-xs text-text-muted">Deactivating signs the user out everywhere.</p>
+            <p className="text-xs text-text-muted">{deactivateHint}</p>
           </div>
         </div>
 
@@ -205,7 +215,7 @@ function EditUserForm({
             autoComplete="new-password" placeholder="Leave blank to keep current password"
             className={inputCls} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
           <p className="text-xs text-text-muted">
-            Setting a password signs the user out everywhere. Username can&apos;t be changed.
+            {passwordHint}
           </p>
         </div>
 

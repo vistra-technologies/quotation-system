@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { internalFetch } from "@/lib/internal-fetch";
+import { getTranslations } from "next-intl/server";
 import { NewSetSection } from "./_new-set-section";
 import { DeleteFormulaSetButton } from "./_delete-button";
 import type { FormulaSetListItem } from "@/lib/data/superadmin/formula-sets";
@@ -29,6 +30,7 @@ function formatDate(d: string | Date): string {
  * Stage 25 Batch 4 — Formula Sets SuperAdmin screens.
  */
 export default async function FormulaSetsPage() {
+  const tFS = await getTranslations("formulaSets");
   const res = await internalFetch("/api/v1/superadmin/formula-sets");
 
   if (!res.ok) {
@@ -167,7 +169,11 @@ export default async function FormulaSetsPage() {
       )}
 
       {/* ── Create form (always visible below table) ── */}
-      <NewSetSection existingNames={existingNames} />
+      <NewSetSection
+        existingNames={existingNames}
+        bodyLabel={tFS("bodyLabel")}
+        bodyPlaceholder={tFS("bodyPlaceholder")}
+      />
     </div>
   );
 }

@@ -6,6 +6,10 @@ import { createSuperAdminFormulaSet, type FormulaSetFormState } from "./actions"
 interface NewSetSectionProps {
   /** Existing formula set names — used to populate the <datalist> autocomplete. */
   existingNames: string[];
+  /** Translated label for the JSON body field (H-14). */
+  bodyLabel: string;
+  /** Translated placeholder for the JSON body textarea (H-14). */
+  bodyPlaceholder: string;
 }
 
 /**
@@ -21,7 +25,7 @@ interface NewSetSectionProps {
  *
  * Stage 25 Batch 4 — Formula Sets SuperAdmin screens.
  */
-export function NewSetSection({ existingNames }: NewSetSectionProps) {
+export function NewSetSection({ existingNames, bodyLabel, bodyPlaceholder }: NewSetSectionProps) {
   const [state, formAction, isPending] = useActionState<FormulaSetFormState, FormData>(
     createSuperAdminFormulaSet,
     { error: null },
@@ -92,9 +96,6 @@ export function NewSetSection({ existingNames }: NewSetSectionProps) {
                 <option key={n} value={n} />
               ))}
             </datalist>
-            <p className="mt-1 text-xs text-text-muted">
-              Matches an existing name → next version. New name → v1.
-            </p>
           </div>
 
           {/* Body JSON */}
@@ -103,12 +104,12 @@ export function NewSetSection({ existingNames }: NewSetSectionProps) {
               htmlFor="create-body"
               className="mb-1.5 block text-xs font-extrabold uppercase tracking-wider text-text-muted"
             >
-              Formula Set Body (JSON)
+              {bodyLabel}
             </label>
             <textarea
               id="create-body"
               name="bodyJson"
-              placeholder={'{"slots":{"GLASS":{"role":"glass"}}}'}
+              placeholder={bodyPlaceholder}
               rows={10}
               value={body}
               className={`w-full resize-y rounded-sm border px-3 py-2 font-mono text-xs text-text-heading outline-none focus:border-primary ${

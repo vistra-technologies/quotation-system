@@ -15,7 +15,6 @@ import {
 } from "@/lib/data/superadmin/component-types";
 import { getOrgById } from "@/lib/data/superadmin/orgs";
 import { validateFieldsSchema } from "@/lib/validate-fields-schema";
-import { ReservedComponentTypeCodeError } from "@/lib/component-catalog-seed";
 import { ComponentTypeGuardError } from "@/lib/formula-compat";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
@@ -141,9 +140,6 @@ export async function PATCH(
   try {
     componentType = await updateComponentTypeForOrg(orgId, typeId, patch);
   } catch (err) {
-    if (err instanceof ReservedComponentTypeCodeError) {
-      return apiBadRequest(err.message);
-    }
     // Stage 23 Batch 6 (#12/D-36): edit would break the org's currently assigned formula set.
     if (err instanceof ComponentTypeGuardError) {
       return apiConflict(err.message);

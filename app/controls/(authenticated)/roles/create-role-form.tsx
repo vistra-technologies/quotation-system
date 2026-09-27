@@ -7,6 +7,10 @@ const initialState: RoleActionState = { error: null };
 
 interface CreateRoleFormProps {
   orgId: string;
+  /** Translated placeholder for the role name input (H-14). */
+  roleNamePlaceholder: string;
+  /** Translated placeholder for the role description input (H-14). */
+  roleDescriptionPlaceholder: string;
 }
 
 /**
@@ -20,7 +24,7 @@ interface CreateRoleFormProps {
  *
  * Stage 16 Batch D — F3.
  */
-export function CreateRoleForm({ orgId }: CreateRoleFormProps) {
+export function CreateRoleForm({ orgId, roleNamePlaceholder, roleDescriptionPlaceholder }: CreateRoleFormProps) {
   const [state, formAction, isPending] = useActionState(createSuperAdminRole, initialState);
 
   const inputCls =
@@ -48,7 +52,7 @@ export function CreateRoleForm({ orgId }: CreateRoleFormProps) {
             type="text"
             required
             autoComplete="off"
-            placeholder="e.g. Sales Manager"
+            placeholder={roleNamePlaceholder}
             className={inputCls}
           />
         </div>
@@ -62,7 +66,7 @@ export function CreateRoleForm({ orgId }: CreateRoleFormProps) {
             name="description"
             type="text"
             autoComplete="off"
-            placeholder="What this role is for"
+            placeholder={roleDescriptionPlaceholder}
             className={inputCls}
           />
         </div>

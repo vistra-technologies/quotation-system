@@ -126,6 +126,7 @@ function FieldRow({
     fieldTypeRadio: string;
     fieldTypeDropdown: string;
     fieldTypeCheckbox: string;
+    fieldNPlaceholder: string;
     dependsOnLabel: string;
     dependsOnNone: string;
     fieldHint: string;
@@ -159,7 +160,7 @@ function FieldRow({
             type="text"
             value={entry.key}
             onChange={(e) => onChange({ ...entry, key: e.target.value })}
-            placeholder={`field_${globalIndex + 1}`}
+            placeholder={labels.fieldNPlaceholder.replace("{n}", String(globalIndex + 1))}
             className={inputBase}
           />
         </div>
@@ -491,7 +492,6 @@ interface EditComponentFormProps {
   labels: {
     fieldCodeLabel: string;
     fieldCodeHint: string;
-    fieldCodeLockedHint: string;
     fieldNameLabel: string;
     fieldCategoryLabel: string;
     fieldStatusLabel: string;
@@ -517,6 +517,8 @@ interface EditComponentFormProps {
     fieldCategoryPlaceholder: string;
     modeForm: string;
     modeJson: string;
+    fieldNPlaceholder: string;
+    switchToFormHint: string;
     jsonErrorBadJson: string;
     jsonErrorBadShape: string;
   };
@@ -602,6 +604,7 @@ export function EditComponentForm({
     fieldTypeRadio: labels.fieldTypeRadio,
     fieldTypeDropdown: labels.fieldTypeDropdown,
     fieldTypeCheckbox: labels.fieldTypeCheckbox,
+    fieldNPlaceholder: labels.fieldNPlaceholder,
     dependsOnLabel: labels.dependsOnLabel,
     dependsOnNone: labels.dependsOnNone,
     fieldHint: labels.fieldHint,
@@ -653,7 +656,7 @@ export function EditComponentForm({
           className={inputBase + (isCodeLocked ? " cursor-not-allowed opacity-60" : "")}
         />
         <p className="text-xs text-text-placeholder">
-          {isCodeLocked ? labels.fieldCodeLockedHint : labels.fieldCodeHint}
+          {labels.fieldCodeHint}
         </p>
       </div>
 
@@ -795,7 +798,7 @@ export function EditComponentForm({
 
       {mode === "json" && (
         <p className="text-xs text-text-muted">
-          Switch to Form mode to save.
+          {labels.switchToFormHint}
         </p>
       )}
 

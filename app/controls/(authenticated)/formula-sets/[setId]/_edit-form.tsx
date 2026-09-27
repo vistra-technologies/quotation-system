@@ -21,6 +21,8 @@ interface EditFormulaSetFormProps {
   mode?: "edit" | "newVersion";
   /** Cancel destination. Defaults to the list. */
   cancelHref?: string;
+  /** Translated label for the JSON body field (H-14). */
+  bodyLabel?: string;
 }
 
 /**
@@ -44,6 +46,7 @@ export function EditFormulaSetForm({
   initialBodyJson,
   mode = "edit",
   cancelHref = "/controls/formula-sets",
+  bodyLabel = "Formula Set Body (JSON)",
 }: EditFormulaSetFormProps) {
   const isDraft = mode === "newVersion";
   const [state, formAction, isPending] = useActionState<FormulaSetFormState, FormData>(
@@ -137,7 +140,7 @@ export function EditFormulaSetForm({
             htmlFor="edit-body"
             className="mb-1.5 block text-xs font-extrabold uppercase tracking-wider text-text-muted"
           >
-            Formula Set Body (JSON)
+            {bodyLabel}
           </label>
           <textarea
             id="edit-body"

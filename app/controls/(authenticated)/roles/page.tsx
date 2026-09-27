@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { internalFetch } from "@/lib/internal-fetch";
+import { getTranslations } from "next-intl/server";
 import { OrgPicker } from "./org-picker";
 import { CreateRoleForm } from "./create-role-form";
 import { RenameRoleForm } from "./rename-role-form";
@@ -62,6 +63,7 @@ export default async function RolesPage({
   searchParams: Promise<{ orgId?: string; roleId?: string }>;
 }) {
   const { orgId, roleId } = await searchParams;
+  const tRoles = await getTranslations("roles");
 
   // Always fetch the org list for the picker.
   const orgsRes = await internalFetch("/api/v1/superadmin/orgs");
@@ -231,7 +233,11 @@ export default async function RolesPage({
           <div className="mt-6">
             <h3 className="text-sm font-bold text-text-heading">Create new role</h3>
             <div className="mt-3 max-w-md rounded-md border border-border bg-bg-card px-5 py-4 shadow-card">
-              <CreateRoleForm orgId={orgId} />
+              <CreateRoleForm
+                orgId={orgId}
+                roleNamePlaceholder={tRoles("fieldNamePlaceholder")}
+                roleDescriptionPlaceholder={tRoles("fieldDescriptionPlaceholder")}
+              />
             </div>
           </div>
         </div>

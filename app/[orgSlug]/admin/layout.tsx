@@ -49,7 +49,6 @@ export default async function AdminLayout({
     admin: allMessages.admin,
     users: allMessages.users,
     roles: allMessages.roles,
-    permissions: allMessages.permissions,
     components: allMessages.components,
     externalCompanies: allMessages.externalCompanies,
   };

@@ -16,7 +16,9 @@
     "navRoles": "Roles",
     "navPermissions": "Permissions",
     "navComponents": "Component Types",
-    "backToDashboard": "← Back to Dashboard"
+    "backToDashboard": "← Back to Dashboard",
+    "orgSlugHint": "Lowercase letters, digits, and hyphens only. Cannot be changed after creation.",
+    "orgAdminPasswordHint": "Password for the auto-created admin account on this org. At least 8 characters."
   },
   "users": {
     "pageTitle": "User Management",
@@ -63,7 +65,9 @@
     "editProfileSubmit": "Save Changes",
     "editProfileSuccess": "Profile updated successfully.",
     "fieldExternalCompanyRequired": "External Company (required for this role)",
-    "dangerZoneLabel": "Danger Zone"
+    "dangerZoneLabel": "Danger Zone",
+    "editDeactivateHint": "Deactivating signs the user out everywhere.",
+    "editPasswordHint": "Setting a password signs the user out everywhere. Username can't be changed."
   },
   "roles": {
     "pageTitle": "Roles",
@@ -76,6 +80,8 @@
     "fieldName": "Name",
     "fieldDescription": "Description (optional)",
     "submitCreate": "Create Role",
+    "fieldNamePlaceholder": "e.g. Sales Manager",
+    "fieldDescriptionPlaceholder": "What this role is for",
     "detailPageTitle": "Role Permissions",
     "detailSubtitle": "Add or remove permissions for this role.",
     "grantedPermissions": "Granted Permissions",
@@ -84,22 +90,6 @@
     "removePermission": "Remove",
     "noGranted": "No permissions granted.",
     "backToList": "← Back to Roles"
-  },
-  "permissions": {
-    "pageTitle": "Permission Catalog",
-    "pageSubtitle": "All global permissions. Newly created permissions are inert until a developer wires them with requirePermission().",
-    "colCode": "Code",
-    "colDescription": "Description",
-    "createPermission": "Create Permission",
-    "createPageTitle": "Create Permission",
-    "createPageSubtitle": "Add a new permission to the global catalog.",
-    "fieldCode": "Permission Code",
-    "fieldCodePlaceholder": "e.g. MANAGE_REPORTS",
-    "fieldCodeHint": "Conventionally uppercase with underscores, e.g. MANAGE_REPORTS",
-    "fieldDescription": "Description",
-    "submitCreate": "Create Permission",
-    "inertCaveat": "This permission is inert by design — granting it to a role has no effect until a developer adds a requirePermission() call for this code.",
-    "backToList": "← Back to Permissions"
   },
   "common": {
     "loading": "Processing..."
@@ -122,10 +112,12 @@
     "editPageTitle": "Edit Component Type",
     "editPageSubtitle": "Update the name or field schema for this component type.",
     "fieldCode": "Code",
-    "fieldCodeHint": "Uppercase, e.g. WALL_TYPE. Cannot be changed after creation.",
     "fieldName": "Name",
     "fieldStatus": "Active",
-    "fieldsSchemaLabel": "Fields Schema (JSON)",
+    "fieldsSchemaLabel": "Field Schema",
+    "fieldCodeHint": "Uppercase letters and underscores, e.g. WALL_TYPE. Saved as-is.",
+    "fieldNPlaceholder": "field_{n}",
+    "switchToFormHint": "Switch to Form mode to save.",
     "fieldCategory": "Category",
     "fieldCategoryPlaceholder": "Select a category…",
     "addField": "Add Field",
@@ -199,7 +191,9 @@
     "fieldEndClientCity": "City",
     "fieldEndClientState": "State",
     "fieldEndClientGstNumber": "GST Number",
-    "gstRequiredHint": "Required for India",
+    "fieldProjectLocationPlaceholder": "e.g. Dubai, UAE",
+    "fieldEndClientAddressLine1Placeholder": "Street address, building",
+    "fieldEndClientAddressLine2Placeholder": "Area, landmark",
     "submitConfigure": "Create"
   },
   "inquiries": {
@@ -255,7 +249,9 @@
     "fieldEndClientCity": "City",
     "fieldEndClientState": "State",
     "fieldEndClientGstNumber": "GST Number",
-    "gstRequiredHint": "Required for India"
+    "fieldProjectLocationPlaceholder": "e.g. Dubai, UAE",
+    "fieldEndClientAddressLine1Placeholder": "Street address, building",
+    "fieldEndClientAddressLine2Placeholder": "Area, landmark"
   },
   "externalCompanies": {
     "pageTitle": "External Companies",
@@ -322,7 +318,6 @@
     "backToProject": "← Back to Project",
     "fieldLocation": "Location",
     "fieldFloor": "Floor",
-    "fieldFloorPlaceholder": "e.g. Ground Floor",
     "fieldRoom": "Room",
     "fieldRoomPlaceholder": "e.g. Lobby",
     "fieldHeight": "Height",
@@ -416,11 +411,17 @@
     "step3": "Design",
     "step4": "Summary",
     "step5": "Quotation",
-    "summaryPlaceholder": "Design Summary — coming in Stage 10",
-    "quotationPlaceholder": "Quotation — coming in Stage 10"
+    "quotationPlaceholder": "Coming Soon"
   },
   "toast": {
     "comingSoon": "Coming Soon"
+  },
+  "formulaSets": {
+    "bodyLabel": "Formula Set Body (JSON)",
+    "bodyPlaceholder": "{\"slots\":{\"GLASS\":{\"role\":\"glass\"}}}",
+    "draftBadge": "DRAFT — not saved",
+    "draftCopiedFrom": "Copied from v{version}. Nothing is created until you save. The version number is assigned on save (next free number for this name).",
+    "readOnlyBodyHint": "This body is read-only. To modify it, create a new version above."
   },
   "inventory": {
     "pageTitle": "Inventory Management",

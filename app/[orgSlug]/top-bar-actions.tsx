@@ -20,6 +20,8 @@ interface TopBarActionsProps {
   orgName: string;
   /** External company display name — rendered as the company chip when present (D4 Stage 15). */
   externalCompanyName: string | null;
+  /** Translated "Coming Soon" label for the Change Password placeholder (H-14). */
+  comingSoonText: string;
 }
 
 /**
@@ -43,6 +45,7 @@ export function TopBarActions({
   roleName,
   orgName,
   externalCompanyName,
+  comingSoonText,
 }: TopBarActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [comingSoon, setComingSoon] = useState<string | null>(null);
@@ -184,7 +187,7 @@ export function TopBarActions({
                 Change Password
               </button>
               {comingSoon && (
-                <p className="px-2 pb-1 text-xs text-text-muted">Coming soon</p>
+                <p className="px-2 pb-1 text-xs text-text-muted">{comingSoonText}</p>
               )}
 
               <div className="my-2 h-px bg-border" />

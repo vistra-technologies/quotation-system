@@ -121,6 +121,7 @@ function FieldRow({
     fieldTypeRadio: string;
     fieldTypeDropdown: string;
     fieldTypeCheckbox: string;
+    fieldNPlaceholder: string;
     dependsOnLabel: string;
     dependsOnNone: string;
     fieldHint: string;
@@ -154,7 +155,7 @@ function FieldRow({
             type="text"
             value={entry.key}
             onChange={(e) => onChange({ ...entry, key: e.target.value })}
-            placeholder={`field_${globalIndex + 1}`}
+            placeholder={labels.fieldNPlaceholder.replace("{n}", String(globalIndex + 1))}
             className={inputBase}
           />
         </div>
@@ -501,6 +502,8 @@ interface CreateComponentFormProps {
     submitLabel: string;
     modeForm: string;
     modeJson: string;
+    fieldNPlaceholder: string;
+    switchToFormHint: string;
     jsonErrorBadJson: string;
     jsonErrorBadShape: string;
   };
@@ -555,6 +558,7 @@ export function CreateComponentForm({ orgId, categories, labels }: CreateCompone
     fieldTypeRadio: labels.fieldTypeRadio,
     fieldTypeDropdown: labels.fieldTypeDropdown,
     fieldTypeCheckbox: labels.fieldTypeCheckbox,
+    fieldNPlaceholder: labels.fieldNPlaceholder,
     dependsOnLabel: labels.dependsOnLabel,
     dependsOnNone: labels.dependsOnNone,
     fieldHint: labels.fieldHint,
@@ -723,7 +727,7 @@ export function CreateComponentForm({ orgId, categories, labels }: CreateCompone
 
       {mode === "json" && (
         <p className="text-xs text-text-muted">
-          Switch to Form mode to save.
+          {labels.switchToFormHint}
         </p>
       )}
       <SubmitButton label={labels.submitLabel} disabled={mode === "json"} />

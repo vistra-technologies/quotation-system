@@ -1,5 +1,6 @@
 import { internalFetch } from "@/lib/internal-fetch";
 import { detectIsSubdomain } from "@/lib/orgHref";
+import { getTranslations } from "next-intl/server";
 import { TopBarActions } from "./top-bar-actions";
 import { Sidebar } from "./sidebar";
 
@@ -39,6 +40,7 @@ export default async function OrgSlugLayout({
   // receive the correct value as a prop — no client-side window.location read
   // required, no SSR/hydration mismatch.
   const isSubdomain = await detectIsSubdomain(orgSlug);
+  const tToast = await getTranslations("toast");
 
   const meRes = await internalFetch(`/api/v1/orgs/${orgSlug}/me`);
 
@@ -87,6 +89,7 @@ export default async function OrgSlugLayout({
             roleName={me.roleName}
             orgName={me.orgName}
             externalCompanyName={me.externalCompanyName}
+            comingSoonText={tToast("comingSoon")}
           />
         </header>
 

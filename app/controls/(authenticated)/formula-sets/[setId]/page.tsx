@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { internalFetch } from "@/lib/internal-fetch";
+import { getTranslations } from "next-intl/server";
 import { EditFormulaSetForm } from "./_edit-form";
 import { NewVersionButton } from "./_new-version-button";
 import { DeleteFormulaSetButton } from "../_delete-button";
@@ -36,6 +37,7 @@ export default async function FormulaSetDetailPage({
   params: Promise<{ setId: string }>;
 }) {
   const { setId } = await params;
+  const tFS = await getTranslations("formulaSets");
 
   const res = await internalFetch(`/api/v1/superadmin/formula-sets/${encodeURIComponent(setId)}`);
 
@@ -180,6 +182,7 @@ export default async function FormulaSetDetailPage({
           initialName={formulaSet.name}
           version={formulaSet.version}
           initialBodyJson={bodyJson}
+          bodyLabel={tFS("bodyLabel")}
         />
       )}
 
@@ -215,13 +218,13 @@ export default async function FormulaSetDetailPage({
           {/* Body — read-only <pre> */}
           <div className="mb-4">
             <label className="mb-1.5 block text-xs font-extrabold uppercase tracking-wider text-text-muted">
-              Formula Set Body (JSON)
+              {tFS("bodyLabel")}
             </label>
             <pre className="max-h-96 overflow-auto rounded-sm border border-border bg-bg-subtle p-4 font-mono text-xs text-text-muted" style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
               {bodyJson}
             </pre>
             <p className="mt-1.5 text-xs text-text-muted">
-              This body is read-only. To modify it, create a new version above.
+              {tFS("readOnlyBodyHint")}
             </p>
           </div>
 

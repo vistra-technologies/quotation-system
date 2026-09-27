@@ -7,10 +7,6 @@ import type {
   FieldOptionsConfig as _FieldOptionsConfig,
 } from "@/lib/types/field-options-config";
 import {
-  RESERVED_COMPONENT_TYPE_CODES,
-  ReservedComponentTypeCodeError,
-} from "@/lib/component-catalog-seed";
-import {
   parseFieldsSchema,
   parseFieldOptionsConfig,
 } from "@/lib/parse-field-config";
@@ -225,14 +221,9 @@ export async function updateComponentType(
   let normalizedCode: string | undefined;
   if (input.code !== undefined) {
     normalizedCode = input.code.toUpperCase().trim();
-    if (RESERVED_COMPONENT_TYPE_CODES.has(existing.code) && normalizedCode !== existing.code) {
-      throw new ReservedComponentTypeCodeError(
-        `Cannot change the code of a reserved component type (${existing.code}).`,
-      );
-    }
   }
 
-  // Stage 23 Batch 6 (#12/D-36): fires after the reserved-code check (400) but before the tenancy check
+  // Stage 23 Batch 6 (#12/D-36): fires after the formula-guard check but before the tenancy check
   // below — a non-reserved code/fieldsSchema/active change can still break the org's active formula set.
   await assertComponentTypeGuard(
     session.organizationId,

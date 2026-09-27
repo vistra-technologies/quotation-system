@@ -189,7 +189,7 @@ export function CreateInquiryForm({
                   type="text"
                   required
                   autoComplete="off"
-                  placeholder="e.g. Dubai, UAE"
+                  placeholder={t("fieldProjectLocationPlaceholder")}
                   className={inputCls}
                 />
               </div>
@@ -230,7 +230,7 @@ export function CreateInquiryForm({
                     reformatBudget(newCurrency);
                   }}
                   className={selectCls}
-                  placeholder="Select currency..."
+                  placeholder="Select currency"
                 >
                   <option value="INR">INR</option>
                   <option value="AED">AED</option>
@@ -425,7 +425,7 @@ export function CreateInquiryForm({
                 name="endClientAddressLine1"
                 type="text"
                 autoComplete="off"
-                placeholder="Street address, building"
+                placeholder={t("fieldEndClientAddressLine1Placeholder")}
                 className={inputCls}
               />
             </div>
@@ -440,7 +440,7 @@ export function CreateInquiryForm({
                 name="endClientAddressLine2"
                 type="text"
                 autoComplete="off"
-                placeholder="Area, landmark"
+                placeholder={t("fieldEndClientAddressLine2Placeholder")}
                 className={inputCls}
               />
             </div>

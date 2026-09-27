@@ -9,6 +9,10 @@ const initialState: CreateOrgState = { error: null };
 interface CreateOrgFormProps {
   /** Formula sets fetched server-side, passed down so the client component can group them. */
   formulaSets: FormulaSetPickerItem[];
+  /** Translated hint for the org slug field (H-14). */
+  slugHint: string;
+  /** Translated hint for the admin password field (H-14). */
+  adminPasswordHint: string;
 }
 
 /**
@@ -25,7 +29,7 @@ interface CreateOrgFormProps {
  *
  * Stage 16 Batch C — F4; updated Stage 25 Batch 5.
  */
-export function CreateOrgForm({ formulaSets }: CreateOrgFormProps) {
+export function CreateOrgForm({ formulaSets, slugHint, adminPasswordHint }: CreateOrgFormProps) {
   const [state, formAction, isPending] = useActionState(createOrg, initialState);
 
   const inputCls =
@@ -95,7 +99,7 @@ export function CreateOrgForm({ formulaSets }: CreateOrgFormProps) {
             className={`${inputCls} font-mono`}
           />
           <p className="text-xs text-text-muted">
-            Lowercase letters, digits, and hyphens only. Cannot be changed after creation.
+            {slugHint}
             <br />
             Reserved: <code className="font-mono">platform</code>.
           </p>
@@ -117,7 +121,7 @@ export function CreateOrgForm({ formulaSets }: CreateOrgFormProps) {
             className={inputCls}
           />
           <p className="text-xs text-text-muted">
-            Password for the auto-created <code className="font-mono">admin</code> account on this org. At least 8 characters.
+            {adminPasswordHint}
           </p>
         </div>
 
@@ -127,7 +131,6 @@ export function CreateOrgForm({ formulaSets }: CreateOrgFormProps) {
         {/* Formula set picker */}
         <FormulaSetPicker
           formulaSets={formulaSets}
-          hint="Pick a name, then a version. All new projects created under this org will use the selected version. Locked versions are still selectable — locking only prevents editing that version's body."
         />
 
         <button

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { internalFetch } from "@/lib/internal-fetch";
+import { getTranslations } from "next-intl/server";
 import { CreateOrgForm } from "./create-org-form";
 import type { FormulaSetListItem } from "@/lib/data/superadmin/formula-sets";
 import type { FormulaSetPickerItem } from "../_formula-set-picker";
@@ -19,6 +20,8 @@ export const dynamic = "force-dynamic";
  * Stage 16 Batch C — F4; updated Stage 25 Batch 5.
  */
 export default async function NewOrgPage() {
+  const tAdmin = await getTranslations("admin");
+
   // Fetch formula sets for the picker. On failure fall back to an empty list —
   // the form will still render (picker has no options) so the user can see the
   // error rather than a blank page.
@@ -68,7 +71,11 @@ export default async function NewOrgPage() {
       )}
 
       <div className="mt-6 rounded-md border border-border bg-bg-card p-6 shadow-card">
-        <CreateOrgForm formulaSets={formulaSets} />
+        <CreateOrgForm
+          formulaSets={formulaSets}
+          slugHint={tAdmin("orgSlugHint")}
+          adminPasswordHint={tAdmin("orgAdminPasswordHint")}
+        />
       </div>
     </div>
   );

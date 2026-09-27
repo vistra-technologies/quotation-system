@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { internalFetch } from "@/lib/internal-fetch";
+import { getTranslations } from "next-intl/server";
 import { OrgPicker } from "../roles/org-picker";
 import { CreateComponentForm } from "./create-component-form";
 import { EditComponentForm } from "./edit-component-form";
 import { DeleteComponentTypeButton } from "./_delete-button";
 import { ReorderButtons } from "./_reorder-buttons";
-import { RESERVED_COMPONENT_TYPE_CODES } from "@/lib/component-catalog-seed";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // Always render live — reads the SuperAdminSession table (via guard layout) and live DB.
@@ -42,73 +42,11 @@ interface ComponentTypeRow {
 
 // ─── Label constants ───────────────────────────────────────────────────────────
 //
-// /controls is translation-free (English only, SuperAdmin-only console).
-
-const FORM_LABELS = {
-  create: {
-    fieldCodeLabel: "Code",
-    fieldCodeHint: "Uppercase letters and underscores, e.g. WALL_TYPE. Saved as-is.",
-    fieldNameLabel: "Name",
-    fieldCategoryLabel: "Category",
-    fieldCategoryPlaceholder: "Select category",
-    fieldsSchemaLabel: "Field Schema",
-    sectionBasic: "Basic Fields",
-    sectionAdvanced: "Advanced Fields",
-    addFieldLabel: "Add Field",
-    removeFieldLabel: "Remove",
-    fieldKeyLabel: "Key",
-    fieldLabelLabel: "Label",
-    fieldTypeLabel: "Type",
-    fieldTypeField: "Field (text)",
-    fieldTypeRadio: "Radio",
-    fieldTypeDropdown: "Dropdown",
-    fieldTypeCheckbox: "Checkbox",
-    dependsOnLabel: "Depends on",
-    dependsOnNone: "None",
-    fieldHint: "Hint",
-    fieldRequiredLabel: "Required",
-    moveUp: "Move up",
-    moveDown: "Move down",
-    fieldStatusLabel: "Active",
-    submitLabel: "Create Component Type",
-    modeForm: "Form",
-    modeJson: "JSON",
-    jsonErrorBadJson: "Invalid JSON:",
-    jsonErrorBadShape: "Invalid schema:",
-  },
-  edit: {
-    fieldCodeLabel: "Code",
-    fieldCodeHint: "Uppercase letters and underscores, e.g. WALL_TYPE. Saved as-is.",
-    fieldCodeLockedHint: "This is one of the 3 seeded codes and cannot be renamed.",
-    fieldNameLabel: "Name",
-    fieldCategoryLabel: "Category",
-    fieldCategoryPlaceholder: "Select category",
-    fieldStatusLabel: "Active",
-    fieldsSchemaLabel: "Field Schema",
-    sectionBasic: "Basic Fields",
-    sectionAdvanced: "Advanced Fields",
-    addFieldLabel: "Add Field",
-    removeFieldLabel: "Remove",
-    fieldKeyLabel: "Key",
-    fieldLabelLabel: "Label",
-    fieldTypeLabel: "Type",
-    fieldTypeField: "Field (text)",
-    fieldTypeRadio: "Radio",
-    fieldTypeDropdown: "Dropdown",
-    fieldTypeCheckbox: "Checkbox",
-    dependsOnLabel: "Depends on",
-    dependsOnNone: "None",
-    fieldHint: "Hint",
-    fieldRequiredLabel: "Required",
-    moveUp: "Move up",
-    moveDown: "Move down",
-    submitLabel: "Save Changes",
-    modeForm: "Form",
-    modeJson: "JSON",
-    jsonErrorBadJson: "Invalid JSON:",
-    jsonErrorBadShape: "Invalid schema:",
-  },
-} as const;
+// FORM_LABELS is built inside the async page function (H-14) so it can pull a
+// subset of strings from getTranslations("components") for the keys that live
+// in messages/en.json: fieldsSchemaLabel, fieldCodeHint, modeForm, modeJson,
+// fieldNPlaceholder, switchToFormHint. The rest remain hardcoded English — the
+// /controls console is SuperAdmin-only and English-only.
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -134,6 +72,87 @@ export default async function ComponentTypesPage({
   searchParams: Promise<{ orgId?: string; typeId?: string }>;
 }) {
   const { orgId, typeId } = await searchParams;
+  const tComponents = await getTranslations("components");
+
+  // H-14: build FORM_LABELS here so the subset of i18n-backed strings can be
+  // populated via tComponents(). The rest stay hardcoded English (/controls is
+  // SuperAdmin-only and English-only).
+  const sharedLabels = {
+    fieldCodeHint: tComponents("fieldCodeHint"),
+    fieldsSchemaLabel: tComponents("fieldsSchemaLabel"),
+    modeForm: tComponents("modeForm"),
+    modeJson: tComponents("modeJson"),
+    fieldNPlaceholder: tComponents("fieldNPlaceholder"),
+    switchToFormHint: tComponents("switchToFormHint"),
+  };
+  const FORM_LABELS = {
+    create: {
+      fieldCodeLabel: "Code",
+      fieldCodeHint: sharedLabels.fieldCodeHint,
+      fieldNameLabel: "Name",
+      fieldCategoryLabel: "Category",
+      fieldCategoryPlaceholder: "Select category",
+      fieldsSchemaLabel: sharedLabels.fieldsSchemaLabel,
+      sectionBasic: "Basic Fields",
+      sectionAdvanced: "Advanced Fields",
+      addFieldLabel: "Add Field",
+      removeFieldLabel: "Remove",
+      fieldKeyLabel: "Key",
+      fieldLabelLabel: "Label",
+      fieldTypeLabel: "Type",
+      fieldTypeField: "Field (text)",
+      fieldTypeRadio: "Radio",
+      fieldTypeDropdown: "Dropdown",
+      fieldTypeCheckbox: "Checkbox",
+      dependsOnLabel: "Depends on",
+      dependsOnNone: "None",
+      fieldHint: "Hint",
+      fieldRequiredLabel: "Required",
+      moveUp: "Move up",
+      moveDown: "Move down",
+      fieldStatusLabel: "Active",
+      submitLabel: "Create Component Type",
+      modeForm: sharedLabels.modeForm,
+      modeJson: sharedLabels.modeJson,
+      fieldNPlaceholder: sharedLabels.fieldNPlaceholder,
+      switchToFormHint: sharedLabels.switchToFormHint,
+      jsonErrorBadJson: "Invalid JSON:",
+      jsonErrorBadShape: "Invalid schema:",
+    },
+    edit: {
+      fieldCodeLabel: "Code",
+      fieldCodeHint: sharedLabels.fieldCodeHint,
+      fieldNameLabel: "Name",
+      fieldCategoryLabel: "Category",
+      fieldCategoryPlaceholder: "Select category",
+      fieldStatusLabel: "Active",
+      fieldsSchemaLabel: sharedLabels.fieldsSchemaLabel,
+      sectionBasic: "Basic Fields",
+      sectionAdvanced: "Advanced Fields",
+      addFieldLabel: "Add Field",
+      removeFieldLabel: "Remove",
+      fieldKeyLabel: "Key",
+      fieldLabelLabel: "Label",
+      fieldTypeLabel: "Type",
+      fieldTypeField: "Field (text)",
+      fieldTypeRadio: "Radio",
+      fieldTypeDropdown: "Dropdown",
+      fieldTypeCheckbox: "Checkbox",
+      dependsOnLabel: "Depends on",
+      dependsOnNone: "None",
+      fieldHint: "Hint",
+      fieldRequiredLabel: "Required",
+      moveUp: "Move up",
+      moveDown: "Move down",
+      submitLabel: "Save Changes",
+      modeForm: sharedLabels.modeForm,
+      modeJson: sharedLabels.modeJson,
+      fieldNPlaceholder: sharedLabels.fieldNPlaceholder,
+      switchToFormHint: sharedLabels.switchToFormHint,
+      jsonErrorBadJson: "Invalid JSON:",
+      jsonErrorBadShape: "Invalid schema:",
+    },
+  };
 
   // Always fetch the org list for the picker.
   const orgsRes = await internalFetch("/api/v1/superadmin/orgs");
@@ -350,7 +369,7 @@ export default async function ComponentTypesPage({
                   orgId={orgId}
                   typeId={selectedType.id}
                   initialCode={selectedType.code}
-                  isCodeLocked={RESERVED_COMPONENT_TYPE_CODES.has(selectedType.code)}
+                  isCodeLocked={false}
                   initialName={selectedType.name}
                   initialCategoryId={selectedType.categoryId}
                   initialActive={selectedType.active}

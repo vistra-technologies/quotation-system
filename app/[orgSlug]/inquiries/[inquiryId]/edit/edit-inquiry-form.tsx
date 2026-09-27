@@ -196,7 +196,7 @@ export function EditInquiryForm({
                   required
                   autoComplete="off"
                   defaultValue={initialProjectLocation ?? ""}
-                  placeholder="e.g. Dubai, UAE"
+                  placeholder={t("fieldProjectLocationPlaceholder")}
                   className={inputCls}
                 />
               </div>
@@ -237,7 +237,7 @@ export function EditInquiryForm({
                     reformatBudget(newCurrency);
                   }}
                   className={selectCls}
-                  placeholder="Select currency..."
+                  placeholder="Select currency"
                 >
                   <option value="INR">INR</option>
                   <option value="AED">AED</option>
@@ -441,7 +441,7 @@ export function EditInquiryForm({
                 name="endClientAddressLine1"
                 type="text"
                 autoComplete="off"
-                placeholder="Street address, building"
+                placeholder={t("fieldEndClientAddressLine1Placeholder")}
                 defaultValue={initialEndClientAddressLine1 ?? ""}
                 className={inputCls}
               />
@@ -457,7 +457,7 @@ export function EditInquiryForm({
                 name="endClientAddressLine2"
                 type="text"
                 autoComplete="off"
-                placeholder="Area, landmark"
+                placeholder={t("fieldEndClientAddressLine2Placeholder")}
                 defaultValue={initialEndClientAddressLine2 ?? ""}
                 className={inputCls}
               />

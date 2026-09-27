@@ -14,7 +14,6 @@ import {
   updateComponentType,
 } from "@/lib/data/components";
 import type { FieldEntry } from "@/lib/data/components";
-import { ReservedComponentTypeCodeError } from "@/lib/component-catalog-seed";
 import { ComponentTypeGuardError } from "@/lib/formula-compat";
 
 // Never cached — reads session cookie and live DB data.
@@ -160,9 +159,6 @@ export async function PATCH(
     const componentType = await updateComponentType(session, typeId, patch);
     return NextResponse.json({ componentType });
   } catch (err) {
-    if (err instanceof ReservedComponentTypeCodeError) {
-      return apiBadRequest(err.message);
-    }
     // Stage 23 Batch 6 (#12/D-36): edit would break the org's currently assigned formula set.
     if (err instanceof ComponentTypeGuardError) {
       return apiConflict(err.message);

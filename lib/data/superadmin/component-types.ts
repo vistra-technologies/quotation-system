@@ -11,10 +11,6 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import {
-  RESERVED_COMPONENT_TYPE_CODES,
-  ReservedComponentTypeCodeError,
-} from "@/lib/component-catalog-seed";
-import {
   checkComponentTypeGuard,
   describeGuardViolation,
   ComponentTypeGuardError,
@@ -262,11 +258,6 @@ export async function updateComponentTypeForOrg(
   let normalizedCode: string | undefined;
   if (patch.code !== undefined) {
     normalizedCode = patch.code.toUpperCase().trim();
-    if (RESERVED_COMPONENT_TYPE_CODES.has(existing.code) && normalizedCode !== existing.code) {
-      throw new ReservedComponentTypeCodeError(
-        `Cannot change the code of a reserved component type (${existing.code}).`,
-      );
-    }
   }
 
   // Stage 23 Batch 6 (#12/D-36): fires after the reserved-code check (400) but before the tenancy check

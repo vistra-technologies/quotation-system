@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { internalFetch } from "@/lib/internal-fetch";
+import { getTranslations } from "next-intl/server";
 import { EditFormulaSetForm } from "../_edit-form";
 import type { FormulaSetDetail, FormulaSetListItem } from "@/lib/data/superadmin/formula-sets";
 
@@ -22,6 +23,7 @@ export default async function NewFormulaSetVersionPage({
   params: Promise<{ setId: string }>;
 }) {
   const { setId } = await params;
+  const tFS = await getTranslations("formulaSets");
   const detailHref = `/controls/formula-sets/${encodeURIComponent(setId)}`;
 
   const [res, listRes] = await Promise.all([
@@ -79,12 +81,11 @@ export default async function NewFormulaSetVersionPage({
             v{nextVersion}
           </span>
           <span className="rounded-full border border-[#F0D9A0] bg-[#FFF4D6] px-2.5 py-0.5 text-xs font-bold text-[#8A5A00]">
-            DRAFT — not saved
+            {tFS("draftBadge")}
           </span>
         </h1>
         <p className="mt-1 text-sm text-text-muted">
-          Copied from v{formulaSet.version}. Nothing is created until you save. The version number
-          is assigned on save (next free number for this name).
+          {tFS("draftCopiedFrom", { version: formulaSet.version })}
         </p>
       </div>
 
@@ -95,6 +96,7 @@ export default async function NewFormulaSetVersionPage({
         version={nextVersion}
         initialBodyJson={JSON.stringify(formulaSet.body, null, 2)}
         cancelHref={detailHref}
+        bodyLabel={tFS("bodyLabel")}
       />
     </div>
   );
