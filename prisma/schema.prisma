@@ -240,22 +240,28 @@ model ExternalCompany {
 // attributes is untyped JSONB in Stage 3; typed contract deferred.
 // perUnitQuantity: how many natural units one "counted" unit represents (e.g. 1 box = 50 screws);
 //   formula engine divides required quantity by this value to get order quantity. Must be > 0.
+// componentTypeId (Hotfix 2026-09-27 H-17): FK → ComponentType.id, nullable (items created before
+//   the FK existed or that don't belong to any ComponentType have NULL). onDelete: Restrict prevents
+//   deletion of a ComponentType that still has InventoryItems referencing it.
+//   category String column kept as-is for audit trail; no longer written by the UI.
 // See design-docs/04-data-model.md — Catalog & pricing.
 model InventoryItem {
-  id               String       @id @default(uuid())
+  id               String         @id @default(uuid())
   organizationId   String
-  category         String       // WALL_TYPE | GLASS | DOOR_TYPE | PROFILE_STOP | FRAME |
-                                // HINGE | LOCKBOX | HANDLE | SEAL | RUBBER | FITTING | SCREW | …
+  category         String         // legacy free-text category; kept for audit trail (H-17); UI now uses componentTypeId
   code             String
   name             String
   measurementUnit  String
-  perUnitQuantity  Decimal      @default(1)
-  attributes       Json         // untyped JSONB — typed contract deferred to a later stage
-  active           Boolean      @default(true)
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  perUnitQuantity  Decimal        @default(1)
+  attributes       Json           // untyped JSONB — typed contract deferred to a later stage
+  active           Boolean        @default(true)
+  // H-17: real FK to ComponentType (nullable — old rows and uncategorised items stay NULL until backfill)
+  componentTypeId  String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
-  organization   Organization @relation(fields: [organizationId], references: [id])
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  componentType  ComponentType? @relation(fields: [componentTypeId], references: [id], onDelete: Restrict)
   prices         ItemPrice[]
 
   // Upsert key for seed idempotency
@@ -322,6 +328,8 @@ model ComponentType {
   selections     Selection[]
   // Stage 20 relations
   orgConfig      ComponentTypeOrgConfig?
+  // Hotfix 2026-09-27 H-17 relation
+  inventoryItems InventoryItem[]
 
   @@unique([organizationId, code])
 }

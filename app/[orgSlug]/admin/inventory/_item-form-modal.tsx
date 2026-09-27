@@ -5,6 +5,8 @@ import { useEffect, useState } from "react";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ComponentTypeOption {
+  /** ComponentType DB id — used as the FK value (H-17). */
+  id: string;
   code: string;
   name: string;
 }
@@ -13,7 +15,8 @@ export interface ItemFormData {
   id: string;
   code: string;
   name: string;
-  category: string;
+  /** H-17: real FK value (ComponentType.id). Replaces the free-text category for display/submission. */
+  componentTypeId: string | null;
   measurementUnit: string;
   /** Decimal from Prisma serialises to string via JSON; accept both. */
   perUnitQuantity: number | string;
@@ -73,7 +76,8 @@ export function ItemFormModal({
   // ── Controlled field state ────────────────────────────────────────────────
   const [code, setCode] = useState(item?.code ?? "");
   const [name, setName] = useState(item?.name ?? "");
-  const [category, setCategory] = useState(item?.category ?? "");
+  // H-17: componentTypeId stores the ComponentType DB id (FK value).
+  const [componentTypeId, setComponentTypeId] = useState(item?.componentTypeId ?? "");
   const [measurementUnit, setMeasurementUnit] = useState(
     item?.measurementUnit ?? "",
   );
@@ -102,8 +106,8 @@ export function ItemFormModal({
     if (!name.trim()) errors.name = "Name is required.";
     // Component is required only when the org actually has ComponentTypes to choose from.
     // If the org has none (no options in the dropdown), skip the requirement so the form
-    // remains usable — matches the DB semantics where category defaults to "".
-    if (!category && componentTypes.length > 0) errors.category = "Component is required.";
+    // remains usable — matches the DB semantics where componentTypeId defaults to null.
+    if (!componentTypeId && componentTypes.length > 0) errors.componentTypeId = "Component is required.";
     if (!measurementUnit) errors.measurementUnit = "Unit of measure is required.";
     if (
       perUnitQuantity !== "" &&
@@ -129,7 +133,9 @@ export function ItemFormModal({
     const body: Record<string, unknown> = {
       code: code.trim(),
       name: name.trim(),
-      category: category,
+      // H-17: send componentTypeId (FK) instead of category string.
+      // null/empty → send null so the API writes NULL to the FK column.
+      componentTypeId: componentTypeId || null,
       measurementUnit: measurementUnit,
       // Always send perUnitQuantity so the API doesn't silently preserve a stale
       // value when the field is cleared. Blank → default of 1.
@@ -346,10 +352,10 @@ export function ItemFormModal({
               </div>
             </div>
 
-            {/* Component dropdown (H-5) */}
+            {/* Component dropdown (H-5, H-17: now submits componentTypeId FK) */}
             <div className="flex flex-col gap-1.5">
               <label
-                htmlFor="item-form-category"
+                htmlFor="item-form-component-type"
                 className="text-xs font-extrabold text-text-heading"
               >
                 Component{" "}
@@ -361,27 +367,27 @@ export function ItemFormModal({
                 </span>
               </label>
               <select
-                id="item-form-category"
-                value={category}
+                id="item-form-component-type"
+                value={componentTypeId}
                 onChange={(e) => {
-                  setCategory(e.target.value);
-                  setFieldErrors((prev) => ({ ...prev, category: "" }));
+                  setComponentTypeId(e.target.value);
+                  setFieldErrors((prev) => ({ ...prev, componentTypeId: "" }));
                 }}
-                className={inputClass("category")}
+                className={inputClass("componentTypeId")}
               >
                 <option value="">Select component…</option>
                 {componentTypes.map((ct) => (
-                  <option key={ct.code} value={ct.code}>
+                  <option key={ct.id} value={ct.id}>
                     {ct.code}
                   </option>
                 ))}
               </select>
-              {fieldErrors.category && (
+              {fieldErrors.componentTypeId && (
                 <span
                   role="alert"
                   className="text-xs font-bold text-[var(--color-status-failed-text)]"
                 >
-                  {fieldErrors.category}
+                  {fieldErrors.componentTypeId}
                 </span>
               )}
             </div>
@@ -474,7 +480,7 @@ export function ItemFormModal({
                 isPending ||
                 // Disable when a required dropdown has no selection.
                 // Component is only required when the org has ComponentTypes to choose from.
-                (!category && componentTypes.length > 0) ||
+                (!componentTypeId && componentTypes.length > 0) ||
                 !measurementUnit
               }
               className="rounded-sm border border-primary-dark bg-primary px-5 py-2 text-sm font-bold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"

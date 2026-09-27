@@ -138,7 +138,8 @@ export async function POST(
   const code = b.code;
   const name = b.name;
   const measurementUnit = b.measurementUnit;
-  const category = b.category;
+  // H-17: accept componentTypeId (FK) instead of category string.
+  const componentTypeId = b.componentTypeId;
   const perUnitQuantity = b.perUnitQuantity;
   const active = b.active;
   const attributes = b.attributes;
@@ -152,8 +153,9 @@ export async function POST(
   if (typeof measurementUnit !== "string" || measurementUnit.trim() === "") {
     return apiBadRequest("measurementUnit is required and must be a non-empty string");
   }
-  if (category !== undefined && typeof category !== "string") {
-    return apiBadRequest("category must be a string");
+  // H-17: componentTypeId must be a string or null (not undefined-as-invalid).
+  if (componentTypeId !== undefined && componentTypeId !== null && typeof componentTypeId !== "string") {
+    return apiBadRequest("componentTypeId must be a string or null");
   }
   if (perUnitQuantity !== undefined) {
     if (typeof perUnitQuantity !== "number" || perUnitQuantity <= 0) {
@@ -172,7 +174,7 @@ export async function POST(
       code,
       name,
       measurementUnit,
-      category: category as string | undefined,
+      componentTypeId: componentTypeId as string | null | undefined,
       perUnitQuantity: perUnitQuantity as number | undefined,
       active: active as boolean | undefined,
       attributes: attributes as object | undefined,

@@ -51,6 +51,8 @@ export default async function AdminLayout({
     roles: allMessages.roles,
     components: allMessages.components,
     externalCompanies: allMessages.externalCompanies,
+    // H-16: Toast component (used in _inventory-list.tsx) requires this namespace.
+    toast: allMessages.toast,
   };
 
   return (

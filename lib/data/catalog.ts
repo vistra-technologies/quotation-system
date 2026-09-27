@@ -18,7 +18,8 @@ export class DuplicateInventoryCodeError extends Error {
 // ─── Reads ───────────────────────────────────────────────────────────────────
 
 /**
- * List ALL inventory items for the session org (active + inactive), with prices.
+ * List ALL inventory items for the session org (active + inactive), with prices and
+ * the linked ComponentType (H-17: componentTypeId FK).
  * Ordered category → code, then prices by currency within each item.
  *
  * Used by the inventory management page — admins need to see inactive items
@@ -27,19 +28,27 @@ export class DuplicateInventoryCodeError extends Error {
 export async function listAllInventoryItems(session: SessionData) {
   return prisma.inventoryItem.findMany({
     where: { organizationId: session.organizationId },
-    include: { prices: { orderBy: { currency: "asc" } } },
+    include: {
+      prices: { orderBy: { currency: "asc" } },
+      // H-17: include the linked ComponentType for display in the list and modal pre-population.
+      componentType: { select: { id: true, code: true, name: true } },
+    },
     orderBy: [{ category: "asc" }, { code: "asc" }],
   });
 }
 
 /**
- * Get one inventory item with prices, org-scoped (tenancy guard).
+ * Get one inventory item with prices and ComponentType, org-scoped (tenancy guard).
  * Returns null if not found or if it belongs to a different org.
  */
 export async function getInventoryItemById(session: SessionData, itemId: string) {
   return prisma.inventoryItem.findFirst({
     where: { id: itemId, organizationId: session.organizationId },
-    include: { prices: { orderBy: { currency: "asc" } } },
+    include: {
+      prices: { orderBy: { currency: "asc" } },
+      // H-17: include linked ComponentType for API response and modal pre-population.
+      componentType: { select: { id: true, code: true, name: true } },
+    },
   });
 }
 
@@ -52,11 +61,12 @@ export interface CreateInventoryItemData {
   name: string;
   measurementUnit: string;
   /**
-   * Open-ended category string (WALL_TYPE | GLASS | DOOR_TYPE | …).
-   * Not listed in the Batch 7 spec fields but required by the DB schema.
-   * Defaults to "" when omitted.
+   * H-17: FK to ComponentType.id (nullable — items with no ComponentType mapping stay NULL).
+   * Replaces the free-text `category` field as the Component selector in the UI.
+   * The legacy `category` String column is kept in the DB for audit trail but is no longer
+   * written by the UI; createInventoryItem writes "" to it unconditionally for backward compat.
    */
-  category?: string;
+  componentTypeId?: string | null;
   perUnitQuantity?: number;
   active?: boolean;
   /** Untyped JSONB — defaults to {} when omitted. */
@@ -67,11 +77,10 @@ export interface UpdateInventoryItemData {
   code?: string;
   name?: string;
   /**
-   * ComponentType code stored as the item's category.
-   * Hotfix 2026-09-27: added so PATCH /inventory/[itemId] can update category
-   * when the user changes the Component dropdown in the edit modal.
+   * H-17: FK to ComponentType.id (nullable — send null to clear the link).
+   * Replaces the free-text `category` field for the Component dropdown in the edit modal.
    */
-  category?: string;
+  componentTypeId?: string | null;
   measurementUnit?: string;
   perUnitQuantity?: number;
   active?: boolean;
@@ -80,6 +89,8 @@ export interface UpdateInventoryItemData {
 /**
  * Create a new InventoryItem for the session org.
  * Throws DuplicateInventoryCodeError if (organizationId, code) already exists.
+ * H-17: accepts componentTypeId (FK) instead of category string.
+ * The legacy category column is written as "" for audit trail backward compat.
  */
 export async function createInventoryItem(
   session: SessionData,
@@ -89,13 +100,19 @@ export async function createInventoryItem(
     return await prisma.inventoryItem.create({
       data: {
         organizationId: session.organizationId,
-        category: data.category ?? "",
+        // H-17: category kept as "" (legacy column); UI now uses componentTypeId.
+        category: "",
         code: data.code.trim(),
         name: data.name,
         measurementUnit: data.measurementUnit,
         perUnitQuantity: data.perUnitQuantity ?? 1,
         active: data.active ?? true,
         attributes: (data.attributes ?? {}) as Prisma.InputJsonValue,
+        // H-17: real FK to ComponentType (nullable).
+        componentTypeId: data.componentTypeId ?? null,
+      },
+      include: {
+        componentType: { select: { id: true, code: true, name: true } },
       },
     });
   } catch (err) {
@@ -123,12 +140,13 @@ export async function updateInventoryItem(
   const update: Record<string, unknown> = {};
   if (data.code !== undefined) update.code = data.code.trim();
   if (data.name !== undefined) update.name = data.name;
-  // Hotfix 2026-09-27: category was missing from UpdateInventoryItemData and the
-  // update payload, so Component changes in the edit modal were silently discarded.
-  if (data.category !== undefined) update.category = data.category;
   if (data.measurementUnit !== undefined) update.measurementUnit = data.measurementUnit;
   if (data.perUnitQuantity !== undefined) update.perUnitQuantity = data.perUnitQuantity;
   if (data.active !== undefined) update.active = data.active;
+
+  // H-17: componentTypeId is a nullable FK — explicitly include it in the sentinel
+  // so `hasAnyField` checks still work correctly.
+  if (data.componentTypeId !== undefined) update.componentTypeId = data.componentTypeId ?? null;
 
   try {
     const result = await prisma.inventoryItem.updateMany({
@@ -136,7 +154,7 @@ export async function updateInventoryItem(
       data: update,
     });
     if (result.count === 0) return null; // not found or wrong org
-    // Re-read for the response (includes computed/defaulted fields).
+    // Re-read for the response (includes computed/defaulted fields and componentType relation).
     return getInventoryItemById(session, itemId);
   } catch (err) {
     if (
