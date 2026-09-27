@@ -185,8 +185,15 @@ export function CatalogTree({
     const ro = new ResizeObserver(recompute);
     ro.observe(container);
     return () => ro.disconnect();
-    // Re-measure whenever the schema/config/segment changes shift the layout.
-  }, [fieldsSchema, config, segmentName, chain, indep]);
+    // Re-measure whenever the schema/config/segment changes shift the layout. `chain`/`indep` are
+    // deliberately excluded — they're new array instances every render (derived from fieldsSchema
+    // each time), so including them here re-triggers this effect every commit, which calls
+    // setLinks/setDots, which re-renders, which recomputes new chain/indep arrays — an infinite
+    // "too many re-renders" loop (React error #185, caught live against the real cloisons org's
+    // 13-attribute GLASS chain during manual preview verification). fieldsSchema is the actual
+    // source of truth chain/indep are derived from, so it alone is sufficient here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fieldsSchema, config, segmentName]);
 
   const related = focusId ? relatedIds(fields, focusId) : null;
   const hasFocus = Boolean(related);
