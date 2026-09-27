@@ -247,8 +247,8 @@ export async function updateComponentTypeForOrg(
   patch: Partial<ComponentTypeInput>,
 ): Promise<ComponentTypeRow | null> {
   // superadmin-only — intentionally cross-org
-  // Verify ownership before updating. Also fetch `code` so a code-rename attempt on one
-  // of the 3 seeded/reserved codes can be rejected below (Stage 20 Batch 7).
+  // Verify ownership before updating. Fetch `code` and `fieldsSchema` so the formula-set guard
+  // below can detect whether a code/schema change would break the org's active formula set.
   const existing = await prisma.componentType.findFirst({
     where: { id: typeId, organizationId: orgId },
     select: { id: true, code: true, fieldsSchema: true },
@@ -260,8 +260,8 @@ export async function updateComponentTypeForOrg(
     normalizedCode = patch.code.toUpperCase().trim();
   }
 
-  // Stage 23 Batch 6 (#12/D-36): fires after the reserved-code check (400) but before the tenancy check
-  // below — a non-reserved code/fieldsSchema/active change can still break the org's active formula set.
+  // Stage 23 Batch 6 (#12/D-36): fires here — a code/fieldsSchema/active change can still break
+  // the org's active formula set (H-13 lifted the seeded-code rename restriction; this guard remains).
   await assertComponentTypeGuard(
     orgId,
     { code: existing.code, fieldsSchema: existing.fieldsSchema },
