@@ -48,7 +48,7 @@ test.beforeEach(async () => {
 
 test("B8-1: New item button opens blank create modal", async ({ page }) => {
   await signIn(page, "member", undefined, ORG);
-  await page.goto(orgUrl(ORG, "/inventory"));
+  await page.goto(orgUrl(ORG, "/admin/inventory"));
   await expect(page.getByRole("heading", { name: "Inventory Management" })).toBeVisible({
     timeout: 30_000,
   });
@@ -75,7 +75,7 @@ test("B8-2: Client-side required-field error when code is blank", async ({
   page,
 }) => {
   await signIn(page, "member", undefined, ORG);
-  await page.goto(orgUrl(ORG, "/inventory"));
+  await page.goto(orgUrl(ORG, "/admin/inventory"));
   await expect(page.getByRole("heading", { name: "Inventory Management" })).toBeVisible({
     timeout: 30_000,
   });
@@ -104,7 +104,7 @@ test("B8-3: Successful create — new item appears in the inventory list", async
   page,
 }) => {
   await signIn(page, "member", undefined, ORG);
-  await page.goto(orgUrl(ORG, "/inventory"));
+  await page.goto(orgUrl(ORG, "/admin/inventory"));
   await expect(page.getByRole("heading", { name: "Inventory Management" })).toBeVisible({
     timeout: 30_000,
   });
@@ -142,7 +142,7 @@ test("B8-4: Duplicate code shows inline 409 error in the modal", async ({
   expect(createdItemCode).toBeTruthy();
 
   await signIn(page, "member", undefined, ORG);
-  await page.goto(orgUrl(ORG, "/inventory"));
+  await page.goto(orgUrl(ORG, "/admin/inventory"));
   await expect(page.getByRole("heading", { name: "Inventory Management" })).toBeVisible({
     timeout: 30_000,
   });
@@ -179,7 +179,7 @@ test("B8-5: Edit button opens pre-filled modal for the created item", async ({
   expect(createdItemCode).toBeTruthy();
 
   await signIn(page, "member", undefined, ORG);
-  await page.goto(orgUrl(ORG, "/inventory"));
+  await page.goto(orgUrl(ORG, "/admin/inventory"));
   await expect(page.getByRole("heading", { name: "Inventory Management" })).toBeVisible({
     timeout: 30_000,
   });
@@ -209,7 +209,7 @@ test("B8-6: Successful edit — list reflects the updated item name", async ({
   expect(createdItemCode).toBeTruthy();
 
   await signIn(page, "member", undefined, ORG);
-  await page.goto(orgUrl(ORG, "/inventory"));
+  await page.goto(orgUrl(ORG, "/admin/inventory"));
   await expect(page.getByRole("heading", { name: "Inventory Management" })).toBeVisible({
     timeout: 30_000,
   });
@@ -245,7 +245,7 @@ test("B8-7: Escape key closes the create modal without saving", async ({
   page,
 }) => {
   await signIn(page, "member", undefined, ORG);
-  await page.goto(orgUrl(ORG, "/inventory"));
+  await page.goto(orgUrl(ORG, "/admin/inventory"));
   await expect(page.getByRole("heading", { name: "Inventory Management" })).toBeVisible({
     timeout: 30_000,
   });

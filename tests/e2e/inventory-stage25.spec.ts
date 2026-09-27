@@ -63,7 +63,7 @@ test("distributor role is redirected away from /inventory to /dashboard", async 
   await signIn(page, "distributor");
 
   try {
-    await page.goto(orgUrl("acme-glass", "/inventory"), { waitUntil: "commit" });
+    await page.goto(orgUrl("acme-glass", "/admin/inventory"), { waitUntil: "commit" });
   } catch {
     // ERR_ABORTED is expected when Next.js streaming redirect fires.
   }
@@ -87,7 +87,7 @@ test("architect role is redirected away from /inventory to /dashboard", async ({
   await signIn(page, "architect");
 
   try {
-    await page.goto(orgUrl("acme-glass", "/inventory"), { waitUntil: "commit" });
+    await page.goto(orgUrl("acme-glass", "/admin/inventory"), { waitUntil: "commit" });
   } catch {
     // Streaming redirect abort — handled via waitForURL below.
   }
@@ -108,7 +108,7 @@ test("company member can view /inventory list page (Inventory Management heading
 }) => {
   await signIn(page, "member");
 
-  await page.goto(orgUrl("acme-glass", "/inventory"));
+  await page.goto(orgUrl("acme-glass", "/admin/inventory"));
   await expect(
     page.getByRole("heading", { name: "Inventory Management" }),
   ).toBeVisible({ timeout: 30_000 });

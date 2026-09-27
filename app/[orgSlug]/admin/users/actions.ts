@@ -323,6 +323,7 @@ export async function updateUserProfile(
   }
 
   revalidatePath(`/${orgSlug}/admin/users/${userId}`);
+  revalidatePath(`/${orgSlug}/admin/users`);
   return { error: null, success: true };
 }
 

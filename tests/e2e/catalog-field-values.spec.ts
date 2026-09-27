@@ -250,8 +250,8 @@ test("403 without MANAGE_FEATURES: distributor session on GET and PUT field-valu
 // ---------------------------------------------------------------------------
 
 test("403 without MANAGE_FEATURES: distributor navigating to the Catalog page is redirected away", async () => {
-  await distributorPage.goto(orgUrl(ACME, "/admin/field-values"));
-  await expect(distributorPage).not.toHaveURL(orgUrlPattern(ACME, "/admin/field-values"), {
+  await distributorPage.goto(orgUrl(ACME, "/admin/catalog"));
+  await expect(distributorPage).not.toHaveURL(orgUrlPattern(ACME, "/admin/catalog"), {
     timeout: 15_000,
   });
 });

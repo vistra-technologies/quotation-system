@@ -192,16 +192,17 @@ test("sidebar admin flyout: External Companies link → admin/external-companies
   await page.close();
 });
 
-// Stage 25 Batch 6 (S25-4): "Pricing" sidebar link renamed to "Inventory", path → /inventory.
-test("sidebar admin flyout: Inventory link → /inventory (clean URL)", async () => {
+// Stage 25 Batch 6 (S25-4): "Pricing" sidebar link renamed to "Inventory", path → /admin/inventory.
+// Hotfix 2026-09-27 H-1: path moved from /inventory to /admin/inventory.
+test("sidebar admin flyout: Inventory link → /admin/inventory (clean URL)", async () => {
   const page = await ctx.newPage();
   await page.goto(DASHBOARD);
   await page.getByRole("button", { name: "Admin" }).hover();
   const inventoryLink = page.getByRole("link", { name: "Inventory" });
   await expect(inventoryLink).toBeVisible({ timeout: 5_000 });
   await inventoryLink.click();
-  await page.waitForURL(`${BASE}/inventory`, { timeout: 15_000 });
-  assertCleanSubdomainUrl(page.url(), "/inventory");
+  await page.waitForURL(`${BASE}/admin/inventory`, { timeout: 15_000 });
+  assertCleanSubdomainUrl(page.url(), "/admin/inventory");
   await expect(page.getByRole("heading", { name: /Inventory/i })).toBeVisible({
     timeout: 10_000,
   });
@@ -335,8 +336,8 @@ test("admin users: Actions link + back-link navigate with clean subdomain URLs",
 test("inventory: list page renders with clean subdomain URL", async () => {
   const page = await ctx.newPage();
 
-  await page.goto(`${BASE}/inventory`);
-  assertCleanSubdomainUrl(page.url(), "/inventory");
+  await page.goto(`${BASE}/admin/inventory`);
+  assertCleanSubdomainUrl(page.url(), "/admin/inventory");
   await expect(page.getByRole("heading", { name: /Inventory/i })).toBeVisible({
     timeout: 15_000,
   });

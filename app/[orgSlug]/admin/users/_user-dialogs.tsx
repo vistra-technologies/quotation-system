@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useCallback, useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { SelectField } from "@/components/select-field";
@@ -164,6 +165,7 @@ function OrgEditUserForm({
   onClose: () => void;
 }) {
   const t = useTranslations("users");
+  const router = useRouter();
   const [profileState, profileAction, profilePending] = useActionState(
     updateUserProfile,
     initialProfileState,
@@ -186,6 +188,9 @@ function OrgEditUserForm({
     startRole(async () => {
       await changeUserRole(formData);
       onClose();
+      // Ensure the users list picks up the server's revalidatePath for this
+      // imperative (non-<form action>) call — router.refresh() forces RSC re-fetch.
+      router.refresh();
     });
   }
 

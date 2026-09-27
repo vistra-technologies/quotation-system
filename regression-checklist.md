@@ -40,17 +40,17 @@ checklist existed yet.
 Automated: `tests/e2e/inventory-stage25.spec.ts` (serial mode, 90 s timeout per test).
 Note: `pricing-stage3.spec.ts` deleted in Stage 25 Batch 6 (S25-4); replaced by `inventory-stage25.spec.ts`.
 
-13. **MANAGE_PRICING gating — distributor:** `distributor` role navigating to `/{orgSlug}/inventory` is
+13. **MANAGE_PRICING gating — distributor:** `distributor` role navigating to `/{orgSlug}/admin/inventory` is
     server-redirected to `/{orgSlug}/dashboard`; the Inventory Management heading is never rendered.
-    (Path was `/{orgSlug}/pricing` before Stage 25 B6.)
+    (Path was `/{orgSlug}/pricing` before Stage 25 B6; moved from `/{orgSlug}/inventory` to `/{orgSlug}/admin/inventory` in Hotfix 2026-09-27 H-1.)
     Automated: `inventory-stage25.spec.ts`.
 14. **MANAGE_PRICING gating — architect:** same as item 13 for the `architect` role.
     Automated: `inventory-stage25.spec.ts`.
-15. **MANAGE_PRICING gating — inventory list:** unauthorized roles navigating to `/{orgSlug}/inventory`
-    are redirected to `/{orgSlug}/dashboard`. (The `/inventory/[itemId]` sub-page does not exist in
+15. **MANAGE_PRICING gating — inventory list:** unauthorized roles navigating to `/{orgSlug}/admin/inventory`
+    are redirected to `/{orgSlug}/dashboard`. (The `/admin/inventory/[itemId]` sub-page does not exist in
     Stage 25 B6; item CRUD popup is added in Batches 7–8.)
     Automated: `inventory-stage25.spec.ts`.
-16. **Inventory list renders (company member):** a `member` (MANAGE_PRICING) navigating to `/inventory`
+16. **Inventory list renders (company member):** a `member` (MANAGE_PRICING) navigating to `/admin/inventory`
     sees the "Inventory Management" h1 and "Inventory Items" table heading. The price CRUD UI (Edit
     Prices sub-page) was removed in Stage 25 B6 (S25-7); ItemPrice CRUD is no longer user-facing.
     Automated: `inventory-stage25.spec.ts`.
@@ -60,8 +60,8 @@ Note: `pricing-stage3.spec.ts` deleted in Stage 25 Batch 6 (S25-4); replaced by 
     (Model renamed `CatalogItem` → `InventoryItem` in Stage 24; `/pricing` route renamed `/inventory`
     in Stage 25 B6.)
 18. **Inventory tenancy isolation:** a session from one org cannot view or mutate another org's
-    inventory items. A cross-org cookie replay on `/{orgSlug2}/inventory` → redirect to
-    `/{orgSlug2}/login`. (Path was `/{orgSlug2}/pricing` before Stage 25 B6.)
+    inventory items. A cross-org cookie replay on `/{orgSlug2}/admin/inventory` → redirect to
+    `/{orgSlug2}/login`. (Path was `/{orgSlug2}/pricing` before Stage 25 B6; moved to `/admin/inventory` in Hotfix 2026-09-27 H-1.)
 19. **next-intl strings:** all Stage 3 user-facing strings in the inventory pages render from the English
     locale dictionary (no hardcoded display text visible in the inventory components, excepting decorative
     UI characters like arrow symbols). Namespace is `"inventory"` (was `"pricing"` before Stage 25 B6).
@@ -71,7 +71,7 @@ Note: `pricing-stage3.spec.ts` deleted in Stage 25 Batch 6 (S25-4); replaced by 
 
 ## Stage 4 — Admin section (users, roles, permissions)
 21. **MANAGE_USERS gating:** a role without MANAGE_USERS navigating to `/{orgSlug}/admin/users` → redirect to dashboard.
-22. **MANAGE_FEATURES gating (Stage 19 Batch 5 — superseded again by Stage 20 Batch 3):** `/{orgSlug}/admin/roles` is deleted (Stage 16 Batch F) and `/{orgSlug}/admin/components` is deleted (Stage 19 Batch 5); both still return 404. Component Type **shape/CRUD** (fieldsSchema, `dependsOn` wiring) remains SuperAdmin-only at `/controls/component-types`. The roles/permissions admin console remains at `/controls/roles` (SuperAdmin only). **Stage 20 Batch 3 reintroduces a narrower MANAGE_FEATURES-gated org route**: `/{orgSlug}/admin/field-values` ("Catalog" in the Admin flyout) — lets an org admin fill in dropdown/radio *value lists* only (never shape/wiring). A role without MANAGE_FEATURES navigating there → redirect to dashboard; the flyout link itself is hidden.
+22. **MANAGE_FEATURES gating (Stage 19 Batch 5 — superseded again by Stage 20 Batch 3):** `/{orgSlug}/admin/roles` is deleted (Stage 16 Batch F) and `/{orgSlug}/admin/components` is deleted (Stage 19 Batch 5); both still return 404. Component Type **shape/CRUD** (fieldsSchema, `dependsOn` wiring) remains SuperAdmin-only at `/controls/component-types`. The roles/permissions admin console remains at `/controls/roles` (SuperAdmin only). **Stage 20 Batch 3 reintroduces a narrower MANAGE_FEATURES-gated org route**: `/{orgSlug}/admin/catalog` ("Catalog" in the Admin flyout, formerly `admin/field-values` before Hotfix 2026-09-27 H-2) — lets an org admin fill in dropdown/radio *value lists* only (never shape/wiring). A role without MANAGE_FEATURES navigating there → redirect to dashboard; the flyout link itself is hidden.
 23. **Cross-org user list isolation:** org A's admin cannot see org B's users by any URL manipulation.
 24. **Create-user + login round-trip:** admin creates a user with username/role/password → new user can log in immediately.
 25. **Password-reset round-trip:** admin sets a new password for a user → old password stops working; new password works.
@@ -90,7 +90,7 @@ Note: `pricing-stage3.spec.ts` deleted in Stage 25 Batch 6 (S25-4); replaced by 
 35. **Project tenancy:** org A's session cannot read org B's Projects.
 36. **Project `projectNumber` per-org:** org A and org B can each have a project #1 without conflict.
 37. **Stage 2/3/4 regression after DAL refactor:** per-org login, cross-org session rejection, pricing CRUD, instant deactivation, and admin user/role/permission flows all still pass.
-    Note: the pricing CRUD UI (Edit Prices sub-page) was removed in Stage 25 B6 (S25-7); "pricing CRUD" here refers to the ItemPrice API/data layer still being intact, not the UI. The `/inventory` list page still renders correctly for MANAGE_PRICING holders.
+    Note: the pricing CRUD UI (Edit Prices sub-page) was removed in Stage 25 B6 (S25-7); "pricing CRUD" here refers to the ItemPrice API/data layer still being intact, not the UI. The `/admin/inventory` list page still renders correctly for MANAGE_PRICING holders.
 38. **Cross-tenant ExternalCompany guard:** a crafted `createProject` API request containing another org's `externalCompanyId` UUID is rejected by the DAL (`lib/data/projects.ts` org-scoped `findFirst` guard) with `INVALID_EXTERNAL_COMPANY`, surfaced as 400 + `{ error: "Selected company is invalid." }` — no cross-tenant FK is created. Verified via `stage5.spec.ts` test 12 using `page.request.post()` directly to the API route (bypasses React form reconciler). Stage 12 test pass confirmed the DAL guard and route-handler error-propagation path are both correct; the original test failure was a test-design flaw (DOM injection did not survive React re-render before submit).
 
 ## Stage 6 — Selection, ComponentType overhaul, External Company UI
@@ -228,9 +228,10 @@ All checks: verify via the Vercel preview URL for the merged `release/stage-11` 
     (covered by `tests/e2e/superadmin-roles.spec.ts`).
 74. **Permissions cluster (Stage 16 Batch F — superseded):** `app/[orgSlug]/admin/permissions/` is
     deleted; these routes return 404. See item 73 above.
-75. **Inventory cluster renders correctly:** `/inventory` list renders with
+75. **Inventory cluster renders correctly:** `/admin/inventory` list renders with
     Sage Ease tokens (no stray `min-h-screen` wrapper). The `/pricing` path returns 404 (Stage 25 B6,
-    S25-4/S25-5). The `/pricing/[itemId]` edit page is deleted (S25-7); price CRUD UI no longer exists.
+    S25-4/S25-5). The old `/inventory` page path also returns 404 (Hotfix 2026-09-27 H-1; moved to `/admin/inventory`).
+    The `/pricing/[itemId]` edit page is deleted (S25-7); price CRUD UI no longer exists.
     Automated: `inventory-stage25.spec.ts`.
 76. **Apex org selector renders correctly:** `/` renders the org-selector cards with Sage Ease tokens;
     clicking an org still navigates to that org's own subdomain login page (local `orgHref()` helper
@@ -401,10 +402,10 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      clicking External Companies navigates to `/admin/external-companies` with no slug prefix.
      Automated: `subdomain-navigation.spec.ts` — "flyout: External Companies".
 
-102. **Admin flyout — Inventory → /inventory (clean URL):** Hovering Admin, clicking Inventory navigates
-     to `/inventory` with no slug prefix, "Inventory Management" h1 renders.
-     (Label was "Pricing" → "/pricing" before Stage 25 B6.)
-     Automated: `subdomain-navigation.spec.ts` — "flyout: Inventory".
+102. **Admin flyout — Inventory → /admin/inventory (clean URL):** Hovering Admin, clicking Inventory navigates
+     to `/admin/inventory` with no slug prefix, "Inventory Management" h1 renders.
+     (Label was "Pricing" → "/pricing" before Stage 25 B6; path moved from `/inventory` to `/admin/inventory` in Hotfix 2026-09-27 H-1.)
+     Automated: `subdomain-navigation.spec.ts` — "sidebar admin flyout: Inventory link → /admin/inventory (clean URL)".
 
 103. **Admin flyout — Roles (Stage 16 Batch F — superseded):** The "Roles" sidebar flyout link is
      deleted; the org-admin flyout no longer contains a Roles entry. The automated test in
@@ -442,9 +443,9 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      Automated: `superadmin-component-types.spec.ts` — "controls component types: navigate to edit"
      (Tier 2 — runs on test.easeetool.com).
 
-110. **Inventory list renders with clean subdomain URL:** `/inventory` renders with "Inventory
+110. **Inventory list renders with clean subdomain URL:** `/admin/inventory` renders with "Inventory
      Management" h1, no slug prefix in the URL.
-     (Was "Pricing list→detail→back" before Stage 25 B6 — Edit Prices sub-page removed in S25-7.)
+     (Was "Pricing list→detail→back" before Stage 25 B6 — Edit Prices sub-page removed in S25-7; moved from `/inventory` to `/admin/inventory` in Hotfix 2026-09-27 H-1.)
      Automated: `subdomain-navigation.spec.ts` — "inventory: list page renders with clean subdomain URL".
 
 ### C. Project wizard breadcrumb
@@ -494,15 +495,16 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
 
 ## Stage 24 — Material-list formula engine
 
-116. **CatalogItem renamed to InventoryItem (Stage 24 Batch 1):** The `/inventory` routes and all API
-     references use `inventoryItem` / `inventoryItemId` / `measurementUnit`. A grep for
+116. **CatalogItem renamed to InventoryItem (Stage 24 Batch 1):** The `/admin/inventory` page and
+     `/api/v1/orgs/{orgSlug}/inventory` API routes and all references use `inventoryItem` / `inventoryItemId` / `measurementUnit`. A grep for
      `CatalogItem`/`catalogItemId`/`unitOfMeasure` outside migration files must return zero results
-     in `app/`, `lib/`, and `prisma/` (excluding `migrations/`). The `/inventory` API route responds
+     in `app/`, `lib/`, and `prisma/` (excluding `migrations/`). The `/api/v1/orgs/{orgSlug}/inventory` API route responds
      with `{ items: [...] }` (key unchanged from before the rename).
      In Stage 25 B6 (S25-4/S25-5), the `/catalog` API path was renamed to `/inventory`; the old path
-     returns 404 (no redirect). The `/pricing` page path was renamed to `/inventory`.
-     Automated: `stage24-materials.spec.ts` M1 (unauthenticated /inventory → 401; old /catalog → 404),
-     M2 (authenticated /inventory → 200 with `items` array; old /catalog → 404).
+     returns 404 (no redirect). The `/pricing` page path was renamed to `/inventory`, then moved to
+     `/admin/inventory` in Hotfix 2026-09-27 H-1.
+     Automated: `stage24-materials.spec.ts` M1 (unauthenticated /api/../inventory → 401; old /catalog → 404),
+     M2 (authenticated /api/../inventory → 200 with `items` array; old /catalog → 404).
 
 117. **Submit Design refused with a problem list when inventory data is incomplete (Stage 24, decision
      10 reversal):** A design with unresolved material codes, inactive inventory items, or blank required
@@ -537,13 +539,14 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
 
 ## Stage 25 — Bug fixes, formula-set authoring, Pricing → Inventory rename
 
-121. **Pricing → Inventory rename (S25-4/S25-5):** `/inventory` list renders correctly ("Inventory
-     Management" h1, "Inventory Items" table heading). `/pricing` returns 404 (no redirect). The sidebar
-     Admin flyout shows "Inventory" linking to `/inventory` (not "Pricing"). The i18n namespace is
-     `"inventory"` (not `"pricing"`).
+121. **Pricing → Inventory rename (S25-4/S25-5) + path move to /admin/inventory (Hotfix 2026-09-27 H-1):**
+     `/admin/inventory` list renders correctly ("Inventory Management" h1, "Inventory Items" table heading).
+     `/pricing` returns 404 (no redirect). `/inventory` (old page path) also returns 404 (moved to `/admin/inventory`).
+     The sidebar Admin flyout shows "Inventory" linking to `/admin/inventory` (not "Pricing", not `/inventory`).
+     The i18n namespace is `"inventory"` (not `"pricing"`).
      `GET /api/v1/orgs/{orgSlug}/catalog` → 404 (no redirect, S25-5 guarantee).
-     `GET /api/v1/orgs/{orgSlug}/inventory` → 200 with `{ items: [...] }` for an authorized session.
+     `GET /api/v1/orgs/{orgSlug}/inventory` → 200 with `{ items: [...] }` for an authorized session (API path unchanged).
      Automated: `inventory-stage25.spec.ts` (RBAC gates + list renders), `subdomain-navigation.spec.ts`
      (flyout link + inventory list clean URL), `stage24-materials.spec.ts` M1/M2 (old /catalog API → 404;
-     new /inventory → 401/200). The `/pricing` **page** 404 is manual-only (verified once via curl) — no
+     new /inventory API → 401/200). The `/pricing` **page** 404 is manual-only (verified once via curl) — no
      spec requests `/pricing`.

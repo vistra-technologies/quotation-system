@@ -164,7 +164,7 @@ function resolveGoHref(
     }
     case "INVENTORY": {
       if (!problem.code) return null;
-      return orgPath(isSubdomain, orgSlug, "/inventory");
+      return orgPath(isSubdomain, orgSlug, "/admin/inventory");
     }
     case "FORMULA_SET":
       return null;
