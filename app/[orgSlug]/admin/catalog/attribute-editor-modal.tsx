@@ -92,6 +92,14 @@ export function AttributeEditorModal({
       // Escape and owns it while open — this modal's own root card carries role="dialog" too, so
       // more than one such element means a child dialog is on top and should handle it instead.
       if (document.querySelectorAll('[role="dialog"]').length > 1) return;
+      // A chip is mid-rename (its own input owns Escape — see attribute-step-editor.tsx). Checked
+      // via activeElement rather than relying on the input's own e.stopPropagation() to beat this
+      // listener: both are independent `document`-level keydown listeners for the same event, and
+      // in practice (verified against a live preview) React's synthetic stopPropagation does not
+      // reliably suppress a sibling native document listener — the input is still the focused,
+      // not-yet-unmounted element at this point in the same synchronous dispatch, so this check is
+      // reliable regardless of listener registration order.
+      if (document.activeElement?.matches('input[aria-label^="Rename "]')) return;
       requestClose();
     }
     document.addEventListener("keydown", onKeyDown);
