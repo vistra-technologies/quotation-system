@@ -91,15 +91,10 @@ export function AttributeEditorModal({
       // A nested dialog (e.g. the removal-impact confirm in AttributeStepEditor) also listens for
       // Escape and owns it while open — this modal's own root card carries role="dialog" too, so
       // more than one such element means a child dialog is on top and should handle it instead.
+      // (Belt-and-suspenders: ConfirmDialog itself also calls stopImmediatePropagation() on its own
+      // Escape handler now, so this listener normally never even runs in that case — kept as a
+      // second line of defense for any future nested overlay that doesn't.)
       if (document.querySelectorAll('[role="dialog"]').length > 1) return;
-      // A chip is mid-rename (its own input owns Escape — see attribute-step-editor.tsx). Checked
-      // via activeElement rather than relying on the input's own e.stopPropagation() to beat this
-      // listener: both are independent `document`-level keydown listeners for the same event, and
-      // in practice (verified against a live preview) React's synthetic stopPropagation does not
-      // reliably suppress a sibling native document listener — the input is still the focused,
-      // not-yet-unmounted element at this point in the same synchronous dispatch, so this check is
-      // reliable regardless of listener registration order.
-      if (document.activeElement?.matches('input[aria-label^="Rename "]')) return;
       requestClose();
     }
     document.addEventListener("keydown", onKeyDown);

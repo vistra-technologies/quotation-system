@@ -200,7 +200,15 @@ export function AttributeStepEditor({
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
               if (e.key === "Escape") {
+                // Plain e.stopPropagation() doesn't reach far enough here: the modal's own Escape
+                // handler is a *separate* `document.addEventListener("keydown", ...)` listener, not
+                // a React-tree ancestor, and React's own root listener is delegated to `document`
+                // too — so this is a sibling-listener-on-the-same-target situation, where only
+                // stopImmediatePropagation() on the underlying native event suppresses it (verified
+                // live: stopPropagation() alone let the modal's listener still fire and pop the
+                // "Discard unsaved changes?" confirm on top of this input closing).
                 e.stopPropagation();
+                e.nativeEvent.stopImmediatePropagation();
                 setEditingChip(null);
               }
             }}

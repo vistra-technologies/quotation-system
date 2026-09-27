@@ -103,7 +103,16 @@ export function ConfirmDialog({
   useEffect(() => {
     if (!isOpen || disableEscapeClose) return;
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onCancel();
+      if (e.key !== "Escape") return;
+      // Stop this Escape from also reaching any other `document`-level keydown listener a caller
+      // may have registered behind this dialog (e.g. a parent modal's own close-on-Escape) — this
+      // dialog is the topmost surface while open and should own the keypress outright. A plain
+      // stopPropagation() on a native `document.addEventListener` event doesn't help here (there's
+      // no DOM ancestor relationship between sibling `document` listeners to stop propagation
+      // through); stopImmediatePropagation() is what actually suppresses other listeners on the
+      // same target. Stage 27 review-1.md MINOR-1.
+      e.stopImmediatePropagation();
+      onCancel();
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
