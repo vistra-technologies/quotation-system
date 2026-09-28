@@ -29,7 +29,7 @@ export interface FormulaDef {
   condition?: string;
   /** `{param.x}` — plain string substitution, never expr-eval. */
   materialCode: string;
-  /** "metres" | "pieces" — hard-matched against InventoryItem.measurementUnit. */
+  /** A lib/units.ts MEASUREMENT_UNITS value — hard-matched against InventoryItem.measurementUnit. */
   unit: string;
   /** expr-eval expression. */
   quantity: string;

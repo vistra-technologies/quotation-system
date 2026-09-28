@@ -25,7 +25,7 @@ const parser = new Parser();
 export interface RawMaterialLine {
   /** Substituted materialCode. Never blank — blank-code formulas are dropped (MISSING_PARAM recorded). */
   code: string;
-  /** FormulaDef.unit ("metres" | "pieces") */
+  /** FormulaDef.unit — one of lib/units.ts MEASUREMENT_UNITS */
   unit: string;
   /** Raw requirement; 3dp for metres. NaN/Infinity lines are dropped (NON_FINITE_QUANTITY recorded). */
   requirement: number;
