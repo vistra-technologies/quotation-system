@@ -10,6 +10,10 @@
 export const MEASUREMENT_UNITS = [
   { value: "metres", label: "m — Metre" },
   { value: "pieces", label: "piece" },
+  { value: "m²", label: "m² — Square metre" },
+  { value: "mm", label: "mm — Millimetre" },
+  { value: "ft", label: "ft — Feet" },
+  { value: "set", label: "set" },
 ] as const;
 
 export type MeasurementUnit = (typeof MEASUREMENT_UNITS)[number]["value"];
