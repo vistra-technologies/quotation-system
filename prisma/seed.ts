@@ -23,12 +23,13 @@ const prisma = new PrismaClient({ adapter });
 const SEED_PASSWORD = "Seed1234!";
 
 // ─── Tenant organizations ────────────────────────────────────────────────────
-const organizations = [
-  { slug: "vistra", name: "Vistra Partitions" },
-  { slug: "acme-glass", name: "Acme Glass Co." },
-  { slug: "nordic-walls", name: "Nordic Walls AB" },
-  { slug: "clearline", name: "ClearLine Interiors" },
-];
+// Corrected 2026-09-28 (human instruction): the four demo fixture orgs previously seeded
+// here (vistra, acme-glass, nordic-walls, clearline) are not wanted — they, and every table
+// keyed by their organizationId, were hard-deleted from the dev DB. This list intentionally
+// creates no orgs of its own now; the loop below still applies role/permission/ComponentType
+// defaults to whatever orgs already exist (cloisons, e2e-testorg, and any org created via
+// SuperAdmin or an e2e spec's own setup), it just never seeds new ones into existence.
+const organizations: { slug: string; name: string }[] = [];
 
 // ─── Global permission catalog (8 permissions) ────────────────────────────────
 const permissionCatalog = [
@@ -376,7 +377,7 @@ async function main() {
 
   // ── 4c. Cloisons inventory (Stage 24 Batch 3) ───────────────────────────────
   // Targeted seed: only runs if the `cloisons` org exists (D-3 in plan-b3.md).
-  // Gracefully skipped in other environments (e.g. vistra/acme-glass/nordic-walls/clearline only).
+  // Gracefully skipped in any environment without a `cloisons` org.
   const cloisonsOrg = await prisma.organization.findFirst({ where: { slug: "cloisons" } });
   if (!cloisonsOrg) {
     console.warn("cloisons org not found — skipping cloisons inventory seed");
@@ -411,141 +412,14 @@ async function main() {
     console.log(`cloisons.activeFormulaSetId → ${cloisonsSet.id}`);
   }
 
-  // ── 5. Catalog items and prices ─────────────────────────────────────────────
-  // Representative items covering all categories.
-  // PLACEHOLDER — replace with real client data before handover
-  const inventoryItemDefs = [
-    {
-      category: "WALL_TYPE",
-      code: "WT-001",
-      name: "Standard Glass Wall",
-      uom: "M2",
-      attributes: {}, // PLACEHOLDER — replace with real client data before handover
-    },
-    {
-      category: "GLASS",
-      code: "GL-001",
-      name: "Clear Float 8mm",
-      uom: "M2",
-      attributes: { thicknessMm: 8 }, // PLACEHOLDER — replace with real client data before handover
-    },
-    {
-      category: "DOOR_TYPE",
-      code: "DT-001",
-      name: "Single Swing Door",
-      uom: "LEAF",
-      attributes: {}, // PLACEHOLDER — replace with real client data before handover
-    },
-    {
-      category: "PROFILE_STOP",
-      code: "PS-001",
-      name: "Aluminium U-Profile",
-      uom: "M",
-      attributes: {}, // PLACEHOLDER — replace with real client data before handover
-    },
-    {
-      category: "FRAME",
-      code: "FR-001",
-      name: "Standard Frame",
-      uom: "SET",
-      attributes: {}, // PLACEHOLDER — replace with real client data before handover
-    },
-    {
-      category: "HINGE",
-      code: "HG-001",
-      name: "Glass-to-Glass Hinge",
-      uom: "PC",
-      attributes: {}, // PLACEHOLDER — replace with real client data before handover
-    },
-    {
-      category: "LOCKBOX",
-      code: "LB-001",
-      name: "Standard Lock Box",
-      uom: "PC",
-      attributes: {}, // PLACEHOLDER — replace with real client data before handover
-    },
-    {
-      category: "HANDLE",
-      code: "HA-001",
-      name: "D-Handle",
-      uom: "PAIR",
-      attributes: {}, // PLACEHOLDER — replace with real client data before handover
-    },
-    {
-      category: "SEAL",
-      code: "SL-001",
-      name: "Bottom Seal",
-      uom: "M",
-      attributes: {}, // PLACEHOLDER — replace with real client data before handover
-    },
-    {
-      category: "RUBBER",
-      code: "RB-001",
-      name: "Edge Rubber Strip",
-      uom: "M",
-      attributes: {}, // PLACEHOLDER — replace with real client data before handover
-    },
-    {
-      category: "FITTING",
-      code: "FT-001",
-      name: "Panel Fitting Set",
-      uom: "SET",
-      attributes: {}, // PLACEHOLDER — replace with real client data before handover
-    },
-    {
-      category: "SCREW",
-      code: "SC-001",
-      name: "M6 Bolt Set",
-      uom: "SET",
-      attributes: {}, // PLACEHOLDER — replace with real client data before handover
-    },
-  ];
-
-  // Placeholder prices per item (two currencies).
-  // PLACEHOLDER — replace with real client data before handover
-  const priceDefs = [
-    { currency: "AED", amount: "100.00" }, // PLACEHOLDER — replace with real client data before handover
-    { currency: "USD", amount: "27.00" }, // PLACEHOLDER — replace with real client data before handover
-  ];
-
-  for (const org of allOrgs) {
-    for (const def of inventoryItemDefs) {
-      const item = await prisma.inventoryItem.upsert({
-        where: {
-          organizationId_code: { organizationId: org.id, code: def.code },
-        },
-        update: { name: def.name, measurementUnit: def.uom, attributes: def.attributes },
-        create: {
-          organizationId: org.id,
-          category: def.category,
-          code: def.code,
-          name: def.name,
-          measurementUnit: def.uom,
-          attributes: def.attributes,
-          active: true,
-        },
-      });
-
-      for (const p of priceDefs) {
-        await prisma.itemPrice.upsert({
-          where: {
-            inventoryItemId_currency: {
-              inventoryItemId: item.id,
-              currency: p.currency,
-            },
-          },
-          update: { price: p.amount, organizationId: org.id },
-          create: {
-            organizationId: org.id,
-            inventoryItemId: item.id,
-            currency: p.currency,
-            price: p.amount, // PLACEHOLDER — replace with real client data before handover
-          },
-        });
-      }
-    }
-  }
-  console.log(`InventoryItems + ItemPrices seeded for ${allOrgs.length} orgs`);
+  // ── 5. (removed 2026-09-28) ─────────────────────────────────────────────────
+  // This step used to seed a generic PLACEHOLDER inventory catalog (WT-001, GL-001, DT-001,
+  // PS-001, FR-001, HG-001, LB-001, HA-001, SL-001, RB-001, FT-001, SC-001) into every org,
+  // none of it tied to any real ComponentType or client data — human instruction: "You have
+  // added a bunch of inventory items that have no component which shouldn't exist." The 72
+  // rows it had produced across every org (144 ItemPrice children) were deleted from the dev
+  // DB. `cloisons`'s real inventory comes from `CLOISONS_INVENTORY_DEFS` (step 4c above);
+  // no other org has (or needs) a seeded inventory catalog.
 
   // ── 6. SuperAdmin bootstrap accounts ────────────────────────────────────────
   // Reads SUPERADMIN_DEVADMIN_PASSWORD, SUPERADMIN_ISHAN_PASSWORD,
@@ -598,7 +472,9 @@ async function main() {
   const totalComponentTypesCount = await prisma.componentType.count();
 
   console.log(`\n===== Seed summary =====`);
-  console.log(`Organizations:      ${totalOrgs}  (4 expected)`);
+  // Corrected 2026-09-28: this script no longer creates any organizations of its own — see
+  // the `organizations` array's comment above. Total org count is whatever already exists.
+  console.log(`Organizations:      ${totalOrgs}  (informational — this seed creates none)`);
   console.log(`Permissions:        ${totalPerms}  (8 expected)`);
   console.log(
     `Roles:              ${totalRoles}  (4×${allOrgs.length}=${4 * allOrgs.length} expected)`,
@@ -609,19 +485,17 @@ async function main() {
   console.log(
     `Users:              ${totalUsers}  (4×${allOrgs.length}=${4 * allOrgs.length} expected)`,
   );
-  console.log(
-    `Inventory items:    ${totalInventoryItems}  (${inventoryItemDefs.length}×${allOrgs.length}=${inventoryItemDefs.length * allOrgs.length} expected)`,
-  );
-  console.log(
-    `Item prices:        ${totalItemPrices}  (${priceDefs.length * inventoryItemDefs.length}×${allOrgs.length}=${priceDefs.length * inventoryItemDefs.length * allOrgs.length} expected)`,
-  );
+  // Corrected 2026-09-28: the generic PLACEHOLDER catalog step (formerly step 5) was removed —
+  // this now only reflects cloisons's real CLOISONS_INVENTORY_DEFS seed (step 4c above).
+  console.log(`Inventory items:    ${totalInventoryItems}  (informational — cloisons only)`);
+  console.log(`Item prices:        ${totalItemPrices}  (informational)`);
   console.log(
     `Component types:    ${totalComponentTypesCount}  (informational — see the note above; legacy codes on pre-existing orgs make a fixed "expected" figure meaningless)`,
   );
   const totalSuperAdmins = await prisma.superAdmin.count();
   console.log(`SuperAdmins:        ${totalSuperAdmins}  (3 expected when env vars are set)`);
   console.log(`\nSeeded password: ${SEED_PASSWORD}`);
-  console.log(`Login at e.g. http://localhost:3000/acme-glass/login`);
+  console.log(`Login at e.g. http://localhost:3000/cloisons/login`);
   console.log(`========================`);
 }
 

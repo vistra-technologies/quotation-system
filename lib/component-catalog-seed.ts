@@ -134,6 +134,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "acousticGasketCode",
         label: "Acoustic Gasket",
         type: "dropdown",
+        dependsOn: "glassType",
         required: true,
         basic: false,
       },
@@ -141,6 +142,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "whiteSealCode",
         label: "White Seal",
         type: "dropdown",
+        dependsOn: "glassType",
         required: true,
         basic: false,
       },
@@ -148,6 +150,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "woodWedgeCode",
         label: "Wood Wedge",
         type: "dropdown",
+        dependsOn: "glassType",
         required: true,
         basic: false,
       },
@@ -155,6 +158,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "lConnectorCode",
         label: "L Connector",
         type: "dropdown",
+        dependsOn: "glassType",
         required: true,
         basic: false,
       },
@@ -162,6 +166,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "degreeConnectorCode",
         label: "Degree Connector",
         type: "dropdown",
+        dependsOn: "glassType",
         required: true,
         basic: false,
       },
@@ -169,6 +174,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "doorConnectorCode",
         label: "Door Connector",
         type: "dropdown",
+        dependsOn: "glassType",
         required: true,
         basic: false,
       },
@@ -176,6 +182,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "straightConnectorCode",
         label: "Straight Connector",
         type: "dropdown",
+        dependsOn: "glassType",
         required: true,
         basic: false,
       },
@@ -208,6 +215,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "hasFrame",
         label: "Has Frame",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -215,6 +223,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "hasLeaf",
         label: "Has Leaf",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -222,6 +231,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "frameCode",
         label: "Frame Profile Code",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -229,6 +239,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "leafCode",
         label: "Leaf Profile Code",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -236,6 +247,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "cornerConnBigCode",
         label: "Corner Connector (Big) Code",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -243,6 +255,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "cornerConnSmallFrameCode",
         label: "Corner Connector (Small, Frame) Code",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -250,6 +263,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "cornerConnSmallLeafCode",
         label: "Corner Connector (Small, Leaf) Code",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -257,6 +271,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "lAngleCode",
         label: "L Angle Code",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -264,6 +279,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "hingeCode",
         label: "Hinge Code",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -271,6 +287,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "rubber25mmCode",
         label: "2.5mm Rubber Strip Code",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -278,6 +295,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "frameBumperGasketCode",
         label: "Frame Bumper Gasket Code",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -285,6 +303,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "frameBackGasketCode",
         label: "Frame Back Gasket Code",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -292,6 +311,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "leafGlassGasket1Code",
         label: "Leaf Glass Gasket 1 Code",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -299,6 +319,7 @@ export const COMPONENT_TYPE_DEFS: {
         key: "leafGlassGasket2Code",
         label: "Leaf Glass Gasket 2 Code",
         type: "dropdown",
+        dependsOn: "doorType",
         required: true,
         basic: false,
       },
@@ -394,15 +415,33 @@ export const COMPONENT_TYPE_ORG_CONFIG_DEFS: {
           TST2: ["I LUO-01"],
         },
       },
-      // Stage 24 Batch 3: new connector/gasket/wedge code fields (flat options — same code
-      // for every glassType, since these materials don't vary by glass type for cloisons).
-      acousticGasketCode: { options: ["GLASS-ACGSK-01"] },
-      whiteSealCode: { options: ["GLASS-WSEAL-01"] },
-      woodWedgeCode: { options: ["GLASS-WWDG-01"] },
-      lConnectorCode: { options: ["GLASS-LCON-01"] },
-      degreeConnectorCode: { options: ["GLASS-DCON-01"] },
-      doorConnectorCode: { options: ["GLASS-DRCON-01"] },
-      straightConnectorCode: { options: ["GLASS-STCON-01"] },
+      // Stage 24 Batch 3 connector/gasket/wedge code fields. Corrected 2026-09-28 (human
+      // review against the live SuperAdmin editor): these actually depend on glassType, not
+      // independent as first shipped — same code for every glassType value, since these
+      // materials don't vary by glass type for cloisons, but the wiring itself does matter
+      // (the Catalog page's cascade-completeness gate treats an unwired field as always
+      // "complete", masking that it should track glassType additions).
+      acousticGasketCode: {
+        valueMap: { ID1: ["GLASS-ACGSK-01"], ID6: ["GLASS-ACGSK-01"], NT2: ["GLASS-ACGSK-01"], TST1: ["GLASS-ACGSK-01"], TST2: ["GLASS-ACGSK-01"] },
+      },
+      whiteSealCode: {
+        valueMap: { ID1: ["GLASS-WSEAL-01"], ID6: ["GLASS-WSEAL-01"], NT2: ["GLASS-WSEAL-01"], TST1: ["GLASS-WSEAL-01"], TST2: ["GLASS-WSEAL-01"] },
+      },
+      woodWedgeCode: {
+        valueMap: { ID1: ["GLASS-WWDG-01"], ID6: ["GLASS-WWDG-01"], NT2: ["GLASS-WWDG-01"], TST1: ["GLASS-WWDG-01"], TST2: ["GLASS-WWDG-01"] },
+      },
+      lConnectorCode: {
+        valueMap: { ID1: ["GLASS-LCON-01"], ID6: ["GLASS-LCON-01"], NT2: ["GLASS-LCON-01"], TST1: ["GLASS-LCON-01"], TST2: ["GLASS-LCON-01"] },
+      },
+      degreeConnectorCode: {
+        valueMap: { ID1: ["GLASS-DCON-01"], ID6: ["GLASS-DCON-01"], NT2: ["GLASS-DCON-01"], TST1: ["GLASS-DCON-01"], TST2: ["GLASS-DCON-01"] },
+      },
+      doorConnectorCode: {
+        valueMap: { ID1: ["GLASS-DRCON-01"], ID6: ["GLASS-DRCON-01"], NT2: ["GLASS-DRCON-01"], TST1: ["GLASS-DRCON-01"], TST2: ["GLASS-DRCON-01"] },
+      },
+      straightConnectorCode: {
+        valueMap: { ID1: ["GLASS-STCON-01"], ID6: ["GLASS-STCON-01"], NT2: ["GLASS-STCON-01"], TST1: ["GLASS-STCON-01"], TST2: ["GLASS-STCON-01"] },
+      },
     },
   },
   {
@@ -415,21 +454,54 @@ export const COMPONENT_TYPE_ORG_CONFIG_DEFS: {
           Double: ["Simple Glass", "Frameless Glazed"],
         },
       },
-      // Stage 24 Batch 3: condition flags + material-code fields (flat options).
-      hasFrame: { options: ["Yes", "No"] },
-      hasLeaf: { options: ["Yes", "No"] },
-      frameCode: { options: ["DOOR-FRAME-01"] },
-      leafCode: { options: ["DOOR-LEAF-01"] },
-      cornerConnBigCode: { options: ["DOOR-CCB-01"] },
-      cornerConnSmallFrameCode: { options: ["DOOR-CCSF-01"] },
-      cornerConnSmallLeafCode: { options: ["DOOR-CCSL-01"] },
-      lAngleCode: { options: ["DOOR-LANG-01"] },
-      hingeCode: { options: ["DOOR-HING-01"] },
-      rubber25mmCode: { options: ["DOOR-RUB25-01"] },
-      frameBumperGasketCode: { options: ["DOOR-FBGSK-01"] },
-      frameBackGasketCode: { options: ["DOOR-FBKGSK-01"] },
-      leafGlassGasket1Code: { options: ["DOOR-LGG1-01"] },
-      leafGlassGasket2Code: { options: ["DOOR-LGG2-01"] },
+      // Stage 24 Batch 3 condition flags + material-code fields. Corrected 2026-09-28 (human
+      // review against the live SuperAdmin editor): these actually depend on doorType, not
+      // independent as first shipped — same code for every doorType value ("Simple Glass",
+      // "Frameless Glass", "Frameless Glazed", the distinct union across doorType's own
+      // category-keyed valueMap below), but the wiring itself matters for the same reason
+      // noted on GLASS above.
+      hasFrame: {
+        valueMap: { "Simple Glass": ["Yes", "No"], "Frameless Glass": ["Yes", "No"], "Frameless Glazed": ["Yes", "No"] },
+      },
+      hasLeaf: {
+        valueMap: { "Simple Glass": ["Yes", "No"], "Frameless Glass": ["Yes", "No"], "Frameless Glazed": ["Yes", "No"] },
+      },
+      frameCode: {
+        valueMap: { "Simple Glass": ["DOOR-FRAME-01"], "Frameless Glass": ["DOOR-FRAME-01"], "Frameless Glazed": ["DOOR-FRAME-01"] },
+      },
+      leafCode: {
+        valueMap: { "Simple Glass": ["DOOR-LEAF-01"], "Frameless Glass": ["DOOR-LEAF-01"], "Frameless Glazed": ["DOOR-LEAF-01"] },
+      },
+      cornerConnBigCode: {
+        valueMap: { "Simple Glass": ["DOOR-CCB-01"], "Frameless Glass": ["DOOR-CCB-01"], "Frameless Glazed": ["DOOR-CCB-01"] },
+      },
+      cornerConnSmallFrameCode: {
+        valueMap: { "Simple Glass": ["DOOR-CCSF-01"], "Frameless Glass": ["DOOR-CCSF-01"], "Frameless Glazed": ["DOOR-CCSF-01"] },
+      },
+      cornerConnSmallLeafCode: {
+        valueMap: { "Simple Glass": ["DOOR-CCSL-01"], "Frameless Glass": ["DOOR-CCSL-01"], "Frameless Glazed": ["DOOR-CCSL-01"] },
+      },
+      lAngleCode: {
+        valueMap: { "Simple Glass": ["DOOR-LANG-01"], "Frameless Glass": ["DOOR-LANG-01"], "Frameless Glazed": ["DOOR-LANG-01"] },
+      },
+      hingeCode: {
+        valueMap: { "Simple Glass": ["DOOR-HING-01"], "Frameless Glass": ["DOOR-HING-01"], "Frameless Glazed": ["DOOR-HING-01"] },
+      },
+      rubber25mmCode: {
+        valueMap: { "Simple Glass": ["DOOR-RUB25-01"], "Frameless Glass": ["DOOR-RUB25-01"], "Frameless Glazed": ["DOOR-RUB25-01"] },
+      },
+      frameBumperGasketCode: {
+        valueMap: { "Simple Glass": ["DOOR-FBGSK-01"], "Frameless Glass": ["DOOR-FBGSK-01"], "Frameless Glazed": ["DOOR-FBGSK-01"] },
+      },
+      frameBackGasketCode: {
+        valueMap: { "Simple Glass": ["DOOR-FBKGSK-01"], "Frameless Glass": ["DOOR-FBKGSK-01"], "Frameless Glazed": ["DOOR-FBKGSK-01"] },
+      },
+      leafGlassGasket1Code: {
+        valueMap: { "Simple Glass": ["DOOR-LGG1-01"], "Frameless Glass": ["DOOR-LGG1-01"], "Frameless Glazed": ["DOOR-LGG1-01"] },
+      },
+      leafGlassGasket2Code: {
+        valueMap: { "Simple Glass": ["DOOR-LGG2-01"], "Frameless Glass": ["DOOR-LGG2-01"], "Frameless Glazed": ["DOOR-LGG2-01"] },
+      },
     },
   },
 ];
