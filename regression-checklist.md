@@ -550,3 +550,33 @@ authenticated browser context (one sign-in in `beforeAll`). Tests run serially.
      (flyout link + inventory list clean URL), `stage24-materials.spec.ts` M1/M2 (old /catalog API → 404;
      new /inventory API → 401/200). The `/pricing` **page** 404 is manual-only (verified once via curl) — no
      spec requests `/pricing`.
+
+## Stage 27 — Catalog page: visual dependency-tree UI
+
+122. **Cascade-add completeness gate never allows a partial save (S27-4/S27-5/S27-6):** on
+     `/{orgSlug}/admin/catalog`, adding a brand-new value to an attribute with downstream dependents
+     (at any chain depth) must show a "Next" button (never "Save & Next"/"Save & Close") that stays
+     disabled until every descendant attribute has ≥1 option for the new value; exactly one PUT to
+     `.../component-types/{typeId}/field-values` fires, only after the last step. Cancel/Escape/
+     overlay-click at any point discards the *entire* in-progress session, including steps already
+     advanced past — reopening the attribute afterward must show only the pre-cascade state. The
+     completeness gate blocks on *any* empty group of the attribute currently open, including a stale
+     one from before the current session, not just newly-created ones (S27-5's deliberate, stricter-than-
+     the-mockup-naive-reading simplification). Automated: `tests/e2e/stage27-catalog-ui.spec.ts` (3
+     scenarios: tree counts/no-total/non-interactive root; 2-hop cascade gating + exactly-one-PUT;
+     Cancel-mid-cascade full discard).
+
+123. **Segment Settings fully removed, no option-count totals anywhere (S27-2/S27-3):** the Catalog
+     page's segment root card is a non-interactive `<div>` (no click affordance, no rename modal exists
+     anywhere in the page). Attribute counts ("N attributes") appear on segment tabs, the root card, and
+     the canvas header — option-count totals ("N options") do not appear on any of those surfaces.
+     Covered by `tests/e2e/stage27-catalog-ui.spec.ts`; manual spot-check on a real multi-hop org
+     (`cloisons` GLASS, a true 3-hop chain) confirms the SVG tree renders multiple tiers correctly rather
+     than flattening the chain.
+
+124. **`sync()` save-payload fix doesn't drop or corrupt untouched fields (Stage 27 review-1 fix):** a
+     normal, non-cascade edit+save on any ComponentType's Catalog config must round-trip every *other*
+     field's stored `fieldOptionsConfig` entry byte-identical — verified against a real org's real
+     13-field GLASS config, not just a synthetic case. Not automated as a dedicated spec (verified
+     manually during `engineering:test`, reverted immediately after); worth adding a targeted assertion
+     to `tests/e2e/stage27-catalog-ui.spec.ts` if this area sees further changes.
