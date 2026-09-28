@@ -450,14 +450,13 @@ function validateJsonText(text: string): FieldEntry[] {
       if (obj.dependsOn !== undefined && obj.dependsOn !== null && obj.dependsOn !== "") {
         entry.dependsOn = String(obj.dependsOn);
       }
-      // Stage 20: `options` is no longer accepted here at all. Carried through
-      // (rather than silently dropped) purely so validateFieldsSchema below can
-      // surface a clear rejection message — it is never returned past this point.
-      if (obj.options !== undefined) {
-        entry.options = Array.isArray(obj.options)
-          ? (obj.options as unknown[]).map(String)
-          : [];
-      }
+      // Stage 20: `options` is no longer accepted from SuperAdmin authoring — silently
+      // dropped here (never copied onto `entry`), mirroring what parseFieldsSchema in
+      // actions.ts already does on the real Save path. Pre-Stage-20 orgs still round-trip
+      // a legacy `options` array through GET; without this drop, merely switching this
+      // component's JSON view back to Form view hard-rejected with "options is no longer
+      // accepted here" even though the admin never touched Advanced-tab config — see
+      // backlog 2026-09-24 Medium / bugs-1.md MINOR-2.
       return entry;
     })
     .filter((x): x is FieldEntry => x !== null);
