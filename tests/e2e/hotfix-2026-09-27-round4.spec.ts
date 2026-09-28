@@ -255,7 +255,7 @@ test("H-16: Creating inventory item shows toast; editing same item does NOT show
 
   // Select UOM
   const uomSelect = dialog.locator("#item-form-uom");
-  await uomSelect.selectOption("m²");
+  await uomSelect.selectOption("metres");
 
   // Fill Code and Name using the correct IDs
   const itemCode = `${PREFIX}-h16`;
@@ -388,7 +388,7 @@ test("H-17-b: Create item with ComponentType; edit and verify Component persists
   console.log(`H-17-b: Selected ComponentType: ${selectedText} (id: ${selectedId})`);
 
   // Fill other fields
-  await dialog.locator("#item-form-uom").selectOption("m²");
+  await dialog.locator("#item-form-uom").selectOption("metres");
   const itemCode = `${PREFIX}-h17b`;
   await dialog.locator("#item-form-code").fill(itemCode);
   await dialog.locator("#item-form-name").fill("H17 FK Test");
@@ -528,7 +528,7 @@ test("H-17-c: Tenancy check — POST with foreign-org componentTypeId returns 42
           data: {
             code: `${PREFIX}-tenancy-fake`,
             name: "Tenancy Test Fake",
-            measurementUnit: "m²",
+            measurementUnit: "metres",
             qtyPerUnit: 1,
             componentTypeId: "00000000-0000-0000-0000-000000000001", // non-existent
           },
@@ -554,7 +554,7 @@ test("H-17-c: Tenancy check — POST with foreign-org componentTypeId returns 42
         data: {
           code: `${PREFIX}-tenancy`,
           name: "Cross-org tenancy test",
-          measurementUnit: "m²",
+          measurementUnit: "metres",
           qtyPerUnit: 1,
           componentTypeId: foreignCtId,
         },
@@ -582,7 +582,7 @@ test("H-17-c: Tenancy check — POST with foreign-org componentTypeId returns 42
       data: {
         code: `${PREFIX}-tenancy`,
         name: "Cross-org tenancy test",
-        measurementUnit: "m²",
+        measurementUnit: "metres",
         qtyPerUnit: 1,
         componentTypeId: foreignCtId,
       },

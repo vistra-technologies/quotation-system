@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getApiSession, ApiAuthError } from "@/lib/api-auth";
+import { isMeasurementUnit, MEASUREMENT_UNIT_LIST } from "@/lib/units";
 import {
   apiBadRequest,
   apiUnauthorized,
@@ -152,8 +153,9 @@ export async function POST(
   if (typeof name !== "string" || name.trim() === "") {
     return apiBadRequest("name is required and must be a non-empty string");
   }
-  if (typeof measurementUnit !== "string" || measurementUnit.trim() === "") {
-    return apiBadRequest("measurementUnit is required and must be a non-empty string");
+  // Hotfix 2026-09-28 U-1: must be a unit the formula engine can match.
+  if (!isMeasurementUnit(measurementUnit)) {
+    return apiBadRequest(`measurementUnit is required and must be ${MEASUREMENT_UNIT_LIST}`);
   }
   // H-17: componentTypeId must be a string or null (not undefined-as-invalid).
   if (componentTypeId !== undefined && componentTypeId !== null && typeof componentTypeId !== "string") {
