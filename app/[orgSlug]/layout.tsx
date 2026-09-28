@@ -64,6 +64,11 @@ export default async function OrgSlugLayout({
   // (org-admin value-list editor). Component Type shape/CRUD itself is still SuperAdmin-only
   // at /controls/component-types (Stage 19 Batch 5); unaffected by this.
   const canManageFeatures = me.adminPermissions.includes("MANAGE_FEATURES");
+  // Bugfix 2026-09-28: gates the "Inventory" flyout link (moved under /admin/inventory by
+  // Hotfix 2026-09-27 H-1, which is MANAGE_PRICING-gated) — a Company Member (MANAGE_PRICING
+  // only, no MANAGE_USERS) previously couldn't even see the Admin flyout, let alone the
+  // Inventory link inside it. See inventory-gate-fix.md.
+  const canManagePricing = me.adminPermissions.includes("MANAGE_PRICING");
 
   return (
     <div className="flex h-screen bg-bg-page">
@@ -73,6 +78,7 @@ export default async function OrgSlugLayout({
         isSubdomain={isSubdomain}
         canManageUsers={canManageUsers}
         canManageFeatures={canManageFeatures}
+        canManagePricing={canManagePricing}
       />
 
       {/* Right column: top bar + page content */}

@@ -18,6 +18,13 @@ interface SidebarProps {
    * covers the separate, narrower "fill in values" screen.
    */
   canManageFeatures: boolean;
+  /**
+   * Bugfix 2026-09-28: gates the "Inventory" flyout link. Inventory moved under
+   * /admin/inventory in Hotfix 2026-09-27 H-1 and is MANAGE_PRICING-gated (not
+   * MANAGE_USERS/MANAGE_FEATURES) — without this, a MANAGE_PRICING-only role
+   * (Company Member) never saw the Admin flyout at all. See inventory-gate-fix.md.
+   */
+  canManagePricing: boolean;
 }
 
 /**
@@ -44,6 +51,7 @@ export function Sidebar({
   isSubdomain,
   canManageUsers,
   canManageFeatures,
+  canManagePricing,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
@@ -67,7 +75,9 @@ export function Sidebar({
 
   // Stage 20 Batch 3: showAdmin now also opens for canManageFeatures-only roles, since the
   // flyout gained the Catalog link (gated on MANAGE_FEATURES, independent of MANAGE_USERS).
-  const showAdmin = canManageUsers || canManageFeatures;
+  // Bugfix 2026-09-28: also opens for canManagePricing-only roles (Company Member), so the
+  // Inventory link (MANAGE_PRICING-gated) is reachable without MANAGE_USERS/MANAGE_FEATURES.
+  const showAdmin = canManageUsers || canManageFeatures || canManagePricing;
 
   // Shared nav-item class builder — active state applies Sage Ease primary green.
   const navItemClass = (section: string): string => {
@@ -331,13 +341,20 @@ export function Sidebar({
                   >
                     External Companies
                   </Link>
-                  <Link
-                    href={href("/admin/inventory")}
-                    className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
-                  >
-                    Inventory
-                  </Link>
                 </>
+              )}
+
+              {/* Bugfix 2026-09-28: Inventory is MANAGE_PRICING-gated (see
+               * app/[orgSlug]/admin/inventory/page.tsx), independent of MANAGE_USERS — was
+               * incorrectly nested under the canManageUsers block above, hiding it from
+               * MANAGE_PRICING-only roles (Company Member) entirely. */}
+              {(canManageUsers || canManagePricing) && (
+                <Link
+                  href={href("/admin/inventory")}
+                  className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
+                >
+                  Inventory
+                </Link>
               )}
 
               {/* NOTE (Stage 19 Batch 5): Component Type CRUD flyout link removed.
