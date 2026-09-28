@@ -51,7 +51,11 @@ export default async function AdminLayout({
     roles: allMessages.roles,
     components: allMessages.components,
     externalCompanies: allMessages.externalCompanies,
-    // H-16: Toast component (used in _inventory-list.tsx) requires this namespace.
+    // Toast component requires this namespace — needed independently by H-16 (_inventory-list.tsx)
+    // and Stage 27 (the Catalog page's option-editor save-success toast). Toast calls
+    // useTranslations("toast") internally regardless of whether a custom `message` is passed, so the
+    // namespace must be forwarded here or it silently fails to hydrate (see AGENTS.md's
+    // useTranslations namespace-forwarding gotcha).
     toast: allMessages.toast,
   };
 
