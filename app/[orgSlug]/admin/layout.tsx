@@ -3,6 +3,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import allMessages from "@/messages/en.json";
+import { AdminContentShell } from "./admin-content-shell";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -22,6 +23,11 @@ export const dynamic = "force-dynamic";
  *
  * Stage 12 Batch 6: switched from getSession()/getAdminPermissions() DAL to
  * internalFetch against /api/v1/orgs/[orgSlug]/me.
+ *
+ * Stage 27 catalog-UI fidelity fix: the width wrapper around `children` moved out into
+ * <AdminContentShell> so the Catalog page can render full-width (per the locked mockup's
+ * `.eq-content`, no max-width cap) without changing the `max-w-5xl` centered width every other
+ * admin page still uses.
  */
 export default async function AdminLayout({
   children,
@@ -61,7 +67,7 @@ export default async function AdminLayout({
 
   return (
     <NextIntlClientProvider messages={clientMessages}>
-      <div className="mx-auto w-full max-w-5xl px-6 py-8">{children}</div>
+      <AdminContentShell>{children}</AdminContentShell>
     </NextIntlClientProvider>
   );
 }
