@@ -247,10 +247,10 @@ export function InventoryList({ items, orgSlug, componentTypes }: InventoryListP
                   Name
                 </th>
                 <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Unit of measure
+                  Qty / unit
                 </th>
                 <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Qty / unit
+                  Unit of measure
                 </th>
                 {/* H-3: Status column removed */}
                 {/* Actions column — no heading */}
@@ -271,10 +271,10 @@ export function InventoryList({ items, orgSlug, componentTypes }: InventoryListP
                     {item.name}
                   </td>
                   <td className="px-5 py-4 text-text-body">
-                    {item.measurementUnit}
+                    {item.perUnitQuantity}
                   </td>
                   <td className="px-5 py-4 text-text-body">
-                    {item.perUnitQuantity}
+                    {item.measurementUnit}
                   </td>
                   {/* H-3: no Status cell */}
                   <td className="px-3 py-3 text-right">

@@ -5,6 +5,7 @@
  * Implements formula-engine.md §6 exactly.
  */
 import { Parser } from "expr-eval";
+import { isMeasurementUnit, MEASUREMENT_UNIT_LIST } from "@/lib/units";
 
 const parser = new Parser();
 
@@ -15,7 +16,6 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 /** Implemented grains — ROOM_SIDE and ROOM_JUNCTION are defined but not built (formula-engine.md §3). */
 const IMPLEMENTED_GRAINS = new Set(["CELL", "PARTITION"]);
 const ALL_GRAINS = new Set(["CELL", "PARTITION", "ROOM_SIDE", "ROOM_JUNCTION"]);
-const VALID_UNITS = new Set(["metres", "pieces"]);
 
 /** /^[a-z][A-Za-z0-9]*$/ — camelCase starting with lowercase. */
 const CAMEL_CASE_RE = /^[a-z][A-Za-z0-9]*$/;
@@ -224,8 +224,8 @@ export function validateFormulaSetBody(body: unknown): { ok: true } | { ok: fals
     }
 
     // unit
-    if (typeof fRec.unit !== "string" || !VALID_UNITS.has(fRec.unit)) {
-      errors.push(`formula "${id}": unit must be "metres" or "pieces" (got "${fRec.unit}")`);
+    if (!isMeasurementUnit(fRec.unit)) {
+      errors.push(`formula "${id}": unit must be ${MEASUREMENT_UNIT_LIST} (got "${fRec.unit}")`);
     }
 
     // condition (optional) — check for forbidden JS operators, then parse

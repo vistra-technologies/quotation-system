@@ -641,7 +641,7 @@ test("Regression H-16: Create toast fires with new SelectField sort control", as
   if (compOptions.filter((o) => o.trim() && !o.toLowerCase().includes("select")).length > 0) {
     await compDropdown.selectOption({ index: 1 });
   }
-  await dialog.locator("#item-form-uom").selectOption("m²");
+  await dialog.locator("#item-form-uom").selectOption("metres");
   const itemCode = `${PREFIX}-h16reg`;
   await dialog.locator("#item-form-code").fill(itemCode);
   await dialog.locator("#item-form-name").fill("R6 H16 Regression");

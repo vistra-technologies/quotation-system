@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { MEASUREMENT_UNITS, isMeasurementUnit } from "@/lib/units";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,15 +33,8 @@ interface ItemFormModalProps {
   onClose: () => void;
 }
 
-// Fixed Unit of Measure options (H-4). Values are stored in the DB as-is.
-const UOM_OPTIONS = [
-  { value: "m²", label: "m² — Square metre" },
-  { value: "m", label: "m — Metre" },
-  { value: "mm", label: "mm — Millimetre" },
-  { value: "ft", label: "ft — Feet" },
-  { value: "set", label: "set" },
-  { value: "piece", label: "piece" },
-] as const;
+// Unit of Measure options come from the shared list the formula engine matches against
+// (hotfix 2026-09-28 U-1) — H-4's own list (m², m, piece, …) could never match a formula.
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -109,6 +103,8 @@ export function ItemFormModal({
     // remains usable — matches the DB semantics where componentTypeId defaults to null.
     if (!componentTypeId && componentTypes.length > 0) errors.componentTypeId = "Component is required.";
     if (!measurementUnit) errors.measurementUnit = "Unit of measure is required.";
+    else if (!isMeasurementUnit(measurementUnit))
+      errors.measurementUnit = "This unit isn't supported by formulas — pick one from the list.";
     if (
       perUnitQuantity !== "" &&
       (isNaN(Number(perUnitQuantity)) || Number(perUnitQuantity) <= 0)
@@ -417,7 +413,12 @@ export function ItemFormModal({
                   className={inputClass("measurementUnit")}
                 >
                   <option value="">Select unit…</option>
-                  {UOM_OPTIONS.map((opt) => (
+                  {measurementUnit && !isMeasurementUnit(measurementUnit) && (
+                    <option value={measurementUnit} disabled>
+                      {measurementUnit} (unsupported)
+                    </option>
+                  )}
+                  {MEASUREMENT_UNITS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>

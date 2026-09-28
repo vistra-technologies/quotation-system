@@ -88,7 +88,7 @@ test("B8-2: Client-side required-field error when code is blank", async ({
   //      Save becomes enabled and the Code-missing validation can actually fire.
   await page.locator("#item-form-name").fill("E2E No Code Item");
   await page.locator("#item-form-category").selectOption("GLASS");
-  await page.locator("#item-form-uom").selectOption("m²");
+  await page.locator("#item-form-uom").selectOption("metres");
 
   await page.getByRole("button", { name: "Save item" }).click();
 
@@ -123,7 +123,7 @@ test("B8-3: Successful create — new item appears in the inventory list", async
   // H-5: Component dropdown is required when ComponentTypes exist; select one.
   await page.locator("#item-form-category").selectOption("GLASS");
   // H-4: UOM is now a <select>; use selectOption, not fill.
-  await page.locator("#item-form-uom").selectOption("m²");
+  await page.locator("#item-form-uom").selectOption("metres");
 
   await page.getByRole("button", { name: "Save item" }).click();
 
@@ -162,7 +162,7 @@ test("B8-4: Duplicate code shows inline 409 error in the modal", async ({
   await page.locator("#item-form-code").fill(createdItemCode);
   await page.locator("#item-form-name").fill("Duplicate Name");
   await page.locator("#item-form-category").selectOption("GLASS");
-  await page.locator("#item-form-uom").selectOption("m");
+  await page.locator("#item-form-uom").selectOption("metres");
 
   await page.getByRole("button", { name: "Save item" }).click();
 
@@ -211,7 +211,7 @@ test("B8-5: Edit button opens pre-filled modal for the created item", async ({
   // H-5: Component dropdown should be pre-filled with the code saved during B8-3.
   await expect(page.locator("#item-form-category")).toHaveValue("GLASS");
   // H-4: UOM dropdown should be pre-filled with the value saved during B8-3.
-  await expect(page.locator("#item-form-uom")).toHaveValue("m²");
+  await expect(page.locator("#item-form-uom")).toHaveValue("metres");
 });
 
 // ─── B8-6: Successful edit — list reflects updated name ──────────────────────
