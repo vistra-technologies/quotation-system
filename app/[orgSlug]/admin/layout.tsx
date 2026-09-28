@@ -10,7 +10,10 @@ export const dynamic = "force-dynamic";
 /**
  * Admin section layout (Server Component).
  *
- * Gates the entire /[orgSlug]/admin/* sub-tree on MANAGE_USERS or MANAGE_FEATURES.
+ * Gates the entire /[orgSlug]/admin/* sub-tree on MANAGE_USERS, MANAGE_FEATURES, or
+ * MANAGE_PRICING (any one of the three admin-adjacent permissions clears this layout
+ * gate; each page underneath still enforces its own specific permission — see
+ * /api/v1/orgs/[orgSlug]/me's adminPermissions doc comment for the bugfix history).
  * A single /me call covers the gate check. Navigation for admin sections is handled
  * by the shared sidebar (Stage 10 app shell); the duplicate top-bar header nav was
  * removed in Stage 11 Batch 1 and must not be reintroduced here.

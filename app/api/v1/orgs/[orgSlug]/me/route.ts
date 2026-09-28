@@ -34,17 +34,27 @@ export const dynamic = "force-dynamic";
  *     orgName,                         // organization display name
  *     roleName,                        // user's role display name
  *     permissionCodes: string[],       // ALL effective permission codes for this role
- *     adminPermissions: string[],      // subset: MANAGE_USERS / MANAGE_FEATURES only
+ *     adminPermissions: string[],      // subset: MANAGE_USERS / MANAGE_FEATURES / MANAGE_PRICING only
  *   }
  *
  * Consumers:
  *   - app/[orgSlug]/layout.tsx  — uses name, roleName, externalCompanyName, adminPermissions for shell chrome
- *   - app/[orgSlug]/admin/layout.tsx  — uses adminPermissions for admin gate + nav links
+ *   - app/[orgSlug]/admin/layout.tsx  — uses adminPermissions.length to gate the whole /admin/* sub-tree
  *   - app/[orgSlug]/dashboard/page.tsx  — uses orgName, roleName, permissionCodes
- *   - admin/roles/*, admin/permissions/*, admin/components/*, admin/external-companies/*
+ *   - admin/catalog/*, admin/external-companies/*
  *     — use adminPermissions to gate MANAGE_FEATURES / MANAGE_USERS checks at page level
  *   - app/[orgSlug]/projects/new/page.tsx, inquiries/new/page.tsx
  *     — use externalCompanyId for locked-client UI branching
+ *
+ * Bugfix 2026-09-28: adminPermissions previously only ever included MANAGE_USERS /
+ * MANAGE_FEATURES, so a MANAGE_PRICING-only role (e.g. Company Member) had an empty
+ * adminPermissions array and was bounced by the admin/layout.tsx length===0 gate before
+ * ever reaching /admin/inventory's own (correct) MANAGE_PRICING check — a regression from
+ * Hotfix 2026-09-27 H-1 moving Inventory under /admin/*. Widened to include MANAGE_PRICING
+ * so any of the three admin-adjacent permissions clears the layout gate; each page under
+ * /admin/* still does its own specific permission check (verified: catalog + external-companies
+ * check adminPermissions.includes(...) explicitly; users/* and inventory/* rely on their
+ * backing API routes' own requirePermission() gate — see inventory-gate-fix.md).
  */
 export async function GET(
   request: Request,
@@ -78,7 +88,10 @@ export async function GET(
     ]);
 
     const adminPermissions = permissionCodes.filter(
-      (c) => c === PERMISSIONS.MANAGE_USERS || c === PERMISSIONS.MANAGE_FEATURES,
+      (c) =>
+        c === PERMISSIONS.MANAGE_USERS ||
+        c === PERMISSIONS.MANAGE_FEATURES ||
+        c === PERMISSIONS.MANAGE_PRICING,
     );
 
     return NextResponse.json({
