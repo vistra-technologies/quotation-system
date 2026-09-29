@@ -99,11 +99,20 @@ export function ContextMenu({ anchorX, anchorY, items, onClose }: ContextMenuPro
     return () => document.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [onClose]);
 
-  // Dismiss on outside click (menu's own content calls stopPropagation).
+  // Dismiss on outside click. Checked on mousedown (not click) against where
+  // the press *started*: a click/drag that starts inside the menu (e.g.
+  // dragging to select text in the width input) can end with the mouseup
+  // outside the menu's DOM subtree, which makes the browser fire the `click`
+  // event on an ancestor outside menuRef — closing the menu mid-interaction.
+  // Keying off mousedown's start point avoids that false dismissal.
   useEffect(() => {
-    function handleClick() { onClose(); }
-    document.addEventListener("click", handleClick);
-    return () => document.removeEventListener("click", handleClick);
+    function handleMouseDown(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    }
+    document.addEventListener("mousedown", handleMouseDown);
+    return () => document.removeEventListener("mousedown", handleMouseDown);
   }, [onClose]);
 
   // Dismiss on scroll.
@@ -245,10 +254,11 @@ export function StandardWidthSlot({ label, widths, onApply, onClose }: StandardW
         {label}
       </p>
       <div className="flex gap-1.5 px-2.5">
-        {widths.map((w) => (
+        {widths.map((w, i) => (
           <button
             key={w}
             type="button"
+            data-testid={`standard-width-${i}`}
             onClick={() => { onApply(w); onClose(); }}
             className="flex-1 rounded-[8px] border border-primary-soft bg-primary-softer px-1 py-2 text-[12px] font-bold text-primary-dark hover:border-primary hover:bg-[#e2ebe3]"
           >

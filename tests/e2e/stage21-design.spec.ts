@@ -348,9 +348,10 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
 
     // Apply a standard width to panel 1 (forces uneven remainder distribution
     // across the other panels — the exact scenario the Track D review round 1
-    // finding was about).
+    // finding was about). Standard widths are proportional (25/35/50% of the
+    // partition's total width), so target by slot rather than a literal mm value.
     await panelButtons.nth(0).click({ button: "right" });
-    await page.getByText("997", { exact: true }).click();
+    await page.getByTestId("standard-width-2").click(); // 50% preset
     await page.waitForTimeout(300);
     body = await page.locator("body").innerText();
     width = Number(await widthFieldValue(page));

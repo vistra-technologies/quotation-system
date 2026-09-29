@@ -13,7 +13,7 @@
  *   3. ↔ Unite panels       — UNITE_PANELS     (merged.width = sum of targets)
  *   [divider]
  *   4. Apply width input    — SET_PANEL_WIDTHS_MAP (sum-preserving, see below)
- *   5. Standard-width row   — 997 / 697 / 397 mm
+ *   5. Standard-width row   — 25% / 35% / 50% of the partition's total width
  *
  * No Exclude/Include item — removed per D-2 deviation.
  *
@@ -46,8 +46,10 @@ import { useDraftContext } from "./design-draft-context";
 import { MIN_SPLIT_WIDTH_MM } from "./configure-constants";
 import type { DesignPanel } from "./types";
 
-// Standard-width quick buttons — mirrors mockup line 1853: [997, 697, 397]
-const STANDARD_WIDTHS_MM = [997, 697, 397];
+// Standard-width quick buttons — proportional to the partition's current
+// total width rather than fixed mm values, so they stay meaningful across
+// partitions of very different sizes.
+const STANDARD_WIDTH_FRACTIONS = [0.25, 0.35, 0.5];
 
 interface PanelContextMenuProps {
   panelId: string;
@@ -187,6 +189,8 @@ export function PanelContextMenu({
   const canUnite = panels.length > 1 && (multi ? contiguous : panels.length >= 2);
 
   const primaryWidth = primaryPanel?.widthMm ?? 0;
+  const totalWidthMm = panels.reduce((s, p) => s + p.widthMm, 0);
+  const standardWidths = STANDARD_WIDTH_FRACTIONS.map((f) => Math.round(totalWidthMm * f));
 
   function dispatchApplyWidth(newWidth: number) {
     const widthMap = computeSumPreservingWidths(panels, targetIds, newWidth);
@@ -254,7 +258,7 @@ export function PanelContextMenu({
       content: (
         <StandardWidthSlot
           label={t("ctxStandardWidth")}
-          widths={STANDARD_WIDTHS_MM}
+          widths={standardWidths}
           onApply={(w) => dispatchApplyWidth(w)}
           onClose={onClose}
         />
