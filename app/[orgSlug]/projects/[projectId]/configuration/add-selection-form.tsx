@@ -509,22 +509,29 @@ export function AddSelectionForm({
                   {showAdvanced ? "Hide Advanced" : "⚙ Configure"}
                 </button>
 
-                {showAdvanced && (
-                  <div className="absolute bottom-4 right-4 top-4 z-20 flex w-[300px] flex-col gap-4 overflow-y-auto rounded-md border border-border bg-bg-white p-4 shadow-[0_16px_34px_-12px_rgba(27,40,30,0.28)]">
-                    <p className="text-xs font-bold uppercase tracking-wider text-text-placeholder">
-                      {t("advancedFields")}
-                    </p>
-                    {advancedFields.map((field) => (
-                      <FieldInput
-                        key={field.key}
-                        field={field}
-                        value={fieldValues[field.key]}
-                        onChange={(val) => updateField(field.key, val)}
-                        options={optionsFor(field)}
-                      />
-                    ))}
-                  </div>
-                )}
+                {/* Always mounted (not conditionally rendered) so that a required
+                    single-option field's auto-select effect (FieldInput) fires as soon
+                    as a component type is selected — same as basic fields — instead of
+                    only once the user opens this panel. Visibility is CSS-only. */}
+                <div
+                  className={[
+                    "absolute bottom-4 right-4 top-4 z-20 flex w-[300px] flex-col gap-4 overflow-y-auto rounded-md border border-border bg-bg-white p-4 shadow-[0_16px_34px_-12px_rgba(27,40,30,0.28)]",
+                    showAdvanced ? "" : "hidden",
+                  ].join(" ")}
+                >
+                  <p className="text-xs font-bold uppercase tracking-wider text-text-placeholder">
+                    {t("advancedFields")}
+                  </p>
+                  {advancedFields.map((field) => (
+                    <FieldInput
+                      key={field.key}
+                      field={field}
+                      value={fieldValues[field.key]}
+                      onChange={(val) => updateField(field.key, val)}
+                      options={optionsFor(field)}
+                    />
+                  ))}
+                </div>
               </div>
             )}
 
