@@ -14,6 +14,7 @@
     "migrate:design-v2": "tsx prisma/migrate-design-v1-to-v2.ts",
     "backfill:config-snapshot": "tsx prisma/backfill-config-snapshots.ts",
     "backfill:formula-pins": "tsx prisma/backfill-formula-set-pins.ts",
+    "publish:formula-set-v2": "tsx prisma/publish-formula-set-v2.ts",
     "backfill:inventory-component-type": "tsx prisma/backfill-inventory-component-type.ts"
   },
   "dependencies": {
