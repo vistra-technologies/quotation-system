@@ -1,26 +1,22 @@
-import { DELETE_ORDER, type Ledger, type LedgerEntry } from "./ledger";
+import type { Ledger, LedgerEntry } from "./ledger";
 import type { SaClient } from "./clients";
-import { OrgSessions, isRunAdminUsername } from "./org-delete";
+import { OrgSessions } from "./org-delete";
 import type { RunState } from "./run-state";
 import { TEST_ORG } from "../env";
 import { regressionDeleteInquiry } from "../../e2e/db-helpers";
+import {
+  drainOrder,
+  generateRunPassword,
+  isDeletableOrgSlug,
+  isDeletableSuperAdminUsername,
+  isRunAdminUsername,
+} from "./cleanup-rules";
 
 const inScope = (slug: string | null) => slug !== null && (slug === TEST_ORG || slug.startsWith("rgr-"));
 
-/**
- * Children before parents (ledger DELETE_ORDER), with one exception: the run-admin user (rgr-…-admin) is
- * deleted AFTER the org-API kinds (project / inventoryItem / externalCompany), because it is the
- * session those deletes run under (DELETE_ORDER puts user before externalCompany).
- */
-export function drainOrder(entries: LedgerEntry[]): LedgerEntry[] {
-  const rank = (e: LedgerEntry) => {
-    if (e.kind === "user" && isRunAdminUsername(e.label)) return DELETE_ORDER.indexOf("externalCompany") + 0.5;
-    return DELETE_ORDER.indexOf(e.kind);
-  };
-  return [...entries].sort((a, b) => rank(a) - rank(b));
-}
+export type OrgRow = { id: string; slug: string; activeFormulaSetId: string | null };
 
-/** The single place that knows how to delete each ledger kind. 404 / already-gone = success; anything else throws. */
+/** The single place that knows how to delete each ledger kind. Already-gone = success; anything else throws. */
 export class Cleaner {
   private orgIds: Map<string, string> | null = null;
   readonly sessions: OrgSessions;
@@ -29,46 +25,81 @@ export class Cleaner {
     private readonly sa: SaClient,
     opts: { baseURL: string; bypass?: string; adminPass?: string; run: RunState | null },
   ) {
-    this.sessions = new OrgSessions({ ...opts, allowance: sa.allowance });
+    this.sessions = new OrgSessions({ ...opts, allowance: sa.allowance, resetPassword: (slug, id) => this.resetPassword(slug, id) });
+  }
+
+  /** Fresh (uncached) SuperAdmin org list. */
+  async listOrgs(): Promise<OrgRow[]> {
+    const r = await this.sa.get("/api/v1/superadmin/orgs");
+    if (r.status() !== 200) throw new Error(`cleanup: list orgs → HTTP ${r.status()}`);
+    return ((await r.json()) as { orgs: OrgRow[] }).orgs;
   }
 
   private async orgIdOf(slug: string): Promise<string | undefined> {
-    if (!this.orgIds) {
-      const r = await this.sa.get("/api/v1/superadmin/orgs");
-      if (r.status() !== 200) throw new Error(`cleanup: list orgs → HTTP ${r.status()}`);
-      const { orgs } = (await r.json()) as { orgs: { id: string; slug: string }[] };
-      this.orgIds = new Map(orgs.map((o) => [o.slug, o.id]));
-    }
+    this.orgIds ??= new Map((await this.listOrgs()).map((o) => [o.slug, o.id]));
     return this.orgIds.get(slug);
+  }
+
+  /** Orphan recovery: a crashed run's password is unknown — give its rgr- admin a fresh one via the SA route. */
+  private async resetPassword(orgSlug: string, userId: string): Promise<string> {
+    if (!inScope(orgSlug)) throw new Error(`password reset refused: org "${orgSlug}" is out of scope`);
+    const orgId = await this.orgIdOf(orgSlug);
+    if (!orgId) throw new Error(`password reset: org "${orgSlug}" not found`);
+    this.sa.allowance.ids.add(orgId);
+    const newPassword = generateRunPassword();
+    const r = await this.sa.patch(`/api/v1/superadmin/orgs/${orgId}/users/${userId}`, { data: { newPassword } });
+    if (r.status() !== 200) throw new Error(`password reset → HTTP ${r.status()}`);
+    return newPassword;
+  }
+
+  private async deleteOrg(e: LedgerEntry): Promise<void> {
+    const present = async () => (await this.listOrgs()).find((o) => o.id === e.id);
+    const org = await present();
+    if (!org) return; // already gone
+    // R17: never trust the ledger label — the LIVE slug must be a suite org before the id is allowed.
+    if (!isDeletableOrgSlug(org.slug)) {
+      throw new Error(`cleanup REFUSED: org ${e.id} is "${org.slug}" (ledger said "${e.label}") — not an rgr- org, will not delete`);
+    }
+    this.sa.allowance.ids.add(e.id);
+    const s = await this.sa.post(`/api/v1/superadmin/orgs/${e.id}/suspend`, { data: { suspend: true } });
+    if (s.status() === 404) {
+      if (await present()) throw new Error(`cleanup: suspend org ${org.slug} → 404 but the org is still listed`);
+      return;
+    }
+    if (s.status() !== 200) throw new Error(`cleanup: suspend org ${org.slug} → HTTP ${s.status()}`);
+    const r = await this.sa.delete(`/api/v1/superadmin/orgs/${e.id}`);
+    if (r.status() === 404 && !(await present())) return;
+    if (r.status() !== 200) throw new Error(`cleanup: delete org ${org.slug} → HTTP ${r.status()} ${await r.text()}`);
+  }
+
+  private async deleteSuperAdmin(e: LedgerEntry): Promise<void> {
+    const r0 = await this.sa.get("/api/v1/superadmin/admins");
+    if (r0.status() !== 200) throw new Error(`cleanup: list SuperAdmins → HTTP ${r0.status()}`);
+    const admin = ((await r0.json()) as { admins: { id: string; username: string }[] }).admins.find((a) => a.id === e.id);
+    if (!admin) return; // already gone
+    if (!isDeletableSuperAdminUsername(admin.username)) {
+      throw new Error(`cleanup REFUSED: SuperAdmin ${e.id} is "${admin.username}" — not an rgr-/e2e-sa- account, will not delete`);
+    }
+    this.sa.allowance.ids.add(e.id);
+    const r = await this.sa.delete(`/api/v1/superadmin/admins/${e.id}`);
+    if (r.status() !== 200 && r.status() !== 404) throw new Error(`cleanup: delete SuperAdmin ${admin.username} → HTTP ${r.status()}`);
   }
 
   async deleteEntry(e: LedgerEntry): Promise<void> {
     const ok = (s: number) => s === 200 || s === 204 || s === 404;
-    const allow = this.sa.allowance;
     switch (e.kind) {
       case "inquiry":
         await regressionDeleteInquiry(e.orgSlug!, e.id); // false = already gone
         return;
-      case "org": {
-        allow.ids.add(e.id); // a ledgered org is ours by construction
-        const s = await this.sa.post(`/api/v1/superadmin/orgs/${e.id}/suspend`, { data: { suspend: true } });
-        if (s.status() === 404) return;
-        if (s.status() !== 200) throw new Error(`cleanup: suspend org ${e.label} → HTTP ${s.status()}`);
-        const r = await this.sa.delete(`/api/v1/superadmin/orgs/${e.id}`);
-        if (!ok(r.status())) throw new Error(`cleanup: delete org ${e.label} → HTTP ${r.status()} ${await r.text()}`);
-        return;
-      }
-      case "superadmin": {
-        allow.ids.add(e.id);
-        const r = await this.sa.delete(`/api/v1/superadmin/admins/${e.id}`);
-        if (!ok(r.status())) throw new Error(`cleanup: delete SuperAdmin ${e.label} → HTTP ${r.status()}`);
-        return;
-      }
+      case "org":
+        return this.deleteOrg(e);
+      case "superadmin":
+        return this.deleteSuperAdmin(e);
       case "user": {
         if (!inScope(e.orgSlug)) throw new Error(`cleanup: user ${e.label} is in out-of-scope org "${e.orgSlug}"`);
         const orgId = await this.orgIdOf(e.orgSlug!);
         if (!orgId) return; // org already gone → its users went with it
-        allow.ids.add(orgId);
+        this.sa.allowance.ids.add(orgId);
         const r = await this.sa.delete(`/api/v1/superadmin/orgs/${orgId}/users/${e.id}`);
         if (!ok(r.status())) throw new Error(`cleanup: delete user ${e.label} → HTTP ${r.status()}`);
         return;
@@ -77,13 +108,11 @@ export class Cleaner {
       case "inventoryItem":
       case "externalCompany": {
         if (!inScope(e.orgSlug)) throw new Error(`cleanup: ${e.kind} ${e.label} is in out-of-scope org "${e.orgSlug}"`);
-        allow.slugs.add(e.orgSlug!);
+        this.sa.allowance.slugs.add(e.orgSlug!);
         await this.sessions.orgDelete(e as LedgerEntry & { kind: typeof e.kind });
         return;
       }
-      case "role":
-      case "componentType":
-      case "formulaSet":
+      default:
         throw new Error(`cleanup: no deleter wired for ${e.kind} (${e.label}) yet — add one before a test ledgers this kind`);
     }
   }
@@ -97,7 +126,7 @@ export class Cleaner {
     this.sessions.reset();
     for (const e of ordered) {
       if (e.kind === "user" && e.orgSlug && isRunAdminUsername(e.label)) {
-        this.sessions.adminCandidates.set(e.orgSlug, [...(this.sessions.adminCandidates.get(e.orgSlug) ?? []), e.label]);
+        this.sessions.adminCandidates.set(e.orgSlug, [...(this.sessions.adminCandidates.get(e.orgSlug) ?? []), { username: e.label, id: e.id }]);
       }
     }
     const deleted: string[] = [];
@@ -114,9 +143,9 @@ export class Cleaner {
     return { deleted, errors };
   }
 
-  /** Drain the persistent ledger (removing each entry the moment its row is gone). */
-  drainLedger(ledger: Ledger) {
-    return this.drain(ledger.inDeleteOrder(), (e) => ledger.remove(e.id));
+  /** Drain ledger entries (all, or the given subset), removing each from the ledger the moment its row is gone. */
+  drainLedger(ledger: Ledger, entries: LedgerEntry[] = ledger.inDeleteOrder()) {
+    return this.drain(entries, (e) => ledger.remove(e.id));
   }
 
   async dispose(): Promise<void> {

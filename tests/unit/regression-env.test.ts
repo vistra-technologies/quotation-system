@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { requireEnv } from "../regression/env";
+import { requireEnv, assertAllowedTarget } from "../regression/env";
 
 test("requireEnv lists EVERY missing required variable in one error (no silent skips)", () => {
   assert.throws(
@@ -28,6 +28,36 @@ test("requireEnv refuses localhost and production targets", () => {
     requireEnv({ ...base, PLAYWRIGHT_BASE_URL: "https://test.easeetool.com" }).baseURL,
     "https://test.easeetool.com",
   );
+});
+
+test("assertAllowedTarget: allowlist — test.easeetool.com, *.test.easeetool.com, *.vercel.app previews only", () => {
+  for (const ok of [
+    "https://test.easeetool.com",
+    "https://test.easeetool.com.",
+    "https://TEST.easeetool.com/",
+    "https://e2e-testorg.test.easeetool.com",
+    "https://quotation-system-git-feature-x-vistra.vercel.app",
+  ]) {
+    assert.doesNotThrow(() => assertAllowedTarget(ok), ok);
+  }
+  for (const bad of [
+    "https://easeetool.com",
+    "https://easeetool.com.",
+    "https://www.easeetool.com",
+    "https://vistra.easeetool.com",
+    "https://e2e-testorg.easeetool.com",
+    "https://cloisons.easeetool.com",
+    "https://v-quote.vercel.app",
+    "https://v-quote.vercel.app.",
+    "https://vercel.app",
+    "https://test.easeetool.com.evil.io",
+    "https://example.com",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "not a url",
+  ]) {
+    assert.throws(() => assertAllowedTarget(bad), Error, bad);
+  }
 });
 
 test("requireEnv passes the Vercel bypass secret through when present", () => {
