@@ -459,6 +459,108 @@ test("429 shows fixed message, disables Sign in with countdown, then re-enables"
 });
 
 // ---------------------------------------------------------------------------
+// 9c. Another session is active → confirmation dialog (hotfix 2026-10-02,
+//     single-session-confirm). The feature is behind the build-time flag
+//     NEXT_PUBLIC_SINGLE_SESSION_CONFIRM, which is OFF on Preview/staging by
+//     default (so the rest of this suite isn't blocked by the dialog). Run these
+//     only against a build with the flag on:
+//       SINGLE_SESSION_CONFIRM_ENABLED=true PLAYWRIGHT_BASE_URL=... npx playwright test login
+//     All auth calls are mocked — no real sessions are created or revoked.
+// ---------------------------------------------------------------------------
+test.describe("another session is active", () => {
+  test.skip(
+    process.env.SINGLE_SESSION_CONFIRM_ENABLED !== "true",
+    "needs a build with NEXT_PUBLIC_SINGLE_SESSION_CONFIRM=true",
+  );
+
+  const json = (body: unknown) => ({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+
+  async function mockSecondLogin(page: import("@playwright/test").Page) {
+    const calls: string[] = [];
+    const record = (name: string) => calls.push(name);
+    await page.route("**/api/auth/sign-in/email", (r) => {
+      record("sign-in");
+      return r.fulfill(json({ token: "t", user: { id: "u1" } }));
+    });
+    await page.route("**/api/auth/get-session", (r) =>
+      r.fulfill(json({ session: { id: "s-new" }, user: { id: "u1" } })),
+    );
+    await page.route("**/api/auth/list-sessions", (r) =>
+      r.fulfill(
+        json([
+          {
+            id: "s-new",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0) Chrome/126.0 Safari/537.36",
+            updatedAt: new Date().toISOString(),
+          },
+          {
+            id: "s-old",
+            userAgent: "Mozilla/5.0 (Windows NT 10.0) Chrome/126.0 Safari/537.36",
+            updatedAt: new Date(Date.now() - 12 * 60_000).toISOString(),
+          },
+        ]),
+      ),
+    );
+    await page.route("**/api/auth/revoke-other-sessions", (r) => {
+      record("revoke-other-sessions");
+      return r.fulfill(json({ status: true }));
+    });
+    await page.route("**/api/auth/sign-out", (r) => {
+      record("sign-out");
+      return r.fulfill(json({ success: true }));
+    });
+    return calls;
+  }
+
+  async function signIn(page: import("@playwright/test").Page) {
+    await goToLogin(page);
+    await page.getByLabel("User ID").fill("admin");
+    await page.getByLabel("Password", { exact: true }).fill("whatever-123");
+    await page.getByRole("button", { name: /Sign in/i }).click();
+  }
+
+  test("dialog shows the other session; Cancel signs the new one out and stays on login", async ({
+    page,
+  }) => {
+    const calls = await mockSecondLogin(page);
+    await signIn(page);
+
+    const dialog = page.getByRole("dialog", { name: "Log out the other session?" });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    await expect(dialog).toContainText("Chrome · Windows");
+    await expect(dialog).toContainText("12 minutes ago");
+
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+
+    await expect(dialog).toHaveCount(0);
+    await expect(page).toHaveURL(orgUrlPattern(ORG, "/login"));
+    expect(calls).toContain("sign-out");
+    expect(calls).not.toContain("revoke-other-sessions"); // nobody was logged out
+  });
+
+  test("Log out other session revokes the others and continues to the dashboard", async ({
+    page,
+  }) => {
+    const calls = await mockSecondLogin(page);
+    await signIn(page);
+
+    const dialog = page.getByRole("dialog", { name: "Log out the other session?" });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+    // Nothing is revoked until the user confirms.
+    expect(calls).not.toContain("revoke-other-sessions");
+
+    await dialog.getByRole("button", { name: "Log out other session" }).click();
+
+    await expect.poll(() => calls).toContain("revoke-other-sessions");
+    await page.waitForURL(orgUrlPattern(ORG, "/dashboard"), { timeout: 15_000 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // 10. Mobile viewport (390px): no horizontal overflow
 // ---------------------------------------------------------------------------
 test("mobile viewport has no horizontal overflow", async ({ browser }) => {

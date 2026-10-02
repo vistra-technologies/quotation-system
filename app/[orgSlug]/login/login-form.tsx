@@ -4,6 +4,13 @@ import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { toAuthEmail } from "@/lib/auth-utils";
 import { useOrgHref } from "@/lib/useOrgHref";
+import { deviceLabel, timeAgo } from "@/lib/session-display";
+
+// Hotfix 2026-10-02 (single-session-confirm): when on, a successful sign-in on an
+// account that already has another active session asks before logging that one
+// out. Build-time flag, set per Vercel environment (Production on, Preview off).
+const SINGLE_SESSION_CONFIRM =
+  process.env.NEXT_PUBLIC_SINGLE_SESSION_CONFIRM === "true";
 
 interface LoginFormProps {
   orgSlug: string;
@@ -42,7 +49,74 @@ export function LoginForm({ orgSlug }: LoginFormProps) {
   const [showContact, setShowContact] = useState(false);
   // Seconds left before sign-in is allowed again after a 429; 0 = not rate-limited.
   const [cooldown, setCooldown] = useState(0);
+  // Set once sign-in succeeded but the account has another active session.
+  const [otherSession, setOtherSession] = useState<{
+    device: string;
+    lastActive: string;
+  } | null>(null);
+  const [dialogBusy, setDialogBusy] = useState(false);
+  const [dialogError, setDialogError] = useState<string | null>(null);
   const orgHref = useOrgHref(orgSlug);
+
+  // Called after a successful sign-in. Fails open: any problem checking for other
+  // sessions must never block a valid login.
+  async function continueAfterSignIn() {
+    if (SINGLE_SESSION_CONFIRM) {
+      try {
+        const [current, list] = await Promise.all([
+          authClient.getSession(),
+          authClient.listSessions(),
+        ]);
+        const currentId = current.data?.session.id;
+        const others = (list.data ?? []).filter((s) => s.id !== currentId);
+        if (currentId && others.length > 0) {
+          const latest = others.reduce((a, b) =>
+            new Date(a.updatedAt) > new Date(b.updatedAt) ? a : b,
+          );
+          setOtherSession({
+            device: deviceLabel(latest.userAgent),
+            lastActive: timeAgo(latest.updatedAt),
+          });
+          return;
+        }
+      } catch {
+        // fall through to the normal redirect
+      }
+    }
+    // Hard redirect so the [orgSlug] layout re-renders server-side with the
+    // new session cookie, making the nav chrome appear immediately.
+    // orgHref resolves to bare subpath on subdomain hosts, /{orgSlug}/... otherwise.
+    window.location.href = orgHref("/dashboard");
+  }
+
+  async function logOutOtherSessions() {
+    setDialogBusy(true);
+    setDialogError(null);
+    try {
+      const { error: revokeError } = await authClient.revokeOtherSessions();
+      if (revokeError) {
+        setDialogError("Couldn't log out the other session. Please try again.");
+        return;
+      }
+      window.location.href = orgHref("/dashboard");
+    } catch {
+      setDialogError("Couldn't log out the other session. Please try again.");
+    } finally {
+      setDialogBusy(false);
+    }
+  }
+
+  // Cancel: sign this new session back out; the other user is left untouched.
+  async function cancelSecondLogin() {
+    setDialogBusy(true);
+    try {
+      await authClient.signOut();
+    } finally {
+      setDialogBusy(false);
+      setDialogError(null);
+      setOtherSession(null);
+    }
+  }
 
   // Tick the cooldown down once a second; clear the rate-limit error at 0.
   useEffect(() => {
@@ -75,10 +149,7 @@ export function LoginForm({ orgSlug }: LoginFormProps) {
           setError(signInError.message ?? "Sign in failed. Check your credentials.");
         }
       } else {
-        // Hard redirect so the [orgSlug] layout re-renders server-side with the
-        // new session cookie, making the nav chrome appear immediately.
-        // orgHref resolves to bare subpath on subdomain hosts, /{orgSlug}/... otherwise.
-        window.location.href = orgHref("/dashboard");
+        await continueAfterSignIn();
       }
     } finally {
       setLoading(false);
@@ -292,6 +363,64 @@ export function LoginForm({ orgSlug }: LoginFormProps) {
               >
                 support@easeetool.com
               </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Another session is active (single-session-confirm) ──
+          No backdrop/Escape dismissal: closing without choosing would leave this
+          new session signed in alongside the other one. */}
+      {otherSession && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="other-session-title"
+            className="w-full max-w-sm rounded-md bg-bg-white p-6 shadow-card"
+          >
+            <h2
+              id="other-session-title"
+              className="text-base font-semibold text-text-heading"
+            >
+              Log out the other session?
+            </h2>
+            <p className="mt-2 text-sm text-text-body">
+              This account is already signed in somewhere else. Only one session
+              can be active at a time.
+            </p>
+            <dl className="mt-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-sm bg-primary-softer px-3.5 py-3 text-sm">
+              <dt className="text-text-muted">Device</dt>
+              <dd className="font-semibold text-text-heading">
+                {otherSession.device}
+              </dd>
+              <dt className="text-text-muted">Last active</dt>
+              <dd className="font-semibold text-text-heading">
+                {otherSession.lastActive}
+              </dd>
+            </dl>
+            {dialogError && (
+              <p className="mt-3 text-sm text-red-500" role="alert">
+                {dialogError}
+              </p>
+            )}
+            <div className="mt-5 flex flex-wrap justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={cancelSecondLogin}
+                disabled={dialogBusy}
+                className="rounded-sm border border-border px-4 py-3 text-sm font-bold text-text-heading transition-colors hover:bg-primary-softer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={logOutOtherSessions}
+                disabled={dialogBusy}
+                className="rounded-sm bg-primary px-4 py-3 text-sm font-bold text-text-on-primary transition-colors hover:bg-primary-dark disabled:opacity-50"
+              >
+                Log out other session
+              </button>
             </div>
           </div>
         </div>
