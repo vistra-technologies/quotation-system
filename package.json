@@ -11,6 +11,8 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:unit": "node --import tsx --test tests/unit/*.test.ts",
+    "test:regression": "node scripts/regression.mjs",
+    "test:regression:coverage": "tsx tests/regression/coverage-map.ts",
     "migrate:design-v2": "tsx prisma/migrate-design-v1-to-v2.ts",
     "backfill:config-snapshot": "tsx prisma/backfill-config-snapshots.ts",
     "backfill:formula-pins": "tsx prisma/backfill-formula-set-pins.ts",
