@@ -20,7 +20,8 @@ export type FormulaSetFormState = {
 /**
  * Create a new FormulaSet via the SuperAdmin API route.
  * Reads name and bodyJson from FormData.
- * On success: revalidates the list page and redirects to the new set's detail page.
+ * On success: revalidates the list page and redirects to the new set's detail page — or, when the form
+ * sent `redirectTo=list` (the new-version draft form; hotfix 2026-10-02 item 6), to the list.
  * On 401: redirects to /controls/login.
  * On any other error (400 validation, 409 race): returns { error, validationErrors? }
  * so the create form can display it inline.
@@ -73,6 +74,10 @@ export async function createSuperAdminFormulaSet(
   const { formulaSet } = (await res.json()) as { formulaSet: { id: string } };
 
   revalidatePath("/controls/formula-sets");
+  // Exact-match allowlist — never a free-form redirect target.
+  if (formData.get("redirectTo") === "list") {
+    redirect("/controls/formula-sets", RedirectType.replace);
+  }
   redirect(`/controls/formula-sets/${encodeURIComponent(formulaSet.id)}`, RedirectType.replace);
 }
 

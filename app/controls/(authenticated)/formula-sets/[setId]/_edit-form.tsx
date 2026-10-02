@@ -100,6 +100,8 @@ export function EditFormulaSetForm({
 
       <form action={formAction}>
         <input type="hidden" name="setId" value={setId} />
+        {/* A saved new version goes back to the list, not to its own (look-alike) edit page. */}
+        {isDraft && <input type="hidden" name="redirectTo" value="list" />}
 
         {/* Name + Version row */}
         <div className="mb-4 grid grid-cols-2 gap-4">
