@@ -191,12 +191,24 @@ export default async function ConfigurationPage({
             >
               Back
             </Link>
-            <Link
-              href={`${base}/projects/${projectId}/design`}
-              className="rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary transition-colors hover:bg-primary-dark"
-            >
-              Continue to Design
-            </Link>
+            {selections.length === 0 ? (
+              // Design redirects back here with 0 Selections, so the button mirrors that gate.
+              <button
+                type="button"
+                disabled
+                title="Save at least one component to continue"
+                className="cursor-not-allowed rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary opacity-50"
+              >
+                Continue to Design
+              </button>
+            ) : (
+              <Link
+                href={`${base}/projects/${projectId}/design`}
+                className="rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary transition-colors hover:bg-primary-dark"
+              >
+                Continue to Design
+              </Link>
+            )}
           </div>
         </div>
       )}
