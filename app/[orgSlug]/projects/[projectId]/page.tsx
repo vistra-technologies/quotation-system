@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { formatBudget } from "@/lib/format-currency";
 import { fetchProjectDetail } from "./_project-fetch";
@@ -43,9 +44,12 @@ export default async function ProjectDetailPage({
   const { orgSlug, projectId } = await params;
   const base = await orgHref(orgSlug, "");
 
-  const [{ status, project }, tProjects] = await Promise.all([
+  const [{ status, project }, tProjects, configUpdateRes] = await Promise.all([
     fetchProjectDetail(orgSlug, projectId),
     getTranslations("projects"),
+    // Hotfix 2026-10-01 H-6: drives the "configuration update available" banner (DRAFT only; the
+    // route answers 409 otherwise, which just means no banner).
+    internalFetch(`/api/v1/orgs/${orgSlug}/projects/${projectId}/config-update`),
   ]);
 
   if (status === 401 || status === 403) {
@@ -54,6 +58,11 @@ export default async function ProjectDetailPage({
 
   // Tenancy guard: project not found or belongs to a different org.
   if (!project) notFound();
+
+  const configUpdateAvailable =
+    project.status === "DRAFT" &&
+    configUpdateRes.ok &&
+    ((await configUpdateRes.json()) as { needsUpdate?: boolean }).needsUpdate === true;
 
   const formatDate = (iso: string | null) =>
     iso ? new Date(iso).toLocaleDateString() : null;
@@ -84,6 +93,31 @@ export default async function ProjectDetailPage({
   // matching Design, which never had an on-page heading either.
   return (
     <div className="py-8">
+      {configUpdateAvailable && (
+        <div
+          role="alert"
+          className="mb-5 flex flex-wrap items-center gap-4 rounded-md border border-[#E3C98A] border-l-4 border-l-[#B8863D] bg-[#FBF1D9] px-5 py-4 text-[#6B4710]"
+        >
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#B8863D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden="true">
+            <path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+            <line x1="12" y1="9" x2="12" y2="13" />
+            <line x1="12" y1="17" x2="12.01" y2="17" />
+          </svg>
+          <div className="min-w-[240px] flex-1 text-[13.5px] leading-snug">
+            <p className="mb-0.5 text-sm font-extrabold text-[#5A3A0B]">Configuration update available</p>
+            <p>
+              The component configuration has changed since this project was created. Update the project to apply
+              the latest options and formula set. Existing components and design data will be preserved.
+            </p>
+          </div>
+          <Link
+            href={`${base}/projects/${projectId}/update-configuration`}
+            className="whitespace-nowrap rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark"
+          >
+            Review and Update
+          </Link>
+        </div>
+      )}
       {/* ── Card 1: Project Information ───────────────────────────────────── */}
       <div className="mb-5 rounded-md border border-border bg-bg-card shadow-card overflow-hidden">
         <div className="bg-primary-softer px-5 py-3.5">
