@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { toAuthEmail } from "@/lib/auth-utils";
 import { useOrgHref } from "@/lib/useOrgHref";
@@ -8,6 +8,12 @@ import { useOrgHref } from "@/lib/useOrgHref";
 interface LoginFormProps {
   orgSlug: string;
 }
+
+// better-auth rate-limits /sign-in* at 3 requests per 10s (its default window).
+// The client doesn't surface the X-Retry-After header, so the cooldown is the
+// fixed window length. Hotfix 2026-10-02 (login-rate-limit-countdown).
+const RATE_LIMIT_COOLDOWN_SECONDS = 10;
+const RATE_LIMIT_MESSAGE = `Too many requests. Please try again after ${RATE_LIMIT_COOLDOWN_SECONDS} secs.`;
 
 /**
  * Client Component login form for a specific org.
@@ -34,10 +40,24 @@ export function LoginForm({ orgSlug }: LoginFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showContact, setShowContact] = useState(false);
+  // Seconds left before sign-in is allowed again after a 429; 0 = not rate-limited.
+  const [cooldown, setCooldown] = useState(0);
   const orgHref = useOrgHref(orgSlug);
+
+  // Tick the cooldown down once a second; clear the rate-limit error at 0.
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => {
+      setCooldown(cooldown - 1);
+      if (cooldown === 1) setError(null);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    // Enter in an input submits the form even while the button is disabled.
+    if (cooldown > 0) return;
     setError(null);
     setLoading(true);
 
@@ -48,7 +68,12 @@ export function LoginForm({ orgSlug }: LoginFormProps) {
       });
 
       if (signInError) {
-        setError(signInError.message ?? "Sign in failed. Check your credentials.");
+        if (signInError.status === 429) {
+          setError(RATE_LIMIT_MESSAGE);
+          setCooldown(RATE_LIMIT_COOLDOWN_SECONDS);
+        } else {
+          setError(signInError.message ?? "Sign in failed. Check your credentials.");
+        }
       } else {
         // Hard redirect so the [orgSlug] layout re-renders server-side with the
         // new session cookie, making the nav chrome appear immediately.
@@ -184,11 +209,15 @@ export function LoginForm({ orgSlug }: LoginFormProps) {
       {/* ── Submit ── */}
       <button
         type="submit"
-        disabled={loading}
-        className="flex items-center justify-center gap-2 rounded-sm bg-primary px-4 py-[13px] text-sm font-bold text-text-on-primary transition-colors hover:bg-primary-dark disabled:opacity-50"
+        disabled={loading || cooldown > 0}
+        className="flex items-center justify-center gap-2 rounded-sm bg-primary px-4 py-[13px] text-sm font-bold text-text-on-primary transition-colors hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
       >
         {loading ? (
           "Signing in…"
+        ) : cooldown > 0 ? (
+          // One string, not a number in its own element: the button is flex with
+          // gap-2, which would split "7" and "s" apart.
+          `Try again in ${cooldown}s`
         ) : (
           <>
             Sign in

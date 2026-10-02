@@ -421,6 +421,44 @@ test("autocomplete attributes are correct", async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
+// 9b. Rate-limited (429): fixed message, Sign in disabled with a countdown that
+//     re-enables it and clears the error. Hotfix 2026-10-02.
+//     The sign-in POST is mocked, so this spends none of the real 3-per-10s
+//     rate-limit budget (and doesn't need to wait on it).
+// ---------------------------------------------------------------------------
+test("429 shows fixed message, disables Sign in with countdown, then re-enables", async ({
+  page,
+}) => {
+  await page.route("**/api/auth/sign-in/email", (route) =>
+    route.fulfill({
+      status: 429,
+      contentType: "application/json",
+      headers: { "x-retry-after": "10" },
+      body: JSON.stringify({ message: "Too many requests. Please try again later." }),
+    }),
+  );
+
+  await goToLogin(page);
+  await page.getByLabel("User ID").fill("admin");
+  await page.getByLabel("Password", { exact: true }).fill("whatever-123");
+  await page.getByRole("button", { name: /Sign in/i }).click();
+
+  const alert = page.locator('p[role="alert"]');
+  await expect(alert).toHaveText("Too many requests. Please try again after 10 secs.");
+
+  // Disabled, with a live "Try again in Ns" label (N ≤ 10); fields stay filled.
+  const button = page.getByRole("button", { name: /Try again in \d+s/ });
+  await expect(button).toBeDisabled();
+  await expect(page.getByLabel("User ID")).toHaveValue("admin");
+
+  // After the countdown the button is back to "Sign in" and the error is gone.
+  await expect(page.getByRole("button", { name: /^Sign in/ })).toBeEnabled({
+    timeout: 15_000,
+  });
+  await expect(alert).not.toBeVisible();
+});
+
+// ---------------------------------------------------------------------------
 // 10. Mobile viewport (390px): no horizontal overflow
 // ---------------------------------------------------------------------------
 test("mobile viewport has no horizontal overflow", async ({ browser }) => {
