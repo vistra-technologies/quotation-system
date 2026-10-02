@@ -253,6 +253,80 @@ async function main() {
         });
         return res.count;
       }
+      // ── Regression suite (tests/regression) ─────────────────────────────────────────────────
+      case "regressionSnapshot": {
+        const { createHash } = await import("node:crypto");
+        const sha = (v: unknown) => createHash("sha256").update(JSON.stringify(v)).digest("hex").slice(0, 16);
+        const orgs = await db.organization.findMany({ select: { id: true, slug: true, isSuspended: true, activeFormulaSetId: true } });
+        const tables = ["user", "role", "externalCompany", "project", "inquiry", "inventoryItem", "selection", "floor", "room", "partition", "projectCalculation", "componentType"] as const;
+        const counts: Record<string, Record<string, number>> = {};
+        for (const t of tables) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const rows = await (db as any)[t].groupBy({ by: ["organizationId"], _count: { _all: true } });
+          for (const r of rows as Array<{ organizationId: string; _count: { _all: number } }>) {
+            (counts[r.organizationId] ??= {})[t] = r._count._all;
+          }
+        }
+        const cts = await db.componentType.findMany({ select: { id: true, organizationId: true, code: true, name: true, fieldsSchema: true, sortOrder: true }, orderBy: { id: "asc" } });
+        const out: Record<string, unknown> = {};
+        for (const o of orgs) {
+          out[o.slug] = {
+            counts: counts[o.id] ?? {},
+            componentTypesHash: sha(cts.filter((c) => c.organizationId === o.id)),
+            isSuspended: o.isSuspended,
+            activeFormulaSetId: o.activeFormulaSetId,
+          };
+        }
+        const fsets = await db.formulaSet.findMany({ select: { id: true, name: true, version: true, body: true }, orderBy: { id: "asc" } });
+        const admins = await db.superAdmin.findMany({ select: { username: true }, orderBy: { username: "asc" } });
+        const perms = await db.permission.findMany({ select: { code: true }, orderBy: { code: "asc" } });
+        const rps = await db.rolePermission.findMany({ select: { roleId: true, permissionId: true }, orderBy: [{ roleId: "asc" }, { permissionId: "asc" }] });
+        return {
+          takenAt: new Date().toISOString(),
+          orgs: out,
+          globals: {
+            formulaSetsHash: sha(fsets.filter((f) => !f.name.startsWith("rgr-") && !f.name.startsWith("e2e-"))),
+            // the suite's own throwaway admins are excluded so create/delete cycles don't show up as drift
+            superAdmins: admins.map((a) => a.username).filter((u) => !u.startsWith("rgr-") && !u.startsWith("e2e-sa-")),
+            permissions: perms.map((p) => p.code),
+            rolePermissionsHash: sha(rps),
+          },
+        };
+      }
+      case "regressionSweep": {
+        // Rows in the Test Org (or org B) whose name starts with the prefix — used for orphan recovery and the post-run sweep.
+        const { orgSlug, prefix } = input as { orgSlug: string; prefix: string };
+        const org = await db.organization.findUnique({ where: { slug: orgSlug }, select: { id: true } });
+        if (!org) return [];
+        const sw = (kind: string, rows: Array<{ id: string; label: string }>) => rows.map((r) => ({ kind, ...r }));
+        const [projects, inquiries, companies, items, users, roles] = await Promise.all([
+          db.project.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
+          db.inquiry.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
+          db.externalCompany.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
+          db.inventoryItem.findMany({ where: { organizationId: org.id, code: { startsWith: prefix } }, select: { id: true, code: true } }),
+          db.user.findMany({ where: { organizationId: org.id, username: { startsWith: prefix } }, select: { id: true, username: true } }),
+          db.role.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
+        ]);
+        return [
+          ...sw("project", projects.map((r) => ({ id: r.id, label: r.name }))),
+          ...sw("inquiry", inquiries.map((r) => ({ id: r.id, label: r.name }))),
+          ...sw("externalCompany", companies.map((r) => ({ id: r.id, label: r.name }))),
+          ...sw("inventoryItem", items.map((r) => ({ id: r.id, label: r.code }))),
+          ...sw("user", users.map((r) => ({ id: r.id, label: r.username }))),
+          ...sw("role", roles.map((r) => ({ id: r.id, label: r.name }))),
+        ];
+      }
+      case "regressionDelete": {
+        // Inquiries have no DELETE route. Refuses anything that is not an rgr- inquiry in the named org.
+        const { orgSlug, kind, id } = input as { orgSlug: string; kind: string; id: string };
+        if (kind !== "inquiry") throw new Error(`regressionDelete: unsupported kind ${kind}`);
+        const org = await db.organization.findUniqueOrThrow({ where: { slug: orgSlug }, select: { id: true } });
+        const row = await db.inquiry.findFirst({ where: { id, organizationId: org.id }, select: { name: true } });
+        if (!row) return null;
+        if (!row.name.startsWith("rgr-")) throw new Error(`regressionDelete refused: "${row.name}" is not an rgr- row`);
+        await db.inquiry.delete({ where: { id } });
+        return null;
+      }
       default:
         throw new Error(`Unknown operation: ${op}`);
     }

@@ -36,6 +36,7 @@
  */
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import type { Snapshot } from "../regression/fixtures/snapshot";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 const TSX_CLI = path.join(REPO_ROOT, "node_modules", "tsx", "dist", "cli.mjs");
@@ -212,4 +213,13 @@ export async function purgeE2eSuperAdminAudit(): Promise<number> {
  */
 export async function closeTestDb(): Promise<void> {
   // no-op — see doc comment above.
+}
+
+// ── Regression suite ──────────────────────────────────────────────────────────
+export async function regressionSnapshot(): Promise<Snapshot> { return runDbOp<Snapshot>("regressionSnapshot"); }
+export async function regressionSweep(orgSlug: string, prefix: string) {
+  return runDbOp<Array<{ kind: string; id: string; label: string }>>("regressionSweep", { orgSlug, prefix });
+}
+export async function regressionDeleteInquiry(orgSlug: string, id: string): Promise<void> {
+  runDbOp("regressionDelete", { orgSlug, kind: "inquiry", id });
 }
