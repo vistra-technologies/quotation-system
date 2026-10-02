@@ -115,9 +115,17 @@ export function ContextMenu({ anchorX, anchorY, items, onClose }: ContextMenuPro
     return () => document.removeEventListener("mousedown", handleMouseDown);
   }, [onClose]);
 
-  // Dismiss on scroll.
+  // Dismiss on scroll — but not on scrolls that happen inside the menu itself.
+  // The listener is on window with capture:true, so it hears every element's
+  // scroll, including a number input scrolling its own text once a 4th digit
+  // overflows it; that must not read as "the page scrolled".
   useEffect(() => {
-    function handleScroll() { onClose(); }
+    function handleScroll(e: Event) {
+      if (menuRef.current && e.target instanceof Node && menuRef.current.contains(e.target)) {
+        return;
+      }
+      onClose();
+    }
     window.addEventListener("scroll", handleScroll, { passive: true, capture: true });
     return () => window.removeEventListener("scroll", handleScroll, { capture: true });
   }, [onClose]);
@@ -228,7 +236,7 @@ export function ApplyWidthSlot({ label, initialValue, onApply }: ApplyWidthSlotP
           }
         }}
         onBlur={commit}
-        className="w-[60px] rounded-[6px] border border-[var(--color-border-strong)] px-[7px] py-[5px] text-right text-[12.5px] text-text-heading focus:border-primary focus:outline-none"
+        className="w-[76px] rounded-[6px] border border-[var(--color-border-strong)] px-[7px] py-[5px] text-right text-[12.5px] text-text-heading focus:border-primary focus:outline-none"
       />
     </div>
   );
