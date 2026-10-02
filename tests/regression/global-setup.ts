@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "@playwright/test";
-import { requireEnv, TEST_ORG, RUN_DIR, LEDGER_FILE, RUN_PASSWORD_ENV } from "./env";
+import { requireEnv, TEST_ORG, RUN_DIR, LEDGER_FILE, RUN_PASSWORD_ENV, RUN_ID_ENV } from "./env";
 import { Ledger } from "./fixtures/ledger";
 import { SaClient, Guarded, createAllowance } from "./fixtures/clients";
 import { clearRunState, writeRunState, type Role, type RunState } from "./fixtures/run-state";
@@ -22,6 +22,7 @@ export default async function globalSetup() {
   const env = requireEnv();
   clearRunState(); // a stale run.json must never be mistaken for this run's state
   const runId = Date.now().toString(36);
+  process.env[RUN_ID_ENV] = runId;
   const prefix = `rgr-${runId}-`;
   const orgBSlug = `rgr-${runId}-b`;
   fs.mkdirSync(RUN_DIR, { recursive: true });

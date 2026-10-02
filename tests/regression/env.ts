@@ -13,6 +13,8 @@ export const TEARDOWN_STATUS_FILE = path.join(RUN_DIR, "last-teardown.json");
  * inherited by Playwright workers; never written to disk.
  */
 export const RUN_PASSWORD_ENV = "RGR_RUN_PASSWORD";
+/** Set by global-setup (main process) so the reporter reads ONLY this run's cleanup.json. */
+export const RUN_ID_ENV = "RGR_RUN_ID";
 
 export interface RegEnv {
   baseURL: string;
