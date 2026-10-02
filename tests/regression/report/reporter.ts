@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { Reporter, FullResult, TestCase, TestResult } from "@playwright/test/reporter";
+import type { Reporter, FullResult, Suite, TestCase, TestResult } from "@playwright/test/reporter";
 import { buildSummary, type Row } from "./summary";
 import { redact, secretsFromEnv } from "./redact";
 import { toRow, mergeResults, type ResultRow, type ResultsFile } from "./assemble";
@@ -23,11 +23,19 @@ export default class RegressionReporter implements Reporter {
   private detail = new Map<string, ResultRow>();
   private startedAt = new Date();
   onTestEnd(t: TestCase, r: TestResult) {
-    const area = path.basename(t.location.file).replace(/\.spec\.ts$/, "");
+    // Area = the owning SPEC file, not t.location (tests registered by a shared helper such as
+    // api/api-matrix.ts would otherwise all land in the helper's area). Title keeps describe titles
+    // (e.g. the route key a matrix case belongs to).
+    let file: Suite | undefined = t.parent;
+    while (file && file.type !== "file") file = file.parent;
+    const area = path.basename(file?.location?.file ?? t.location.file).replace(/\.spec\.ts$/, "");
+    const describes: string[] = [];
+    for (let s: Suite | undefined = t.parent; s && s.type === "describe"; s = s.parent) describes.unshift(s.title);
+    const title = [...describes, t.title].join(" › ");
     this.rows.set(t.id, {
       id: t.id,
       area,
-      title: t.title,
+      title,
       outcome: t.outcome(),
       error: redact(stripAnsi(r.errors[0]?.message ?? "").split("\n")[0], secretsFromEnv()) || undefined,
     });
@@ -37,7 +45,7 @@ export default class RegressionReporter implements Reporter {
     this.detail.set(
       t.id,
       toRow({
-        id: t.id, area, title: redact(t.title, secretsFromEnv()), outcome: t.outcome(), durationMs: r.duration,
+        id: t.id, area, title: redact(title, secretsFromEnv()), outcome: t.outcome(), durationMs: r.duration,
         error: r.errors.length ? redact(stripAnsi(r.errors.map((e) => e.message ?? e.value ?? "").join("\n\n")), secretsFromEnv()).slice(0, 4000) : undefined,
         trace: rel(runDir, att("trace")),
         screenshot: rel(runDir, att("screenshot")),
