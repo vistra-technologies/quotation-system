@@ -5,7 +5,8 @@ import { spawnSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { assembleReportData } from "../tests/regression/report/assemble.ts";
+import { assembleReportData, reportExitCode } from "../tests/regression/report/assemble.ts";
+import { secretsFromEnv } from "../tests/regression/report/redact.ts";
 import { renderReport } from "../tests/regression/report/render-html.ts";
 import { enumerateRoutes, enumeratePages, collectCovered, checkCoverage } from "../tests/regression/coverage-map.ts";
 
@@ -24,12 +25,10 @@ function coverage() {
     const routes = enumerateRoutes(appDir);
     if (routes.length === 0) return null; // vacuous -> not produced
     const pages = enumeratePages(appDir);
-    const { untested, stale } = checkCoverage({ routes, pages }, collectCovered(path.join(ROOT, "tests", "regression")));
-    const ur = untested.filter((u) => !u.startsWith("page ")).length;
-    const up = untested.length - ur;
+    const { untested, stale, untestedRoutes, untestedPages } = checkCoverage({ routes, pages }, collectCovered(path.join(ROOT, "tests", "regression")));
     return {
-      routes: { total: routes.length, covered: routes.length - ur },
-      pages: { total: pages.length, covered: pages.length - up },
+      routes: { total: routes.length, covered: routes.length - untestedRoutes },
+      pages: { total: pages.length, covered: pages.length - untestedPages },
       untested: untested.sort(),
       stale: stale.sort(),
     };
@@ -60,9 +59,12 @@ const data = assembleReportData({
   target: process.env.PLAYWRIGHT_BASE_URL,
   commit,
   testOrg: "e2e-testorg",
+  secrets: secretsFromEnv(),
 });
 
 const html = renderReport(data);
+// The exit code agrees with the verdict: 0 only on PASS (orchestrator counts a non-zero exit as a failed stage).
+process.exitCode = reportExitCode(data);
 const outDir = runDir ?? path.join(BASE, "unknown");
 const latestDir = path.join(BASE, "latest");
 fs.mkdirSync(outDir, { recursive: true });

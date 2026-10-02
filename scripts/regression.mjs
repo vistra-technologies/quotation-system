@@ -63,8 +63,8 @@ if (r.cleanupFailed) {
 }
 failed += r.testsFailed || r.cleanupFailed ? 1 : 0;
 
-// The report is produced LAST and unconditionally (also after failures). It never changes the exit code on its own
-// — its verdict is derived from the same facts — but a report that itself crashed is a failed run.
+// The report is produced LAST and unconditionally (also after failures). Its exit code is 1 whenever its verdict is
+// FAIL (or it crashed), so the console verdict and exit status can never be greener than the report.
 const reportCode = run("report", "npx", ["tsx", "scripts/regression-report.mjs"]);
 if (reportCode) failed += 1;
 console.log(failed ? `\nREGRESSION FAIL (${failed} stage${failed > 1 ? "s" : ""} failed)` : "\nREGRESSION PASS");

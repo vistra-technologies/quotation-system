@@ -70,7 +70,7 @@ export function renderReport(d: ReportData): string {
   const failBlock = np(d, "results")
     ? `<h2>Failures</h2>${msg(NOT_PRODUCED)}`
     : bad.length
-      ? `<h2>Failures (${bad.length})</h2><div class="card"><div class="tests">${bad.map((x) => failureRow(x.area, x.t)).join("")}</div></div>`
+      ? `<h2>Failures (${bad.length})</h2><p style="font-size:12px;color:var(--muted);margin:0 0 6px">Note: trace.zip files may contain request headers (cookies, tokens) — do not share them.</p><div class="card"><div class="tests">${bad.map((x) => failureRow(x.area, x.t)).join("")}</div></div>`
       : "";
   const gaps = [
     ...d.coverage.untested.map((u) => `<li><span class="pill f">UNTESTED</span> &nbsp;<code>${esc(u)}</code></li>`),

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Reporter, FullResult, TestCase, TestResult } from "@playwright/test/reporter";
 import { buildSummary, type Row } from "./summary";
+import { redact, secretsFromEnv } from "./redact";
 import { toRow, mergeResults, type ResultRow, type ResultsFile } from "./assemble";
 
 const RUN_DIR = path.resolve(__dirname, "..", "..", "..", ".engineering", "regression");
@@ -28,7 +29,7 @@ export default class RegressionReporter implements Reporter {
       area,
       title: t.title,
       outcome: t.outcome(),
-      error: r.errors[0]?.message?.split("\n")[0],
+      error: redact(stripAnsi(r.errors[0]?.message ?? "").split("\n")[0], secretsFromEnv()) || undefined,
     });
     const runId = process.env[RUN_ID_ENV];
     const runDir = path.join(RUN_DIR, runId ?? "unknown");
@@ -36,8 +37,8 @@ export default class RegressionReporter implements Reporter {
     this.detail.set(
       t.id,
       toRow({
-        id: t.id, area, title: t.title, outcome: t.outcome(), durationMs: r.duration,
-        error: r.errors.length ? stripAnsi(r.errors.map((e) => e.message ?? e.value ?? "").join("\n\n")).slice(0, 4000) : undefined,
+        id: t.id, area, title: redact(t.title, secretsFromEnv()), outcome: t.outcome(), durationMs: r.duration,
+        error: r.errors.length ? redact(stripAnsi(r.errors.map((e) => e.message ?? e.value ?? "").join("\n\n")), secretsFromEnv()).slice(0, 4000) : undefined,
         trace: rel(runDir, att("trace")),
         screenshot: rel(runDir, att("screenshot")),
       }),
@@ -61,6 +62,7 @@ export default class RegressionReporter implements Reporter {
       const from = process.env[MERGE_FROM_ENV];
       const prev = from ? (readJson(path.join(RUN_DIR, from, "results.json")) as ResultsFile | null) : null;
       if (prev && Array.isArray(prev.rows)) res = mergeResults(prev, res);
+      else if (from) res = { ...res, mergeFailed: true }; // first pass's results unreadable: reported as not produced
       fs.mkdirSync(path.join(RUN_DIR, runId), { recursive: true });
       fs.writeFileSync(path.join(RUN_DIR, runId, "results.json"), JSON.stringify(res, null, 2));
       fs.writeFileSync(LATEST_RUN_FILE, JSON.stringify({ runId }));

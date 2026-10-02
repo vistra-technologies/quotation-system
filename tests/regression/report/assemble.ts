@@ -1,9 +1,29 @@
 /** Pure assembly of ReportData from the run's persisted sources (no fs/process — unit-testable). */
 import { verdictOf, type ReportData, type ReportTest, type Section } from "./report-data";
 import type { Outcome } from "./summary";
+import { redact } from "./redact";
 
 export interface ResultRow extends ReportTest { id: string; area: string }
-export interface ResultsFile { rows: ResultRow[]; startedAt: string; durationMs: number }
+export interface ResultsFile {
+  rows: ResultRow[];
+  startedAt: string;
+  durationMs: number;
+  /** The re-run was asked to merge with a first pass whose results.json could not be read: the picture is partial. */
+  mergeFailed?: boolean;
+}
+
+/** Deep-copies a value, masking secrets in every string. */
+export function deepRedact<T>(v: T, secrets: string[]): T {
+  if (typeof v === "string") return redact(v, secrets) as unknown as T;
+  if (Array.isArray(v)) return v.map((x) => deepRedact(x, secrets)) as unknown as T;
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deepRedact(x, secrets)])) as T;
+  return v;
+}
+
+/** Exit status of the report script: 0 only on PASS, so the console/exit code can never be greener than the report. */
+export function reportExitCode(d: { verdict: "PASS" | "FAIL" }): number {
+  return d.verdict === "PASS" ? 0 : 1;
+}
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isStrArr = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
@@ -33,7 +53,8 @@ export function parseUnitCounts(text: string | null | undefined): { total: numbe
   };
   const total = get("tests"), passed = get("pass"), failed = get("fail");
   if (total === null || passed === null || failed === null) return null;
-  return { total, passed, failed: failed + (get("cancelled") ?? 0) };
+  // cancelled and skipped unit tests count as failing (the suite allows no silent skips)
+  return { total, passed, failed: failed + (get("cancelled") ?? 0) + (get("skipped") ?? 0) };
 }
 
 export interface AssembleInput {
@@ -47,6 +68,8 @@ export interface AssembleInput {
   target: string | undefined;
   commit: string | null;
   testOrg: string;
+  /** Literal secret values to mask (env secrets); pattern-based masking always applies. */
+  secrets?: string[];
 }
 
 function hostOf(t: string | undefined): string {
@@ -58,7 +81,7 @@ export function assembleReportData(i: AssembleInput): ReportData {
   const notProduced: Section[] = [];
 
   const rows = i.results?.rows ?? [];
-  if (!i.results) notProduced.push("results");
+  if (!i.results || i.results.mergeFailed) notProduced.push("results");
   const areaMap = new Map<string, ReportTest[]>();
   for (const row of rows) {
     const { area } = row;
@@ -108,5 +131,6 @@ export function assembleReportData(i: AssembleInput): ReportData {
     notProduced: notProduced.length ? notProduced : undefined,
   };
   // cleanup.json fine but last-teardown.json missing/foreign/failed -> cleanupFailed already true above.
-  return { ...base, verdict: verdictOf(base) };
+  const safe = deepRedact(base, i.secrets ?? []);
+  return { ...safe, verdict: verdictOf(safe) };
 }

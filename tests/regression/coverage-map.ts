@@ -103,18 +103,17 @@ export function collectCovered(testsDir: string): { routes: Set<string>; pages: 
 export function checkCoverage(
   actual: { routes: string[]; pages: string[] },
   covered: { routes: Set<string>; pages: Set<string> },
-): { untested: string[]; stale: string[] } {
-  const untested = [
-    ...actual.routes.filter((r) => !covered.routes.has(r)),
-    ...actual.pages.filter((p) => !covered.pages.has(p)).map((p) => `page ${p}`),
-  ];
+): { untested: string[]; stale: string[]; untestedRoutes: number; untestedPages: number } {
+  const untestedRoutes = actual.routes.filter((r) => !covered.routes.has(r));
+  const untestedPages = actual.pages.filter((p) => !covered.pages.has(p));
+  const untested = [...untestedRoutes, ...untestedPages.map((p) => `page ${p}`)];
   const known = new Set(actual.routes);
   const knownPages = new Set(actual.pages);
   const stale = [
     ...[...covered.routes].filter((r) => !known.has(r)),
     ...[...covered.pages].filter((p) => !knownPages.has(p)).map((p) => `page ${p}`),
   ];
-  return { untested, stale };
+  return { untested, stale, untestedRoutes: untestedRoutes.length, untestedPages: untestedPages.length };
 }
 
 /** CLI body: returns the exit code (2 = misconfigured/vacuous, 1 = gaps, 0 = complete). */
