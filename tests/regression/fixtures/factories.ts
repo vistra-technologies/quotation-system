@@ -42,7 +42,12 @@ export function makeFactories(deps: { admin: Guarded; run: RunState; ledger: Led
   const nm = (what: string) => `${run.prefix}${what}-${tag}${++n}`;
 
   const project: Factories["project"] = async (name = nm("proj")) => {
-    const r = await admin.post(U("/projects"), { data: { name, currency: "AED", projectLocation: "Dubai, UAE" } });
+    // Concurrent creates race on the per-org projectNumber (MAX+1): the route answers 409 "A project number
+    // conflict occurred — please try again." and writes nothing, so a bounded retry is safe.
+    let r = await admin.post(U("/projects"), { data: { name, currency: "AED", projectLocation: "Dubai, UAE" } });
+    for (let i = 0; i < 3 && r.status() === 409 && (await r.text()).includes("project number conflict"); i++) {
+      r = await admin.post(U("/projects"), { data: { name, currency: "AED", projectLocation: "Dubai, UAE" } });
+    }
     expect(r.status(), await r.text()).toBe(201);
     const id = ((await r.json()) as { project: { id: string } }).project.id;
     ledger.add({ kind: "project", id, orgSlug: slug, label: name });

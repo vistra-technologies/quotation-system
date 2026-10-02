@@ -166,7 +166,10 @@ export async function createLedgered(
   data: Record<string, unknown>,
 ): Promise<{ res: APIResponse; id: string | null; body: Record<string, unknown> }> {
   const slug = deps.run.testOrg.slug;
-  const res = await g.post(orgApi(slug, kind === "project" ? "/projects" : "/inquiries"), { data });
+  const post = () => g.post(orgApi(slug, kind === "project" ? "/projects" : "/inquiries"), { data });
+  let res = await post();
+  // Concurrent project creates race on the per-org projectNumber → transactional 409 (nothing written).
+  for (let i = 0; i < 3 && res.status() === 409 && (await res.text()).includes("project number conflict"); i++) res = await post();
   const text = await res.text();
   let body: Record<string, unknown> = {};
   try {
