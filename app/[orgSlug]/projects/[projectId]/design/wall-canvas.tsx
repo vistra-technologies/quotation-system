@@ -158,7 +158,7 @@ export function WallCanvas({
                     "p-[10px_10px_0] transition-[opacity,background,box-shadow,transform]",
                     // State variants
                     isSelected
-                      ? "z-[2] bg-[#f4faf5] shadow-[0_0_0_3px_var(--color-primary-dark)_inset]"
+                      ? "z-[2] bg-[#f4faf5]"
                       : isDimmed
                         ? "bg-[#fbfcf9] opacity-30"
                         : [
@@ -219,6 +219,13 @@ export function WallCanvas({
                       the default z-index / 0). pointer-events-none so the door's
                       right-click context menu (hinge toggle) is not blocked.
                       The selected-panel ring is z-[2] and still wins over both. */}
+                  {/* Selected ring as an overlay so the door fill (a child) can't paint over it. */}
+                  {isSelected && (
+                    <span
+                      aria-hidden="true"
+                      className="pointer-events-none absolute inset-0 z-[3] shadow-[0_0_0_3px_var(--color-primary-dark)_inset]"
+                    />
+                  )}
                   <div className="relative z-[1] pointer-events-none">
                     {/* .panel-label: P{n} · {width} — mockup line 1699 */}
                     <div
