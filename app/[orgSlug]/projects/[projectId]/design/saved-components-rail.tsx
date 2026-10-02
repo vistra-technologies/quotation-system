@@ -414,7 +414,11 @@ function DoorHeightValue({
         onBlur={() => finish(true)}
         onKeyDown={(e) => {
           if (e.key === "Enter") finish(true);
-          else if (e.key === "Escape") finish(false);
+          else if (e.key === "Escape") {
+            // Don't let the workspace's document-level Escape handler also deselect the panel.
+            e.stopPropagation();
+            finish(false);
+          }
         }}
         className="w-16 shrink-0 rounded border border-primary bg-bg-white px-1 py-0.5 text-right text-xs font-bold text-text-heading"
       />
