@@ -7,6 +7,7 @@ import {
   updateSuperAdminFormulaSet,
   type FormulaSetFormState,
 } from "../actions";
+import { VersionDiff } from "./_version-diff";
 
 interface EditFormulaSetFormProps {
   setId: string;
@@ -19,6 +20,12 @@ interface EditFormulaSetFormProps {
    * which POSTs a new row under the same name (the API assigns MAX(version)+1).
    */
   mode?: "edit" | "newVersion";
+  /**
+   * Version number of the set this draft was copied from. When present in "newVersion" mode, a
+   * "Changes vs v{baseVersion}" panel compares the textarea against `initialBodyJson`
+   * (hotfix 2026-10-02, item 5).
+   */
+  baseVersion?: number;
   /** Cancel destination. Defaults to the list. */
   cancelHref?: string;
   /** Translated label for the JSON body field (H-14). */
@@ -45,6 +52,7 @@ export function EditFormulaSetForm({
   version,
   initialBodyJson,
   mode = "edit",
+  baseVersion,
   cancelHref = "/controls/formula-sets",
   bodyLabel = "Formula Set Body (JSON)",
 }: EditFormulaSetFormProps) {
@@ -181,6 +189,11 @@ export function EditFormulaSetForm({
             </div>
           )}
         </div>
+
+        {/* Version diff — draft mode only (hotfix 2026-10-02, item 5) */}
+        {isDraft && baseVersion !== undefined && (
+          <VersionDiff baseJson={initialBodyJson} draftJson={body} baseVersion={baseVersion} />
+        )}
 
         {/* Footer */}
         <div className="flex items-center gap-3 border-t border-border pt-5">

@@ -91,6 +91,7 @@ export default async function NewFormulaSetVersionPage({
 
       <EditFormulaSetForm
         mode="newVersion"
+        baseVersion={formulaSet.version}
         setId={setId}
         initialName={formulaSet.name}
         version={nextVersion}
