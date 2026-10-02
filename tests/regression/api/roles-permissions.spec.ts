@@ -9,7 +9,7 @@
  * expectations. Org B (ledgered as kind `org`) is hard-deleted at teardown with everything in it; the
  * one org-B user this file creates is also ledgered (kind user) so it goes even earlier.
  *
- * KNOWN PRODUCT BUGS are written to the correct expectation inside `test.fail()` tests (see users.spec.ts).
+ * KNOWN PRODUCT BUGS are plain `KNOWN BUG: …` tests that pin today's observed behaviour (Ruling R24).
  */
 import { randomBytes } from "node:crypto";
 import type { APIRequestContext } from "@playwright/test";
@@ -199,13 +199,15 @@ test.describe("roles: mutations (org B only)", () => {
     expect((await rolesOf(as.admin, run.testOrg.slug)).map((x) => x.id)).not.toContain(role.id);
   });
 
-  // SUSPECTED PRODUCT BUG: Role has @@unique([organizationId, name]) but createRole's P2002 is not mapped
-  // — a duplicate name returns 500 instead of a 409.
-  test("POST /roles with a name already used in the org → 409", async ({ orgB, run }) => {
-    test.fail(!process.env.RGR_SHOW_KNOWN_BUGS, "KNOWN PRODUCT BUG (see comment above): flips red once fixed — then drop this line");
+  test("KNOWN BUG: POST /roles with a name already used in the org → 500", async ({ orgB, run }) => {
     const role = await orgBRole(orgB, run);
+    // KNOWN BUG — Role is @@unique([organizationId, name]) but createRole's P2002 is not mapped; when fixed,
+    // change this expectation to 409.
     const r = await orgB.post(orgApi(run.orgB.slug, "/roles"), { data: { name: role.name } });
-    expect(r.status(), await r.text()).toBe(409);
+    expect(r.status(), await r.text()).toBe(500);
+    expect(await r.json()).toEqual({ error: "Internal server error" });
+    // safe part: still exactly one role with that name
+    expect((await rolesOf(orgB, run.orgB.slug)).filter((x) => x.name === role.name)).toHaveLength(1);
   });
 
   test("permission grant → a live session gains access immediately; revoke → loses it", async ({ orgB, run, ledger, playwright, baseURL }) => {
@@ -259,42 +261,27 @@ test.describe("roles: mutations (org B only)", () => {
     expect((await sess.get(orgApi(slug, "/roles"))).status()).toBe(403);
   });
 
-  test("revoking a permission the role does not hold → 404, nothing changes", async ({ orgB, run }) => {
+  test("KNOWN BUG: revoking a permission the role does not hold → 404 whose body echoes the raw Prisma error", async ({ orgB, run }) => {
     const slug = run.orgB.slug;
     const role = await orgBRole(orgB, run);
-    const r = await orgB.delete(orgApi(slug, `/roles/${role.id}/permissions`), { data: { permissionId: await permissionId(orgB, slug, "QUOTE") } });
+    const quote = await permissionId(orgB, slug, "QUOTE");
+    // KNOWN BUG — err.message (Prisma's P2025 text) is returned to the client; when fixed, keep the 404 and
+    // change the body expectation to a generic message that does not match /prisma|invocation/i.
+    const r = await orgB.delete(orgApi(slug, `/roles/${role.id}/permissions`), { data: { permissionId: quote } });
     expect(r.status(), await r.text()).toBe(404);
-    expect(await rolePerms(orgB, slug, role.id)).toEqual([]);
+    expect(((await r.json()) as { error: string }).error).toMatch(/Invalid `prisma\.rolePermission\.delete\(\)` invocation/);
+    expect(await rolePerms(orgB, slug, role.id)).toEqual([]); // safe part: nothing changed
   });
 
-  // SUSPECTED PRODUCT BUG: the 404 above echoes the raw Prisma error ("Invalid `prisma.rolePermission
-  // .delete()` invocation: …") to the client — internals leak through err.message.
-  test("revoking a permission the role does not hold → a 404 that does not leak ORM internals", async ({ orgB, run }) => {
-    test.fail(!process.env.RGR_SHOW_KNOWN_BUGS, "KNOWN PRODUCT BUG (see comment above): flips red once fixed — then drop this line");
+  test("KNOWN BUG: granting an unknown permission id → 500 (nothing granted)", async ({ orgB, run }) => {
     const slug = run.orgB.slug;
     const role = await orgBRole(orgB, run);
-    const r = await orgB.delete(orgApi(slug, `/roles/${role.id}/permissions`), { data: { permissionId: await permissionId(orgB, slug, "QUOTE") } });
-    expect(r.status()).toBe(404);
-    expect(await r.text()).not.toMatch(/prisma|invocation/i);
-  });
-
-  // SUSPECTED PRODUCT BUG: addRolePermission upserts without checking the permission exists — the FK
-  // violation surfaces as a 500 instead of a 400/404. (The request writes nothing either way.)
-  test("granting an unknown permission id → 404, nothing granted", async ({ orgB, run }) => {
-    test.fail(!process.env.RGR_SHOW_KNOWN_BUGS, "KNOWN PRODUCT BUG (see comment above): flips red once fixed — then drop this line");
-    const slug = run.orgB.slug;
-    const role = await orgBRole(orgB, run);
+    // KNOWN BUG — addRolePermission upserts without checking the permission exists, so the FK violation
+    // surfaces as a 500; when fixed, change this expectation to 404 (or 400).
     const r = await orgB.post(orgApi(slug, `/roles/${role.id}/permissions`), { data: { permissionId: GHOST } });
-    expect(r.status(), await r.text()).toBe(404);
-    expect(await rolePerms(orgB, slug, role.id)).toEqual([]);
-  });
-
-  test("granting an unknown permission id is rejected (non-2xx) and grants nothing", async ({ orgB, run }) => {
-    const slug = run.orgB.slug;
-    const role = await orgBRole(orgB, run);
-    const r = await orgB.post(orgApi(slug, `/roles/${role.id}/permissions`), { data: { permissionId: GHOST } });
-    expect(r.ok(), `HTTP ${r.status()} ${await r.text()}`).toBe(false);
-    expect(await rolePerms(orgB, slug, role.id)).toEqual([]);
+    expect(r.status(), await r.text()).toBe(500);
+    expect(await r.json()).toEqual({ error: "Internal server error" });
+    expect(await rolePerms(orgB, slug, role.id)).toEqual([]); // safe part: nothing granted
   });
 
   // The product has NO system-role immutability: an org admin with MANAGE_FEATURES may change a default

@@ -3,12 +3,11 @@
  * password, profile, role. Every route is gated on MANAGE_USERS.
  *
  * Expected statuses are pinned to the route + lib/data/users.ts source (read 2026-10-03). Where the
- * source contradicts its own doc comment / the regression spec, the correct expectation is written in
- * a `test.fail()` test (a KNOWN PRODUCT BUG, listed in the Task 7 report → backlog): it runs, passes
- * while the bug exists and turns red once fixed (then drop the `test.fail` line). Where useful, a
- * plain test next to it pins the safe part of today's behaviour. (test.fixme would be a skip, which
- * the suite's reporter treats as a failure.) RGR_SHOW_KNOWN_BUGS=1 runs them as plain tests, to see
- * that each one fails on its bug assertion and not on setup.
+ * source contradicts its own doc comment / the regression spec, a plain test titled `KNOWN BUG: …`
+ * PINS TODAY'S OBSERVED behaviour (Ruling R24), with a `// KNOWN BUG — …; when fixed, change this
+ * expectation to …` comment. Its arrange steps are strictly asserted, so a broken setup fails loudly,
+ * and a fix (or any drift) turns it red until the expectation is updated. Listed in the Task 7 report
+ * → backlog.
  *
  * Rows: Test-Org users come from `f.user` (ledgered). The org-B "victim" user (the foreign-id target)
  * is ledgered too (kind user — the SuperAdmin user-delete route removes it; org B's own teardown would
@@ -19,8 +18,6 @@ import { randomBytes } from "node:crypto";
 import type { APIRequestContext, PlaywrightWorkerArgs } from "@playwright/test";
 import { test, expect } from "../fixtures/test";
 import { covers } from "../fixtures/covers";
-import { Ledger } from "../fixtures/ledger";
-import { LEDGER_FILE } from "../env";
 import { Guarded, SaClient, createAllowance } from "../fixtures/clients";
 import { registerNegatives, GHOST, type Ctx } from "./api-matrix";
 import { ROLE_NAME } from "./permissions";
@@ -80,7 +77,7 @@ function foreignUserId(c: Ctx): Promise<string> {
     const l = await c.orgB.get(orgApi(slug, "/users"));
     const id = ((await l.json()) as { users: { id: string; username: string }[] }).users.find((u) => u.username === username)?.id;
     if (!id) throw new Error(`org-B user ${username} was created but is not listed`);
-    new Ledger(LEDGER_FILE).add({ kind: "user", id, orgSlug: slug, label: username });
+    c.ledger.add({ kind: "user", id, orgSlug: slug, label: username });
     return id;
   })();
   return orgBVictim;
@@ -298,12 +295,10 @@ test.describe("users: rules", () => {
     expect((await orgB.get(orgApi(slug, "/me"))).status()).toBe(200); // still signed in and active
   });
 
-  // SUSPECTED PRODUCT BUG (Task 7 report): changeUserRole has no self / last-admin guard — the only
-  // Admin can demote itself and leave the org with no user able to manage users or roles. Because today
-  // the demotion SUCCEEDS, the test runs in its own single-admin throwaway org C (ledgered kind org,
-  // hard-deleted at teardown) — never org B, whose admin the other probes rely on.
-  test("last-admin protection: the only Admin cannot be demoted (PATCH own role → 400)", async ({ run, ledger, playwright, baseURL }) => {
-    test.fail(!process.env.RGR_SHOW_KNOWN_BUGS, "KNOWN PRODUCT BUG (see comment above): flips red once fixed — then drop this line");
+  // changeUserRole has no self / last-admin guard. Because today the demotion SUCCEEDS, the test runs in
+  // its own single-admin throwaway org C (ledgered kind org, hard-deleted at teardown) — never org B,
+  // whose admin the other probes rely on.
+  test("KNOWN BUG: the only Admin can demote itself, leaving the org with no user manager", async ({ run, ledger, playwright, baseURL }) => {
     const sa = await SaClient.login(baseURL!, process.env.TEST_SA_USERNAME!, process.env.TEST_SA_PASSWORD!, createAllowance([]), process.env.VERCEL_AUTOMATION_BYPASS_SECRET);
     const slug = `${run.prefix}c${randomBytes(2).toString("hex")}`;
     let ctx: APIRequestContext | undefined;
@@ -321,9 +316,17 @@ test.describe("users: rules", () => {
       if (me.roleName !== ROLE_NAME.admin) throw new Error(`setup: org C's admin has role ${me.roleName}`);
       const memberRole = await roleIdIn(admin, slug, ROLE_NAME.member);
 
+      const admins = ((await (await admin.get(orgApi(slug, "/users"))).json()) as { users: { id: string; role: { name: string } }[] }).users.filter(
+        (x) => x.role.name === ROLE_NAME.admin,
+      );
+      if (admins.length !== 1 || admins[0].id !== me.userId) throw new Error(`setup: org C must have exactly one Admin, has ${admins.length}`);
+
+      // KNOWN BUG — no last-admin guard on role change; when fixed, change this expectation to 400 and
+      // assert the user is still Admin and GET /users still 200.
       const r = await admin.patch(orgApi(slug, `/users/${me.userId}/role`), { data: { roleId: memberRole } });
-      expect(r.status(), await r.text()).toBe(400);
-      expect(((await (await admin.get(orgApi(slug, "/me"))).json()) as { roleName: string }).roleName).toBe(ROLE_NAME.admin);
+      expect(r.status(), await r.text()).toBe(200);
+      expect(((await (await admin.get(orgApi(slug, "/me"))).json()) as { roleName: string }).roleName).toBe(ROLE_NAME.member);
+      expect((await admin.get(orgApi(slug, "/users"))).status()).toBe(403); // nobody left who can manage users
     } finally {
       await ctx?.dispose();
       await sa.dispose();
@@ -359,26 +362,26 @@ test.describe("users: rules", () => {
     expect((await ctx.get(url("/me"))).status()).toBe(200);
   });
 
-  // SUSPECTED PRODUCT BUG: setUserPassword only rewrites the credential hash — sessions opened with the
-  // old password stay valid after an admin reset (the usual reason for a reset is a compromised account).
-  test("password reset revokes the user's existing sessions", async ({ as, f, url, run, playwright, baseURL }) => {
-    test.fail(!process.env.RGR_SHOW_KNOWN_BUGS, "KNOWN PRODUCT BUG (see comment above): flips red once fixed — then drop this line");
+  test("KNOWN BUG: an admin password reset leaves the user's existing sessions valid", async ({ as, f, url, run, playwright, baseURL }) => {
     const u = await f.user("member");
     const held = await fresh(playwright, baseURL);
-    expect((await signIn(held, run.testOrg.slug, u.username, runPassword())).status()).toBe(200);
+    const login = await signIn(held, run.testOrg.slug, u.username, runPassword());
+    expect(login.status(), await login.text()).toBe(200);
     expect((await held.get(url("/me"))).status()).toBe(200);
     const r = await as.admin.post(url(`/users/${u.id}/password`), { data: { password: `${runPassword()}-Rotated9` } });
-    expect(r.status()).toBe(200);
-    expect((await held.get(url("/me"))).status()).toBe(401);
+    expect(r.status(), await r.text()).toBe(200);
+    // KNOWN BUG — setUserPassword only rewrites the hash, sessions are not revoked; when fixed, change this
+    // expectation to 401 (the held session is refused on its next request).
+    expect((await held.get(url("/me"))).status()).toBe(200);
   });
 
-  // SUSPECTED PRODUCT BUG: POST /users enforces "at least 8 characters" but the reset route accepts any
-  // non-empty password (a 1-char password is stored).
-  test("password reset enforces the same 8-character minimum as create (400)", async ({ as, f, url }) => {
-    test.fail(!process.env.RGR_SHOW_KNOWN_BUGS, "KNOWN PRODUCT BUG (see comment above): flips red once fixed — then drop this line");
+  test("KNOWN BUG: password reset accepts a password shorter than create's 8-character minimum", async ({ as, f, url }) => {
     const u = await f.user("member");
+    // KNOWN BUG — the reset route has no length policy (POST /users requires >= 8); when fixed, change this
+    // expectation to 400.
     const r = await as.admin.post(url(`/users/${u.id}/password`), { data: { password: "short" } });
-    expect(r.status(), await r.text()).toBe(400);
+    expect(r.status(), await r.text()).toBe(200);
+    expect(await r.json()).toEqual({ ok: true });
   });
 
   test("deactivate → sign-in refused; activate → sign-in works again", async ({ as, f, url, run, playwright, baseURL }) => {
@@ -437,50 +440,45 @@ test.describe("users: rules", () => {
     expect(user.profileEmail).toBeNull();
   });
 
-  test("profile PUT with an unknown / another org's externalCompanyId is rejected (4xx) and changes nothing", async ({ as, f, url, run, orgB }) => {
+  test("KNOWN BUG: profile PUT with an unknown / another org's externalCompanyId → 404 \"User not found\"", async ({ as, f, url, run, orgB }) => {
     const u = await f.user("distributor");
     const before = (await getUser(as.admin, url, u.id)).user.externalCompanyId;
+    expect(before).toEqual(expect.any(String));
     const bCo = `${run.prefix}b-co-${randomBytes(3).toString("hex")}`;
     const c = await orgB.post(orgApi(run.orgB.slug, "/external-companies"), { data: { name: bCo, type: "DISTRIBUTOR", country: "UAE", defaultCurrency: "AED" } });
     expect(c.status(), await c.text()).toBe(201); // org-B row: goes with org B at teardown
-    const bCoId = ((await (await orgB.get(orgApi(run.orgB.slug, "/external-companies"))).json()) as { companies: { id: string; name: string }[] }).companies.find(
-      (x) => x.name === bCo,
-    )!.id;
-    for (const coId of [GHOST, bCoId]) {
+    const bList = await orgB.get(orgApi(run.orgB.slug, "/external-companies"));
+    expect(bList.status()).toBe(200);
+    const bCoId = ((await bList.json()) as { companies: { id: string; name: string }[] }).companies.find((x) => x.name === bCo)?.id;
+    expect(bCoId, "org-B company is listed").toBeTruthy();
+    for (const coId of [GHOST, bCoId!]) {
+      // KNOWN BUG — the route's first catch branch ("not found or access denied") also matches the DAL's
+      // "External company not found or access denied", so the company error is reported as a missing user;
+      // when fixed, change this expectation to 400 with an error naming the external company.
       const r = await as.admin.put(url(`/users/${u.id}/profile`), { data: { externalCompanyId: coId } });
-      expect(r.status(), await r.text()).toBeGreaterThanOrEqual(400);
-      expect(r.status()).toBeLessThan(500);
+      expect(r.status(), await r.text()).toBe(404);
+      expect(await r.json()).toEqual({ error: "User not found" });
     }
-    expect((await getUser(as.admin, url, u.id)).user.externalCompanyId).toBe(before);
+    expect((await getUser(as.admin, url, u.id)).user.externalCompanyId).toBe(before); // safe part: nothing changed
   });
 
-  // SUSPECTED PRODUCT BUG: the route's first catch branch matches "not found or access denied", which
-  // the DAL's "External company not found or access denied" also contains — so an unknown company is
-  // reported as 404 {"error":"User not found"} instead of the documented 400.
-  test("profile PUT with an unknown externalCompanyId → 400 naming the company (not 404 'User not found')", async ({ as, f, url }) => {
-    test.fail(!process.env.RGR_SHOW_KNOWN_BUGS, "KNOWN PRODUCT BUG (see comment above): flips red once fixed — then drop this line");
-    const u = await f.user("member");
-    const r = await as.admin.put(url(`/users/${u.id}/profile`), { data: { externalCompanyId: GHOST } });
-    expect(r.status(), await r.text()).toBe(400);
-    expect(((await r.json()) as { error: string }).error).toMatch(/external company/i);
-  });
-
-  // SUSPECTED PRODUCT BUG: a JSON body that is not an object (e.g. "x", null, 1) reaches `"k" in body`
-  // outside any try → unhandled TypeError → empty-body 500.
-  test("profile PUT with a non-object JSON body → 400", async ({ as, url, run }) => {
-    test.fail(!process.env.RGR_SHOW_KNOWN_BUGS, "KNOWN PRODUCT BUG (see comment above): flips red once fixed — then drop this line");
+  test("KNOWN BUG: profile PUT with a non-object JSON body → empty-body 500", async ({ as, url, run }) => {
     for (const data of ["a string", null, 1]) {
+      // KNOWN BUG — `"k" in body` throws a TypeError outside any try; when fixed, change this expectation
+      // to 400 (body must be a JSON object).
       const r = await as.admin.put(url(`/users/${run.users.member.id}/profile`), { data: JSON.stringify(data), headers: { "Content-Type": "application/json" } });
-      expect(r.status(), `${JSON.stringify(data)}: ${await r.text()}`).toBe(400);
+      expect(r.status(), `${JSON.stringify(data)}: ${await r.text()}`).toBe(500);
     }
+    expect((await as.admin.get(url(`/users/${run.users.member.id}`))).status()).toBe(200);
   });
 
-  // SUSPECTED PRODUCT BUG: profileEmail is stored without any format validation.
-  test("profile PUT rejects a malformed profileEmail (400)", async ({ as, f, url }) => {
-    test.fail(!process.env.RGR_SHOW_KNOWN_BUGS, "KNOWN PRODUCT BUG (see comment above): flips red once fixed — then drop this line");
+  test("KNOWN BUG: profile PUT stores a malformed profileEmail", async ({ as, f, url }) => {
     const u = await f.user("member");
+    // KNOWN BUG — profileEmail has no format validation; when fixed, change this expectation to 400 and
+    // assert profileEmail is unchanged (null).
     const r = await as.admin.put(url(`/users/${u.id}/profile`), { data: { profileEmail: "not-an-email" } });
-    expect(r.status(), await r.text()).toBe(400);
+    expect(r.status(), await r.text()).toBe(200);
+    expect((await getUser(as.admin, url, u.id)).user.profileEmail).toBe("not-an-email");
   });
 
   test("U3 on profile: an external-role user's company can be switched but not cleared", async ({ as, f, url }) => {
@@ -498,14 +496,17 @@ test.describe("users: rules", () => {
     expect((await getUser(as.admin, url, u.id)).user.externalCompanyId).toBe(co.id);
   });
 
-  // SUSPECTED PRODUCT BUG: changeUserRole does not apply U3 — an internal user moved to an external
-  // role keeps externalCompanyId = null, which create/profile both forbid.
-  test("U3 on role change: moving a company-less user to an external role → 400", async ({ as, f, url, run }) => {
-    test.fail(!process.env.RGR_SHOW_KNOWN_BUGS, "KNOWN PRODUCT BUG (see comment above): flips red once fixed — then drop this line");
+  test("KNOWN BUG: U3 is not applied on role change — a company-less user can be moved to an external role", async ({ as, f, url, run }) => {
     const u = await f.user("member");
+    expect((await getUser(as.admin, url, u.id)).user.externalCompanyId).toBeNull();
     const distId = await roleIdIn(as.admin, run.testOrg.slug, ROLE_NAME.distributor);
+    // KNOWN BUG — changeUserRole skips the U3 check that create/profile enforce; when fixed, change this
+    // expectation to 400 and assert the role is unchanged.
     const r = await as.admin.patch(url(`/users/${u.id}/role`), { data: { roleId: distId } });
-    expect(r.status(), await r.text()).toBe(400);
+    expect(r.status(), await r.text()).toBe(200);
+    const { user } = await getUser(as.admin, url, u.id);
+    expect(user.roleId).toBe(distId);
+    expect(user.externalCompanyId).toBeNull();
   });
 
   test("DELETE removes the user: 204, GET → 404, gone from the list, sign-in refused", async ({ as, f, url, run, ledger, playwright, baseURL }) => {
@@ -540,32 +541,22 @@ test.describe("users: rules", () => {
     expect((await getUser(as.admin, url, u.id)).user.active).toBe(true);
   });
 
-  test("DELETE / PATCH role on an unknown or another org's user are rejected (4xx) and change nothing", async ({ as, url, run, f, orgB }) => {
-    const victim = await foreignUserId({ run, f, orgB, as });
+  test("KNOWN BUG: DELETE / PATCH role on an unknown or another org's user → 400 (documented: 404)", async ({ as, url, run, f, orgB, ledger }) => {
+    const victim = await foreignUserId({ run, f, orgB, as, ledger });
     const memberRole = await roleIdIn(as.admin, run.testOrg.slug, ROLE_NAME.member);
     for (const id of [GHOST, victim]) {
+      // KNOWN BUG — both routes map the DAL's "User not found or access denied" to 400 while their docs
+      // (and every other [userId] route) say 404; when fixed, change both expectations to 404.
       const del = await as.admin.delete(url(`/users/${id}`));
-      expect(del.status(), await del.text()).toBeGreaterThanOrEqual(400);
-      expect(del.status()).toBeLessThan(500);
+      expect(del.status(), await del.text()).toBe(400);
+      expect(await del.json()).toEqual({ error: "User not found or access denied" });
       const role = await as.admin.patch(url(`/users/${id}/role`), { data: { roleId: memberRole } });
-      expect(role.status(), await role.text()).toBeGreaterThanOrEqual(400);
-      expect(role.status()).toBeLessThan(500);
+      expect(role.status(), await role.text()).toBe(400);
+      expect(await role.json()).toEqual({ error: "User not found or access denied" });
     }
-    // the org-B user is untouched
+    // safe part: the org-B user is untouched
     const b = await orgB.get(orgApi(run.orgB.slug, `/users/${victim}`));
     expect(b.status(), await b.text()).toBe(200);
     expect(((await b.json()) as { user: UserRow }).user.role.name).toBe(ROLE_NAME.member);
-  });
-
-  // SUSPECTED PRODUCT BUG: both routes document 404 for a user not in the org but map the DAL's
-  // "User not found or access denied" to 400 (the other [userId] routes return 404).
-  test("DELETE / PATCH role on an unknown or foreign user → 404 (as documented)", async ({ as, url, run, f, orgB }) => {
-    test.fail(!process.env.RGR_SHOW_KNOWN_BUGS, "KNOWN PRODUCT BUG (see comment above): flips red once fixed — then drop this line");
-    const victim = await foreignUserId({ run, f, orgB, as });
-    const memberRole = await roleIdIn(as.admin, run.testOrg.slug, ROLE_NAME.member);
-    for (const id of [GHOST, victim]) {
-      expect((await as.admin.delete(url(`/users/${id}`))).status()).toBe(404);
-      expect((await as.admin.patch(url(`/users/${id}/role`), { data: { roleId: memberRole } })).status()).toBe(404);
-    }
   });
 });
