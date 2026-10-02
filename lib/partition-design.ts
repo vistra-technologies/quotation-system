@@ -402,6 +402,31 @@ export function panelsToV2(
   return out;
 }
 
+/**
+ * Glass to give a panel whose door was just shortened below the wall height (so a glass strip
+ * appears above it) when it has none (Hotfix 2026-10-01 H-7). A partition has one glass type, so it is
+ * the glass the other panels use (most common if they somehow differ), else the design default, else null.
+ */
+export function pickTransomGlass(
+  panels: { id: string; selectionId: string | null }[],
+  panelId: string,
+  defaultGlassId?: string | null,
+): string | null {
+  const counts = new Map<string, number>();
+  for (const p of panels) {
+    if (p.id !== panelId && p.selectionId) counts.set(p.selectionId, (counts.get(p.selectionId) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let bestN = 0;
+  for (const [id, n] of counts) {
+    if (n > bestN) {
+      best = id;
+      bestN = n;
+    }
+  }
+  return best ?? defaultGlassId ?? null;
+}
+
 // ─── Seeding ─────────────────────────────────────────────────────────────────
 
 /** Fresh v2 design for a just-converted partition: `count` equal-width, single-cell glass sections
