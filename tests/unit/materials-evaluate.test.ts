@@ -517,6 +517,72 @@ describe("profileU: transom door does NOT reduce doorWidthMmFullHeight", () => {
   test("profileU = 4m (transom door unchanged)", () => assert.equal(req(p1Lines, "profileU"), 4));
 });
 
+// ─── cloisons formula set v2: no L/I profile or white seal above a transom door (2026-10-02) ─────
+// v2 differs from v1 only in profileL/profileI, which subtract partition.doorWidthMm (every door)
+// instead of partition.doorWidthMmFullHeight. Pure formula change — no code path differs.
+
+const V2_QUANTITY =
+  "(partition.widthMm + partition.heightMm*(partition.leftWallLike + partition.rightWallLike) - partition.doorWidthMm) / 1000";
+const GLASS_FORMULA_SET_V2: FormulaSetBody = {
+  ...GLASS_FORMULA_SET,
+  formulas: (GLASS_FORMULA_SET.formulas ?? []).map(f =>
+    f.id === "profileL" || f.id === "profileI" ? { ...f, quantity: V2_QUANTITY } : f,
+  ),
+};
+
+describe("formula set v2: transom door removes L/I (and so white seal / gasket)", () => {
+  // 4m × 3m partition, wall on both ends (leftWallLike = rightWallLike = 1), one 900mm transom door
+  // (2000mm door under a 1000mm panel) plus glass. U = 4 (transom doesn't reduce it).
+  // v1: L = I = (4000 + 3000*2 - 0)/1000 = 10   → whiteSeal 14, gasket 28
+  // v2: L = I = (4000 + 3000*2 - 900)/1000 = 9.1 → whiteSeal 13.1, gasket 26.2
+  const sides: RoomSide[] = [plainSide("s0"), partitionSide("s1", "p1"), plainSide("s2")];
+  const design: unknown = {
+    schemaVersion: 2,
+    sections: [
+      { widthMm: 1033, cells: [{ heightMm: 3000, selectionId: "sel-glass" }] },
+      {
+        widthMm: 900,
+        cells: [
+          { heightMm: 1000, selectionId: "sel-glass" },
+          { heightMm: 2000, selectionId: "sel-door" },
+        ],
+      },
+      { widthMm: 1033, cells: [{ heightMm: 3000, selectionId: "sel-glass" }] },
+      { widthMm: 1034, cells: [{ heightMm: 3000, selectionId: "sel-glass" }] },
+    ],
+  };
+  function run(body: FormulaSetBody) {
+    const input: MaterialsInput = {
+      formulaSetBody: body,
+      snapshot: makeSnapshot([{ id: "ct-glass", code: "GLASS" }, { id: "ct-door", code: "DOOR" }]),
+      floors: [{
+        id: "f1", label: "Floor 1",
+        rooms: [{ id: "r1", label: "Room 1", isClosed: true, sides, partitions: [{ id: "p1", label: "Wall 1", widthMm: 4000, heightMm: 3000, design }] }],
+      }],
+      selections: [
+        { id: "sel-glass", componentTypeId: "ct-glass", config: glassConfig() },
+        { id: "sel-door", componentTypeId: "ct-door", config: doorConfig() },
+      ],
+    };
+    return buildMaterials(input).rawLines.filter(l => l.partitionId === "p1");
+  }
+
+  const v1 = run(GLASS_FORMULA_SET);
+  const v2 = run(GLASS_FORMULA_SET_V2);
+
+  test("v1 baseline: transom door leaves L/I untouched", () => {
+    assert.equal(req(v1, "profileL"), 10);
+    assert.equal(req(v1, "whiteSeal"), 14);
+  });
+  test("v2: profileL and profileI drop by the transom door width", () => {
+    assert.equal(req(v2, "profileL"), 9.1);
+    assert.equal(req(v2, "profileI"), 9.1);
+  });
+  test("v2: profileU unchanged", () => assert.equal(req(v2, "profileU"), 4));
+  test("v2: white seal (U + L) = 13.1", () => assert.equal(req(v2, "whiteSeal"), 13.1));
+  test("v2: acoustic gasket (2U + L + I) = 26.2", () => assert.equal(req(v2, "acousticGasket"), 26.2));
+});
+
 // ─── doorConnector corner-door exclusion (test 10) ───────────────────────────
 
 describe("doorConnector excludes corner door (test 10)", () => {

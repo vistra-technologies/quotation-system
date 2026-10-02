@@ -519,3 +519,72 @@ describe("door-count metrics", () => {
     assert.equal(g.nonCornerDoorCount, 0, "both doors are corner doors");
   });
 });
+
+// ─── Design-census variables (2026-10-02) ─────────────────────────────────────
+
+describe("design-census variables", () => {
+  // Sections (left → right): [full-height glass 1000] [transom: glass 1000 over door 2000, width 900]
+  //                          [full-height door 800]
+  const design: ParsedDesign = {
+    sections: [
+      { widthMm: 1000, cells: [{ heightMm: 3000, selectionId: "sel-glass" }] },
+      {
+        widthMm: 900,
+        cells: [
+          { heightMm: 1000, selectionId: "sel-glass" },
+          { heightMm: 2000, selectionId: "sel-door" },
+        ],
+      },
+      { widthMm: 800, cells: [{ heightMm: 3000, selectionId: "sel-door" }] },
+    ],
+  };
+  const g = derive({
+    partitionId: "p1",
+    widthMm: 2700, heightMm: 3000,
+    parsedDesign: design,
+    sides: [plainSide("s0"), partitionSide("s1", "p1"), plainSide("s2")],
+    isClosed: true,
+    cellSlotResolver: simpleSlotResolver,
+    neighborDesignResolver: noNeighborDesign,
+  });
+
+  test("door widths split into full-height vs transom and sum to doorWidthMm", () => {
+    assert.equal(g.doorWidthMmFullHeight, 800);
+    assert.equal(g.doorWidthMmTransom, 900);
+    assert.equal(g.doorWidthMm, 1700);
+    assert.equal(g.doorWidthMm, g.doorWidthMmFullHeight + g.doorWidthMmTransom);
+  });
+  test("door counts split and sum to doorCount", () => {
+    assert.equal(g.fullHeightDoorCount, 1);
+    assert.equal(g.transomDoorCount, 1);
+    assert.equal(g.doorCount, 2);
+  });
+  test("transom panel = glass in a section that contains a door", () => {
+    assert.equal(g.transomPanelCount, 1);
+    assert.equal(g.transomPanelWidthMm, 900);
+  });
+  test("glass counts, widths and areas", () => {
+    assert.equal(g.glassCellCount, 2);
+    assert.equal(g.glassWidthMm, 1900);
+    assert.equal(g.glassAreaSqm, 3.9); // 1.0×3.0 + 0.9×1.0
+  });
+  test("door area", () => assert.equal(g.doorAreaSqm, 4.2)); // 0.9×2.0 + 0.8×3.0 = 1.8 + 2.4
+  test("structure counts", () => {
+    assert.equal(g.sectionCount, 3);
+    assert.equal(g.cellCount, 4);
+  });
+  test("empty design → all census values 0", () => {
+    const e = derive({
+      partitionId: "p1", widthMm: 1000, heightMm: 3000,
+      parsedDesign: { sections: [] },
+      sides: [plainSide("s0"), partitionSide("s1", "p1"), plainSide("s2")],
+      isClosed: true,
+      cellSlotResolver: simpleSlotResolver,
+      neighborDesignResolver: noNeighborDesign,
+    });
+    assert.equal(e.doorWidthMm, 0);
+    assert.equal(e.glassAreaSqm, 0);
+    assert.equal(e.sectionCount, 0);
+    assert.equal(e.cellCount, 0);
+  });
+});

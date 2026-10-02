@@ -35,6 +35,26 @@ export interface PartitionGeometry {
   doorWidthMmFullHeight: number;
   doorCount: number;
   nonCornerDoorCount: number;
+  // Design-census variables (2026-10-02). Several are unused by any current formula on purpose:
+  // cloisons rule changes are meant to ship as a new FormulaSet version, never a code change, so
+  // everything a formula might plausibly want from the design is derived here up front.
+  // See partition.md ("Design-census variables"). "Transom door" = any door that is not full-height.
+  /** Σ widths of every door cell, any height. = doorWidthMmFullHeight + doorWidthMmTransom. */
+  doorWidthMm: number;
+  /** Σ widths of transom (not full-height) door cells. */
+  doorWidthMmTransom: number;
+  fullHeightDoorCount: number;
+  transomDoorCount: number;
+  /** Glass cells in a section that also contains a door cell (the panel above a transom door). */
+  transomPanelCount: number;
+  /** Σ widths of those panels — the length of the door-top / panel junction. */
+  transomPanelWidthMm: number;
+  glassCellCount: number;
+  glassWidthMm: number;
+  glassAreaSqm: number;
+  doorAreaSqm: number;
+  sectionCount: number;
+  cellCount: number;
   leftIsPartition: 0 | 1;
   rightIsPartition: 0 | 1;
   leftEndIsDoor: 0 | 1;
@@ -148,6 +168,16 @@ export function derivePartitionGeometry(args: DerivePartitionGeometryArgs): Part
   let rightEndIsDoor: 0 | 1 = 0;
   let doorCount = 0;
   let doorWidthMmFullHeight = 0;
+  let doorWidthMm = 0;
+  let doorWidthMmTransom = 0;
+  let fullHeightDoorCount = 0;
+  let transomPanelCount = 0;
+  let transomPanelWidthMm = 0;
+  let glassCellCount = 0;
+  let glassWidthMm = 0;
+  let glassAreaMm2 = 0;
+  let doorAreaMm2 = 0;
+  let cellCount = 0;
 
   if (sections.length > 0) {
     const firstSection = sections[0];
@@ -161,17 +191,34 @@ export function derivePartitionGeometry(args: DerivePartitionGeometryArgs): Part
     }
 
     for (const section of sections) {
-      for (const cell of section.cells) {
-        if (slotOf(cell.selectionId) === "DOOR") {
+      const slots = section.cells.map(c => slotOf(c.selectionId));
+      const sectionHasDoor = slots.includes("DOOR");
+      section.cells.forEach((cell, i) => {
+        cellCount++;
+        const slot = slots[i];
+        if (slot === "DOOR") {
           doorCount++;
+          doorWidthMm += section.widthMm;
+          doorAreaMm2 += section.widthMm * cell.heightMm;
           // Full-height door: the only cell in its section and height equals the partition height.
           // ASSUMPTION: "full height" = cell.heightMm === partition.heightMm. A transom door
           // (door cell below a glass transom) has cell.heightMm < partitionHeightMm — not full-height.
           if (section.cells.length === 1 && cell.heightMm === heightMm) {
             doorWidthMmFullHeight += section.widthMm;
+            fullHeightDoorCount++;
+          } else {
+            doorWidthMmTransom += section.widthMm;
+          }
+        } else if (slot === "GLASS") {
+          glassCellCount++;
+          glassWidthMm += section.widthMm;
+          glassAreaMm2 += section.widthMm * cell.heightMm;
+          if (sectionHasDoor) {
+            transomPanelCount++;
+            transomPanelWidthMm += section.widthMm;
           }
         }
-      }
+      });
     }
   }
 
@@ -228,6 +275,18 @@ export function derivePartitionGeometry(args: DerivePartitionGeometryArgs): Part
     doorWidthMmFullHeight,
     doorCount,
     nonCornerDoorCount,
+    doorWidthMm,
+    doorWidthMmTransom,
+    fullHeightDoorCount,
+    transomDoorCount: doorCount - fullHeightDoorCount,
+    transomPanelCount,
+    transomPanelWidthMm,
+    glassCellCount,
+    glassWidthMm,
+    glassAreaSqm: glassAreaMm2 / 1_000_000,
+    doorAreaSqm: doorAreaMm2 / 1_000_000,
+    sectionCount: sections.length,
+    cellCount,
     leftIsPartition,
     rightIsPartition,
     leftEndIsDoor,
