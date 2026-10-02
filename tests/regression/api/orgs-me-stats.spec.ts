@@ -7,6 +7,7 @@ import { covers } from "../fixtures/covers";
 import { registerNegatives } from "./api-matrix";
 import { PERMISSION_CODES, ROLES, ROLE_NAME, ROLE_PERMISSIONS } from "./permissions";
 import { apiUrl } from "../../e2e/helpers";
+import { createLedgered, tag } from "./project-helpers";
 
 covers("GET /api/v1/orgs");
 covers("GET /api/v1/orgs/[orgSlug]/me");
@@ -69,19 +70,27 @@ test.describe("GET /api/v1/orgs/[orgSlug]/stats", () => {
 
   // Isolation proof that never compares org B's counters at all: other specs may create AND delete
   // org-B rows in parallel workers, so only "the new row is absent from org B" is asserted on that side.
-  test("a new Test-Org project is counted for the admin and is invisible to org B", async ({ as, url, f, orgB, run }) => {
+  // The before/after delta is measured on the DISTRIBUTOR's company-scoped stats: org-wide Test-Org
+  // totals also DROP while projects.spec deletes/converts projects in parallel (Task 8 fix round 1),
+  // whereas nothing deletes a project of the run distributor's company during the run.
+  test("a new Test-Org project is counted (company-scoped stats) and is invisible to org B", async ({ as, url, orgB, run, ledger }) => {
     const stats = async (g: typeof orgB, u: string) => {
       const r = await g.get(u);
       expect(r.status(), await r.text()).toBe(200);
       return (await r.json()) as { projectsTotal: number; projectsInProgress: number };
     };
     const orgBApi = (p: string) => apiUrl(run.orgB.slug, `/api/v1/orgs/${run.orgB.slug}${p}`);
-    const before = await stats(as.admin, url("/stats"));
+    const before = await stats(as.distributor, url("/stats"));
     expect((await orgB.get(orgBApi("/stats"))).status()).toBe(200);
-    const proj = await f.project();
-    const after = await stats(as.admin, url("/stats"));
+    const { res, id, body } = await createLedgered(as.distributor, { run, ledger }, "project", {
+      name: `${run.prefix}stats-${tag()}`, currency: "AED",
+    });
+    expect(res.status(), JSON.stringify(body)).toBe(201);
+    const proj = { id: id!, name: (body.project as { name: string }).name };
+    const after = await stats(as.distributor, url("/stats"));
     expect(after.projectsTotal).toBeGreaterThanOrEqual(before.projectsTotal + 1);
     expect(after.projectsInProgress).toBeGreaterThanOrEqual(before.projectsInProgress + 1); // new projects are DRAFT
+    expect((await stats(as.admin, url("/stats"))).projectsTotal).toBeGreaterThanOrEqual(after.projectsTotal); // org-wide ⊇ company
 
     // org B: the new project is not listed (searched by its unique name, and by id)
     for (const q of [`?pageSize=100&search=${encodeURIComponent(proj.name)}`, "?pageSize=100"]) {

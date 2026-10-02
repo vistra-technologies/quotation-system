@@ -5,7 +5,14 @@ import os from "node:os";
 import path from "node:path";
 import { Ledger, DELETE_ORDER } from "../regression/fixtures/ledger";
 import { assertMutationAllowed, GuardError } from "../regression/fixtures/guard";
-import { withGlobalState, withRecordedGlobalState, appendGlobalStateFailures, globalStateFailuresFile } from "../regression/fixtures/global-state";
+import {
+  withGlobalState,
+  withRecordedGlobalState,
+  appendGlobalStateFailures,
+  globalStateFailuresFile,
+  readGlobalStateFailures,
+  stuckTemporaryTypeNames,
+} from "../regression/fixtures/global-state";
 
 /** Temp ledger path; the directory is removed after the test. */
 const tmp = (t: TestContext) => {
@@ -275,14 +282,47 @@ test("withGlobalState: a revert that does not take is recorded as a failure", as
   assert.match(failures[0], /sticky/);
 });
 
-test("appendGlobalStateFailures: creates the array, merges on later calls, ignores an empty list", (t) => {
+test("appendGlobalStateFailures: one JSONL line per failure (append-only), ignores an empty list; reader handles JSONL + legacy arrays", (t) => {
   const file = path.join(path.dirname(tmp(t)), "sub", "global-state-failures.json");
   appendGlobalStateFailures(file, []);
   assert.equal(fs.existsSync(file), false);
+  assert.deepEqual(readGlobalStateFailures(file), []);
   appendGlobalStateFailures(file, ["a"]);
-  appendGlobalStateFailures(file, ["b", "c"]);
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf-8")), ["a", "b", "c"]);
+  appendGlobalStateFailures(file, ["b\nwith newline", "c"]);
+  assert.equal(fs.readFileSync(file, "utf-8").trim().split("\n").length, 3);
+  assert.deepEqual(readGlobalStateFailures(file), ["a", "b\nwith newline", "c"]);
+  fs.writeFileSync(file, JSON.stringify(["legacy"]));
+  assert.deepEqual(readGlobalStateFailures(file), ["legacy"]);
   assert.equal(globalStateFailuresFile("/x/run"), path.join("/x/run", "global-state-failures.json"));
+});
+
+test("withRecordedGlobalState forbidOriginal: a value matching it refuses to start (nothing mutated, nothing recorded)", async (t) => {
+  const file = path.join(path.dirname(tmp(t)), "gsf.json");
+  let v: unknown = "rgr-abc-GLASS-renamed";
+  let mutated = false;
+  await assert.rejects(
+    withRecordedGlobalState(
+      { key: "GLASS.name", read: async () => v, write: async (n) => { v = n; } },
+      async () => { mutated = true; v = "x"; },
+      async () => 1,
+      file,
+      { forbidOriginal: /^rgr-/ },
+    ),
+    /GLASS\.name.*rgr-abc-GLASS-renamed.*never reverted/,
+  );
+  assert.equal(mutated, false);
+  assert.equal(v, "rgr-abc-GLASS-renamed");
+  assert.equal(fs.existsSync(file), false);
+  // a normal original passes the check
+  v = "Glass";
+  assert.equal(await withRecordedGlobalState({ key: "k", read: async () => v, write: async (n) => { v = n; } }, async () => { v = "rgr-t"; }, async () => 2, file, { forbidOriginal: /^rgr-/ }), 2);
+  assert.equal(v, "Glass");
+});
+
+test("stuckTemporaryTypeNames flags only rgr- names", () => {
+  assert.deepEqual(stuckTemporaryTypeNames([{ code: "GLASS", name: "rgr-x-GLASS-renamed" }, { code: "DOOR", name: "Door" }, { code: "X", name: "my rgr- type" }]), [
+    'GLASS (name "rgr-x-GLASS-renamed")',
+  ]);
 });
 
 test("withRecordedGlobalState: a clean revert writes nothing and returns the body result", async (t) => {
@@ -311,7 +351,7 @@ test("withRecordedGlobalState: a revert that does not take is written for teardo
     ),
     /global state not restored[\s\S]*sticky/,
   );
-  const recorded = JSON.parse(fs.readFileSync(file, "utf-8")) as string[];
+  const recorded = readGlobalStateFailures(file);
   assert.equal(recorded.length, 1);
   assert.match(recorded[0], /sticky/);
 });

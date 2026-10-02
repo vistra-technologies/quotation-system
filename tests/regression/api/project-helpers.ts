@@ -3,6 +3,11 @@
  *
  * Org-B rows (foreign-id probes) are created through the `orgB` client and NOT ledgered: they are
  * deleted with org B itself at teardown (same pattern as external-companies.spec.ts).
+ *
+ * NOTE for other spec files: projects.spec.ts briefly renames the Test Org's GLASS ComponentType
+ * (`rgr-<run>-GLASS-renamed`, withRecordedGlobalState). Specs running in parallel must not assert
+ * ComponentType names, or `config-update` needsUpdate === false on Test-Org projects, without
+ * tolerating that window.
  */
 import { randomBytes } from "node:crypto";
 import { expect, type APIResponse } from "@playwright/test";
@@ -30,7 +35,22 @@ const GLASS_CODE_FIELDS: Record<string, "metres" | "pieces"> = {
   straightConnectorCode: "pieces",
 };
 
-let glassCodes: Promise<Record<string, string>> | undefined;
+/**
+ * Per-worker memo of a creation promise. A REJECTED promise is evicted, so one failed create (a 429, a
+ * transient 5xx) is retried by the next caller instead of failing every later test in the worker.
+ */
+const memo = new Map<string, Promise<unknown>>();
+function once<T>(key: string, make: () => Promise<T>): Promise<T> {
+  let p = memo.get(key) as Promise<T> | undefined;
+  if (!p) {
+    p = make();
+    memo.set(key, p);
+    p.catch(() => {
+      if (memo.get(key) === p) memo.delete(key);
+    });
+  }
+  return p;
+}
 
 /**
  * GLASS selection config that passes Submit Design in the Test Org.
@@ -42,14 +62,46 @@ let glassCodes: Promise<Record<string, string>> | undefined;
  * factory, with the unit each formula declares) once and points the config at them.
  */
 export async function glassConfig(f: Factories): Promise<Record<string, string>> {
-  glassCodes ??= (async () => {
+  const codes = await once("glassCodes", async () => {
     const out: Record<string, string> = {};
     for (const [field, measurementUnit] of Object.entries(GLASS_CODE_FIELDS)) {
       out[field] = (await f.inventoryItem({ measurementUnit })).code;
     }
     return out;
-  })();
-  return { category: "Single", glassType: "ID1", thickness: "12", ...(await glassCodes) };
+  });
+  return { category: "Single", glassType: "ID1", thickness: "12", ...codes };
+}
+
+/** Set once per worker when Submit Design shows that GLASS_CODE_FIELDS is out of date (see below). */
+let staleGlassConfig: Error | undefined;
+
+/**
+ * Asserts a Submit Design response for a `glassConfig()` wall is 200. A 422 whose problems are
+ * MISSING_PARAM / UNIT_MISMATCH on GLASS means the active formula set changed under GLASS_CODE_FIELDS:
+ * that is turned into ONE descriptive error (naming each param/formula/unit), remembered per worker and
+ * rethrown immediately by later calls instead of cascading as dozens of opaque 422s.
+ */
+export async function expectSubmitted(res: APIResponse): Promise<void> {
+  if (staleGlassConfig) throw staleGlassConfig;
+  const text = await res.text();
+  if (res.status() === 422) {
+    type P = { kind: string; locus?: { fieldKey?: string; formulaId?: string; componentTypeCode?: string }; expectedUnit?: string; code?: string };
+    const problems = ((JSON.parse(text) as { problems?: P[] }).problems ?? []).filter(
+      (p) => p.kind === "MISSING_PARAM" || p.kind === "UNIT_MISMATCH",
+    );
+    if (problems.length) {
+      staleGlassConfig = new Error(
+        "tests/regression/api/project-helpers.ts GLASS_CODE_FIELDS is out of date with the Test Org's active formula set — " +
+          problems
+            .map((p) => p.kind === "MISSING_PARAM"
+              ? `add param "${p.locus?.fieldKey}" (formula "${p.locus?.formulaId}", type ${p.locus?.componentTypeCode ?? "?"})`
+              : `code ${p.code} needs unit "${p.expectedUnit}"`)
+            .join("; "),
+      );
+      throw staleGlassConfig;
+    }
+  }
+  expect(res.status(), text).toBe(200);
 }
 
 /** One-section, one-cell v2 design filling a 2000 x 2400 wall with `selectionId`. */
@@ -60,8 +112,7 @@ export function oneCellDesign(selectionId: string | null) {
   };
 }
 
-/** One per worker: an org-B project / inquiry / company for foreign-id probes. */
-const cache: Record<string, Promise<string> | undefined> = {};
+/** One per worker (via `once`): an org-B project / inquiry / company for foreign-id probes. */
 
 async function orgBCreate(c: Pick<Ctx, "run" | "orgB">, key: "projects" | "inquiries"): Promise<string> {
   const slug = c.run.orgB.slug;
@@ -73,15 +124,15 @@ async function orgBCreate(c: Pick<Ctx, "run" | "orgB">, key: "projects" | "inqui
 }
 
 export function foreignProjectId(c: Pick<Ctx, "run" | "orgB">): Promise<string> {
-  return (cache.project ??= orgBCreate(c, "projects"));
+  return once("orgB-project", () => orgBCreate(c, "projects"));
 }
 
 export function foreignInquiryId(c: Pick<Ctx, "run" | "orgB">): Promise<string> {
-  return (cache.inquiry ??= orgBCreate(c, "inquiries"));
+  return once("orgB-inquiry", () => orgBCreate(c, "inquiries"));
 }
 
 export function foreignCompanyId(c: Pick<Ctx, "run" | "orgB">): Promise<string> {
-  return (cache.company ??= (async () => {
+  return once("orgB-company", async () => {
     const slug = c.run.orgB.slug;
     const name = `${c.run.prefix}b-co-${tag()}`;
     const r = await c.orgB.post(orgApi(slug, "/external-companies"), {
@@ -92,7 +143,7 @@ export function foreignCompanyId(c: Pick<Ctx, "run" | "orgB">): Promise<string> 
     const id = ((await l.json()) as { companies: { id: string; name: string }[] }).companies.find((x) => x.name === name)?.id;
     if (!id) throw new Error(`org-B company ${name} was created but is not listed`);
     return id;
-  })());
+  });
 }
 
 /** The Test-Org distributor's (and architect's) external company — created by global setup. */

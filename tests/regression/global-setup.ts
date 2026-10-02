@@ -7,6 +7,7 @@ import { SaClient, Guarded, createAllowance } from "./fixtures/clients";
 import { clearRunState, writeRunState, type Role, type RunState } from "./fixtures/run-state";
 import { Cleaner } from "./fixtures/delete-entry";
 import { recoverOrphans } from "./fixtures/recovery";
+import { stuckTemporaryTypeNames } from "./fixtures/global-state";
 import { generateRunPassword, recoverMinAgeMs } from "./fixtures/cleanup-rules";
 import { regressionSnapshot, regressionSweep } from "../e2e/db-helpers";
 import { apiSignIn, apiUrl, getSeededFormulaSetId } from "../e2e/helpers";
@@ -81,11 +82,13 @@ export default async function globalSetup() {
   // 3. Prerequisites — the suite does NOT repair Test Org configuration; it fails loudly with the exact gap.
   const ctRes = await sa.get(`/api/v1/superadmin/component-types?orgId=${testOrg.id}`);
   if (ctRes.status() !== 200) throw new Error(`list Test Org component types → HTTP ${ctRes.status()}`);
-  const types = ((await ctRes.json()) as { componentTypes: { code: string }[] }).componentTypes;
+  const types = ((await ctRes.json()) as { componentTypes: { code: string; name: string }[] }).componentTypes;
   const missing: string[] = [];
   for (const code of ["GLASS", "DOOR"]) {
     if (!types.some((t) => t.code === code)) missing.push(`ComponentType ${code}`);
   }
+  // A stuck suite rename (withRecordedGlobalState killed mid-window) — the real label is unknowable.
+  for (const t of stuckTemporaryTypeNames(types)) missing.push(`ComponentType ${t} still has a suite temporary name — restore its real name`);
   if (!testOrg.activeFormulaSetId) missing.push("an active formula set (Organization.activeFormulaSetId is null)");
   if (missing.length) {
     throw new Error(`Test Org "${TEST_ORG}" prerequisites missing: ${missing.join("; ")}. Fix the Test Org — the suite will not guess.`);

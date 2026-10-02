@@ -21,6 +21,7 @@ import {
   orgApi,
   tag,
   glassConfig,
+  expectSubmitted,
   oneCellDesign,
   foreignProjectId,
   foreignCompanyId,
@@ -136,8 +137,7 @@ async function readyWall(f: Factories, admin: Guarded, url: (p: string) => strin
 
 async function submitted(f: Factories, admin: Guarded, url: (p: string) => string) {
   const w = await readyWall(f, admin, url);
-  const s = await admin.post(url(`/projects/${w.projectId}/submit-design`));
-  expect(s.status(), await s.text()).toBe(200);
+  await expectSubmitted(await admin.post(url(`/projects/${w.projectId}/submit-design`)));
   return w;
 }
 
@@ -345,7 +345,7 @@ test.describe("projects: submit design / calculation / recompute", () => {
     const w = await readyWall(f, as.admin, url);
     const before = Date.now();
     const s = await as.architect.post(url(`/projects/${w.projectId}/submit-design`));
-    expect(s.status(), await s.text()).toBe(200);
+    await expectSubmitted(s);
     const sp = (await json<{ project: { id: string; designSubmittedAt: string } }>(s)).project;
     expect(Object.keys(sp).sort()).toEqual(["designSubmittedAt", "id"]);
     expect(sp.id).toBe(w.projectId);
@@ -558,10 +558,19 @@ test.describe("projects: frozen configSnapshot (shared ComponentType edit)", () 
       const old = await f.project(); // frozen BEFORE the rename
       const cu = await f.project(); // config-update target
       const original = await readName();
+      // A stuck rename from a killed earlier run must never be "restored" as if it were the real label.
+      if (/^rgr-/.test(original)) {
+        throw new Error(`Test Org ComponentType GLASS (${glassId}) is named "${original}" — a previous run's temporary rename was never reverted; restore its real name before running the suite`);
+      }
+      const cfg = await glassConfig(f); // created BEFORE the window, to keep the rename as short as possible
       const glassIn = (s: Snapshot | null) => s!.componentTypes.find((t) => t.code === "GLASS")!;
       expect(glassIn(await readConfigSnapshot(old.id)).name).toBe(original);
       const temp = `${run.prefix}GLASS-renamed`;
 
+      // NOTE (rename window): while this body runs, GLASS in the Test Org is named `rgr-<run>-GLASS-renamed`.
+      // Any project another worker creates meanwhile freezes that label. Other spec files must therefore
+      // NOT assert ComponentType names, nor `config-update` needsUpdate === false on projects created in the
+      // Test Org (Task 11 component-types/superadmin specs, pages tasks) — or must tolerate this window.
       await withRecordedGlobalState(
         { key: `Test Org ComponentType GLASS (${glassId}).name`, read: readName, write: writeName },
         () => writeName(temp),
@@ -575,7 +584,7 @@ test.describe("projects: frozen configSnapshot (shared ComponentType edit)", () 
           const fresh = await f.project();
           expect(glassIn(await readConfigSnapshot(fresh.id)).name).toBe(temp);
           // POST selections on the old project validates against its snapshot → still accepted
-          const sel = await f.selection(old.id, "GLASS", await glassConfig(f));
+          const sel = await f.selection(old.id, "GLASS", cfg);
           expect(sel.id).toEqual(expect.any(String));
           expect(glassIn(await readConfigSnapshot(old.id)).name).toBe(original);
 
@@ -595,12 +604,57 @@ test.describe("projects: frozen configSnapshot (shared ComponentType edit)", () 
           expect(pv2).toMatchObject({ needsUpdate: false, changes: [] });
         },
         globalStateFailuresFile(run.storageDir),
+        { forbidOriginal: /^rgr-/ },
       );
 
       expect(await readName()).toBe(original);
       // after the revert, the applied project now differs the other way round
       const back = await json<{ changes: { typeName: string; items: string[] }[] }>(await as.admin.get(url(`/projects/${cu.id}/config-update`)));
       expect(back.changes).toEqual([{ typeName: original, items: [`Renamed from "${temp}"`] }]);
+    } finally {
+      await sa.dispose();
+    }
+  });
+
+  // Rule 4, behavioural half: selection-create VALIDATION runs against the frozen snapshot. Done in throwaway
+  // org B with a type this test creates (deleted with org B at teardown) — no shared state is touched.
+  // Making a live type "not fully configured" (a dropdown with no option values) rejects selections on a
+  // project frozen AFTER the edit, while a project frozen BEFORE it still accepts them.
+  test("selection create validates against the frozen snapshot: a type made unconfigurable later still works on an older project", async ({ run, orgB, baseURL }) => {
+    const sa = await SaClient.login(baseURL!, process.env.TEST_SA_USERNAME!, process.env.TEST_SA_PASSWORD!, createAllowance([], [run.orgB.id]), process.env.VERCEL_AUTOMATION_BYPASS_SECRET);
+    const B = (p: string) => orgApi(run.orgB.slug, p);
+    try {
+      const cats = await sa.get(`/api/v1/superadmin/component-categories?orgId=${run.orgB.id}`);
+      expect(cats.status(), await cats.text()).toBe(200);
+      const categoryId = ((await cats.json()) as { categories: { id: string }[] }).categories[0]?.id;
+      if (!categoryId) throw new Error("org B has no component category");
+      const free = { key: "note", label: "Note", type: "field", required: false, basic: true };
+      const ct = await sa.post("/api/v1/superadmin/component-types", {
+        data: { orgId: run.orgB.id, code: `RGRFZ${tag()}`, name: `${run.prefix}frozen-type`, categoryId, fieldsSchema: [free] },
+      });
+      expect(ct.status(), await ct.text()).toBe(201);
+      const typeId = ((await ct.json()) as { componentType: { id: string } }).componentType.id;
+
+      const mkProject = async () => {
+        const r = await orgB.post(B("/projects"), { data: { name: nm({ run }, "b-frozen"), currency: "AED" } });
+        expect(r.status(), await r.text()).toBe(201);
+        return ((await r.json()) as { project: { id: string } }).project.id;
+      };
+      const select = (projectId: string) =>
+        orgB.post(B("/selections"), { data: { projectId, componentTypeId: typeId, label: `${run.prefix}frozen-sel`, config: {}, orderIndex: 0 } });
+
+      const before = await mkProject(); // snapshot: the type is fully configured
+      const edit = await sa.patch(`/api/v1/superadmin/component-types/${typeId}`, {
+        data: { orgId: run.orgB.id, fieldsSchema: [free, { key: "pick", label: "Pick", type: "dropdown", required: false, basic: false }] },
+      });
+      expect(edit.status(), await edit.text()).toBe(200);
+      const after = await mkProject(); // snapshot: the type has a dropdown with no values → not configured
+
+      const rejected = await select(after);
+      expect(rejected.status()).toBe(400);
+      expect(await rejected.json()).toEqual({ error: "Component type is not fully configured — contact your admin." });
+      const accepted = await select(before);
+      expect(accepted.status(), await accepted.text()).toBe(201);
     } finally {
       await sa.dispose();
     }
