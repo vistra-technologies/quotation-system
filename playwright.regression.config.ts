@@ -16,7 +16,7 @@ export default defineConfig({
   workers: Number(process.env.RGR_WORKERS ?? 3),
   retries: 0, // flake policy: the orchestrator re-runs failures once at --workers=1
   timeout: 90_000,
-  reporter: [["list"]],
+  reporter: [["list"], ["./tests/regression/report/reporter.ts"]],
   use: {
     baseURL,
     trace: "retain-on-failure",
