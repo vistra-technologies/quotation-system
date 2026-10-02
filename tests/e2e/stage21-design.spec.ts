@@ -307,6 +307,44 @@ test.describe("Configure mode draft isolation", () => {
 });
 
 // ===========================================================================
+// 1b. Apply-width input: typing a 4-digit value must not dismiss the menu
+//     (hotfix 2026-10-02 — the input scrolling its own text fired a `scroll`
+//     event that the menu's capture-phase window listener read as a page scroll).
+// ===========================================================================
+test.describe("Apply width input keeps the context menu open", () => {
+  let projectId: string;
+
+  test("typing a 4-digit width leaves the menu open with the typed value", async ({ page }) => {
+    await apiSignIn(page, ORG, "admin");
+    const { projectId: pid, room } = await createProjectFloorRoom(page, ORG, "menuscroll");
+    projectId = pid;
+    await convertFirstSideToPartition(page, ORG, room, 2400, 2400);
+
+    await page.goto(orgUrl(ORG, `/projects/${projectId}/design`));
+    await enterWallConfigure(page);
+
+    await page.locator("[role='button'][aria-selected]").first().click({ button: "right" });
+    const menu = page.getByRole("menu");
+    await expect(menu).toBeVisible();
+
+    const input = menu.locator("input[type='number']");
+    await input.fill(""); // clear, then type digit by digit like a user
+    await input.pressSequentially("1250", { delay: 80 });
+
+    await expect(menu).toBeVisible(); // still open after the 4th digit
+    await expect(input).toHaveValue("1250");
+  });
+
+  test.afterAll(async ({ browser }) => {
+    if (!projectId) return;
+    const page = await browser.newPage();
+    await apiSignIn(page, ORG, "admin");
+    await deleteProject(page, ORG, projectId);
+    await page.close();
+  });
+});
+
+// ===========================================================================
 // 2. Save/Discard round-trip + sum(widths) === widthMm across a sequence
 // ===========================================================================
 test.describe("Configure mode Save/Discard + width-sum invariant", () => {
