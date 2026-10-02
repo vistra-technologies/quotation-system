@@ -36,6 +36,8 @@ export interface Ctx {
   f: Factories;
   /** Org B's admin (guarded to org B) — to look up / create a foreign row for `foreignId`. */
   orgB: Guarded;
+  /** Test-Org role clients — for looking up ids (e.g. a role id) a path or body needs. */
+  as: Record<Role, Guarded>;
 }
 
 export interface RouteCase {
@@ -56,14 +58,17 @@ export interface RouteCase {
   /** Role used for the authenticated cases. Default: admin, else the first role allowed through. */
   actor?: Role;
   /** Request body for the auth/tenancy cases (mutating methods). Default {}. Names MUST be rgr- (run.prefix). */
-  body?: (c: Ctx) => unknown;
-  /** Each must be rejected with `status` (actor session, valid path). Names MUST be rgr- (run.prefix). */
-  invalid?: { name: string; body: unknown; status: number }[];
+  body?: (c: Ctx) => unknown | Promise<unknown>;
+  /**
+   * Each must be rejected with `status` (actor session, valid path). Names MUST be rgr- (run.prefix).
+   * `body` may be a function of the Ctx when it needs run-scoped values (run.prefix, a looked-up id).
+   */
+  invalid?: { name: string; body: unknown | ((c: Ctx) => unknown | Promise<unknown>); status: number }[];
   /** Path (same convention as `path`) whose id does not exist → 404 (actor session). */
   unknownId?: (c: Ctx) => string;
   /** Path (same convention) whose id belongs to org B, addressed under the Test-Org slug → 404. */
   foreignId?: (c: Ctx) => Promise<string>;
-  /** Default: true for POST/PATCH/PUT. */
+  /** Default: true for POST/PATCH/PUT (a DELETE that reads a JSON body must opt in). */
   malformedJson?: boolean;
 }
 
@@ -85,7 +90,8 @@ function send(g: Guarded, method: Method, url: string, body?: unknown): Promise<
     case "GET":
       return g.get(url);
     case "DELETE":
-      return g.delete(url);
+      // a few DELETE routes read a JSON body (e.g. roles/[roleId]/permissions): send it when given
+      return body === undefined ? g.delete(url) : g.delete(url, { data: body });
     case "POST":
       return g.post(url, { data: body ?? {} });
     case "PATCH":
@@ -129,68 +135,75 @@ export function registerNegatives(cases: RouteCase[]): void {
   for (const c of cases) {
     const actor = actorFor(c);
     test.describe(c.key, () => {
-      test("401 without a session", async ({ anon, run, f, orgB }) => {
-        const ctx: Ctx = { run, f, orgB };
-        const r = await send(anon, c.method, urlFor(c, run.testOrg.slug, await c.path(ctx)), c.body?.(ctx));
+      test("401 without a session", async ({ anon, as, run, f, orgB }) => {
+        const ctx: Ctx = { run, f, orgB, as };
+        const r = await send(anon, c.method, urlFor(c, run.testOrg.slug, await c.path(ctx)), await c.body?.(ctx));
         await expectRejected(r, 401, `${c.key}: ${test.info().title}`);
       });
 
       for (const role of deniedRolesFor(c)) {
         test(`403 for ${role} (lacks ${[c.permission ?? "the required role"].flat().join(" | ")})`, async ({ as, run, f, orgB }) => {
-          const ctx: Ctx = { run, f, orgB };
-          const r = await send(as[role], c.method, urlFor(c, run.testOrg.slug, await c.path(ctx)), c.body?.(ctx));
+          const ctx: Ctx = { run, f, orgB, as };
+          const r = await send(as[role], c.method, urlFor(c, run.testOrg.slug, await c.path(ctx)), await c.body?.(ctx));
           await expectRejected(r, 403, `${c.key}: ${test.info().title}`);
         });
       }
 
       if (c.orgScoped !== false) {
         test("403 cross-tenant: a Test-Org session addressed at org B's slug", async ({ as, run, f, orgB }) => {
-          const ctx: Ctx = { run, f, orgB };
+          const ctx: Ctx = { run, f, orgB, as };
           const g = new Guarded(as[actor].ctx, allowanceFromRun(run)); // org B is this run's throwaway org
-          const r = await send(g, c.method, urlFor(c, run.orgB.slug, await c.path(ctx)), c.body?.(ctx));
+          const r = await send(g, c.method, urlFor(c, run.orgB.slug, await c.path(ctx)), await c.body?.(ctx));
           await expectRejected(r, 403, `${c.key}: ${test.info().title}`);
         });
 
         test("404 unknown org slug", async ({ as, run, f, orgB }) => {
-          const ctx: Ctx = { run, f, orgB };
+          const ctx: Ctx = { run, f, orgB, as };
           const ghostSlug = `${run.prefix}nosuch`; // rgr- namespace: no real org can hold it
           const g = new Guarded(as[actor].ctx, createAllowance([ghostSlug]));
-          const r = await send(g, c.method, urlFor(c, ghostSlug, await c.path(ctx)), c.body?.(ctx));
+          const r = await send(g, c.method, urlFor(c, ghostSlug, await c.path(ctx)), await c.body?.(ctx));
           await expectRejected(r, 404, `${c.key}: ${test.info().title}`);
         });
       }
 
       if (c.unknownId) {
         test("404 unknown id", async ({ as, run, f, orgB }) => {
-          const ctx: Ctx = { run, f, orgB };
-          const r = await send(as[actor], c.method, urlFor(c, run.testOrg.slug, c.unknownId!(ctx)), c.body?.(ctx));
+          const ctx: Ctx = { run, f, orgB, as };
+          const r = await send(as[actor], c.method, urlFor(c, run.testOrg.slug, c.unknownId!(ctx)), await c.body?.(ctx));
           await expectRejected(r, 404, `${c.key}: ${test.info().title}`);
         });
       }
 
       if (c.foreignId) {
         test("404 foreign id: an org-B id addressed under the Test-Org slug", async ({ as, run, f, orgB }) => {
-          const ctx: Ctx = { run, f, orgB };
-          const r = await send(as[actor], c.method, urlFor(c, run.testOrg.slug, await c.foreignId!(ctx)), c.body?.(ctx));
+          const ctx: Ctx = { run, f, orgB, as };
+          const r = await send(as[actor], c.method, urlFor(c, run.testOrg.slug, await c.foreignId!(ctx)), await c.body?.(ctx));
           await expectRejected(r, 404, `${c.key}: ${test.info().title}`);
         });
       }
 
       if (c.malformedJson ?? hasBody(c.method)) {
         test("400 malformed JSON body", async ({ as, run, f, orgB }) => {
-          const ctx: Ctx = { run, f, orgB };
+          const ctx: Ctx = { run, f, orgB, as };
           const url = urlFor(c, run.testOrg.slug, await c.path(ctx));
-          const opts = { data: "{not json", headers: { "Content-Type": "application/json" } };
+          // A Buffer, not a string: Playwright JSON-encodes a non-parsable STRING under a JSON content-type
+          // (it would arrive as the valid JSON string "{not json"), so only raw bytes are truly malformed.
+          const opts = { data: Buffer.from("{not json"), headers: { "Content-Type": "application/json" } };
           const g = as[actor];
-          const r = c.method === "POST" ? await g.post(url, opts) : c.method === "PATCH" ? await g.patch(url, opts) : await g.put(url, opts);
+          const r =
+            c.method === "POST" ? await g.post(url, opts)
+            : c.method === "PATCH" ? await g.patch(url, opts)
+            : c.method === "DELETE" ? await g.delete(url, opts)
+            : await g.put(url, opts);
           await expectRejected(r, 400, `${c.key}: ${test.info().title}`);
         });
       }
 
       for (const inv of c.invalid ?? []) {
         test(`${inv.status} invalid body: ${inv.name}`, async ({ as, run, f, orgB }) => {
-          const ctx: Ctx = { run, f, orgB };
-          const r = await send(as[actor], c.method, urlFor(c, run.testOrg.slug, await c.path(ctx)), inv.body);
+          const ctx: Ctx = { run, f, orgB, as };
+          const body = typeof inv.body === "function" ? await (inv.body as (c: Ctx) => unknown)(ctx) : inv.body;
+          const r = await send(as[actor], c.method, urlFor(c, run.testOrg.slug, await c.path(ctx)), body);
           await expectRejected(r, inv.status, `${c.key}: ${test.info().title}`);
         });
       }

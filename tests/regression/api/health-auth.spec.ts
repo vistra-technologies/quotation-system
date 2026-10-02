@@ -5,43 +5,17 @@
  * Sign-in is rate-limited (better-auth special rule: 3 per 10 s per IP on /sign-in and /sign-up), so
  * this file keeps sign-ins few and retries only on 429 (same shape as tests/e2e/helpers.ts apiSignIn).
  */
-import type { APIRequestContext, APIResponse } from "@playwright/test";
 import { test, expect } from "../fixtures/test";
 import { covers } from "../fixtures/covers";
-import { RUN_PASSWORD_ENV } from "../env";
 import { apiUrl, isSubdomain } from "../../e2e/helpers";
 import { toAuthEmail } from "@/lib/auth-utils";
+import { authPost, bypass, runPassword, sessionCookieLine, signIn } from "./sign-in";
 
 covers("GET /api/health");
 covers("GET /api/auth/[...all]");
 covers("POST /api/auth/[...all]");
 
 const COOKIE = "__Secure-qs.session_token";
-const runPassword = () => {
-  const p = process.env[RUN_PASSWORD_ENV];
-  if (!p) throw new Error(`${RUN_PASSWORD_ENV} is not set - run under the regression global setup`);
-  return p;
-};
-const bypass = (): Record<string, string> => {
-  const b = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  return b ? { "x-vercel-protection-bypass": b } : {};
-};
-
-/** POST to an auth endpoint, retrying only on 429 (waits X-Retry-After + 1 s). */
-async function authPost(ctx: APIRequestContext, orgSlug: string, endpoint: string, data: unknown): Promise<APIResponse> {
-  let r!: APIResponse;
-  for (let attempt = 1; attempt <= 5; attempt++) {
-    r = await ctx.post(apiUrl(orgSlug, `/api/auth/${endpoint}`), { data });
-    if (r.status() !== 429) return r;
-    await new Promise((res) => setTimeout(res, (Number(r.headers()["x-retry-after"] ?? "10") + 1) * 1000));
-  }
-  return r;
-}
-const signIn = (ctx: APIRequestContext, orgSlug: string, username: string, password: string) =>
-  authPost(ctx, orgSlug, "sign-in/email", { email: toAuthEmail(username, orgSlug), password });
-
-const sessionCookieLine = (r: APIResponse) =>
-  r.headersArray().filter((h) => h.name.toLowerCase() === "set-cookie").map((h) => h.value).find((v) => v.includes("session_token="));
 
 test("GET /api/health → 200 {status: ok, database: connected}", async ({ anon }) => {
   const r = await anon.get("/api/health");
