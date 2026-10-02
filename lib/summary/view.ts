@@ -16,6 +16,8 @@ import type { ConfigSnapshot } from "../config-snapshot";
 export interface DoorKpiRow {
   category: string | null;
   doorType: string | null;
+  /** "LH" | "RH" | "LH + RH" (double leaf). */
+  handing: DoorRow["handing"];
   quantity: number;
 }
 
@@ -36,7 +38,7 @@ export function rebuildDoorKpis(summary: Summary): DoorKpiRow[] {
     for (const room of floor.rooms) {
       for (const wall of room.walls) {
         for (const door of wall.doors as DoorRow[]) {
-          const key = `${door.category ?? "\u0000"}\u0001${door.doorType ?? "\u0000"}`;
+          const key = `${door.category ?? "\u0000"}\u0001${door.doorType ?? "\u0000"}\u0001${door.handing}`;
           const existing = groups.get(key);
           if (existing) {
             existing.quantity += door.quantity;
@@ -44,6 +46,7 @@ export function rebuildDoorKpis(summary: Summary): DoorKpiRow[] {
             groups.set(key, {
               category: door.category,
               doorType: door.doorType,
+              handing: door.handing,
               quantity: door.quantity,
             });
           }

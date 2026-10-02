@@ -228,6 +228,13 @@ export function SummaryTables({ summary, materialList, configSnapshot }: Summary
       render: (r) => orDash(r.category),
     },
     {
+      key: "handing",
+      label: "Handing",
+      align: "center",
+      getValue: (r) => r.handing,
+      render: (r) => r.handing,
+    },
+    {
       key: "quantity",
       label: "Qty",
       align: "right",
@@ -291,7 +298,7 @@ export function SummaryTables({ summary, materialList, configSnapshot }: Summary
               sort={doorSort}
               onSortChange={setDoorSort}
               totalCell={doorRows.length ? doorTotal : undefined}
-              rowKey={(r, i) => `${r.doorType ?? "null"}-${r.category ?? "null"}-${i}`}
+              rowKey={(r, i) => `${r.doorType ?? "null"}-${r.category ?? "null"}-${r.handing}-${i}`}
             />
           </table>
         </div>
