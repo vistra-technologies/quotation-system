@@ -224,6 +224,33 @@ async function main() {
         });
         return row;
       }
+      // ── Hotfix 2026-10-02 (tests/e2e/superadmin-accounts.spec.ts) ───────────────────────────────
+      case "readSuperAdminAuditRows": {
+        // Audit rows written BY an actor username (snapshot column) — proves a deleted SuperAdmin's
+        // history survives with a null link + the username snapshot (ON DELETE SET NULL).
+        const { actorUsername } = input as { actorUsername: string };
+        return db.superAdminAuditLog.findMany({
+          where: { superAdminUsername: actorUsername },
+          select: { action: true, superAdminId: true, superAdminUsername: true, targetType: true },
+          orderBy: { createdAt: "asc" },
+        });
+      }
+      case "purgeE2eSuperAdminAudit": {
+        // Test-only teardown: the append-only audit log has no delete path in app code, so e2e's
+        // throwaway "e2e-sa-*" accounts would leave rows behind forever. Removes ONLY rows authored
+        // by an e2e-sa-* actor or whose metadata names an e2e-sa-* account (created/deleted/password).
+        const prefix = "e2e-sa-";
+        const res = await db.superAdminAuditLog.deleteMany({
+          where: {
+            OR: [
+              { superAdminUsername: { startsWith: prefix } },
+              { metadata: { path: ["username"], string_starts_with: prefix } },
+              { metadata: { path: ["deletedUsername"], string_starts_with: prefix } },
+            ],
+          },
+        });
+        return res.count;
+      }
       default:
         throw new Error(`Unknown operation: ${op}`);
     }

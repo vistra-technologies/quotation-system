@@ -9,6 +9,7 @@
 
 import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { writeSuperAdminAudit } from "./audit";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import {
   checkComponentTypeGuard,
@@ -398,15 +399,11 @@ export async function createComponentTypeAuditLog(
   metadata?: Record<string, unknown>,
 ): Promise<void> {
   // superadmin-only — intentionally cross-org
-  await prisma.superAdminAuditLog.create({
-    data: {
-      superAdminId,
-      action,
-      targetType: "ComponentType",
-      targetId: typeId,
-      ...(metadata !== undefined
-        ? { metadata: metadata as Prisma.InputJsonValue }
-        : {}),
-    },
+  await writeSuperAdminAudit({
+    superAdminId,
+    action,
+    targetType: "ComponentType",
+    targetId: typeId,
+    metadata,
   });
 }

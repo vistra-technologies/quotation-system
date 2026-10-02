@@ -4,8 +4,8 @@
 // This is the only directory in lib/data/ where cross-org queries are permitted.
 // See Stage 16 architecture rule 1 in profile.md.
 
-import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { writeSuperAdminAudit } from "./audit";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -254,16 +254,11 @@ export async function createRoleAuditLog(
   metadata?: Record<string, unknown>,
 ): Promise<void> {
   // superadmin-only — intentionally cross-org
-  await prisma.superAdminAuditLog.create({
-    data: {
-      superAdminId,
-      action,
-      targetType: "Role",
-      targetId: roleId,
-      // Prisma nullable Json: omit the key when no metadata rather than passing null.
-      ...(metadata !== undefined
-        ? { metadata: metadata as Prisma.InputJsonValue }
-        : {}),
-    },
+  await writeSuperAdminAudit({
+    superAdminId,
+    action,
+    targetType: "Role",
+    targetId: roleId,
+    metadata,
   });
 }

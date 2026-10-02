@@ -596,15 +596,18 @@ model SuperAdminSession {
 // ────────────────────────────────────────────────────────────
 
 model SuperAdminAuditLog {
-  id           String     @id @default(cuid())
-  superAdminId String
-  action       String     // e.g. "org.create", "org.suspend", "role.create", "permission.assign"
-  targetType   String     // "Organization" | "Role" | "Permission"
-  targetId     String     // polymorphic — not a FK; look up via targetType
-  metadata     Json?      // before/after snapshot or relevant payload, at discretion of the writer
-  createdAt    DateTime   @default(now())
+  id           String      @id @default(cuid())
+  // Nullable + ON DELETE SET NULL (hotfix 2026-10-02): deleting a SuperAdmin keeps every row they
+  // wrote; superAdminUsername is the write-time snapshot that still names them afterwards.
+  superAdminId String?
+  superAdminUsername String?
+  action       String      // e.g. "org.create", "org.suspend", "role.create", "permission.assign"
+  targetType   String      // "Organization" | "Role" | "Permission"
+  targetId     String      // polymorphic — not a FK; look up via targetType
+  metadata     Json?       // before/after snapshot or relevant payload, at discretion of the writer
+  createdAt    DateTime    @default(now())
 
-  superAdmin   SuperAdmin @relation(fields: [superAdminId], references: [id])
+  superAdmin   SuperAdmin? @relation(fields: [superAdminId], references: [id], onDelete: SetNull)
 }
 
 // ────────────────────────────────────────────────────────────

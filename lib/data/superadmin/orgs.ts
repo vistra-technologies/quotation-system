@@ -6,6 +6,7 @@
 
 import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { writeSuperAdminAudit } from "./audit";
 import { auth } from "@/lib/auth";
 import { DEFAULT_ROLE_DEFS } from "@/lib/org-role-defaults";
 import {
@@ -745,16 +746,5 @@ export async function createOrgAuditLog(
   targetType: string = "Organization",
 ): Promise<void> {
   // superadmin-only — intentionally cross-org
-  await prisma.superAdminAuditLog.create({
-    data: {
-      superAdminId,
-      action,
-      targetType,
-      targetId,
-      // Prisma nullable Json: omit the key when no metadata rather than passing null.
-      ...(metadata !== undefined
-        ? { metadata: metadata as Prisma.InputJsonValue }
-        : {}),
-    },
-  });
+  await writeSuperAdminAudit({ superAdminId, action, targetType, targetId, metadata });
 }

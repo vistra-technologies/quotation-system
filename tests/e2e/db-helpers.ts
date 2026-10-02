@@ -191,6 +191,20 @@ export async function readCalculation(projectId: string) {
   } | null>("readCalculation", { projectId });
 }
 
+// ── Hotfix 2026-10-02 ───────────────────────────────────────────────────────
+
+/** Audit rows authored by the given actor username (snapshot column), oldest first. */
+export async function readSuperAdminAuditRows(actorUsername: string) {
+  return runDbOp<
+    Array<{ action: string; superAdminId: string | null; superAdminUsername: string | null; targetType: string }>
+  >("readSuperAdminAuditRows", { actorUsername });
+}
+
+/** Test-only: delete audit rows authored by / about `e2e-sa-*` throwaway SuperAdmins. Returns the count. */
+export async function purgeE2eSuperAdminAudit(): Promise<number> {
+  return runDbOp<number>("purgeE2eSuperAdminAudit");
+}
+
 /**
  * Kept as a no-op for API compatibility with callers' `afterAll` hooks — each `runDbOp` call now
  * owns a short-lived child process (and its own Prisma client) rather than a shared long-lived

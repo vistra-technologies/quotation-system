@@ -6,6 +6,7 @@
 
 import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { writeSuperAdminAudit } from "./audit";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -345,15 +346,11 @@ export async function createFormulaSetAuditLog(
   metadata?: Record<string, unknown>,
 ): Promise<void> {
   // superadmin-only — intentionally cross-org
-  await prisma.superAdminAuditLog.create({
-    data: {
-      superAdminId,
-      action,
-      targetType: "FormulaSet",
-      targetId: setId,
-      ...(metadata !== undefined
-        ? { metadata: metadata as Prisma.InputJsonValue }
-        : {}),
-    },
+  await writeSuperAdminAudit({
+    superAdminId,
+    action,
+    targetType: "FormulaSet",
+    targetId: setId,
+    metadata,
   });
 }
