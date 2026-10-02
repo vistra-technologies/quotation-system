@@ -24,6 +24,7 @@
  */
 import dotenv from "dotenv";
 import type { Prisma } from "../app/generated/prisma/client";
+import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry } from "../tests/regression/fixtures/db-scope";
 
 // Same precedence as Next: real env > .env.local > .env (dotenv never overrides an already-set var).
 dotenv.config({ path: ".env.local", quiet: true });
@@ -257,22 +258,51 @@ async function main() {
       case "regressionSnapshot": {
         const { createHash } = await import("node:crypto");
         const sha = (v: unknown) => createHash("sha256").update(JSON.stringify(v)).digest("hex").slice(0, 16);
-        const orgs = await db.organization.findMany({ select: { id: true, slug: true, isSuspended: true, activeFormulaSetId: true } });
-        const tables = ["user", "role", "externalCompany", "project", "inquiry", "inventoryItem", "selection", "floor", "room", "partition", "projectCalculation", "componentType"] as const;
+        const orgs = await db.organization.findMany({
+          select: { id: true, slug: true, name: true, isSuspended: true, activeFormulaSetId: true, updatedAt: true },
+        });
+        // Every table here has organizationId. `hasUpdatedAt` = model has an updatedAt column (Role does not).
+        const tables = [
+          { t: "user", hasUpdatedAt: true }, { t: "role", hasUpdatedAt: false }, { t: "externalCompany", hasUpdatedAt: true },
+          { t: "project", hasUpdatedAt: true }, { t: "inquiry", hasUpdatedAt: true }, { t: "inventoryItem", hasUpdatedAt: true },
+          { t: "selection", hasUpdatedAt: true }, { t: "floor", hasUpdatedAt: true }, { t: "room", hasUpdatedAt: true },
+          { t: "partition", hasUpdatedAt: true }, { t: "projectCalculation", hasUpdatedAt: true }, { t: "componentType", hasUpdatedAt: true },
+          { t: "componentTypeOrgConfig", hasUpdatedAt: true }, { t: "itemPrice", hasUpdatedAt: true },
+        ] as const;
         const counts: Record<string, Record<string, number>> = {};
-        for (const t of tables) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const rows = await (db as any)[t].groupBy({ by: ["organizationId"], _count: { _all: true } });
-          for (const r of rows as Array<{ organizationId: string; _count: { _all: number } }>) {
-            (counts[r.organizationId] ??= {})[t] = r._count._all;
+        const rowsByOrg: Record<string, Record<string, Array<{ id: string; updatedAt: Date }>>> = {};
+        for (const { t, hasUpdatedAt } of tables) {
+          if (hasUpdatedAt) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const rows = (await (db as any)[t].findMany({ select: { id: true, organizationId: true, updatedAt: true }, orderBy: { id: "asc" } })) as Array<{ id: string; organizationId: string; updatedAt: Date }>;
+            for (const r of rows) {
+              const c = (counts[r.organizationId] ??= {});
+              c[t] = (c[t] ?? 0) + 1;
+              ((rowsByOrg[r.organizationId] ??= {})[t] ??= []).push({ id: r.id, updatedAt: r.updatedAt });
+            }
+          } else {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const rows = await (db as any)[t].groupBy({ by: ["organizationId"], _count: { _all: true } });
+            for (const r of rows as Array<{ organizationId: string; _count: { _all: number } }>) {
+              (counts[r.organizationId] ??= {})[t] = r._count._all;
+            }
           }
         }
         const cts = await db.componentType.findMany({ select: { id: true, organizationId: true, code: true, name: true, fieldsSchema: true, sortOrder: true }, orderBy: { id: "asc" } });
+        const rps = await db.rolePermission.findMany({
+          select: { roleId: true, permissionId: true, role: { select: { organizationId: true } } },
+          orderBy: [{ roleId: "asc" }, { permissionId: "asc" }],
+        });
         const out: Record<string, unknown> = {};
         for (const o of orgs) {
+          const rowsHash: Record<string, string> = {};
+          for (const [t, rows] of Object.entries(rowsByOrg[o.id] ?? {})) rowsHash[t] = sha(rows);
           out[o.slug] = {
             counts: counts[o.id] ?? {},
             componentTypesHash: sha(cts.filter((c) => c.organizationId === o.id)),
+            rolePermissionsHash: sha(rps.filter((r) => r.role.organizationId === o.id).map((r) => [r.roleId, r.permissionId])),
+            rowsHash,
+            orgRowHash: sha([o.name, o.slug, o.isSuspended, o.activeFormulaSetId, o.updatedAt]),
             isSuspended: o.isSuspended,
             activeFormulaSetId: o.activeFormulaSetId,
           };
@@ -280,7 +310,6 @@ async function main() {
         const fsets = await db.formulaSet.findMany({ select: { id: true, name: true, version: true, body: true }, orderBy: { id: "asc" } });
         const admins = await db.superAdmin.findMany({ select: { username: true }, orderBy: { username: "asc" } });
         const perms = await db.permission.findMany({ select: { code: true }, orderBy: { code: "asc" } });
-        const rps = await db.rolePermission.findMany({ select: { roleId: true, permissionId: true }, orderBy: [{ roleId: "asc" }, { permissionId: "asc" }] });
         return {
           takenAt: new Date().toISOString(),
           orgs: out,
@@ -289,16 +318,16 @@ async function main() {
             // the suite's own throwaway admins are excluded so create/delete cycles don't show up as drift
             superAdmins: admins.map((a) => a.username).filter((u) => !u.startsWith("rgr-") && !u.startsWith("e2e-sa-")),
             permissions: perms.map((p) => p.code),
-            rolePermissionsHash: sha(rps),
           },
         };
       }
       case "regressionSweep": {
-        // Rows in the Test Org (or org B) whose name starts with the prefix — used for orphan recovery and the post-run sweep.
+        // Rows in the Test Org (or an rgr- org) whose name starts with the prefix — orphan recovery and the post-run sweep.
         const { orgSlug, prefix } = input as { orgSlug: string; prefix: string };
+        assertOrgInScope(orgSlug);
+        assertSweepPrefix(prefix);
         const org = await db.organization.findUnique({ where: { slug: orgSlug }, select: { id: true } });
         if (!org) return [];
-        const sw = (kind: string, rows: Array<{ id: string; label: string }>) => rows.map((r) => ({ kind, ...r }));
         const [projects, inquiries, companies, items, users, roles] = await Promise.all([
           db.project.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
           db.inquiry.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
@@ -308,24 +337,25 @@ async function main() {
           db.role.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
         ]);
         return [
-          ...sw("project", projects.map((r) => ({ id: r.id, label: r.name }))),
-          ...sw("inquiry", inquiries.map((r) => ({ id: r.id, label: r.name }))),
-          ...sw("externalCompany", companies.map((r) => ({ id: r.id, label: r.name }))),
-          ...sw("inventoryItem", items.map((r) => ({ id: r.id, label: r.code }))),
-          ...sw("user", users.map((r) => ({ id: r.id, label: r.username }))),
-          ...sw("role", roles.map((r) => ({ id: r.id, label: r.name }))),
+          ...projects.map((r) => ({ kind: "project", id: r.id, label: r.name })),
+          ...inquiries.map((r) => ({ kind: "inquiry", id: r.id, label: r.name })),
+          ...companies.map((r) => ({ kind: "externalCompany", id: r.id, label: r.name })),
+          ...items.map((r) => ({ kind: "inventoryItem", id: r.id, label: r.code })),
+          ...users.map((r) => ({ kind: "user", id: r.id, label: r.username })),
+          ...roles.map((r) => ({ kind: "role", id: r.id, label: r.name })),
         ];
       }
       case "regressionDelete": {
-        // Inquiries have no DELETE route. Refuses anything that is not an rgr- inquiry in the named org.
+        // Inquiries have no DELETE route. Refuses anything that is not an rgr- inquiry in an in-scope org.
+        // Returns true if deleted, false if no such inquiry in that org.
         const { orgSlug, kind, id } = input as { orgSlug: string; kind: string; id: string };
+        assertOrgInScope(orgSlug);
         if (kind !== "inquiry") throw new Error(`regressionDelete: unsupported kind ${kind}`);
         const org = await db.organization.findUniqueOrThrow({ where: { slug: orgSlug }, select: { id: true } });
         const row = await db.inquiry.findFirst({ where: { id, organizationId: org.id }, select: { name: true } });
-        if (!row) return null;
-        if (!row.name.startsWith("rgr-")) throw new Error(`regressionDelete refused: "${row.name}" is not an rgr- row`);
+        if (!assertDeletableInquiry(row)) return false;
         await db.inquiry.delete({ where: { id } });
-        return null;
+        return true;
       }
       default:
         throw new Error(`Unknown operation: ${op}`);

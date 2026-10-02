@@ -220,6 +220,7 @@ export async function regressionSnapshot(): Promise<Snapshot> { return runDbOp<S
 export async function regressionSweep(orgSlug: string, prefix: string) {
   return runDbOp<Array<{ kind: string; id: string; label: string }>>("regressionSweep", { orgSlug, prefix });
 }
-export async function regressionDeleteInquiry(orgSlug: string, id: string): Promise<void> {
-  runDbOp("regressionDelete", { orgSlug, kind: "inquiry", id });
+/** true = deleted, false = no such inquiry in that org. */
+export async function regressionDeleteInquiry(orgSlug: string, id: string): Promise<boolean> {
+  return runDbOp<boolean>("regressionDelete", { orgSlug, kind: "inquiry", id });
 }
