@@ -194,6 +194,7 @@ export default async function ProjectDetailPage({
               projectId={projectId}
               projectLabel={`${projectLabel} · ${project.name}`}
               projectsHref={`${base}/projects`}
+              updateConfigHref={`${base}/projects/${projectId}/update-configuration`}
             />
           ) : (
             <span />
