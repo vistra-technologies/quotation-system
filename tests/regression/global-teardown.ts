@@ -6,6 +6,7 @@ import { SaClient, allowanceFromRun } from "./fixtures/clients";
 import { tryReadRunState, deleteRunArtifacts, type RunState } from "./fixtures/run-state";
 import { Cleaner } from "./fixtures/delete-entry";
 import { diffSnapshots } from "./fixtures/snapshot";
+import { globalStateFailuresFile } from "./fixtures/global-state";
 import { regressionSnapshot, regressionSweep } from "../e2e/db-helpers";
 
 /** R16: the orchestrator reads this to decide whether a retry is allowed (never after a cleanup failure). */
@@ -63,8 +64,8 @@ async function teardown(run: RunState) {
   const ignore = (slug: string) => slug === TEST_ORG || slug.startsWith("rgr-");
   const delta = diffSnapshots(run.baseline, after, ignore);
   const orgsCompared = Object.keys(run.baseline.orgs).filter((s) => !ignore(s)).length;
-  // global-state revert failures are appended by withGlobalState via this file
-  const stateFile = path.join(run.storageDir, "global-state-failures.json");
+  // global-state revert failures are appended by withRecordedGlobalState via this file
+  const stateFile = globalStateFailuresFile(run.storageDir);
   const revertFailures: string[] = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, "utf-8")) : [];
 
   const failed = errors.length > 0 || strays.length > 0 || delta.length > 0 || revertFailures.length > 0;

@@ -9,7 +9,8 @@ import { apiUrl } from "../../e2e/helpers";
 export interface Factories {
   project(name?: string): Promise<{ id: string; name: string }>;
   inquiry(name?: string): Promise<{ id: string; name: string }>;
-  externalCompany(name?: string): Promise<{ id: string; name: string }>;
+  /** `over` overrides type / country / defaultCurrency (e.g. an INDIA company). */
+  externalCompany(name?: string, over?: Record<string, unknown>): Promise<{ id: string; name: string }>;
   user(role: Role, username?: string): Promise<{ id: string; username: string }>;
   inventoryItem(over?: Record<string, unknown>): Promise<{ id: string; code: string }>;
   wall(label?: string): Promise<{ projectId: string; floorId: string; roomId: string; partitionId: string }>;
@@ -48,9 +49,9 @@ export function makeFactories(deps: { admin: Guarded; run: RunState; ledger: Led
     return { id, name };
   };
 
-  const externalCompany: Factories["externalCompany"] = async (name = nm("co")) => {
+  const externalCompany: Factories["externalCompany"] = async (name = nm("co"), over = {}) => {
     const r = await admin.post(U("/external-companies"), {
-      data: { name, type: "DISTRIBUTOR", country: "UAE", defaultCurrency: "AED" },
+      data: { type: "DISTRIBUTOR", country: "UAE", defaultCurrency: "AED", ...over, name },
     });
     expect(r.status(), await r.text()).toBe(201);
     // POST returns only { success } — find the row by its unique run-prefixed name.

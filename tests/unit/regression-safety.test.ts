@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Ledger, DELETE_ORDER } from "../regression/fixtures/ledger";
 import { assertMutationAllowed, GuardError } from "../regression/fixtures/guard";
-import { withGlobalState } from "../regression/fixtures/global-state";
+import { withGlobalState, withRecordedGlobalState, appendGlobalStateFailures, globalStateFailuresFile } from "../regression/fixtures/global-state";
 
 /** Temp ledger path; the directory is removed after the test. */
 const tmp = (t: TestContext) => {
@@ -273,4 +273,61 @@ test("withGlobalState: a revert that does not take is recorded as a failure", as
   );
   assert.equal(failures.length, 1);
   assert.match(failures[0], /sticky/);
+});
+
+test("appendGlobalStateFailures: creates the array, merges on later calls, ignores an empty list", (t) => {
+  const file = path.join(path.dirname(tmp(t)), "sub", "global-state-failures.json");
+  appendGlobalStateFailures(file, []);
+  assert.equal(fs.existsSync(file), false);
+  appendGlobalStateFailures(file, ["a"]);
+  appendGlobalStateFailures(file, ["b", "c"]);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf-8")), ["a", "b", "c"]);
+  assert.equal(globalStateFailuresFile("/x/run"), path.join("/x/run", "global-state-failures.json"));
+});
+
+test("withRecordedGlobalState: a clean revert writes nothing and returns the body result", async (t) => {
+  const file = path.join(path.dirname(tmp(t)), "gsf.json");
+  let v: unknown = "orig";
+  const out = await withRecordedGlobalState(
+    { key: "k", read: async () => v, write: async (n) => { v = n; } },
+    async () => { v = "changed"; },
+    async () => 7,
+    file,
+  );
+  assert.equal(out, 7);
+  assert.equal(v, "orig");
+  assert.equal(fs.existsSync(file), false);
+});
+
+test("withRecordedGlobalState: a revert that does not take is written for teardown AND thrown", async (t) => {
+  const file = path.join(path.dirname(tmp(t)), "gsf.json");
+  let v: unknown = "orig";
+  await assert.rejects(
+    withRecordedGlobalState(
+      { key: "sticky", read: async () => v, write: async () => { /* revert silently fails */ } },
+      async () => { v = "changed"; },
+      async () => 1,
+      file,
+    ),
+    /global state not restored[\s\S]*sticky/,
+  );
+  const recorded = JSON.parse(fs.readFileSync(file, "utf-8")) as string[];
+  assert.equal(recorded.length, 1);
+  assert.match(recorded[0], /sticky/);
+});
+
+test("withRecordedGlobalState: a body error still reverts and propagates (nothing recorded)", async (t) => {
+  const file = path.join(path.dirname(tmp(t)), "gsf.json");
+  let v: unknown = 1;
+  await assert.rejects(
+    withRecordedGlobalState(
+      { key: "k", read: async () => v, write: async (n) => { v = n; } },
+      async () => { v = 2; },
+      async () => { throw new Error("boom"); },
+      file,
+    ),
+    /boom/,
+  );
+  assert.equal(v, 1);
+  assert.equal(fs.existsSync(file), false);
 });
