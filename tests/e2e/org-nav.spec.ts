@@ -27,7 +27,7 @@
  */
 
 import { test, expect } from "@playwright/test";
-import { orgUrl, orgUrlPattern, isSubdomain } from "./helpers";
+import { orgUrl, orgUrlPattern, isSubdomain, apiSignIn } from "./helpers";
 
 // Run this file serially — auth-flow tests are flaky under concurrent Turbopack
 // compilation load on local dev. (On a pre-built Vercel preview this is not needed,
@@ -294,4 +294,26 @@ test("cross-org session replay: vistra session rejected on acme-glass dashboard"
   await expect(
     page.getByRole("heading", { name: /already signed in/i }),
   ).toBeVisible({ timeout: 5_000 });
+});
+
+// ---------------------------------------------------------------------------
+// Revoked/expired session in an open tab: a client-side nav that lands on
+// /login must show the bare login page — no sidebar/top bar left over from the
+// old session (hotfix 2026-10-02, stale-shell-on-logout). Spends one real sign-in.
+// ---------------------------------------------------------------------------
+test("stale session: nav click lands on a bare login page, no sidebar", async ({ page }) => {
+  await apiSignIn(page, "acme-glass", "admin");
+  await page.goto(orgUrl("acme-glass", "/dashboard"));
+  await expect(page.getByRole("link", { name: "Orders" })).toBeVisible({ timeout: 30_000 });
+
+  // Simulate another login revoking this session: the cookie no longer authenticates.
+  await page.context().clearCookies();
+
+  await page.getByRole("link", { name: "Orders" }).click();
+  await page.waitForURL(orgUrlPattern("acme-glass", "/login"), { timeout: 30_000 });
+
+  await expect(page.locator('input[autocomplete="username"]')).toBeVisible({ timeout: 30_000 });
+  // The shell is gone: no sidebar nav links.
+  await expect(page.getByRole("link", { name: "Orders" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Inquiries" })).toHaveCount(0);
 });
