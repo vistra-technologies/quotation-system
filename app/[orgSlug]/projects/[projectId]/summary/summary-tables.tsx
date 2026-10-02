@@ -298,7 +298,7 @@ export function SummaryTables({ summary, materialList, configSnapshot }: Summary
               sort={glassSort}
               onSortChange={setGlassSort}
               totalCell={glassTotal}
-              lastColSpan={doorColumns.length - glassColumns.length}
+              lastColSpan={1 + doorColumns.length - glassColumns.length}
               rowKey={(r, i) => `${r.glassType ?? "null"}-${r.thickness ?? "null"}-${i}`}
             />
             <LedgerSection
