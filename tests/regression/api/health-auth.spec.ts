@@ -111,6 +111,10 @@ test.describe("/api/auth/[...all]", () => {
     }
   });
 
+  // Preconditions: the `__Secure-` name and the Secure flag are asserted only when the target is https
+  // (better-auth adds both only over https); `Domain=.easeetool.com` only when the target is an
+  // *.easeetool.com host (subdomain mode — staging/production set CROSS_SUBDOMAIN_COOKIES_ENABLED; ad-hoc
+  // *.vercel.app previews do not, and get a host-only cookie). HttpOnly and SameSite=Lax hold everywhere.
   test("sign-in sets an HttpOnly, Secure, SameSite=Lax session cookie; sign-out needs a trusted Origin and revokes that session", async ({ playwright, baseURL, run }) => {
     const ctx = await playwright.request.newContext({ baseURL, extraHTTPHeaders: bypass() });
     try {

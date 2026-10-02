@@ -11,7 +11,10 @@
  *   - every `invalid` body case
  *
  * Every case is rejected before any write (auth/tenancy/permission/lookup/parse gates), so none of
- * them creates data and nothing needs ledgering. Mutating requests still go through `Guarded`:
+ * them creates data and nothing needs ledgering. If a route WRONGLY accepts one (2xx), the case fails
+ * loudly saying so — and because `body` / `invalid` payloads MUST use run-prefixed `rgr-` names
+ * (run.prefix) for every name/label/username/code they carry, a row created by such a leak is still
+ * caught and deleted by the teardown sweep. Mutating requests still go through `Guarded`:
  * cross-tenant probes use an allowance of exactly {Test Org, org B} (this run's throwaway org), the
  * unknown-slug probe an allowance of exactly the run-prefixed ghost slug (no such org exists).
  *
@@ -52,9 +55,9 @@ export interface RouteCase {
   deniedRoles?: Role[];
   /** Role used for the authenticated cases. Default: admin, else the first role allowed through. */
   actor?: Role;
-  /** Request body for the auth/tenancy cases (mutating methods). Default {}. */
+  /** Request body for the auth/tenancy cases (mutating methods). Default {}. Names MUST be rgr- (run.prefix). */
   body?: (c: Ctx) => unknown;
-  /** Each must be rejected with `status` (actor session, valid path). */
+  /** Each must be rejected with `status` (actor session, valid path). Names MUST be rgr- (run.prefix). */
   invalid?: { name: string; body: unknown; status: number }[];
   /** Path (same convention as `path`) whose id does not exist → 404 (actor session). */
   unknownId?: (c: Ctx) => string;
@@ -92,26 +95,51 @@ function send(g: Guarded, method: Method, url: string, body?: unknown): Promise<
   }
 }
 
+/**
+ * Asserts the exact rejection status, but first fails with an explicit message when the request was
+ * ACCEPTED (2xx): a negative case must never write, and anything it created is an unledgered row.
+ */
+async function expectRejected(r: APIResponse, status: number, what: string): Promise<void> {
+  const text = await r.text();
+  if (r.ok()) {
+    throw new Error(
+      `${what}: expected ${status} but the request was ACCEPTED (HTTP ${r.status()}) — a negative case wrote ` +
+        `through; any row it created is unledgered (a stray the rgr- teardown sweep must remove). Body: ${text.slice(0, 500)}`,
+    );
+  }
+  expect(r.status(), text).toBe(status);
+}
+
 /** Absolute (subdomain-aware) URL: org-scoped paths go under /api/v1/orgs/<slug>. */
 function urlFor(c: RouteCase, slug: string, p: string): string {
   return c.orgScoped === false ? apiUrl(slug, p) : apiUrl(slug, `/api/v1/orgs/${slug}${p}`);
 }
 
 export function registerNegatives(cases: RouteCase[]): void {
+  const keys = new Set<string>();
+  for (const c of cases) {
+    if (keys.has(c.key)) throw new Error(`registerNegatives: duplicate key "${c.key}"`);
+    keys.add(c.key);
+    const names = new Set<string>();
+    for (const inv of c.invalid ?? []) {
+      if (names.has(inv.name)) throw new Error(`registerNegatives: duplicate invalid case "${inv.name}" in "${c.key}"`);
+      names.add(inv.name);
+    }
+  }
   for (const c of cases) {
     const actor = actorFor(c);
     test.describe(c.key, () => {
       test("401 without a session", async ({ anon, run, f, orgB }) => {
         const ctx: Ctx = { run, f, orgB };
         const r = await send(anon, c.method, urlFor(c, run.testOrg.slug, await c.path(ctx)), c.body?.(ctx));
-        expect(r.status(), await r.text()).toBe(401);
+        await expectRejected(r, 401, `${c.key}: ${test.info().title}`);
       });
 
       for (const role of deniedRolesFor(c)) {
         test(`403 for ${role} (lacks ${[c.permission ?? "the required role"].flat().join(" | ")})`, async ({ as, run, f, orgB }) => {
           const ctx: Ctx = { run, f, orgB };
           const r = await send(as[role], c.method, urlFor(c, run.testOrg.slug, await c.path(ctx)), c.body?.(ctx));
-          expect(r.status(), await r.text()).toBe(403);
+          await expectRejected(r, 403, `${c.key}: ${test.info().title}`);
         });
       }
 
@@ -120,7 +148,7 @@ export function registerNegatives(cases: RouteCase[]): void {
           const ctx: Ctx = { run, f, orgB };
           const g = new Guarded(as[actor].ctx, allowanceFromRun(run)); // org B is this run's throwaway org
           const r = await send(g, c.method, urlFor(c, run.orgB.slug, await c.path(ctx)), c.body?.(ctx));
-          expect(r.status(), await r.text()).toBe(403);
+          await expectRejected(r, 403, `${c.key}: ${test.info().title}`);
         });
 
         test("404 unknown org slug", async ({ as, run, f, orgB }) => {
@@ -128,7 +156,7 @@ export function registerNegatives(cases: RouteCase[]): void {
           const ghostSlug = `${run.prefix}nosuch`; // rgr- namespace: no real org can hold it
           const g = new Guarded(as[actor].ctx, createAllowance([ghostSlug]));
           const r = await send(g, c.method, urlFor(c, ghostSlug, await c.path(ctx)), c.body?.(ctx));
-          expect(r.status(), await r.text()).toBe(404);
+          await expectRejected(r, 404, `${c.key}: ${test.info().title}`);
         });
       }
 
@@ -136,7 +164,7 @@ export function registerNegatives(cases: RouteCase[]): void {
         test("404 unknown id", async ({ as, run, f, orgB }) => {
           const ctx: Ctx = { run, f, orgB };
           const r = await send(as[actor], c.method, urlFor(c, run.testOrg.slug, c.unknownId!(ctx)), c.body?.(ctx));
-          expect(r.status(), await r.text()).toBe(404);
+          await expectRejected(r, 404, `${c.key}: ${test.info().title}`);
         });
       }
 
@@ -144,7 +172,7 @@ export function registerNegatives(cases: RouteCase[]): void {
         test("404 foreign id: an org-B id addressed under the Test-Org slug", async ({ as, run, f, orgB }) => {
           const ctx: Ctx = { run, f, orgB };
           const r = await send(as[actor], c.method, urlFor(c, run.testOrg.slug, await c.foreignId!(ctx)), c.body?.(ctx));
-          expect(r.status(), await r.text()).toBe(404);
+          await expectRejected(r, 404, `${c.key}: ${test.info().title}`);
         });
       }
 
@@ -155,7 +183,7 @@ export function registerNegatives(cases: RouteCase[]): void {
           const opts = { data: "{not json", headers: { "Content-Type": "application/json" } };
           const g = as[actor];
           const r = c.method === "POST" ? await g.post(url, opts) : c.method === "PATCH" ? await g.patch(url, opts) : await g.put(url, opts);
-          expect(r.status(), await r.text()).toBe(400);
+          await expectRejected(r, 400, `${c.key}: ${test.info().title}`);
         });
       }
 
@@ -163,7 +191,7 @@ export function registerNegatives(cases: RouteCase[]): void {
         test(`${inv.status} invalid body: ${inv.name}`, async ({ as, run, f, orgB }) => {
           const ctx: Ctx = { run, f, orgB };
           const r = await send(as[actor], c.method, urlFor(c, run.testOrg.slug, await c.path(ctx)), inv.body);
-          expect(r.status(), await r.text()).toBe(inv.status);
+          await expectRejected(r, inv.status, `${c.key}: ${test.info().title}`);
         });
       }
     });

@@ -67,21 +67,33 @@ test.describe("GET /api/v1/orgs/[orgSlug]/stats", () => {
     }
   });
 
-  test("a new Test-Org project is counted for the admin and never in org B's counters", async ({ as, url, f, orgB, run }) => {
+  // Isolation proof that never compares org B's TOTALS for equality: other specs (foreignId cases) may
+  // write org-B rows in parallel workers, so only "the new row is absent from org B" and "org B's
+  // counters did not drop" are asserted on that side.
+  test("a new Test-Org project is counted for the admin and is invisible to org B", async ({ as, url, f, orgB, run }) => {
     const stats = async (g: typeof orgB, u: string) => {
       const r = await g.get(u);
       expect(r.status(), await r.text()).toBe(200);
       return (await r.json()) as { projectsTotal: number; projectsInProgress: number };
     };
-    const orgBUrl = apiUrl(run.orgB.slug, `/api/v1/orgs/${run.orgB.slug}/stats`);
+    const orgBApi = (p: string) => apiUrl(run.orgB.slug, `/api/v1/orgs/${run.orgB.slug}${p}`);
     const before = await stats(as.admin, url("/stats"));
-    const bBefore = await stats(orgB, orgBUrl);
-    await f.project();
+    const bBefore = await stats(orgB, orgBApi("/stats"));
+    const proj = await f.project();
     const after = await stats(as.admin, url("/stats"));
-    const bAfter = await stats(orgB, orgBUrl);
+    const bAfter = await stats(orgB, orgBApi("/stats"));
     expect(after.projectsTotal).toBeGreaterThanOrEqual(before.projectsTotal + 1);
     expect(after.projectsInProgress).toBeGreaterThanOrEqual(before.projectsInProgress + 1); // new projects are DRAFT
-    expect(bAfter).toEqual(bBefore);
+
+    // org B: the new project is not listed (searched by its unique name, and by id), counters never drop
+    for (const q of [`?pageSize=100&search=${encodeURIComponent(proj.name)}`, "?pageSize=100"]) {
+      const l = await orgB.get(orgBApi(`/projects${q}`));
+      expect(l.status(), await l.text()).toBe(200);
+      const ids = ((await l.json()) as { projects: { id: string }[] }).projects.map((p) => p.id);
+      expect(ids).not.toContain(proj.id);
+    }
+    expect(bAfter.projectsTotal).toBeGreaterThanOrEqual(bBefore.projectsTotal);
+    expect(bAfter.projectsInProgress).toBeGreaterThanOrEqual(bBefore.projectsInProgress);
   });
 });
 

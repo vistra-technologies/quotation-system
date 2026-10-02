@@ -23,3 +23,13 @@ test("deniedRolesFor: single, any-of and explicit overrides", () => {
   assert.deepEqual(deniedRolesFor({ permission: "QUOTE" }), ["admin", "member", "architect"]);
   assert.deepEqual(deniedRolesFor({ permission: "DESIGN", deniedRoles: ["member"] }), ["member"]);
 });
+
+test("registerNegatives refuses duplicate keys and duplicate invalid-case names (before registering anything)", async () => {
+  const { registerNegatives } = await import("../regression/api/api-matrix");
+  const base = { method: "GET" as const, path: () => "/me" };
+  assert.throws(() => registerNegatives([{ key: "GET /x", ...base }, { key: "GET /x", ...base }]), /duplicate key "GET \/x"/);
+  assert.throws(
+    () => registerNegatives([{ key: "POST /y", method: "POST", path: () => "/y", invalid: [{ name: "a", body: {}, status: 400 }, { name: "a", body: {}, status: 400 }] }]),
+    /duplicate invalid case "a"/,
+  );
+});
