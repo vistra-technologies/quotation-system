@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { LoadingOverlay } from "@/components/loading-overlay";
@@ -12,6 +13,8 @@ interface ProjectActionsProps {
   projectLabel: string;
   /** Org-aware href of the Projects list (redirect target after delete). */
   projectsHref: string;
+  /** Org-aware href of the Update-configuration wizard (Hotfix 2026-10-01 H-6). */
+  updateConfigHref: string;
 }
 
 type Pending = "delete" | "reset" | null;
@@ -27,7 +30,7 @@ type Pending = "delete" | "reset" | null;
  *
  * Plain English strings, like the rest of this page's footer — no next-intl namespace wiring.
  */
-export function ProjectActions({ orgSlug, projectId, projectLabel, projectsHref }: ProjectActionsProps) {
+export function ProjectActions({ orgSlug, projectId, projectLabel, projectsHref, updateConfigHref }: ProjectActionsProps) {
   const router = useRouter();
   const [open, setOpen] = useState<Pending>(null);
   const [busy, setBusy] = useState(false);
@@ -80,6 +83,12 @@ export function ProjectActions({ orgSlug, projectId, projectLabel, projectsHref 
         <button type="button" className={btnClass} disabled={busy} onClick={() => setOpen("delete")}>
           Delete project
         </button>
+        <Link
+          href={updateConfigHref}
+          className="inline-flex items-center rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer"
+        >
+          Update configuration
+        </Link>
         <button type="button" className={btnClass} disabled={busy} onClick={() => setOpen("reset")}>
           Reset project
         </button>

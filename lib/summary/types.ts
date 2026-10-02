@@ -81,7 +81,8 @@ export interface GlassRow {
 export interface DoorRow {
   widthMm: number;
   heightMm: number;
-  handing: "LH" | "RH";
+  /** "LH + RH" = a double-leaf door (selection `isDoubleLeaf` = "Yes"). */
+  handing: "LH" | "RH" | "LH + RH";
   category: string | null;
   doorType: string | null;
   quantity: number;

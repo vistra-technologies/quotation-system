@@ -19,3 +19,6 @@ export const DEFAULT_PANEL_WIDTH_MM = 610; // 24in * 25.4, rounded
 
 /** design-step-poc.html: split disabled when `widthIn < 16`. */
 export const MIN_SPLIT_WIDTH_MM = 406; // 16in * 25.4, rounded
+
+/** Smallest panel a divider drag can produce (Hotfix 2026-10-01 H-5). */
+export const MIN_PANEL_WIDTH_MM = 100;

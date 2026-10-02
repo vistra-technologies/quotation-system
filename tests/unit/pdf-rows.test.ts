@@ -73,12 +73,14 @@ describe("buildKpiPdfTables", () => {
     assert.equal(doors.body.length, 2);
     const categories = doors.body.map((r) => r[1]);
     assert.deepEqual(categories.sort(), ["Double", "Single"]);
+    assert.deepEqual(doors.head, ["Door Type", "Category", "Handing", "Qty"]);
+    assert.deepEqual(doors.body.map((r) => r[2]).sort(), ["LH", "RH"]);
   });
 
   test("doors Total row sums quantity (integer, matches on-screen Total rule)", () => {
     const { doors } = buildKpiPdfTables(summaryFixture());
     assert.ok(doors.totalRow);
-    assert.equal(doors.totalRow![2], "3 pcs");
+    assert.equal(doors.totalRow![3], "3 pcs");
   });
 });
 

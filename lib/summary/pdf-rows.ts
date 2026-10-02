@@ -84,9 +84,9 @@ export function buildKpiPdfTables(summary: Summary): { glass: PdfTable; doors: P
   const doorQtyTotal = doorRows.reduce((sum, r) => sum + r.quantity, 0);
   const doors: PdfTable = {
     title: "Project KPIs — Doors",
-    head: ["Door Type", "Category", "Qty"],
-    body: doorRows.map((r) => [orDash(r.doorType), orDash(r.category), `${r.quantity} ${r.quantity === 1 ? "pc" : "pcs"}`]),
-    totalRow: ["Total", "", `${doorQtyTotal} pcs`],
+    head: ["Door Type", "Category", "Handing", "Qty"],
+    body: doorRows.map((r) => [orDash(r.doorType), orDash(r.category), r.handing, `${r.quantity} ${r.quantity === 1 ? "pc" : "pcs"}`]),
+    totalRow: ["Total", "", "", `${doorQtyTotal} pcs`],
   };
 
   return { glass, doors };
