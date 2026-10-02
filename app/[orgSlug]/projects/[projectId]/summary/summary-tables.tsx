@@ -75,6 +75,7 @@ function LedgerSection<T>({
   onSortChange,
   totalCell,
   rowKey,
+  lastColSpan = 1,
 }: {
   columns: Column<T>[];
   rows: T[];
@@ -83,17 +84,20 @@ function LedgerSection<T>({
   /** When present, renders a Total row spanning all but the last column, with this in the last cell. */
   totalCell?: React.ReactNode;
   rowKey: (row: T, index: number) => string;
+  /** The glass and door ledgers share one <table>; the narrower one stretches its last column to match. */
+  lastColSpan?: number;
 }) {
   const sorted = sortRows(rows, columns, sort);
   return (
     <tbody>
       <tr>
-        {columns.map((col) => {
+        {columns.map((col, ci) => {
           const isIndex = col.key === "#";
           const active = sort.key === col.key;
           return (
             <th
               key={col.key}
+              colSpan={ci === columns.length - 1 ? lastColSpan : 1}
               className={`whitespace-nowrap border border-border bg-primary-softer px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-wide text-text-heading ${
                 alignCls[col.align ?? (isIndex ? "center" : "left")]
               }`}
@@ -130,6 +134,7 @@ function LedgerSection<T>({
           {columns.map((col, ci) => (
             <td
               key={col.key}
+              colSpan={ci === columns.length - 1 ? lastColSpan : 1}
               className={`border border-border bg-bg-white px-2.5 py-1.5 text-text-body ${
                 alignCls[col.align ?? (ci === 0 ? "center" : "left")]
               }`}
@@ -147,7 +152,10 @@ function LedgerSection<T>({
           >
             Total
           </td>
-          <td className="border border-border bg-bg-card px-2.5 py-1.5 text-right font-extrabold text-text-heading">
+          <td
+            colSpan={lastColSpan}
+            className="border border-border bg-bg-card px-2.5 py-1.5 text-right font-extrabold text-text-heading"
+          >
             {totalCell}
           </td>
         </tr>
@@ -290,6 +298,7 @@ export function SummaryTables({ summary, materialList, configSnapshot }: Summary
               sort={glassSort}
               onSortChange={setGlassSort}
               totalCell={glassTotal}
+              lastColSpan={doorColumns.length - glassColumns.length}
               rowKey={(r, i) => `${r.glassType ?? "null"}-${r.thickness ?? "null"}-${i}`}
             />
             <LedgerSection
