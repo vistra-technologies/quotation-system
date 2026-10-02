@@ -292,6 +292,29 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
             </svg>
             {!collapsed && <span>Formula Sets</span>}
           </Link>
+
+          {/* Audit Log (hotfix 2026-10-02) */}
+          <Link
+            href="/controls/audit-log"
+            title="Audit Log"
+            className={navItemClass("/controls/audit-log")}
+          >
+            {/* Clock icon */}
+            <svg
+              className="h-5 w-5 shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 8v4l3 2" />
+            </svg>
+            {!collapsed && <span>Audit Log</span>}
+          </Link>
         </nav>
 
         {/* ── Bottom: log out ── */}

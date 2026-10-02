@@ -217,6 +217,14 @@ export async function DELETE(
     return apiNotFound("Organization not found");
   }
 
+  // Read the code first so the audit row can still name the type after it is deleted.
+  let deletedCode: string | null = null;
+  try {
+    deletedCode = (await getComponentTypeForOrg(orgId, typeId))?.code ?? null;
+  } catch {
+    // best-effort — the audit row simply falls back to the type's id
+  }
+
   let result;
   try {
     result = await deleteComponentTypeForOrg(orgId, typeId);
@@ -240,6 +248,7 @@ export async function DELETE(
   await createComponentTypeAuditLog(sa.superAdminId, typeId, "componentType.delete", {
     orgId,
     orgName: org.name,
+    ...(deletedCode ? { code: deletedCode } : {}),
   });
 
   return NextResponse.json({ ok: true });

@@ -606,8 +606,17 @@ model SuperAdminAuditLog {
   targetId     String      // polymorphic — not a FK; look up via targetType
   metadata     Json?       // before/after snapshot or relevant payload, at discretion of the writer
   createdAt    DateTime    @default(now())
+  // Hotfix 2026-10-02 (audit-log page): where the change happened + write-time name snapshots.
+  // Plain text, NO FKs — the org / target may be deleted; the row must outlive them.
+  // organizationId NULL ⇒ platform-level (SuperAdmin console).
+  organizationId   String?
+  organizationSlug String?
+  targetLabel      String?   // display name of the entity at write time (paulson, Sales, acme-glass…)
 
   superAdmin   SuperAdmin? @relation(fields: [superAdminId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
 }
 
 // ────────────────────────────────────────────────────────────

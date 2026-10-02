@@ -244,6 +244,8 @@ async function main() {
           where: {
             OR: [
               { superAdminUsername: { startsWith: prefix } },
+              // Audit-log page hotfix: entity-name snapshot — catches rows about e2e-sa-* users made in the Test Org.
+              { targetLabel: { startsWith: prefix } },
               { metadata: { path: ["username"], string_starts_with: prefix } },
               { metadata: { path: ["deletedUsername"], string_starts_with: prefix } },
             ],
