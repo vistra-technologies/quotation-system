@@ -21,7 +21,7 @@
 
 import React, { createContext, useContext, useReducer } from "react";
 import { redirectToLogin } from "./login-redirect";
-import { panelsToV2 } from "@/lib/partition-design";
+import { panelsToV2, pickTransomGlass } from "@/lib/partition-design";
 import { makeDoorResolver, toPanelViewRow } from "./partition-view";
 import type {
   DesignDoor,
@@ -399,9 +399,16 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
       return mutatePanels(state, (ps) =>
         ps.map((p) => {
           if (p.id !== action.panelId || !p.door) return p;
-          const clampedH = Math.min(action.heightMm, state.draft?.heightMm ?? action.heightMm);
+          const wallH = state.draft?.heightMm ?? action.heightMm;
+          const clampedH = Math.min(action.heightMm, wallH);
+          // H-7: a shorter door opens a glass strip above it; give it glass if the panel has none.
+          const glass =
+            clampedH < wallH && !p.selectionId
+              ? pickTransomGlass(ps, p.id, state.draft?.design?.defaults?.glassSelectionId)
+              : p.selectionId;
           return {
             ...p,
+            selectionId: glass,
             door: {
               ...p.door,
               outerFrame: { w: p.door.outerFrame?.w ?? p.widthMm, h: clampedH },

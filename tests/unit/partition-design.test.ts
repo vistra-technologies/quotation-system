@@ -22,6 +22,7 @@ import {
   panelsToV2,
   PartitionDesignError,
   type ParseStoredOptions,
+  pickTransomGlass,
 } from "../../lib/partition-design";
 
 const noDoors: ParseStoredOptions["isDoorSelection"] = () => false;
@@ -266,5 +267,24 @@ describe("panelsToV2 <-> parseStoredDesign — door/transom round trip (D-4)", (
       wallHeightMm,
     );
     assert.equal(withNeither.sections?.[0].cells[0].selectionId, null);
+  });
+});
+
+describe("pickTransomGlass (H-7)", () => {
+  const ps = [
+    { id: "a", selectionId: null },
+    { id: "b", selectionId: "g1" },
+    { id: "c", selectionId: "g1" },
+    { id: "d", selectionId: "g2" },
+  ];
+  test("uses the glass the other panels use (most common)", () => {
+    assert.equal(pickTransomGlass(ps, "a", "dflt"), "g1");
+  });
+  test("ignores the panel itself", () => {
+    assert.equal(pickTransomGlass([{ id: "a", selectionId: "x" }], "a", null), null);
+  });
+  test("falls back to the design default, then null", () => {
+    assert.equal(pickTransomGlass([{ id: "a", selectionId: null }], "a", "dflt"), "dflt");
+    assert.equal(pickTransomGlass([{ id: "a", selectionId: null }], "a"), null);
   });
 });
