@@ -3,6 +3,7 @@ import { detectIsSubdomain } from "@/lib/orgHref";
 import { getTranslations } from "next-intl/server";
 import { TopBarActions } from "./top-bar-actions";
 import { Sidebar } from "./sidebar";
+import { ReloadOnLoginRedirect } from "./reload-on-login-redirect";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -72,6 +73,9 @@ export default async function OrgSlugLayout({
 
   return (
     <div className="flex h-screen bg-bg-page">
+      {/* Hard-reloads if a client-side nav lands on /login (revoked/expired session),
+          so the stale shell doesn't stay around the login form. */}
+      <ReloadOnLoginRedirect />
       {/* Sidebar — Client Component owning collapse state */}
       <Sidebar
         orgSlug={orgSlug}
