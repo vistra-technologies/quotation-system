@@ -312,11 +312,11 @@ test("UI: sidebar link, table, scope switch, row expand, filter via URL, bad-que
   await expect(page.getByTestId("audit-detail")).toHaveCount(0);
 
   // Org select is locked until the Organization scope is chosen.
-  const orgSelect = page.getByRole("button", { name: /All organizations/ });
+  const orgSelect = page.getByRole("combobox").first(); // Organization is the first select
   await expect(orgSelect).toBeDisabled();
   await page.getByRole("button", { name: "Organization", exact: true }).click();
   await expect(page).toHaveURL(/scope=org/);
-  await expect(page.getByRole("button", { name: /All organizations/ })).toBeEnabled();
+  await expect(orgSelect).toBeEnabled();
   await page.getByRole("button", { name: "SuperAdmin console" }).click();
   await expect(page).toHaveURL(/scope=platform/);
   for (const cell of await page.getByTestId("audit-row").locator("td:last-child").allInnerTexts()) {
@@ -333,7 +333,8 @@ test("UI: sidebar link, table, scope switch, row expand, filter via URL, bad-que
 
   // A hand-edited bad query shows a message instead of crashing.
   await page.goto("/controls/audit-log?verb=BOGUS");
-  await expect(page.getByRole("alert")).toContainText("verb must be one of");
+  // Next.js also renders its own role="alert" route announcer, so match ours by its text.
+  await expect(page.getByRole("alert").filter({ hasText: "verb must be one of" })).toBeVisible();
 });
 
 test("UI: the page redirects to the SuperAdmin login without a session", async ({ page }) => {
