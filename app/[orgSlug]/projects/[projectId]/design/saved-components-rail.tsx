@@ -417,6 +417,7 @@ function DoorHeightValue({
           else if (e.key === "Escape") {
             // Don't let the workspace's document-level Escape handler also deselect the panel.
             e.stopPropagation();
+            e.nativeEvent.stopImmediatePropagation();
             finish(false);
           }
         }}
