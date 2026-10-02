@@ -52,6 +52,8 @@ const selections = [
   { id: "d-simple", componentTypeId: DOOR_T, config: { category: "Single", doorType: "Simple Glass" } },
   { id: "d-blank", componentTypeId: DOOR_T, config: { category: "Single", doorType: "  " } },
   { id: "d-nokey", componentTypeId: DOOR_T, config: { category: "Single" } },
+  { id: "d-double", componentTypeId: DOOR_T, config: { category: "Double", doorType: "Simple Glass", isDoubleLeaf: "Yes" } },
+  { id: "d-double-no", componentTypeId: DOOR_T, config: { category: "Single", doorType: "Simple Glass", isDoubleLeaf: "No" } },
   { id: "orphan", componentTypeId: "type-gone", config: {} },
 ];
 
@@ -236,6 +238,24 @@ describe("buildSummary", () => {
       ["RH", 1],
     ]);
     assert.ok(doors.every((d) => d.handing !== null));
+  });
+
+  test("double-leaf door (isDoubleLeaf Yes) -> handing 'LH + RH' regardless of hinging, own group (Hotfix 2026-10-01 H-3)", () => {
+    const r = buildSummary(
+      input([
+        partition("p1", "N", [
+          section("s1", 1800, [cell("c1", 2800, "d-double", "right")]),
+          section("s2", 1800, [cell("c2", 2800, "d-double")]),
+          section("s3", 900, [cell("c3", 2800, "d-simple", "left")]),
+          section("s4", 900, [cell("c4", 2800, "d-double-no", "right")]),
+        ]),
+      ]),
+    );
+    const doors = r.summary.floors[0].rooms[0].walls[0].doors;
+    assert.deepEqual(
+      doors.map((d) => [d.handing, d.quantity]).sort(),
+      [["LH + RH", 2], ["LH", 1], ["RH", 1]].sort(),
+    );
   });
 
   test("blank non-required doorType -> null; no crash, no 'undefined'", () => {

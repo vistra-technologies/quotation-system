@@ -183,9 +183,14 @@ export function SavedComponentsRail({ selections }: SavedComponentsRailProps) {
                 }}
                 className="min-w-0 flex-1 accent-primary"
               />
-              <span className="min-w-[52px] text-right text-xs font-bold text-text-heading">
-                {formatLen(currentDoorHeightMm)}
-              </span>
+              <DoorHeightValue
+                valueMm={currentDoorHeightMm}
+                maxMm={wallHeightMm}
+                label={formatLen(currentDoorHeightMm)}
+                onCommit={(heightMm) =>
+                  dispatch({ type: "SET_DOOR_HEIGHT", panelId: soloPanelId, heightMm })
+                }
+              />
             </div>
           </section>
         )}
@@ -365,5 +370,67 @@ function ComponentSection({ title, note, comps, enabled, isActive, onClick }: Co
         })}
       </div>
     </section>
+  );
+}
+
+/**
+ * Door height value — click to type an exact height in mm (Hotfix 2026-10-01 H-4). Enter or blur
+ * applies, Esc cancels. Clamped to 0 .. wall height, the same range as the slider beside it.
+ */
+function DoorHeightValue({
+  valueMm,
+  maxMm,
+  label,
+  onCommit,
+}: {
+  valueMm: number;
+  maxMm: number;
+  label: string;
+  onCommit: (heightMm: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState("");
+
+  function finish(commit: boolean) {
+    setEditing(false);
+    const n = Number(text);
+    if (commit && text.trim() !== "" && Number.isFinite(n)) {
+      onCommit(Math.max(0, Math.min(maxMm, Math.round(n))));
+    }
+  }
+
+  if (editing) {
+    return (
+      <input
+        type="number"
+        autoFocus
+        min={0}
+        max={maxMm}
+        step={1}
+        value={text}
+        aria-label="Door height (mm)"
+        onChange={(e) => setText(e.target.value)}
+        onFocus={(e) => e.target.select()}
+        onBlur={() => finish(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") finish(true);
+          else if (e.key === "Escape") finish(false);
+        }}
+        className="w-16 shrink-0 rounded border border-primary bg-bg-white px-1 py-0.5 text-right text-xs font-bold text-text-heading"
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      title="Click to type an exact height"
+      onClick={() => {
+        setText(String(Math.round(valueMm)));
+        setEditing(true);
+      }}
+      className="min-w-[52px] cursor-text border-b border-dashed border-primary/50 text-right text-xs font-bold text-text-heading hover:border-primary hover:text-primary-dark"
+    >
+      {label}
+    </button>
   );
 }

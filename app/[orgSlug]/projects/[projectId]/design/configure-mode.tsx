@@ -358,6 +358,7 @@ export function ConfigureMode({
           onSelectionChange={handleSelectionChange}
           onPanelContextMenu={openPanelMenu}
           onDoorContextMenu={openDoorMenu}
+          onResizePanels={(widths) => dispatch({ type: "SET_PANEL_WIDTHS_MAP", widths })}
         />
       </div>
 

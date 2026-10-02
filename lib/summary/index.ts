@@ -11,6 +11,7 @@
  * makes the whole result FAILED with an `errorDetail` — never a partial or NaN summary.
  */
 import type { ConfigSnapshot } from "../config-snapshot";
+import { isDoubleLeafConfig } from "../door-leaf";
 import type {
   DoorRow,
   FormulaSlot,
@@ -176,7 +177,13 @@ function build(input: SummaryInput): Summary {
               else areaByPair.set(key, { glassType, thickness, area });
               glass.push({ glassType, thickness, widthMm, heightMm, areaM2: round4(area) });
             } else if (sel.slot.role === "door") {
-              const handing: "LH" | "RH" = cell.hinging === "right" ? "RH" : "LH";
+              // A double-leaf door is hinged at both jambs, so it has no single handing — it reports
+              // "LH + RH" and groups separately from single LH/RH doors (Hotfix 2026-10-01 H-3).
+              const handing: DoorRow["handing"] = isDoubleLeafConfig(sel.config)
+                ? "LH + RH"
+                : cell.hinging === "right"
+                  ? "RH"
+                  : "LH";
               const category = readParam(sel, "category", where);
               const doorType = readParam(sel, "doorType", where);
               // Aggregate within THIS wall only (D-40) — the map is per-partition.

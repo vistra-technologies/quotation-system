@@ -14,11 +14,19 @@
  * S21-D3: ctrl/cmd-click multi-select; right-click → onPanelContextMenu.
  * S21-D4: Door right-click → onDoorContextMenu.
  *
+ * Hotfix 2026-10-01: door swing LINES (apex on the hinge edge) + faint LH/RH labels replace the
+ * quarter-arc; a double-leaf door (selection `isDoubleLeaf` = "Yes") draws one triangle per leaf
+ * (LH left / RH right, no hinge menu); draggable dividers between panels trade width between
+ * neighbours (total preserved, 100 mm minimum).
+ *
  * Door-height slider removed (Track C handles it in the right rail).
  * Panel Exclude/Include NOT present (D-2 deviation).
  * Unit toggle NOT present (D-4 deviation).
  */
 
+import { useRef, useState } from "react";
+import { isDoubleLeafConfig } from "@/lib/door-leaf";
+import { MIN_PANEL_WIDTH_MM } from "./configure-constants";
 import { useUnit } from "./unit-context";
 import type { DraftSelection } from "./design-draft-context";
 import type { DesignPanel, SelectionRow } from "./types";
@@ -35,6 +43,8 @@ interface WallCanvasProps {
   onPanelContextMenu?: (panelId: string, x: number, y: number) => void;
   /** Right-click on a door graphic: separate from panel menu. */
   onDoorContextMenu?: (panelId: string, x: number, y: number) => void;
+  /** Divider drag / arrow-key nudge: new widthMm for the two neighbouring panels (sum preserved). */
+  onResizePanels?: (widths: Record<string, number>) => void;
 }
 
 export function WallCanvas({
@@ -45,10 +55,57 @@ export function WallCanvas({
   onSelectionChange,
   onPanelContextMenu,
   onDoorContextMenu,
+  onResizePanels,
 }: WallCanvasProps) {
   const { formatLen } = useUnit();
 
   const totalWidthMm = panels.reduce((sum, p) => sum + p.widthMm, 0) || 1;
+
+  // Live widths while a divider is being dragged; the draft is only touched on release.
+  const rowRef = useRef<HTMLDivElement>(null);
+  const [live, setLive] = useState<Record<string, number> | null>(null);
+  const widthOf = (p: DesignPanel) => live?.[p.id] ?? p.widthMm;
+  // A neighbour pair can't shrink below 100 mm, unless it is already narrower, in which case it holds.
+  const clampLeft = (left: number, pair: number, a: number, b: number) =>
+    Math.max(Math.min(MIN_PANEL_WIDTH_MM, a), Math.min(pair - Math.min(MIN_PANEL_WIDTH_MM, b), left));
+
+  function startDividerDrag(e: React.PointerEvent<HTMLDivElement>, i: number) {
+    e.preventDefault();
+    e.stopPropagation();
+    const left = panels[i]!;
+    const right = panels[i + 1]!;
+    const pair = left.widthMm + right.widthMm;
+    const startX = e.clientX;
+    const mmPerPx = totalWidthMm / (rowRef.current?.getBoundingClientRect().width || 1);
+    const target = e.currentTarget;
+    target.setPointerCapture(e.pointerId);
+    let latest: Record<string, number> | null = null;
+    const onMove = (ev: PointerEvent) => {
+      const l = clampLeft(Math.round(left.widthMm + (ev.clientX - startX) * mmPerPx), pair, left.widthMm, right.widthMm);
+      latest = { [left.id]: l, [right.id]: pair - l };
+      setLive(latest);
+    };
+    const onUp = () => {
+      target.removeEventListener("pointermove", onMove);
+      target.removeEventListener("pointerup", onUp);
+      target.removeEventListener("pointercancel", onUp);
+      setLive(null);
+      if (latest && latest[left.id] !== left.widthMm) onResizePanels?.(latest);
+    };
+    target.addEventListener("pointermove", onMove);
+    target.addEventListener("pointerup", onUp);
+    target.addEventListener("pointercancel", onUp);
+  }
+
+  function nudgeDivider(e: React.KeyboardEvent<HTMLDivElement>, i: number) {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const left = panels[i]!;
+    const right = panels[i + 1]!;
+    const pair = left.widthMm + right.widthMm;
+    const l = clampLeft(left.widthMm + (e.key === "ArrowRight" ? 1 : -1), pair, left.widthMm, right.widthMm);
+    if (l !== left.widthMm) onResizePanels?.({ [left.id]: l, [right.id]: pair - l });
+  }
 
   const selectedPanelIds: string[] =
     selection?.type === "panel" ? selection.panelIds : [];
@@ -67,7 +124,7 @@ export function WallCanvas({
         */}
         <div className="flex h-full min-h-[150px] w-full overflow-hidden rounded-[6px] border-2 border-primary bg-bg-white">
           {/* .panel-row — flex:1 */}
-          <div className="flex flex-1">
+          <div ref={rowRef} className="relative flex flex-1">
             {panels.map((panel, index) => {
               const isSelected = selectedPanelIds.includes(panel.id);
               const isDimmed = selectedPanelIds.length > 0 && !isSelected;
@@ -78,6 +135,10 @@ export function WallCanvas({
                 ? Math.min(100, ((panel.door.outerFrame?.h ?? heightMm) / heightMm) * 100)
                 : 0;
               const hinging = panel.door?.hinging ?? "left";
+              const doorSelection = panel.door
+                ? selections.find((s) => s.id === panel.door?.selectionId)
+                : undefined;
+              const isDouble = isDoubleLeafConfig(doorSelection?.config);
 
               return (
                 <div
@@ -86,12 +147,14 @@ export function WallCanvas({
                   tabIndex={0}
                   aria-selected={isSelected}
                   style={{
-                    flexBasis: `${(panel.widthMm / totalWidthMm) * 100}%`,
+                    flexBasis: `${(widthOf(panel) / totalWidthMm) * 100}%`,
                   }}
                   className={[
                     // Base panel styles — mirrors .panel (mockup lines 379-382)
                     "relative flex cursor-pointer flex-col items-start overflow-hidden",
-                    "border-r border-r-[rgba(27,40,30,.16)] last:border-r-0",
+                    "border-r border-r-[rgba(27,40,30,.16)]",
+                    // Dividers follow the panels in the row, so :last-child can't be used.
+                    index === panels.length - 1 ? "border-r-0" : "",
                     "p-[10px_10px_0] transition-[opacity,background,box-shadow,transform]",
                     // State variants
                     isSelected
@@ -162,7 +225,7 @@ export function WallCanvas({
                       className="text-[11.5px] font-bold"
                       style={{ color: "var(--color-panel-label)" }}
                     >
-                      P{index + 1} · {formatLen(panel.widthMm)}
+                      P{index + 1} · {formatLen(widthOf(panel))}
                     </div>
 
                     {/* .panel-material: glass type name — mockup line 1704 */}
@@ -186,6 +249,8 @@ export function WallCanvas({
                           "repeating-linear-gradient(180deg,#eef4ec 0px,#eef4ec 3px,#e4ede1 3px,#e4ede1 4px)",
                       }}
                       onContextMenu={(e) => {
+                        // A double-leaf door has no hinge side to switch: let the panel menu handle it.
+                        if (isDouble) return;
                         e.preventDefault();
                         // stopPropagation prevents the panel contextmenu from also firing
                         e.stopPropagation();
@@ -193,36 +258,65 @@ export function WallCanvas({
                       }}
                     >
                       {/*
-                        Swing arc — replaces .door::after / .door.hinge-right::after.
-                        Left hinge:  arc fills upper-right quadrant (border-radius 0 100% 0 0),
-                                     right and top borders visible.
-                        Right hinge: arc fills upper-left quadrant (border-radius 100% 0 0 0),
-                                     left and top borders visible.
+                        Swing lines (elevation convention): two lines from the opening edge's top and
+                        bottom corners meet at mid-height on the HINGE edge. Double leaf: one triangle
+                        per leaf, each apex at its outer jamb, plus a centre line. Same colour and 40%
+                        opacity as the LH/RH labels.
                       */}
-                      <div
-                        style={{
-                          position: "absolute",
-                          ...(hinging === "left" ? { left: "2px" } : { right: "2px" }),
-                          bottom: 0,
-                          width: "96%",
-                          height: "90%",
-                          borderTop: "1px solid #b9c5b3",
-                          borderBottom: "none",
-                          ...(hinging === "left"
-                            ? {
-                                borderLeft: "none",
-                                borderRight: "1px solid #b9c5b3",
-                                borderRadius: "0 100% 0 0",
-                              }
-                            : {
-                                borderLeft: "1px solid #b9c5b3",
-                                borderRight: "none",
-                                borderRadius: "100% 0 0 0",
-                              }),
-                        }}
-                      />
+                      <svg
+                        viewBox="0 0 100 100"
+                        preserveAspectRatio="none"
+                        className="pointer-events-none absolute inset-0 h-full w-full"
+                        aria-hidden="true"
+                      >
+                        {isDouble ? (
+                          <>
+                            <SwingLine x1={50} y1={0} x2={0} y2={50} />
+                            <SwingLine x1={50} y1={100} x2={0} y2={50} />
+                            <SwingLine x1={50} y1={0} x2={100} y2={50} />
+                            <SwingLine x1={50} y1={100} x2={100} y2={50} />
+                            <SwingLine x1={50} y1={0} x2={50} y2={100} />
+                          </>
+                        ) : (
+                          <>
+                            <SwingLine x1={hinging === "right" ? 0 : 100} y1={0} x2={hinging === "right" ? 100 : 0} y2={50} />
+                            <SwingLine x1={hinging === "right" ? 0 : 100} y1={100} x2={hinging === "right" ? 100 : 0} y2={50} />
+                          </>
+                        )}
+                      </svg>
+                      {isDouble ? (
+                        <>
+                          <HandLabel left="25%" text="LH" />
+                          <HandLabel left="75%" text="RH" />
+                        </>
+                      ) : (
+                        <HandLabel left="50%" text={hinging === "right" ? "RH" : "LH"} />
+                      )}
                     </div>
                   )}
+                </div>
+              );
+            })}
+            {/* Divider handles: one per internal edge; width trades between the two neighbours. */}
+            {panels.slice(0, -1).map((panel, i) => {
+              const edgePct =
+                (panels.slice(0, i + 1).reduce((sum, p) => sum + widthOf(p), 0) / totalWidthMm) * 100;
+              return (
+                <div
+                  key={`divider-${panel.id}`}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label={`Resize P${i + 1} and P${i + 2}`}
+                  tabIndex={0}
+                  style={{ left: `${edgePct}%` }}
+                  className="group absolute inset-y-0 z-[4] -ml-[7px] w-[14px] cursor-col-resize touch-none"
+                  onPointerDown={(e) => startDividerDrag(e, i)}
+                  onKeyDown={(e) => nudgeDivider(e, i)}
+                  onClick={(e) => e.stopPropagation()}
+                  onContextMenu={(e) => e.stopPropagation()}
+                >
+                  <span className="absolute inset-y-0 left-1/2 -ml-px w-0.5 bg-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+                  <span className="absolute left-1/2 top-1/2 -ml-[3px] -mt-[17px] h-[34px] w-[6px] rounded-[3px] border-[1.5px] border-primary bg-bg-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
                 </div>
               );
             })}
@@ -230,5 +324,20 @@ export function WallCanvas({
         </div>
       </div>
     </div>
+  );
+}
+
+function SwingLine(props: { x1: number; y1: number; x2: number; y2: number }) {
+  return <line {...props} stroke="#4b5142" strokeOpacity={0.4} strokeWidth={1.2} vectorEffect="non-scaling-stroke" />;
+}
+
+function HandLabel({ left, text }: { left: string; text: string }) {
+  return (
+    <span
+      className="pointer-events-none absolute top-1/2 z-[1] -translate-x-1/2 -translate-y-1/2 text-[11px] font-extrabold tracking-[.06em] text-[#4b5142] opacity-40"
+      style={{ left }}
+    >
+      {text}
+    </span>
   );
 }
