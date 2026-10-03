@@ -191,7 +191,7 @@ test("J1: inquiry → edit → convert → Configuration → Design canvas → S
         submit.click(),
       ]);
       expect(resp.status(), await resp.text()).toBe(200);
-      await expect.poll(async () => (await pillState(o)).Summary, { timeout: 20_000 }).toBe("open");
+      await expect.poll(async () => (await pillState(o, false)).Summary, { timeout: 20_000 }).toBe("open");
       expect((await getProject(as.admin, c, projectId)).designSubmittedAt).not.toBeNull();
       calc = await readCalc(as.admin, run.testOrg.slug, projectId);
       expect(calc.status).toBe("OK");

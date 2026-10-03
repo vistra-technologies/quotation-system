@@ -31,16 +31,20 @@ export async function withPage<R>(browser: Browser, run: RunState, who: Who, bod
 export const wizardNav = (o: Opened) => o.page.getByRole("navigation", { name: "Project wizard steps" });
 export const STEPS = ["Project Details", "Configuration", "Design", "Summary", "Quotation"] as const;
 
-/** Open/locked state of each wizard pill (same probe as pages.spec.ts). */
-export async function pillState(o: Opened): Promise<Record<string, "open" | "locked">> {
+/**
+ * Open/locked state of each wizard pill (same probe as pages.spec.ts). While a router.refresh() re-renders the
+ * breadcrumb a pill can momentarily be absent / doubled: inside a poll (`strict: false`) such a pill reads
+ * "settling" (the poll simply retries); a strict read asserts exactly one pill per step.
+ */
+export async function pillState(o: Opened, strict = true): Promise<Record<string, "open" | "locked" | "settling">> {
   const nav = wizardNav(o);
-  await expect(nav).toBeVisible();
-  const out: Record<string, "open" | "locked"> = {};
+  if (strict) await expect(nav).toBeVisible();
+  const out: Record<string, "open" | "locked" | "settling"> = {};
   for (const s of STEPS) {
     const locked = await nav.locator('span[aria-disabled="true"]', { hasText: s }).count();
     const open = await nav.getByRole("link", { name: new RegExp(s) }).count();
-    expect(locked + open, `${s}: exactly one pill`).toBe(1);
-    out[s] = locked ? "locked" : "open";
+    if (strict) expect(locked + open, `${s}: exactly one pill`).toBe(1);
+    out[s] = locked + open !== 1 ? "settling" : locked ? "locked" : "open";
   }
   return out;
 }

@@ -80,7 +80,7 @@ test("J3: Delete floor → Reset project → Delete project (UI), with the casca
       ]);
       expect(resp.status(), await resp.text()).toBe(200);
       await expect(floorSelect).toHaveText(`${run.prefix}2F`); // the surviving floor is selected
-      await expect.poll(async () => (await pillState(o)).Summary, { timeout: 20_000, message: "pills re-lock via router.refresh()" }).toBe("locked");
+      await expect.poll(async () => (await pillState(o, false)).Summary, { timeout: 20_000, message: "pills re-lock via router.refresh()" }).toBe("locked");
 
       expect(await floors()).toEqual([F2.floorId]);
       expect(await rooms(F2.floorId)).toEqual([F2.roomId]);
@@ -111,7 +111,7 @@ test("J3: Delete floor → Reset project → Delete project (UI), with the casca
       ]);
       expect(resp.status(), await resp.text()).toBe(200);
       await expect
-        .poll(async () => (await pillState(o)).Design, { timeout: 20_000, message: "pills re-lock via router.refresh()" })
+        .poll(async () => (await pillState(o, false)).Design, { timeout: 20_000, message: "pills re-lock via router.refresh()" })
         .toBe("locked");
       expect(await pillState(o)).toMatchObject({ "Project Details": "open", Configuration: "open", Design: "locked", Summary: "locked", Quotation: "locked" });
 
