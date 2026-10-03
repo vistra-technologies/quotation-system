@@ -76,13 +76,14 @@ export function orgItems(admin: Guarded, slug: string): ItemMaker {
   };
 }
 
-/** One item per field of `kind`, codes `<prefix><label>-<rand>-<field>`. */
+/** One item per field of `kind`, codes `<prefix><label><rand>-<field index>`. */
 export async function makeItemSet(make: ItemMaker, prefix: string, kind: "GLASS" | "DOOR", label: string): Promise<ItemSet> {
   const rand = randomBytes(2).toString("hex");
   const defs = kind === "GLASS" ? GLASS_FIELDS : DOOR_FIELDS;
   const set: ItemSet = { kind, codes: {}, ids: {}, byFormula: {} };
-  for (const d of defs) {
-    const { id, code } = await make({ code: `${prefix}${label}${rand}-${d.field}`, measurementUnit: d.unit, perUnitQuantity: d.perUnit });
+  for (const [i, d] of defs.entries()) {
+    // short codes (<= ~24 chars): the Summary PDF wraps long codes inside its table cells
+    const { id, code } = await make({ code: `${prefix}${label}${rand}-${i}`, measurementUnit: d.unit, perUnitQuantity: d.perUnit });
     set.codes[d.field] = code;
     set.ids[d.field] = id;
     set.byFormula[d.formula] = { code, unit: d.unit, perUnit: d.perUnit };
