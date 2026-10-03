@@ -238,7 +238,7 @@ test.describe("POST /api/v1/permissions (org route; rejections only — a create
     expect((await json<{ error: string }>(await post(Buffer.from("{not json"), { "Content-Type": "application/json" }), 400)).error).toBe("Request body must be valid JSON");
     expect((await json<{ error: string }>(await post({ description: "rgr" }), 400)).error).toBe("code is required");
     expect((await json<{ error: string }>(await post({ code: "   ", description: "rgr" }), 400)).error).toBe("code is required");
-    expect((await json<{ error: string }>(await post({ code: `${run.prefix}nodesc` }), 400)).error).toBe("description is required");
+    expect((await json<{ error: string }>(await post({ code: "manage_features" }) /* existing code: a broken description rule could only 409 */, 400)).error).toBe("description is required");
     expect((await json<{ error: string }>(await post({ code: "  manage_features ", description: "rgr duplicate probe" }), 409)).error).toBe('Permission code "MANAGE_FEATURES" already exists');
     expect((await catalog(sa)).map((p) => p.code)).toEqual(before);
   });

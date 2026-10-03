@@ -183,7 +183,7 @@ test.describe("SuperAdmin accounts", () => {
     for (const a of ["superadmin.create", "superadmin.password_change", "superadmin.delete"]) expect(actions.has(a), a).toBe(true);
     for (const e of mine) expect(e.targetType).toBe("SuperAdmin");
     const text = JSON.stringify(mine);
-    for (const n of [1, 2]) expect(text).not.toContain(pw(run, n));
+    for (const n of [1, 2]) expect(text.includes(pw(run, n)), `throwaway password #${n} appears in the audit rows`).toBe(false); // boolean: a failure never prints the secret
   });
 });
 
@@ -211,8 +211,8 @@ test.describe("GET /api/v1/superadmin/audit-log", () => {
   test("shape: newest first, the display triple, the six items in the facet, defaults page 1 / 50; no secrets", async ({ sa, run }) => {
     const raw = await expectStatus(await sa.get(`${SA}/audit-log`), 200);
     expect(raw).not.toMatch(/passwordHash|newPassword|\$2[aby]\$|scrypt/i);
-    expect(raw).not.toContain(runPassword());
-    expect(raw).not.toContain(process.env.TEST_SA_PASSWORD!);
+    expect(raw.includes(runPassword()), "the run password appears in the audit log").toBe(false); // boolean: never prints the secret
+    expect(raw.includes(process.env.TEST_SA_PASSWORD!), "the SA password appears in the audit log").toBe(false);
     const body = JSON.parse(raw) as Awaited<ReturnType<typeof auditLog>>;
     expect({ page: body.page, pageSize: body.pageSize }).toEqual({ page: 1, pageSize: 50 });
     expect(body.total).toBeGreaterThanOrEqual(body.entries.length);

@@ -373,7 +373,7 @@ test.describe("SuperAdmin org users (org B)", () => {
     const log = await auditLog(sa, { scope: "org", orgId: run.orgB.id, item: "User", verb: "UPDATE", pageSize: 100 });
     const rows = log.entries.filter((e) => e.targetId === u.id);
     expect(rows.length).toBe(4);
-    expect(JSON.stringify(rows)).not.toContain(runPassword()); // never the password
+    expect(JSON.stringify(rows).includes(runPassword()), "the password appears in the audit rows").toBe(false); // boolean: a failure never prints the secret
     expect(rows.some((e) => e.summary === "Changed password")).toBe(true);
   });
 

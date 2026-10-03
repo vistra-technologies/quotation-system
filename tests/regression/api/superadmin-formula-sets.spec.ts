@@ -13,7 +13,7 @@ import { Guarded, createAllowance } from "../fixtures/clients";
 import { globalStateFailuresFile, withRecordedGlobalState } from "../fixtures/global-state";
 import {
   test, expect, SA, GHOST, SA_USER, tag, expectStatus, json, auditLog, listOrgs, seededBody, postFormulaSet, ledgerFormulaSet,
-  createThrowawayOrg, type FormulaSetDetail,
+  createThrowawayOrg, undoAcceptedFormulaSet, type FormulaSetDetail,
 } from "./sa-helpers";
 
 covers("GET /api/v1/superadmin/formula-sets");
@@ -72,12 +72,17 @@ test.describe("SuperAdmin formula sets", () => {
       ["string body", { name: bad, body: "x" }, "body must be a non-null object"],
     ];
     for (const [what, data, msg] of cases) {
-      expect((await json<{ error: string }>(await sa.post(`${SA}/formula-sets`, { data }), 400, what)).error, what).toBe(msg);
+      const r = await sa.post(`${SA}/formula-sets`, { data });
+      await undoAcceptedFormulaSet(sa, r, what); // a wrongly accepted create is deleted by id, then the test fails
+      expect((await json<{ error: string }>(r, 400, what)).error, what).toBe(msg);
     }
-    const invalid = await json<{ error: string; validationErrors: unknown[] }>(await sa.post(`${SA}/formula-sets`, { data: { name: bad, body: {} } }), 400);
+    const ir = await sa.post(`${SA}/formula-sets`, { data: { name: bad, body: {} } });
+    await undoAcceptedFormulaSet(sa, ir, "invalid body");
+    const invalid = await json<{ error: string; validationErrors: unknown[] }>(ir, 400);
     expect(invalid.error).toBe("Validation failed");
     expect(invalid.validationErrors.length).toBeGreaterThan(0);
     const nj = await sa.post(`${SA}/formula-sets`, { data: Buffer.from("{not json"), headers: { "Content-Type": "application/json" } });
+    await undoAcceptedFormulaSet(sa, nj, "malformed JSON");
     expect((await json<{ error: string }>(nj, 400)).error).toBe("Invalid JSON body");
     expect((await list(sa)).filter((s) => s.name.startsWith(bad))).toEqual([]);
   });

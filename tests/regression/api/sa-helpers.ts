@@ -170,6 +170,23 @@ export async function postFormulaSet(sa: SaClient, ledger: Ledger, data: { name:
   return r;
 }
 
+/**
+ * For a formula-set create that MUST be rejected: if it was accepted (a global row now exists, possibly
+ * without an rgr- name), delete it by the returned id — our own row — and fail loudly. No-op on a rejection.
+ */
+export async function undoAcceptedFormulaSet(sa: SaClient, r: APIResponse, what: string): Promise<void> {
+  if (!r.ok()) return;
+  const text = await r.text();
+  const id = (JSON.parse(text) as { formulaSet?: { id?: string } }).formulaSet?.id;
+  let undone = "no id in the response — FIND AND DELETE IT BY HAND";
+  if (id) {
+    sa.allowance.ids.add(id);
+    const d = await sa.delete(`${SA}/formula-sets/${id}`);
+    undone = `deleted again by id ${id} → HTTP ${d.status()}`;
+  }
+  throw new Error(`${what}: a formula-set create that must be rejected was ACCEPTED (HTTP ${r.status()} ${text.slice(0, 300)}); ${undone}`);
+}
+
 export function ledgerFormulaSet(sa: SaClient, ledger: Ledger, fs: { id: string; name: string }): void {
   ledger.add({ kind: "formulaSet", id: fs.id, orgSlug: null, label: fs.name });
   sa.allowance.ids.add(fs.id);
