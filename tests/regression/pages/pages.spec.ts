@@ -282,7 +282,7 @@ for (const row of PAGES) {
 test("page table, this file's coversPage() lines and the app's page.tsx files are the same set", () => {
   // Static check, repeated in tests/unit/regression-pages.test.ts; here it guards a run on a stale table.
   const src = fs.readFileSync(__filename, "utf-8");
-  const literal = [...src.matchAll(/^coversPage\("([^"]+)"\);$/gm)].map((m) => m[1]).sort();
+  const literal = [...src.matchAll(/^coversPage\("([^"]+)"\);\r?$/gm)].map((m) => m[1]).sort();
   expect(PAGES.map((r) => r.path).sort()).toEqual(literal);
   expect(new Set(literal).size).toBe(literal.length);
 });

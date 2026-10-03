@@ -14,7 +14,7 @@ test("page table = the app's page.tsx files = pages.spec.ts's literal coversPage
   assert.deepEqual(table, app);
   assert.equal(new Set(table).size, table.length, "duplicate rows");
   const spec = fs.readFileSync(path.join(root, "tests", "regression", "pages", "pages.spec.ts"), "utf-8");
-  const literal = [...spec.matchAll(/^coversPage\("([^"]+)"\);$/gm)].map((m) => m[1]).sort();
+  const literal = [...spec.matchAll(/^coversPage\("([^"]+)"\);\r?$/gm)].map((m) => m[1]).sort();
   assert.deepEqual(literal, app);
 });
 
