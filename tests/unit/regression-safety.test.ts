@@ -13,7 +13,8 @@ import {
   readGlobalStateFailures,
   stuckTemporaryTypeNames,
 } from "../regression/fixtures/global-state";
-import { withLock, tryAcquire, lockDir, release, isAbandoned } from "../regression/fixtures/config-lock";
+import { withLock, tryAcquire, lockDir, release, isAbandoned, breakLock } from "../regression/fixtures/config-lock";
+import { restoreDecision } from "../regression/fixtures/pending-restore";
 
 /** Temp ledger path; the directory is removed after the test. */
 const tmp = (t: TestContext) => {
@@ -452,4 +453,33 @@ test("withLock: onAcquired gets the wait time; concurrent breakers of one stale 
   for (const w of waits) assert.ok(w >= 0);
   assert.equal(fs.existsSync(d), false);
   assert.deepEqual(fs.readdirSync(dir), []); // no renamed stale directories left behind
+});
+
+test("breakLock never destroys a NEW holder's lock: a token change between judgement and rename is rolled back", (t) => {
+  const dir = tmpDir(t);
+  const d = lockDir(dir, "r");
+  fs.mkdirSync(d);
+  fs.writeFileSync(path.join(d, "holder.json"), JSON.stringify({ pid: process.pid, token: "B-new", at: Date.now() }));
+  // the waiter judged holder "A-old" abandoned, but "B-new" took the lock before the rename
+  assert.equal(breakLock(d, "A-old"), false);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(d, "holder.json"), "utf-8")).token, "B-new");
+  assert.deepEqual(fs.readdirSync(dir), ["lock-r"]); // renamed back, no grave left
+  // judged correctly → removed
+  assert.equal(breakLock(d, "B-new"), true);
+  assert.deepEqual(fs.readdirSync(dir), []);
+  // a holder-less lock judged as such (null) is removed; one that gained a holder meanwhile is kept
+  fs.mkdirSync(d);
+  assert.equal(breakLock(d, null), true);
+  fs.mkdirSync(d);
+  fs.writeFileSync(path.join(d, "holder.json"), JSON.stringify({ pid: process.pid, token: "C", at: Date.now() }));
+  assert.equal(breakLock(d, null), false);
+  assert.equal(fs.existsSync(d), true);
+});
+
+test("restoreDecision: original → done; the recorded temporary name → restore; anything else → conflict (never overwritten)", () => {
+  const p = { original: "Door", temp: "rgr-run1-DOOR-renamed" };
+  assert.equal(restoreDecision("Door", p), "done");
+  assert.equal(restoreDecision("rgr-run1-DOOR-renamed", p), "restore");
+  assert.equal(restoreDecision("Door (edited by a human)", p), "conflict");
+  assert.equal(restoreDecision("rgr-run2-DOOR-renamed", p), "conflict"); // another run's temporary name
 });

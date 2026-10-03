@@ -585,7 +585,7 @@ test.describe("projects: frozen configSnapshot (shared ComponentType edit)", () 
         // NOT assert ComponentType names, nor `config-update` needsUpdate === false on projects created in the
         // Test Org (Task 11 component-types/superadmin specs, pages tasks) — or must tolerate this window.
         const key = `Test Org ComponentType GLASS (${glassId}).name`;
-        pending.set({ key, typeId: glassId, original }); // afterAll safety net if this test times out in the window
+        pending.set({ key, typeId: glassId, original, temp }); // afterAll safety net if this test times out in the window
         await withRecordedGlobalState(
           { key, read: readName, write: writeName },
           () => writeName(temp),

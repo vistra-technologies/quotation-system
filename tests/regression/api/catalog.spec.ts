@@ -305,7 +305,7 @@ test.describe("catalog: Test-Org writes (shared state, locked + reverted)", () =
       const doorIn = async (projectId: string) => (await readConfigSnapshot(projectId))!.componentTypes.find((t) => t.code === "DOOR")!;
       const key = `Test Org ComponentType DOOR (${id}).name`;
       // afterAll safety net in case this test times out inside the window (never for a stuck rgr- name)
-      if (!/^rgr-/.test(before.name)) pending.set({ key, typeId: id, original: before.name });
+      if (!/^rgr-/.test(before.name)) pending.set({ key, typeId: id, original: before.name, temp });
       await withRecordedGlobalState(
         { key, read: async () => (await readRow()).name, write: writeName },
         async () => {

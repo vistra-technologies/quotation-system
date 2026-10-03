@@ -102,7 +102,10 @@ async function createItem(g: Guarded, deps: { run: RunState; ledger: Ledger }, d
   } catch (err) {
     try {
       const l = await g.get(orgApi(slug, "/inventory"));
-      if (l.ok()) for (const x of ((await l.json()) as { items: Item[] }).items) if (x.code === sent) add(x.id);
+      if (l.ok()) {
+        const known = new Set(deps.ledger.all().map((e) => e.id)); // e.g. the factory item a duplicate collided with
+        for (const x of ((await l.json()) as { items: Item[] }).items) if (x.code === sent && !known.has(x.id)) add(x.id);
+      }
     } catch {
       /* best effort — the sweep still finds an rgr- code */
     }

@@ -70,15 +70,40 @@ export function isAbandoned(holder: Holder | null, dirMtimeMs: number, now: numb
 
 const NOT_ACQUIRED = new Set(["EEXIST", "EPERM", "EACCES", "ENOTEMPTY", "EBUSY"]);
 
-/** Rename-then-remove: only the waiter whose rename succeeds breaks the lock. */
-function breakLock(dir: string): void {
+/** rmSync that cannot throw (Windows EBUSY/EPERM on a dir another process still touches): retry, then warn. */
+function removeQuietly(p: string): void {
+  try {
+    fs.rmSync(p, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+  } catch (err) {
+    console.warn(`[regression] lock: could not remove ${p} (${(err as NodeJS.ErrnoException).code ?? String(err)}) — left in place`);
+  }
+}
+
+/**
+ * Rename-then-remove: only the caller whose rename succeeds breaks the lock. After the rename the grave's
+ * holder token is re-read: if it is not the holder that was judged (`expectedToken`; null = no holder file
+ * when judged), a NEW holder took the lock between the judgement and the rename — the directory is renamed
+ * back (or, if that is impossible, left in place untouched) so a live holder's lock is never destroyed.
+ * Returns true when the lock directory was actually removed.
+ */
+export function breakLock(dir: string, expectedToken: string | null): boolean {
   const grave = `${dir}.stale-${process.pid}-${randomBytes(4).toString("hex")}`;
   try {
     fs.renameSync(dir, grave);
   } catch {
-    return; // another waiter won, or the holder released it meanwhile
+    return false; // another waiter won, or the holder released it meanwhile
   }
-  fs.rmSync(grave, { recursive: true, force: true });
+  const found = readHolder(grave)?.token ?? null;
+  if (found !== expectedToken) {
+    try {
+      fs.renameSync(grave, dir);
+    } catch {
+      console.warn(`[regression] lock: ${dir} changed holder while being broken and could not be renamed back; left at ${grave}`);
+    }
+    return false;
+  }
+  removeQuietly(grave);
+  return true;
 }
 
 /**
@@ -95,7 +120,8 @@ export function tryAcquire(dir: string, staleMs: number, now = Date.now(), isAli
     if (!NOT_ACQUIRED.has((err as NodeJS.ErrnoException).code ?? "")) throw err;
   }
   try {
-    if (isAbandoned(readHolder(dir), fs.statSync(dir).mtimeMs, now, staleMs, isAlive)) breakLock(dir);
+    const holder = readHolder(dir);
+    if (isAbandoned(holder, fs.statSync(dir).mtimeMs, now, staleMs, isAlive)) breakLock(dir, holder?.token ?? null);
   } catch {
     /* released meanwhile — retry on the next poll */
   }
@@ -105,7 +131,7 @@ export function tryAcquire(dir: string, staleMs: number, now = Date.now(), isAli
 /** Release only if the lock still carries our token (a broken-and-retaken lock belongs to someone else). */
 export function release(dir: string, token: string): void {
   if (readHolder(dir)?.token !== token) return;
-  breakLock(dir);
+  breakLock(dir, token);
 }
 
 export async function withLock<T>(storageDir: string, name: string, body: () => Promise<T>, opts: LockOpts = {}): Promise<T> {
