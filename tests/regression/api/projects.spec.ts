@@ -15,6 +15,7 @@ import { test, expect } from "../fixtures/test";
 import { covers } from "../fixtures/covers";
 import { SaClient, createAllowance, type Guarded } from "../fixtures/clients";
 import { globalStateFailuresFile, withRecordedGlobalState } from "../fixtures/global-state";
+import { withLock, TEST_ORG_CONFIG_LOCK } from "../fixtures/config-lock";
 import type { Factories } from "../fixtures/factories";
 import { registerNegatives, GHOST, type Ctx } from "./api-matrix";
 import {
@@ -494,21 +495,24 @@ test.describe("projects: reset / delete / config-update / cross-tenant", () => {
     expect(sel.status()).toBe(404);
   });
 
-  test("config-update on an up-to-date project: GET needsUpdate false; POST {} → ok, 0 selections, snapshot re-frozen", async ({ as, f, url }) => {
-    const p = await f.project();
-    const g = await as.member.get(url(`/projects/${p.id}/config-update`));
-    expect(g.status(), await g.text()).toBe(200);
-    const prev = await json<{ needsUpdate: boolean; changes: unknown[]; formula: Record<string, unknown>; types: object; selections: unknown[]; totalSelections: number }>(g);
-    expect(Object.keys(prev).sort()).toEqual(["changes", "formula", "needsUpdate", "selections", "totalSelections", "types"]);
-    expect(prev).toMatchObject({ needsUpdate: false, changes: [], selections: [], types: {}, totalSelections: 0 });
-    expect(prev.formula).toMatchObject({ changed: false, problem: null });
-    expect(prev.formula.from).toBe(prev.formula.to);
+  // Holds TEST_ORG_CONFIG_LOCK: an exact empty diff only holds while no other spec has a Test-Org type edited.
+  test("config-update on an up-to-date project: GET needsUpdate false; POST {} → ok, 0 selections, snapshot re-frozen", async ({ as, f, url, run }) => {
+    await withLock(run.storageDir, TEST_ORG_CONFIG_LOCK, async () => {
+      const p = await f.project();
+      const g = await as.member.get(url(`/projects/${p.id}/config-update`));
+      expect(g.status(), await g.text()).toBe(200);
+      const prev = await json<{ needsUpdate: boolean; changes: unknown[]; formula: Record<string, unknown>; types: object; selections: unknown[]; totalSelections: number }>(g);
+      expect(Object.keys(prev).sort()).toEqual(["changes", "formula", "needsUpdate", "selections", "totalSelections", "types"]);
+      expect(prev).toMatchObject({ needsUpdate: false, changes: [], selections: [], types: {}, totalSelections: 0 });
+      expect(prev.formula).toMatchObject({ changed: false, problem: null });
+      expect(prev.formula.from).toBe(prev.formula.to);
 
-    const snap0 = (await readConfigSnapshot(p.id))!;
-    const post = await as.member.post(url(`/projects/${p.id}/config-update`), { data: {} });
-    expect(post.status(), await post.text()).toBe(200);
-    expect(await post.json()).toEqual({ ok: true, updatedSelections: 0 });
-    expect(Date.parse((await readConfigSnapshot(p.id))!.takenAt)).toBeGreaterThan(Date.parse(snap0.takenAt));
+      const snap0 = (await readConfigSnapshot(p.id))!;
+      const post = await as.member.post(url(`/projects/${p.id}/config-update`), { data: {} });
+      expect(post.status(), await post.text()).toBe(200);
+      expect(await post.json()).toEqual({ ok: true, updatedSelections: 0 });
+      expect(Date.parse((await readConfigSnapshot(p.id))!.takenAt)).toBeGreaterThan(Date.parse(snap0.takenAt));
+    });
   });
 
   test("cross-tenant: org B's project under the Test-Org slug → 404 for every project verb; org B's row is untouched", async ({ as, url, run, orgB }) => {
@@ -539,81 +543,85 @@ test.describe("projects: frozen configSnapshot (shared ComponentType edit)", () 
   // Rule 4 + 11. The Test Org's GLASS type is SHARED state: its `name` label is renamed via the SuperAdmin
   // route inside withRecordedGlobalState (original read first, restored exactly, verified; a failed revert
   // is written to global-state-failures.json for teardown). The label is the most trivially reversible edit.
+  // Holds TEST_ORG_CONFIG_LOCK for the whole test (catalog.spec.ts edits Test-Org types under the same lock):
+  // the exact `changes` diffs below would otherwise pick up another spec's concurrent type edit.
   test("a ComponentType rename is invisible to an existing project's snapshot until config-update applies it", async ({ as, f, url, run, baseURL }) => {
-    const sa = await SaClient.login(baseURL!, process.env.TEST_SA_USERNAME!, process.env.TEST_SA_PASSWORD!, createAllowance([], [run.testOrg.id]), process.env.VERCEL_AUTOMATION_BYPASS_SECRET);
-    try {
-      const types = await json<{ componentTypes: { id: string; code: string }[] }>(await as.admin.get(url("/component-types")));
-      const glassId = types.componentTypes.find((t) => t.code === "GLASS")!.id;
-      const saPath = `/api/v1/superadmin/component-types/${glassId}`;
-      const readName = async () => {
-        const r = await sa.get(`${saPath}?orgId=${run.testOrg.id}`);
-        if (r.status() !== 200) throw new Error(`SA GET GLASS → HTTP ${r.status()}`);
-        return ((await r.json()) as { componentType: { name: string } }).componentType.name;
-      };
-      const writeName = async (name: unknown) => {
-        const r = await sa.patch(saPath, { data: { orgId: run.testOrg.id, name } });
-        if (r.status() !== 200) throw new Error(`SA PATCH GLASS name → HTTP ${r.status()} ${await r.text()}`);
-      };
+    await withLock(run.storageDir, TEST_ORG_CONFIG_LOCK, async () => {
+      const sa = await SaClient.login(baseURL!, process.env.TEST_SA_USERNAME!, process.env.TEST_SA_PASSWORD!, createAllowance([], [run.testOrg.id]), process.env.VERCEL_AUTOMATION_BYPASS_SECRET);
+      try {
+        const types = await json<{ componentTypes: { id: string; code: string }[] }>(await as.admin.get(url("/component-types")));
+        const glassId = types.componentTypes.find((t) => t.code === "GLASS")!.id;
+        const saPath = `/api/v1/superadmin/component-types/${glassId}`;
+        const readName = async () => {
+          const r = await sa.get(`${saPath}?orgId=${run.testOrg.id}`);
+          if (r.status() !== 200) throw new Error(`SA GET GLASS → HTTP ${r.status()}`);
+          return ((await r.json()) as { componentType: { name: string } }).componentType.name;
+        };
+        const writeName = async (name: unknown) => {
+          const r = await sa.patch(saPath, { data: { orgId: run.testOrg.id, name } });
+          if (r.status() !== 200) throw new Error(`SA PATCH GLASS name → HTTP ${r.status()} ${await r.text()}`);
+        };
 
-      const old = await f.project(); // frozen BEFORE the rename
-      const cu = await f.project(); // config-update target
-      const original = await readName();
-      // A stuck rename from a killed earlier run must never be "restored" as if it were the real label.
-      if (/^rgr-/.test(original)) {
-        throw new Error(`Test Org ComponentType GLASS (${glassId}) is named "${original}" — a previous run's temporary rename was never reverted; restore its real name before running the suite`);
+        const old = await f.project(); // frozen BEFORE the rename
+        const cu = await f.project(); // config-update target
+        const original = await readName();
+        // A stuck rename from a killed earlier run must never be "restored" as if it were the real label.
+        if (/^rgr-/.test(original)) {
+          throw new Error(`Test Org ComponentType GLASS (${glassId}) is named "${original}" — a previous run's temporary rename was never reverted; restore its real name before running the suite`);
+        }
+        const cfg = await glassConfig(f); // created BEFORE the window, to keep the rename as short as possible
+        const glassIn = (s: Snapshot | null) => s!.componentTypes.find((t) => t.code === "GLASS")!;
+        expect(glassIn(await readConfigSnapshot(old.id)).name).toBe(original);
+        const temp = `${run.prefix}GLASS-renamed`;
+
+        // NOTE (rename window): while this body runs, GLASS in the Test Org is named `rgr-<run>-GLASS-renamed`.
+        // Any project another worker creates meanwhile freezes that label. Other spec files must therefore
+        // NOT assert ComponentType names, nor `config-update` needsUpdate === false on projects created in the
+        // Test Org (Task 11 component-types/superadmin specs, pages tasks) — or must tolerate this window.
+        await withRecordedGlobalState(
+          { key: `Test Org ComponentType GLASS (${glassId}).name`, read: readName, write: writeName },
+          () => writeName(temp),
+          async () => {
+            expect(await readName()).toBe(temp);
+            // the existing project keeps its frozen snapshot (DB + GET by id)
+            expect(glassIn(await readConfigSnapshot(old.id)).name).toBe(original);
+            const g = (await json<{ project: { configSnapshot: Snapshot } }>(await as.admin.get(url(`/projects/${old.id}`)))).project;
+            expect(glassIn(g.configSnapshot).name).toBe(original);
+            // a project created now freezes the new label
+            const fresh = await f.project();
+            expect(glassIn(await readConfigSnapshot(fresh.id)).name).toBe(temp);
+            // POST selections on the old project validates against its snapshot → still accepted
+            const sel = await f.selection(old.id, "GLASS", cfg);
+            expect(sel.id).toEqual(expect.any(String));
+            expect(glassIn(await readConfigSnapshot(old.id)).name).toBe(original);
+
+            // config-update GET reports the diff between snapshot and current config ...
+            const pv = await as.admin.get(url(`/projects/${cu.id}/config-update`));
+            expect(pv.status(), await pv.text()).toBe(200);
+            const prev = await json<{ needsUpdate: boolean; changes: { typeName: string; items: string[] }[]; formula: { changed: boolean; problem: string | null } }>(pv);
+            expect(prev.needsUpdate).toBe(true);
+            expect(prev.changes).toEqual([{ typeName: temp, items: [`Renamed from "${original}"`] }]);
+            expect(prev.formula).toMatchObject({ changed: false, problem: null });
+            // ... POST applies it and bumps the snapshot
+            const ap = await as.admin.post(url(`/projects/${cu.id}/config-update`), { data: { fixes: {} } });
+            expect(ap.status(), await ap.text()).toBe(200);
+            expect(await ap.json()).toEqual({ ok: true, updatedSelections: 0 });
+            expect(glassIn(await readConfigSnapshot(cu.id)).name).toBe(temp);
+            const pv2 = await json<{ needsUpdate: boolean; changes: unknown[] }>(await as.admin.get(url(`/projects/${cu.id}/config-update`)));
+            expect(pv2).toMatchObject({ needsUpdate: false, changes: [] });
+          },
+          globalStateFailuresFile(run.storageDir),
+          { forbidOriginal: /^rgr-/ },
+        );
+
+        expect(await readName()).toBe(original);
+        // after the revert, the applied project now differs the other way round
+        const back = await json<{ changes: { typeName: string; items: string[] }[] }>(await as.admin.get(url(`/projects/${cu.id}/config-update`)));
+        expect(back.changes).toEqual([{ typeName: original, items: [`Renamed from "${temp}"`] }]);
+      } finally {
+        await sa.dispose();
       }
-      const cfg = await glassConfig(f); // created BEFORE the window, to keep the rename as short as possible
-      const glassIn = (s: Snapshot | null) => s!.componentTypes.find((t) => t.code === "GLASS")!;
-      expect(glassIn(await readConfigSnapshot(old.id)).name).toBe(original);
-      const temp = `${run.prefix}GLASS-renamed`;
-
-      // NOTE (rename window): while this body runs, GLASS in the Test Org is named `rgr-<run>-GLASS-renamed`.
-      // Any project another worker creates meanwhile freezes that label. Other spec files must therefore
-      // NOT assert ComponentType names, nor `config-update` needsUpdate === false on projects created in the
-      // Test Org (Task 11 component-types/superadmin specs, pages tasks) — or must tolerate this window.
-      await withRecordedGlobalState(
-        { key: `Test Org ComponentType GLASS (${glassId}).name`, read: readName, write: writeName },
-        () => writeName(temp),
-        async () => {
-          expect(await readName()).toBe(temp);
-          // the existing project keeps its frozen snapshot (DB + GET by id)
-          expect(glassIn(await readConfigSnapshot(old.id)).name).toBe(original);
-          const g = (await json<{ project: { configSnapshot: Snapshot } }>(await as.admin.get(url(`/projects/${old.id}`)))).project;
-          expect(glassIn(g.configSnapshot).name).toBe(original);
-          // a project created now freezes the new label
-          const fresh = await f.project();
-          expect(glassIn(await readConfigSnapshot(fresh.id)).name).toBe(temp);
-          // POST selections on the old project validates against its snapshot → still accepted
-          const sel = await f.selection(old.id, "GLASS", cfg);
-          expect(sel.id).toEqual(expect.any(String));
-          expect(glassIn(await readConfigSnapshot(old.id)).name).toBe(original);
-
-          // config-update GET reports the diff between snapshot and current config ...
-          const pv = await as.admin.get(url(`/projects/${cu.id}/config-update`));
-          expect(pv.status(), await pv.text()).toBe(200);
-          const prev = await json<{ needsUpdate: boolean; changes: { typeName: string; items: string[] }[]; formula: { changed: boolean; problem: string | null } }>(pv);
-          expect(prev.needsUpdate).toBe(true);
-          expect(prev.changes).toEqual([{ typeName: temp, items: [`Renamed from "${original}"`] }]);
-          expect(prev.formula).toMatchObject({ changed: false, problem: null });
-          // ... POST applies it and bumps the snapshot
-          const ap = await as.admin.post(url(`/projects/${cu.id}/config-update`), { data: { fixes: {} } });
-          expect(ap.status(), await ap.text()).toBe(200);
-          expect(await ap.json()).toEqual({ ok: true, updatedSelections: 0 });
-          expect(glassIn(await readConfigSnapshot(cu.id)).name).toBe(temp);
-          const pv2 = await json<{ needsUpdate: boolean; changes: unknown[] }>(await as.admin.get(url(`/projects/${cu.id}/config-update`)));
-          expect(pv2).toMatchObject({ needsUpdate: false, changes: [] });
-        },
-        globalStateFailuresFile(run.storageDir),
-        { forbidOriginal: /^rgr-/ },
-      );
-
-      expect(await readName()).toBe(original);
-      // after the revert, the applied project now differs the other way round
-      const back = await json<{ changes: { typeName: string; items: string[] }[] }>(await as.admin.get(url(`/projects/${cu.id}/config-update`)));
-      expect(back.changes).toEqual([{ typeName: original, items: [`Renamed from "${temp}"`] }]);
-    } finally {
-      await sa.dispose();
-    }
+    });
   });
 
   // Rule 4, behavioural half: selection-create VALIDATION runs against the frozen snapshot. Done in throwaway

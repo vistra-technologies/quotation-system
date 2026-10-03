@@ -13,6 +13,7 @@ import {
   readGlobalStateFailures,
   stuckTemporaryTypeNames,
 } from "../regression/fixtures/global-state";
+import { withLock, tryAcquire, lockDir } from "../regression/fixtures/config-lock";
 
 /** Temp ledger path; the directory is removed after the test. */
 const tmp = (t: TestContext) => {
@@ -370,4 +371,41 @@ test("withRecordedGlobalState: a body error still reverts and propagates (nothin
   );
   assert.equal(v, 1);
   assert.equal(fs.existsSync(file), false);
+});
+
+// ── config-lock (Task 10): cross-worker lock for the Test Org's ComponentType config window ──
+
+const tmpDir = (t: TestContext) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rgr-lock-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  return dir;
+};
+
+test("withLock serialises bodies and releases the lock even when the body throws", async (t) => {
+  const dir = tmpDir(t);
+  const events: string[] = [];
+  const run = (id: string, fail = false) =>
+    withLock(dir, "x", async () => {
+      events.push(`in-${id}`);
+      await new Promise((r) => setTimeout(r, 30));
+      events.push(`out-${id}`);
+      if (fail) throw new Error("boom");
+    }, { pollMs: 5 });
+  const results = await Promise.allSettled([run("a", true), run("b")]);
+  assert.equal(results[0].status, "rejected");
+  assert.equal(results[1].status, "fulfilled");
+  // never interleaved: each "in" is immediately followed by its own "out"
+  for (let i = 0; i < events.length; i += 2) assert.equal(events[i].slice(3), events[i + 1].slice(4));
+  assert.equal(fs.existsSync(lockDir(dir, "x")), false);
+});
+
+test("tryAcquire refuses a held lock, breaks a stale one, and withLock times out on a live one", async (t) => {
+  const dir = tmpDir(t);
+  const d = lockDir(dir, "y");
+  assert.equal(tryAcquire(d, 60_000), true);
+  assert.equal(tryAcquire(d, 60_000), false); // held, fresh
+  assert.equal(tryAcquire(d, 60_000, Date.now() + 120_000), true); // seen as stale → broken and re-taken
+  await assert.rejects(withLock(dir, "y", async () => 1, { timeoutMs: 50, pollMs: 10 }), /timed out/);
+  fs.rmSync(d, { recursive: true, force: true });
+  assert.equal(await withLock(dir, "y", async () => 42, { pollMs: 5 }), 42);
 });
