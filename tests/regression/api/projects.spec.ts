@@ -15,7 +15,8 @@ import { test, expect } from "../fixtures/test";
 import { covers } from "../fixtures/covers";
 import { SaClient, createAllowance, type Guarded } from "../fixtures/clients";
 import { globalStateFailuresFile, withRecordedGlobalState } from "../fixtures/global-state";
-import { withLock, TEST_ORG_CONFIG_LOCK } from "../fixtures/config-lock";
+import { withTestOrgConfigLock } from "../fixtures/config-window";
+import { pending, restorePendingRenames } from "../fixtures/pending-restore";
 import type { Factories } from "../fixtures/factories";
 import { registerNegatives, GHOST, type Ctx } from "./api-matrix";
 import {
@@ -497,7 +498,7 @@ test.describe("projects: reset / delete / config-update / cross-tenant", () => {
 
   // Holds TEST_ORG_CONFIG_LOCK: an exact empty diff only holds while no other spec has a Test-Org type edited.
   test("config-update on an up-to-date project: GET needsUpdate false; POST {} → ok, 0 selections, snapshot re-frozen", async ({ as, f, url, run }) => {
-    await withLock(run.storageDir, TEST_ORG_CONFIG_LOCK, async () => {
+    await withTestOrgConfigLock(run, async () => {
       const p = await f.project();
       const g = await as.member.get(url(`/projects/${p.id}/config-update`));
       expect(g.status(), await g.text()).toBe(200);
@@ -540,13 +541,18 @@ test.describe("projects: reset / delete / config-update / cross-tenant", () => {
 });
 
 test.describe("projects: frozen configSnapshot (shared ComponentType edit)", () => {
+  // Restores a GLASS rename whose in-test revert never ran (timeout); reports what it cannot restore.
+  test.afterAll(async () => {
+    await restorePendingRenames();
+  });
+
   // Rule 4 + 11. The Test Org's GLASS type is SHARED state: its `name` label is renamed via the SuperAdmin
   // route inside withRecordedGlobalState (original read first, restored exactly, verified; a failed revert
   // is written to global-state-failures.json for teardown). The label is the most trivially reversible edit.
   // Holds TEST_ORG_CONFIG_LOCK for the whole test (catalog.spec.ts edits Test-Org types under the same lock):
   // the exact `changes` diffs below would otherwise pick up another spec's concurrent type edit.
   test("a ComponentType rename is invisible to an existing project's snapshot until config-update applies it", async ({ as, f, url, run, baseURL }) => {
-    await withLock(run.storageDir, TEST_ORG_CONFIG_LOCK, async () => {
+    await withTestOrgConfigLock(run, async () => {
       const sa = await SaClient.login(baseURL!, process.env.TEST_SA_USERNAME!, process.env.TEST_SA_PASSWORD!, createAllowance([], [run.testOrg.id]), process.env.VERCEL_AUTOMATION_BYPASS_SECRET);
       try {
         const types = await json<{ componentTypes: { id: string; code: string }[] }>(await as.admin.get(url("/component-types")));
@@ -578,8 +584,10 @@ test.describe("projects: frozen configSnapshot (shared ComponentType edit)", () 
         // Any project another worker creates meanwhile freezes that label. Other spec files must therefore
         // NOT assert ComponentType names, nor `config-update` needsUpdate === false on projects created in the
         // Test Org (Task 11 component-types/superadmin specs, pages tasks) — or must tolerate this window.
+        const key = `Test Org ComponentType GLASS (${glassId}).name`;
+        pending.set({ key, typeId: glassId, original }); // afterAll safety net if this test times out in the window
         await withRecordedGlobalState(
-          { key: `Test Org ComponentType GLASS (${glassId}).name`, read: readName, write: writeName },
+          { key, read: readName, write: writeName },
           () => writeName(temp),
           async () => {
             expect(await readName()).toBe(temp);
@@ -614,6 +622,7 @@ test.describe("projects: frozen configSnapshot (shared ComponentType edit)", () 
           { forbidOriginal: /^rgr-/ },
         );
 
+        pending.clear(glassId);
         expect(await readName()).toBe(original);
         // after the revert, the applied project now differs the other way round
         const back = await json<{ changes: { typeName: string; items: string[] }[] }>(await as.admin.get(url(`/projects/${cu.id}/config-update`)));

@@ -48,3 +48,17 @@ export function assertRowInScope(op: string, id: unknown, orgSlug: string | null
   if (orgSlug == null) throw new Error(`regression DB op refused: ${op} row ${id} not found`);
   assertOrgInScope(orgSlug);
 }
+
+/**
+ * Inventory-item codes are stored case- and padding-preserving (only `trim` on create), so a test that
+ * varies case could create `RGR-<run>-…` or ` rgr-<run>-…` rows that a case-sensitive `startsWith` sweep
+ * misses. The sweep fetches `contains prefix (insensitive)` candidates and keeps those whose trimmed,
+ * lower-cased code starts with the (lower-cased) prefix — still anchored at the start, so another run's
+ * prefix can never match. The label is normalised the same way so the age gate (rgr-<runId>-) can parse it.
+ */
+export function normalizeSweepCode(code: string): string {
+  return code.trim().toLowerCase();
+}
+export function matchesSweepPrefix(code: string, prefix: string): boolean {
+  return normalizeSweepCode(code).startsWith(prefix.toLowerCase());
+}

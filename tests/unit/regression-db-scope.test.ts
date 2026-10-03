@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry, scopedOp, assertRowInScope, SCOPED_OPS } from "../regression/fixtures/db-scope";
+import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry, scopedOp, assertRowInScope, SCOPED_OPS, matchesSweepPrefix, normalizeSweepCode } from "../regression/fixtures/db-scope";
 
 test("assertOrgInScope accepts only the Test Org and rgr- orgs", () => {
   for (const ok of ["e2e-testorg", "rgr-x-b", "rgr-abc"]) assert.doesNotThrow(() => assertOrgInScope(ok));
@@ -37,4 +37,12 @@ test("assertRowInScope: the row must exist and live in the Test Org or an rgr- o
   assert.throws(() => assertRowInScope("rgr:setProjectStatus", "p1", null), /not found/);
   assert.throws(() => assertRowInScope("rgr:setProjectStatus", "", "e2e-testorg"), /needs a row id/);
   assert.throws(() => assertRowInScope("rgr:setProjectStatus", 5, "e2e-testorg"), /needs a row id/);
+});
+
+test("matchesSweepPrefix: case- and padding-tolerant, still anchored at the start; labels normalised", () => {
+  const p = "rgr-murx0cvz-";
+  for (const ok of ["rgr-murx0cvz-inv-a1", "RGR-MURX0CVZ-INV-A1", "  rgr-murx0cvz-x  ", "Rgr-Murx0cvz-"]) assert.equal(matchesSweepPrefix(ok, p), true, ok);
+  for (const bad of ["rgr-otherrun-inv", "x-rgr-murx0cvz-inv", "GLASS-WSEAL-01", "rgr-murx0cv"]) assert.equal(matchesSweepPrefix(bad, p), false, bad);
+  assert.equal(matchesSweepPrefix("RGR-ANY-thing", "rgr-"), true); // recovery's generic prefix
+  assert.equal(normalizeSweepCode("  RGR-MURX0CVZ-INV-A1 "), "rgr-murx0cvz-inv-a1");
 });

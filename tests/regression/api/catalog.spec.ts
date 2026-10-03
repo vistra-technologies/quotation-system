@@ -21,7 +21,8 @@ import { test, expect } from "../fixtures/test";
 import { covers } from "../fixtures/covers";
 import type { Guarded } from "../fixtures/clients";
 import { globalStateFailuresFile, withRecordedGlobalState } from "../fixtures/global-state";
-import { withLock, TEST_ORG_CONFIG_LOCK } from "../fixtures/config-lock";
+import { withTestOrgConfigLock } from "../fixtures/config-window";
+import { pending, restorePendingRenames } from "../fixtures/pending-restore";
 import type { RunState } from "../fixtures/run-state";
 import { registerNegatives, GHOST, type Ctx } from "./api-matrix";
 import { orgApi, tag } from "./project-helpers";
@@ -256,8 +257,13 @@ test.describe("catalog: reads (Test Org)", () => {
 });
 
 test.describe("catalog: Test-Org writes (shared state, locked + reverted)", () => {
+  // Restores a DOOR rename whose in-test revert never ran (timeout); reports what it cannot restore.
+  test.afterAll(async () => {
+    await restorePendingRenames();
+  });
+
   test("field-values PUT → GET round-trip on DOOR (identity write: the exact current config is PUT back)", async ({ as, url, run }) => {
-    await withLock(run.storageDir, TEST_ORG_CONFIG_LOCK, async () => {
+    await withTestOrgConfigLock(run, async () => {
       const id = await testOrgTypeId({ run, as }, "DOOR");
       const path = url(`/component-types/${id}/field-values`);
       const read = async () => (await ok<{ componentType: CT }>(await as.admin.get(path))).componentType.fieldOptionsConfig;
@@ -286,7 +292,7 @@ test.describe("catalog: Test-Org writes (shared state, locked + reverted)", () =
   });
 
   test("PATCH renames DOOR (name trimmed; code/schema untouched); projects created meanwhile freeze the new label; then restored", async ({ as, f, url, run }) => {
-    await withLock(run.storageDir, TEST_ORG_CONFIG_LOCK, async () => {
+    await withTestOrgConfigLock(run, async () => {
       const id = await testOrgTypeId({ run, as }, "DOOR");
       const path = url(`/component-types/${id}`);
       const readRow = async () => (await ok<{ componentType: CT }>(await as.admin.get(path))).componentType;
@@ -297,8 +303,11 @@ test.describe("catalog: Test-Org writes (shared state, locked + reverted)", () =
       const before = await readRow();
       const temp = `${run.prefix}DOOR-renamed`;
       const doorIn = async (projectId: string) => (await readConfigSnapshot(projectId))!.componentTypes.find((t) => t.code === "DOOR")!;
+      const key = `Test Org ComponentType DOOR (${id}).name`;
+      // afterAll safety net in case this test times out inside the window (never for a stuck rgr- name)
+      if (!/^rgr-/.test(before.name)) pending.set({ key, typeId: id, original: before.name });
       await withRecordedGlobalState(
-        { key: `Test Org ComponentType DOOR (${id}).name`, read: async () => (await readRow()).name, write: writeName },
+        { key, read: async () => (await readRow()).name, write: writeName },
         async () => {
           const r = await as.admin.patch(path, { data: { name: `   ${temp}   ` } });
           const ct = (await ok<{ componentType: CT }>(r)).componentType;
@@ -314,6 +323,7 @@ test.describe("catalog: Test-Org writes (shared state, locked + reverted)", () =
         globalStateFailuresFile(run.storageDir),
         { forbidOriginal: /^rgr-/ },
       );
+      pending.clear(id);
       const after = await readRow();
       expect(after).toEqual({ ...before, updatedAt: expect.any(String) });
     });
@@ -380,13 +390,24 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     const before = (await ok<{ componentType: CT }>(await orgB.get(B(`/component-types/${id}`)))).componentType;
     const tail = /in formula set .+ v\d+, currently assigned to this organization\.$/;
 
-    const d = await orgB.patch(B(`/component-types/${id}`), { data: { active: false } });
-    await rejected(d, 409, /^Cannot deactivate component type GLASS — it is slot "GLASS" in formula set .+ v\d+, currently assigned to this organization\.$/);
-    const nc = newCode();
-    const c = await orgB.patch(B(`/component-types/${id}`), { data: { code: nc } });
-    await rejected(c, 409, new RegExp(`^Cannot change the code of component type GLASS to ${nc} — it is slot "GLASS" ${tail.source}`));
-    const k = await orgB.patch(B(`/component-types/${id}`), { data: { fieldsSchema: [] } });
-    await rejected(k, 409, new RegExp(`^Cannot remove or rename field "[^"]+" on component type GLASS — it is a (summary|formula) parameter referenced by slot "GLASS" ${tail.source}`));
+    // if a probe is wrongly ACCEPTED, put org B's GLASS back before asserting (other workers' org-B probes use it)
+    let leaked = false;
+    const probe = async (data: Record<string, unknown>) => {
+      const r = await orgB.patch(B(`/component-types/${id}`), { data });
+      if (r.ok()) leaked = true;
+      return r;
+    };
+    try {
+      await rejected(await probe({ active: false }), 409, /^Cannot deactivate component type GLASS — it is slot "GLASS" in formula set .+ v\d+, currently assigned to this organization\.$/);
+      const nc = newCode();
+      await rejected(await probe({ code: nc }), 409, new RegExp(`^Cannot change the code of component type GLASS to ${nc} — it is slot "GLASS" ${tail.source}`));
+      await rejected(await probe({ fieldsSchema: [] }), 409, new RegExp(`^Cannot remove or rename field "[^"]+" on component type GLASS — it is a (summary|formula) parameter referenced by slot "GLASS" ${tail.source}`));
+    } finally {
+      if (leaked) {
+        const back = await orgB.patch(B(`/component-types/${id}`), { data: { code: before.code, active: before.active, fieldsSchema: before.fieldsSchema } });
+        expect(back.status(), `restoring org B's GLASS after a leaked guard probe: ${await back.text()}`).toBe(200);
+      }
+    }
 
     expect((await ok<{ componentType: CT }>(await orgB.get(B(`/component-types/${id}`)))).componentType).toEqual(before);
   });

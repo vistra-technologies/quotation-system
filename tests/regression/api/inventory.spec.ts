@@ -85,15 +85,34 @@ async function typeIdIn(g: Guarded, slug: string, code: string): Promise<string>
   return id;
 }
 
-/** POST /inventory as `g` in the Test Org and ledger any 201 immediately. */
+/**
+ * POST /inventory as `g` in the Test Org and ledger any 201 immediately, under the TRIMMED code that was
+ * sent (the route stores `code.trim()`; deletion is by id), so a padded code is always ledgerable.
+ * A network error (no response — the server may have committed) triggers one lookup by that trimmed code
+ * and ledgers a match before rethrowing; the case-/padding-tolerant teardown sweep is the backstop.
+ */
 async function createItem(g: Guarded, deps: { run: RunState; ledger: Ledger }, data: Record<string, unknown>) {
   const slug = deps.run.testOrg.slug;
-  const res = await g.post(orgApi(slug, "/inventory"), { data });
+  const sent = typeof data.code === "string" ? data.code.trim() : "";
+  if (!sent.startsWith(deps.run.prefix)) throw new Error(`createItem: code "${sent}" must start with the run prefix ${deps.run.prefix}`);
+  const add = (id: string) => deps.ledger.add({ kind: "inventoryItem", id, orgSlug: slug, label: sent });
+  let res: APIResponse;
+  try {
+    res = await g.post(orgApi(slug, "/inventory"), { data });
+  } catch (err) {
+    try {
+      const l = await g.get(orgApi(slug, "/inventory"));
+      if (l.ok()) for (const x of ((await l.json()) as { items: Item[] }).items) if (x.code === sent) add(x.id);
+    } catch {
+      /* best effort — the sweep still finds an rgr- code */
+    }
+    throw err;
+  }
   const text = await res.text();
   let item: Item | null = null;
   if (res.status() === 201) {
     item = (JSON.parse(text) as { item: Item }).item;
-    deps.ledger.add({ kind: "inventoryItem", id: item.id, orgSlug: slug, label: item.code });
+    add(item.id);
   }
   return { res, text, item };
 }
@@ -111,7 +130,11 @@ const postInvalid = [
   { name: 'active "yes"', body: (c: Ctx) => ({ code: `${c.run.prefix}x`, name: "n", measurementUnit: "pieces", active: "yes" }), status: 400 },
   { name: "attributes []", body: (c: Ctx) => ({ code: `${c.run.prefix}x`, name: "n", measurementUnit: "pieces", attributes: [] }), status: 400 },
   { name: "attributes null", body: (c: Ctx) => ({ code: `${c.run.prefix}x`, name: "n", measurementUnit: "pieces", attributes: null }), status: 400 },
-  { name: "blank code", body: { code: "   ", name: "n", measurementUnit: "pieces" }, status: 400 },
+  // A blank code can never carry the rgr- prefix, so a wrongly accepted one would be unledgerable and
+  // unsweepable (it would be stored as ""). Kept because the route rejects it before any write (code is
+  // validated first) and the matrix's loud-2xx guard names the leak; the name carries the run prefix so a
+  // human can find such a row.
+  { name: "blank code", body: (c: Ctx) => ({ code: "   ", name: `${c.run.prefix}blank-code`, measurementUnit: "pieces" }), status: 400 },
   { name: "blank name", body: (c: Ctx) => ({ code: `${c.run.prefix}x`, name: "  ", measurementUnit: "pieces" }), status: 400 },
   { name: "componentTypeId 5 (not a string)", body: (c: Ctx) => ({ code: `${c.run.prefix}x`, name: "n", measurementUnit: "pieces", componentTypeId: 5 }), status: 400 },
   { name: "JSON null body", body: null, status: 400 },
@@ -213,15 +236,18 @@ test.describe("inventory: CRUD rules", () => {
       expect((await ok<{ item: Item }>(await as.admin.get(url(`/inventory/${item!.id}`)))).item.measurementUnit).toBe(u);
     }
     // the POST message names the whole list
-    await rejected(await as.admin.post(url("/inventory"), { data: { code: code({ run }, "bad"), name: "n", measurementUnit: "kg" } }), 400, UNIT_ERR);
+    await rejected((await createItem(as.admin, { run, ledger }, { code: code({ run }, "bad"), name: "n", measurementUnit: "kg" })).res, 400, UNIT_ERR);
   });
 
   test("duplicate code → 409 (also after trimming); codes are case-sensitive; the same code is free in org B", async ({ as, f, run, ledger, url, orgB }) => {
     const a = await f.inventoryItem();
     const msg = (c: string) => `An inventory item with code "${c}" already exists in this organization`;
-    await rejected(await as.admin.post(url("/inventory"), { data: { code: a.code, name: "dup", measurementUnit: "pieces" } }), 409, msg(a.code));
+    // through createItem: a wrongly accepted duplicate (201) is still ledgered
+    const dup = await createItem(as.admin, { run, ledger }, { code: a.code, name: "dup", measurementUnit: "pieces" });
+    await rejected(dup.res, 409, msg(a.code));
     // the error echoes the code as sent (untrimmed); the stored code is trimmed so it collides
-    await rejected(await as.member.post(url("/inventory"), { data: { code: ` ${a.code} `, name: "dup", measurementUnit: "pieces" } }), 409, msg(` ${a.code} `));
+    const padded = await createItem(as.member, { run, ledger }, { code: ` ${a.code} `, name: "dup", measurementUnit: "pieces" });
+    await rejected(padded.res, 409, msg(` ${a.code} `));
 
     // codes are NOT case-normalised: a variant with an upper-cased tail is a different item (the rgr- prefix
     // itself stays lower-case so the row is ledgered and sweepable)

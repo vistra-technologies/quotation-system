@@ -13,7 +13,7 @@ import {
   readGlobalStateFailures,
   stuckTemporaryTypeNames,
 } from "../regression/fixtures/global-state";
-import { withLock, tryAcquire, lockDir } from "../regression/fixtures/config-lock";
+import { withLock, tryAcquire, lockDir, release, isAbandoned } from "../regression/fixtures/config-lock";
 
 /** Temp ledger path; the directory is removed after the test. */
 const tmp = (t: TestContext) => {
@@ -399,13 +399,57 @@ test("withLock serialises bodies and releases the lock even when the body throws
   assert.equal(fs.existsSync(lockDir(dir, "x")), false);
 });
 
-test("tryAcquire refuses a held lock, breaks a stale one, and withLock times out on a live one", async (t) => {
+test("tryAcquire refuses a live lock, breaks a dead holder's or a stale one; release only removes our own token", async (t) => {
   const dir = tmpDir(t);
   const d = lockDir(dir, "y");
-  assert.equal(tryAcquire(d, 60_000), true);
-  assert.equal(tryAcquire(d, 60_000), false); // held, fresh
-  assert.equal(tryAcquire(d, 60_000, Date.now() + 120_000), true); // seen as stale → broken and re-taken
-  await assert.rejects(withLock(dir, "y", async () => 1, { timeoutMs: 50, pollMs: 10 }), /timed out/);
-  fs.rmSync(d, { recursive: true, force: true });
-  assert.equal(await withLock(dir, "y", async () => 42, { pollMs: 5 }), 42);
+  const alive = () => true;
+  const dead = () => false;
+  const tok = tryAcquire(d, 60_000, Date.now(), alive);
+  assert.ok(tok);
+  assert.equal(tryAcquire(d, 60_000, Date.now(), alive), null); // held by a live, fresh holder
+  // stale by age (holder alive): the waiter breaks it on this poll and takes it on the next
+  assert.equal(tryAcquire(d, 60_000, Date.now() + 120_000, alive), null);
+  const tok2 = tryAcquire(d, 60_000, Date.now(), alive);
+  assert.ok(tok2);
+  // the old holder's release must not remove the new holder's lock
+  release(d, tok!);
+  assert.equal(fs.existsSync(d), true);
+  // a dead holder pid is broken at once, whatever its age
+  assert.equal(tryAcquire(d, 60_000, Date.now(), dead), null);
+  assert.ok(tryAcquire(d, 60_000, Date.now(), alive));
+  await assert.rejects(withLock(dir, "y", async () => 1, { timeoutMs: 50, pollMs: 10, isAlive: alive }), /timed out/);
+});
+
+test("isAbandoned: dead pid → yes; alive and fresh → no; no holder file → judged by the directory age", () => {
+  const now = 1_000_000;
+  assert.equal(isAbandoned({ pid: 1, token: "t", at: now }, now, now, 60_000, () => false), true);
+  assert.equal(isAbandoned({ pid: 1, token: "t", at: now - 1000 }, now, now, 60_000, () => true), false);
+  assert.equal(isAbandoned({ pid: 1, token: "t", at: now - 61_000 }, now, now, 60_000, () => true), true);
+  assert.equal(isAbandoned(null, now - 1000, now, 60_000, () => true), false);
+  assert.equal(isAbandoned(null, now - 61_000, now, 60_000, () => true), true);
+});
+
+test("withLock: onAcquired gets the wait time; concurrent breakers of one stale lock leave exactly one holder", async (t) => {
+  const dir = tmpDir(t);
+  const d = lockDir(dir, "z");
+  fs.mkdirSync(d); // an abandoned lock with no holder file
+  const old = new Date(Date.now() - 10 * 60_000);
+  fs.utimesSync(d, old, old);
+  let inside = 0;
+  let maxInside = 0;
+  const waits: number[] = [];
+  await Promise.all(
+    [0, 1, 2, 3].map(() =>
+      withLock(dir, "z", async () => {
+        maxInside = Math.max(maxInside, ++inside);
+        await new Promise((r) => setTimeout(r, 10));
+        inside--;
+      }, { pollMs: 2, staleMs: 60_000, onAcquired: (w) => waits.push(w) }),
+    ),
+  );
+  assert.equal(maxInside, 1);
+  assert.equal(waits.length, 4);
+  for (const w of waits) assert.ok(w >= 0);
+  assert.equal(fs.existsSync(d), false);
+  assert.deepEqual(fs.readdirSync(dir), []); // no renamed stale directories left behind
 });

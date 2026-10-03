@@ -6,7 +6,7 @@ import { SaClient, allowanceFromRun } from "./fixtures/clients";
 import { tryReadRunState, deleteRunArtifacts, type RunState } from "./fixtures/run-state";
 import { Cleaner } from "./fixtures/delete-entry";
 import { diffSnapshots } from "./fixtures/snapshot";
-import { globalStateFailuresFile, readGlobalStateFailures } from "./fixtures/global-state";
+import { globalStateFailuresFile, readGlobalStateFailures, stuckTemporaryTypeNames } from "./fixtures/global-state";
 import { regressionSnapshot, regressionSweep } from "../e2e/db-helpers";
 
 /** R16: the orchestrator reads this to decide whether a retry is allowed (never after a cleanup failure). */
@@ -47,8 +47,18 @@ async function teardown(run: RunState) {
   const strays: Array<{ kind: string; id: string; label: string }> = [];
   let deleted: string[];
   let errors: string[];
+  const stuckNames: string[] = [];
   try {
     ({ deleted, errors } = await cleaner.drainLedger(ledger, mine));
+    // A Test-Org ComponentType still carrying a suite temporary (rgr-) name = a rename whose revert never ran
+    // (e.g. the test timed out inside its window and the afterAll safety net failed too): REPORT it.
+    const ct = await sa.get(`/api/v1/superadmin/component-types?orgId=${run.testOrg.id}`);
+    if (ct.status() !== 200) {
+      stuckNames.push(`could not check Test Org ComponentType names for a stuck rename: HTTP ${ct.status()}`);
+    } else {
+      const types = ((await ct.json()) as { componentTypes: { code: string; name: string }[] }).componentTypes;
+      for (const t of stuckTemporaryTypeNames(types)) stuckNames.push(`Test Org ComponentType ${t} still has a suite temporary name — the rename was never reverted; restore its real name`);
+    }
     // R20: any org of THIS run still listed after the drain is a stray
     for (const o of await cleaner.listOrgs()) {
       if (o.slug.startsWith(run.prefix)) strays.push({ kind: "org", id: o.id, label: o.slug });
@@ -66,7 +76,7 @@ async function teardown(run: RunState) {
   const orgsCompared = Object.keys(run.baseline.orgs).filter((s) => !ignore(s)).length;
   // global-state revert failures are appended by withRecordedGlobalState via this file
   const stateFile = globalStateFailuresFile(run.storageDir);
-  const revertFailures: string[] = readGlobalStateFailures(stateFile);
+  const revertFailures: string[] = [...readGlobalStateFailures(stateFile), ...stuckNames];
 
   const failed = errors.length > 0 || strays.length > 0 || delta.length > 0 || revertFailures.length > 0;
   const report = { runId: run.runId, cleanupFailed: failed, created, deleted, cleanupErrors: errors, strays, orgsCompared, delta, revertFailures };

@@ -24,7 +24,7 @@
  */
 import dotenv from "dotenv";
 import type { Prisma } from "../app/generated/prisma/client";
-import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry, scopedOp, assertRowInScope } from "../tests/regression/fixtures/db-scope";
+import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry, scopedOp, assertRowInScope, matchesSweepPrefix, normalizeSweepCode } from "../tests/regression/fixtures/db-scope";
 
 // Same precedence as Next: real env > .env.local > .env (dotenv never overrides an already-set var).
 dotenv.config({ path: ".env.local", quiet: true });
@@ -341,7 +341,10 @@ async function main() {
           db.project.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
           db.inquiry.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
           db.externalCompany.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
-          db.inventoryItem.findMany({ where: { organizationId: org.id, code: { startsWith: prefix } }, select: { id: true, code: true } }),
+          // case-/padding-tolerant (see matchesSweepPrefix): candidates by an insensitive `contains`, then anchored in JS
+          db.inventoryItem
+            .findMany({ where: { organizationId: org.id, code: { contains: prefix, mode: "insensitive" } }, select: { id: true, code: true } })
+            .then((rows) => rows.filter((r) => matchesSweepPrefix(r.code, prefix))),
           db.user.findMany({ where: { organizationId: org.id, username: { startsWith: prefix } }, select: { id: true, username: true } }),
           db.role.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
         ]);
@@ -349,7 +352,7 @@ async function main() {
           ...projects.map((r) => ({ kind: "project", id: r.id, label: r.name })),
           ...inquiries.map((r) => ({ kind: "inquiry", id: r.id, label: r.name })),
           ...companies.map((r) => ({ kind: "externalCompany", id: r.id, label: r.name })),
-          ...items.map((r) => ({ kind: "inventoryItem", id: r.id, label: r.code })),
+          ...items.map((r) => ({ kind: "inventoryItem", id: r.id, label: normalizeSweepCode(r.code) })),
           ...users.map((r) => ({ kind: "user", id: r.id, label: r.username })),
           ...roles.map((r) => ({ kind: "role", id: r.id, label: r.name })),
         ];
