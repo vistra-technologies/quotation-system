@@ -7,6 +7,7 @@ import { regressionDeleteInquiry } from "../../e2e/db-helpers";
 import {
   drainOrder,
   generateRunPassword,
+  isDeletableFormulaSetName,
   isDeletableOrgSlug,
   isDeletableSuperAdminUsername,
   isRunAdminUsername,
@@ -73,9 +74,7 @@ export class Cleaner {
   }
 
   private async deleteSuperAdmin(e: LedgerEntry): Promise<void> {
-    const r0 = await this.sa.get("/api/v1/superadmin/admins");
-    if (r0.status() !== 200) throw new Error(`cleanup: list SuperAdmins → HTTP ${r0.status()}`);
-    const admin = ((await r0.json()) as { admins: { id: string; username: string }[] }).admins.find((a) => a.id === e.id);
+    const admin = (await this.listSuperAdmins()).find((a) => a.id === e.id);
     if (!admin) return; // already gone
     if (!isDeletableSuperAdminUsername(admin.username)) {
       throw new Error(`cleanup REFUSED: SuperAdmin ${e.id} is "${admin.username}" — not an rgr-/e2e-sa- account, will not delete`);
@@ -83,6 +82,46 @@ export class Cleaner {
     this.sa.allowance.ids.add(e.id);
     const r = await this.sa.delete(`/api/v1/superadmin/admins/${e.id}`);
     if (r.status() !== 200 && r.status() !== 404) throw new Error(`cleanup: delete SuperAdmin ${admin.username} → HTTP ${r.status()}`);
+  }
+
+  /** Every SuperAdmin (no hashes). */
+  async listSuperAdmins(): Promise<Array<{ id: string; username: string }>> {
+    const r = await this.sa.get("/api/v1/superadmin/admins");
+    if (r.status() !== 200) throw new Error(`cleanup: list SuperAdmins → HTTP ${r.status()}`);
+    return ((await r.json()) as { admins: { id: string; username: string }[] }).admins;
+  }
+
+  /** Every formula set (list shape: no body). */
+  async listFormulaSets(): Promise<Array<{ id: string; name: string; version: number }>> {
+    const r = await this.sa.get("/api/v1/superadmin/formula-sets");
+    if (r.status() !== 200) throw new Error(`cleanup: list formula sets → HTTP ${r.status()}`);
+    return ((await r.json()) as { formulaSets: { id: string; name: string; version: number }[] }).formulaSets;
+  }
+
+  /** Platform-level suite rows with the given prefix (orphan recovery: "rgr-"; teardown: this run's prefix). */
+  async globalsWithPrefix(prefix: string): Promise<Array<{ kind: "superadmin" | "formulaSet"; id: string; label: string }>> {
+    const admins = (await this.listSuperAdmins()).filter((a) => a.username.startsWith(prefix));
+    const sets = (await this.listFormulaSets()).filter((f) => f.name.startsWith(prefix));
+    return [
+      ...admins.map((a) => ({ kind: "superadmin" as const, id: a.id, label: a.username })),
+      ...sets.map((f) => ({ kind: "formulaSet" as const, id: f.id, label: f.name })),
+    ];
+  }
+
+  private async deleteFormulaSet(e: LedgerEntry): Promise<void> {
+    const g = await this.sa.get(`/api/v1/superadmin/formula-sets/${encodeURIComponent(e.id)}`);
+    if (g.status() === 404) return; // already gone
+    if (g.status() !== 200) throw new Error(`cleanup: read formula set ${e.label} → HTTP ${g.status()}`);
+    const fs = ((await g.json()) as { formulaSet: { name: string; version: number } }).formulaSet;
+    // never trust the ledger label — the LIVE name must be a suite set before the id is allowed
+    if (!isDeletableFormulaSetName(fs.name)) {
+      throw new Error(`cleanup REFUSED: formula set ${e.id} is "${fs.name}" (ledger said "${e.label}") — not an rgr- set, will not delete`);
+    }
+    this.sa.allowance.ids.add(e.id);
+    const r = await this.sa.delete(`/api/v1/superadmin/formula-sets/${e.id}`);
+    if (r.status() !== 200 && r.status() !== 404) {
+      throw new Error(`cleanup: delete formula set ${fs.name} v${fs.version} → HTTP ${r.status()} ${await r.text()}`);
+    }
   }
 
   async deleteEntry(e: LedgerEntry): Promise<void> {
@@ -95,6 +134,8 @@ export class Cleaner {
         return this.deleteOrg(e);
       case "superadmin":
         return this.deleteSuperAdmin(e);
+      case "formulaSet":
+        return this.deleteFormulaSet(e);
       case "user": {
         if (!inScope(e.orgSlug)) throw new Error(`cleanup: user ${e.label} is in out-of-scope org "${e.orgSlug}"`);
         const orgId = await this.orgIdOf(e.orgSlug!);

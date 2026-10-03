@@ -63,6 +63,8 @@ async function teardown(run: RunState) {
     for (const o of await cleaner.listOrgs()) {
       if (o.slug.startsWith(run.prefix)) strays.push({ kind: "org", id: o.id, label: o.slug });
     }
+    // platform-level rows of THIS run (SuperAdmins, formula sets) still present after the drain are strays too
+    strays.push(...(await cleaner.globalsWithPrefix(run.prefix)));
   } finally {
     await cleaner.dispose();
     await sa.dispose();

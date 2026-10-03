@@ -10,7 +10,7 @@ import { recoverOrphans } from "./fixtures/recovery";
 import { stuckTemporaryTypeNames } from "./fixtures/global-state";
 import { generateRunPassword, recoverMinAgeMs } from "./fixtures/cleanup-rules";
 import { regressionSnapshot, regressionSweep } from "../e2e/db-helpers";
-import { apiSignIn, apiUrl, getSeededFormulaSetId } from "../e2e/helpers";
+import { apiSignIn, apiUrl, getSeededFormulaSetId, isSubdomain } from "../e2e/helpers";
 
 const ROLE_NAME: Record<Role, string> = {
   admin: "Admin",
@@ -49,6 +49,7 @@ export default async function globalSetup() {
       ledger,
       sweep: regressionSweep,
       rgrOrgs: async () => (await listOrgs()).filter((o) => o.slug.startsWith("rgr-")),
+      rgrGlobals: () => recoveryCleaner.globalsWithPrefix("rgr-"),
       minAgeMs,
     });
     const n = rec.drained.length + rec.swept.length;
@@ -92,6 +93,20 @@ export default async function globalSetup() {
   if (!testOrg.activeFormulaSetId) missing.push("an active formula set (Organization.activeFormulaSetId is null)");
   if (missing.length) {
     throw new Error(`Test Org "${TEST_ORG}" prerequisites missing: ${missing.join("; ")}. Fix the Test Org — the suite will not guess.`);
+  }
+
+  // 3b. Precondition for the SuperAdmin "SA cookie on an org subdomain host" probe (superadmin-auth.spec):
+  // no silent skips — decide the mode HERE, prove it, and log which one ran.
+  const saSubdomainProbe = isSubdomain;
+  if (saSubdomainProbe) {
+    // The probe only means something if the org subdomain host really reaches the app (DNS + routing).
+    const h = await sa.ctx.get(apiUrl(TEST_ORG, "/api/health"));
+    if (h.status() !== 200) {
+      throw new Error(`precondition: org subdomain host ${apiUrl(TEST_ORG, "/api/health")} → HTTP ${h.status()} (expected 200) — the SA subdomain-host probe cannot run`);
+    }
+    console.log(`[regression] SA org-subdomain probe: ON — target serves org subdomains (${new URL(apiUrl(TEST_ORG, "/")).host} answers); SA routes there must reject a valid SA cookie`);
+  } else {
+    console.log(`[regression] SA org-subdomain probe: OFF — path-mode target (${new URL(env.baseURL).host}) has no org subdomains; superadmin-auth.spec records an annotation instead of the assertion`);
   }
 
   // Everything created from here on is ledgered the moment it exists; a failure tears it down again.
@@ -182,7 +197,7 @@ export default async function globalSetup() {
       runId, prefix,
       testOrg: { id: testOrg.id, slug: testOrg.slug },
       orgB: { id: orgB.id, slug: orgB.slug, adminUser: "admin" },
-      formulaSetId: fsId, users, storageDir, baseline,
+      formulaSetId: fsId, users, storageDir, baseline, saSubdomainProbe,
     });
     console.log(`[regression] run ${runId}: Test Org ${TEST_ORG}, org B ${orgB.slug}, ${Object.keys(users).length} role users, ${ledger.all().filter((e) => e.label.startsWith(prefix)).length} ledgered rows`);
   } catch (err) {

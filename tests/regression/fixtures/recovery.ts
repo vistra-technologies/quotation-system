@@ -24,6 +24,8 @@ export async function recoverOrphans(opts: {
   sweep: Sweep;
   /** every org whose slug starts with rgr- (only the suite creates those) */
   rgrOrgs: () => Promise<Array<{ id: string; slug: string }>>;
+  /** platform-level suite rows (rgr- SuperAdmins, rgr- formula sets) — they live in no org, so the org sweep misses them */
+  rgrGlobals?: () => Promise<Array<{ kind: "superadmin" | "formulaSet"; id: string; label: string }>>;
   minAgeMs: number;
   now?: number;
 }): Promise<{ drained: string[]; swept: string[]; skipped: string[] }> {
@@ -46,6 +48,7 @@ export async function recoverOrphans(opts: {
     kind: s.kind as LedgerEntry["kind"], id: s.id, orgSlug: TEST_ORG, label: s.label, createdAt: "",
   }));
   for (const o of await opts.rgrOrgs()) strays.push({ kind: "org", id: o.id, orgSlug: o.slug, label: o.slug, createdAt: "" });
+  for (const g of (await opts.rgrGlobals?.()) ?? []) strays.push({ kind: g.kind, id: g.id, orgSlug: null, label: g.label, createdAt: "" });
   // a swept row that is already in the ledger is drained once, as the ledger entry
   const fromSweep = strays.filter((e) => !ledgerIds.has(e.id) && !skippedIds.has(e.id) && keep(e));
 

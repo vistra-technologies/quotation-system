@@ -76,3 +76,25 @@ test("recovery: a failure that persists through the retry still throws and keeps
   assert.equal(cleaner.calls.length, 2, "one bounded retry");
   assert.deepEqual(ledger.all().map((e) => e.id), [admin.id]);
 });
+
+test("recovery: stale rgr- SuperAdmins / formula sets (no org) are swept; a young run's are skipped and reported", async () => {
+  const YOUNG = (NOW - 5 * 60 * 1000).toString(36);
+  const oldSa = { kind: "superadmin" as const, id: "sa1", label: `rgr-${OLD}-sa-1` };
+  const oldFs = { kind: "formulaSet" as const, id: "fs1", label: `rgr-${OLD}-fs-1` };
+  const youngFs = { kind: "formulaSet" as const, id: "fs2", label: `rgr-${YOUNG}-fs-1` };
+  const rows = new Map<string, LedgerEntry>([oldSa, oldFs, youngFs].map((g) => [g.id, { ...g, orgSlug: null, createdAt: "" }]));
+  const cleaner = fakeCleaner(rows, new Map());
+  const res = await recoverOrphans({
+    cleaner,
+    ledger: tmpLedger(),
+    sweep: async () => [],
+    rgrOrgs: async () => [],
+    rgrGlobals: async () => [oldSa, oldFs, youngFs],
+    minAgeMs: 2 * 60 * 60 * 1000,
+    now: NOW,
+  });
+  assert.deepEqual(res.swept.sort(), [`formulaSet:${oldFs.label}`, `superadmin:${oldSa.label}`]);
+  assert.deepEqual([...rows.keys()], [youngFs.id]);
+  assert.equal(res.skipped.length, 1);
+  assert.match(res.skipped[0], /^formulaSet: .*younger than/);
+});

@@ -4,6 +4,7 @@ import {
   drainOrder,
   isRunAdminUsername,
   isDeletableOrgSlug,
+  isDeletableFormulaSetName,
   isDeletableSuperAdminUsername,
   runIdOf,
   recoverDecision,
@@ -84,4 +85,11 @@ test("generateRunPassword: fresh, long, mixed", () => {
   assert.match(a, /[A-Z]/);
   assert.match(a, /[a-z]/);
   assert.match(a, /[0-9]/);
+});
+
+test("isDeletableFormulaSetName: only rgr- formula sets (platform-global rows) may be deleted", () => {
+  assert.equal(isDeletableFormulaSetName("rgr-abc12345-fs-1"), true);
+  for (const bad of ["glass-partition-standard", "rgr-", "RGR-abc-fs", "e2e-fs", "", " rgr-x"]) {
+    assert.equal(isDeletableFormulaSetName(bad), false, bad);
+  }
 });

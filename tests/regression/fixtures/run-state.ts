@@ -16,6 +16,13 @@ export interface RunState {
   /** <RUN_DIR>/<runId>: {admin,member,distributor,architect,orgB-admin}.json storage states + cleanup.json */
   storageDir: string;
   baseline: Snapshot;
+  /**
+   * Which mode the SuperAdmin "SA cookie sent to an org subdomain host must be rejected" probe runs in
+   * (global-setup precondition, logged there): true = the target serves org subdomains
+   * (*.test.easeetool.com) and setup verified one answers, so the probe ASSERTS the 401; false = a
+   * path-mode target (Vercel preview) with no org subdomains — the probe records an annotation instead.
+   */
+  saSubdomainProbe: boolean;
 }
 
 export function writeRunState(s: RunState): void {

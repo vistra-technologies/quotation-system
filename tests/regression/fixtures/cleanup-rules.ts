@@ -12,6 +12,9 @@ export const isDeletableOrgSlug = (slug: string) => typeof slug === "string" && 
 export const isDeletableSuperAdminUsername = (u: string) =>
   typeof u === "string" && ((u.startsWith("rgr-") && u.length > 4) || (u.startsWith("e2e-sa-") && u.length > 7));
 
+/** Only suite-created formula sets (platform-global rows) may ever be deleted. */
+export const isDeletableFormulaSetName = (name: string) => typeof name === "string" && name.startsWith("rgr-") && name.length > 4;
+
 /**
  * Children before parents (ledger DELETE_ORDER), with two exceptions:
  *  - the run admin (rgr-…-admin) goes right AFTER externalCompany — it is the session the org-API
