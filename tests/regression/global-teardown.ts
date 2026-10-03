@@ -50,6 +50,16 @@ async function teardown(run: RunState) {
   const stuckNames: string[] = [];
   try {
     ({ deleted, errors } = await cleaner.drainLedger(ledger, mine));
+    if (errors.length) {
+      // one bounded retry of what is left (same as orphan recovery): a cross-kind dependency the drain order
+      // cannot know about — e.g. a formula set still assigned to a throwaway org drains before that org
+      const mineIds = new Set(mine.map((e) => e.id));
+      const left = ledger.inDeleteOrder().filter((e) => mineIds.has(e.id));
+      console.log(`[regression] teardown: ${errors.length} delete(s) failed — retrying ${left.length} entr${left.length === 1 ? "y" : "ies"} once`);
+      const retry = await cleaner.drainLedger(ledger, left);
+      deleted = [...deleted, ...retry.deleted];
+      errors = retry.errors;
+    }
     // A Test-Org ComponentType still carrying a suite temporary (rgr-) name = a rename whose revert never ran
     // (e.g. the test timed out inside its window and the afterAll safety net failed too): REPORT it.
     const ct = await sa.get(`/api/v1/superadmin/component-types?orgId=${run.testOrg.id}`);

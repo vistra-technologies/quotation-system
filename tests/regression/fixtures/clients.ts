@@ -82,7 +82,13 @@ export class SaClient extends Guarded {
     if (!token) throw new Error("SuperAdmin login: no qs-sa-token cookie");
     return new SaClient(ctx, allowance, token);
   }
+  /** Ends this session server-side (best effort — logout is open and idempotent), then frees the context. */
   async dispose(): Promise<void> {
+    try {
+      await this.ctx.post("/api/v1/superadmin/logout", { headers: { Cookie: `qs-sa-token=${this.token}` } });
+    } catch {
+      /* best effort: the session simply expires */
+    }
     await this.ctx.dispose();
   }
 }

@@ -184,6 +184,23 @@ export async function listAdmins(sa: { get(url: string, o?: { headers?: Record<s
 }
 
 /**
+ * For a create that MUST be rejected but could not carry an rgr- name (e.g. "" / "a"): if it was accepted,
+ * delete the account it created (by the returned id — our own row) and fail loudly. No-op on a rejection.
+ */
+export async function undoAcceptedAdmin(sa: SaClient, r: APIResponse, what: string): Promise<void> {
+  if (!r.ok()) return;
+  const text = await r.text();
+  const id = (JSON.parse(text) as { admin?: { id?: string } }).admin?.id;
+  let undone = "no id in the response — FIND AND DELETE IT BY HAND";
+  if (id) {
+    sa.allowance.ids.add(id);
+    const d = await sa.delete(`${SA}/admins/${id}`);
+    undone = `deleted again by id ${id} → HTTP ${d.status()}`;
+  }
+  throw new Error(`${what}: a create that must be rejected was ACCEPTED (HTTP ${r.status()} ${text.slice(0, 300)}); ${undone}`);
+}
+
+/**
  * POST /superadmin/admins for `username` (sent as given; the server trims + lower-cases), ledgering a 201
  * under the normalised name (kind superadmin) and allowing its id. `actor` defaults to the worker session.
  */

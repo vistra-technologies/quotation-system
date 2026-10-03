@@ -20,7 +20,7 @@ import { Guarded, createAllowance } from "../fixtures/clients";
 import type { RunState } from "../fixtures/run-state";
 import { runPassword } from "./sign-in";
 import {
-  test, expect, SA, GHOST, SA_USER, tag, cookie, rawContext, saLogin, expectStatus, json, auditLog, listAdmins, postAdmin,
+  test, expect, SA, GHOST, SA_USER, tag, cookie, rawContext, saLogin, expectStatus, json, auditLog, listAdmins, postAdmin, undoAcceptedAdmin,
 } from "./sa-helpers";
 
 covers("GET /api/v1/superadmin/admins");
@@ -30,7 +30,8 @@ covers("DELETE /api/v1/superadmin/admins/[adminId]");
 covers("GET /api/v1/superadmin/audit-log");
 
 const newName = (run: RunState) => `${run.prefix}sa${tag()}`; // e.g. rgr-murz1bv0-sa1a2b3c (21 chars)
-const pw = (run: RunState, n: number) => `Rg9-${run.runId}-pw${n}`;
+/** Throwaway SuperAdmin passwords: derived from this run's RANDOM in-memory password (never from the public runId). */
+const pw = (_run: RunState, n: number) => `${runPassword()}-sa${n}`;
 
 test.describe("SuperAdmin accounts", () => {
   test.describe.configure({ mode: "serial" });
@@ -56,7 +57,9 @@ test.describe("SuperAdmin accounts", () => {
     expect((await json<{ error: string }>(await sa.post(`${SA}/admins`, { data: { password: pw(run, 1) } }), 400)).error).toBe("username and password are required");
     // every bad name still carries the run prefix where the rule allows, so a wrongly accepted one is a findable stray
     for (const bad of ["", "a", `${run.prefix}has space`, `-${run.prefix}lead`, `${run.prefix}`.padEnd(33, "a"), `${run.prefix}upper_ok?`]) {
+      // raw post (postAdmin insists on an rgr- name); a wrongly accepted account is deleted by id, then the test fails
       const r = await sa.post(`${SA}/admins`, { data: { username: bad, password: pw(run, 1) } });
+      await undoAcceptedAdmin(sa, r, JSON.stringify(bad));
       expect((await json<{ error: string }>(r, 400, JSON.stringify(bad))).error).toMatch(/^username must be 2.32 characters/);
     }
     const short = await postAdmin(sa, ledger, newName(run), "short7!");
@@ -138,7 +141,8 @@ test.describe("SuperAdmin accounts", () => {
 
   test("the protected account is flagged in the list (never probed with a mutation); DELETE of an unknown id → 404", async ({ sa }) => {
     const dev = (await listAdmins(sa)).find((a) => a.username === "devadmin");
-    if (dev) expect(dev.protected).toBe(true);
+    expect(dev, "the seeded protected account devadmin exists on this environment").toBeTruthy();
+    expect(dev!.protected).toBe(true);
     const ghost = new Guarded(sa.ctx, createAllowance([], [GHOST]), cookie(sa.token));
     expect((await json<{ error: string }>(await ghost.delete(`${SA}/admins/${GHOST}`), 404)).error).toBe("SuperAdmin not found");
   });
@@ -252,11 +256,14 @@ test.describe("GET /api/v1/superadmin/audit-log", () => {
     }).toPass({ timeout: 30_000 });
   });
 
-  test("date filter: today holds our rows, a past range and a future range hold none", async ({ sa, run }) => {
-    const today = new Date().toISOString().slice(0, 10);
-    const t = await auditLog(sa, { from: today, to: today, by: SA_USER(), item: "SuperAdmin", pageSize: 100 });
-    expect(t.entries.some((e) => e.entity?.startsWith(run.prefix))).toBe(true);
-    for (const e of t.entries) expect(e.createdAt.slice(0, 10)).toBe(today);
+  test("date filter: the day of one of our rows holds it (from = to = that UTC day); a past and a future range hold none", async ({ sa, run }) => {
+    // the day comes from the row's own createdAt, so a run crossing UTC midnight cannot break the test
+    const ours = (await auditLog(sa, { by: SA_USER(), item: "SuperAdmin", pageSize: 100 })).entries.find((e) => e.entity?.startsWith(run.prefix));
+    expect(ours, "an audit row about one of this run's accounts").toBeTruthy();
+    const day = ours!.createdAt.slice(0, 10);
+    const t = await auditLog(sa, { from: day, to: day, by: SA_USER(), item: "SuperAdmin", pageSize: 100 });
+    expect(t.entries.some((e) => e.id === ours!.id)).toBe(true);
+    for (const e of t.entries) expect(e.createdAt.slice(0, 10)).toBe(day);
     expect((await auditLog(sa, { from: "2000-01-01", to: "2000-12-31" })).total).toBe(0);
     expect((await auditLog(sa, { from: "2999-01-01" })).total).toBe(0);
   });

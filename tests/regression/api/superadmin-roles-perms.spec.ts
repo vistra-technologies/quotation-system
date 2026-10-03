@@ -190,6 +190,7 @@ test.describe("SuperAdmin role permissions (org B)", () => {
   });
 
   test("effect: a user holding the custom role gains / loses MANAGE_USERS access as the SuperAdmin toggles it", async ({ sa, run, ledger, orgB, playwright, baseURL }) => {
+    test.setTimeout(180_000); // sign-ins retry on 429 (rate limit 3 / 10 s / IP, shared by all workers)
     const mine = await newOrgBRole(sa, run);
     // custom roles are external (isInternalRole false) → U3: the user needs an org-B external company
     const coName = `${run.prefix}saco-${tag()}`;
@@ -221,7 +222,9 @@ test.describe("POST /api/v1/permissions (org route; rejections only — a create
   const url = (run: RunState) => apiUrl(run.testOrg.slug, "/api/v1/permissions");
 
   test("401 without a session; 403 for every role without MANAGE_FEATURES", async ({ anon, as, run }) => {
-    const data = { code: `${run.prefix}nope`, description: "rgr" };
+    // an EXISTING code: even if the auth / role gate regressed, the create could only hit the unique
+    // constraint (409) — it can never add a row to the undeletable global catalog
+    const data = { code: "manage_features", description: "rgr gate probe" };
     expect((await anon.ctx.post(url(run), { data })).status()).toBe(401);
     for (const role of ["member", "distributor", "architect"] as const) {
       const r = await as[role].ctx.post(url(run), { data });

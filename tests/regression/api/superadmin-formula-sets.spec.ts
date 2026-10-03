@@ -2,11 +2,11 @@
  * SuperAdmin formula sets (Task 11, Step 2).
  *
  * Formula sets are PLATFORM-GLOBAL rows. The suite only ever writes sets it created itself, named
- * `rgr-<runId>-fs-â€¦` (the plan's `rgr-fs-*` would lose the run id that orphan recovery's age gate and the
+ * `rgr-<runId>-fs-…` (the plan's `rgr-fs-*` would lose the run id that orphan recovery's age gate and the
  * teardown stray check key on), ledgered (kind formulaSet) the moment the 201 arrives; the Cleaner deletes
  * them (refusing any live name that is not rgr-), and teardown reports any of this run's sets still present.
  * The seeded set is only READ. Assignment goes to a throwaway org F this run creates, through
- * withRecordedGlobalState on THAT org's activeFormulaSetId â€” own org, but the wrapper still proves the revert.
+ * withRecordedGlobalState on THAT org's activeFormulaSetId — own org, but the wrapper still proves the revert.
  */
 import { covers } from "../fixtures/covers";
 import { Guarded, createAllowance } from "../fixtures/clients";
@@ -59,13 +59,13 @@ test.describe("SuperAdmin formula sets", () => {
     expect((await json<{ error: string }>(await sa.get(`${SA}/formula-sets/${GHOST}`), 404)).error).toBe("FormulaSet not found");
   });
 
-  test("POST rules: name / body shape / body validation â†’ 400 (validationErrors listed); nothing created", async ({ sa, run }) => {
+  test("POST rules: name / body shape / body validation → 400 (validationErrors listed); nothing created", async ({ sa, run }) => {
     const bad = `${run.prefix}fsbad`;
-    const body = await seededBody(sa, run);
+    // name rules are probed with body: null, so a broken name rule still fails on the body check (no row)
     const cases: Array<[string, unknown, string]> = [
-      ["missing name", { body }, "name is required"],
-      ["blank name", { name: "   ", body }, "name is required"],
-      ["numeric name", { name: 5, body }, "name is required"],
+      ["missing name", { body: null }, "name is required"],
+      ["blank name", { name: "   ", body: null }, "name is required"],
+      ["numeric name", { name: 5, body: null }, "name is required"],
       ["missing body", { name: bad }, "body must be a non-null object"],
       ["null body", { name: bad, body: null }, "body must be a non-null object"],
       ["array body", { name: bad, body: [] }, "body must be a non-null object"],
@@ -100,7 +100,7 @@ test.describe("SuperAdmin formula sets", () => {
     expect(log.entries.find((e) => e.targetId === v2.id)).toMatchObject({ action: "formulaSet.create", entity: `${name} v2` });
   });
 
-  test("POST /version copies the body to max(version)+1 (v3); a name override forks a new family at v1; unknown source â†’ 404", async ({ sa, run, ledger }) => {
+  test("POST /version copies the body to max(version)+1 (v3); a name override forks a new family at v1; unknown source → 404", async ({ sa, run, ledger }) => {
     const r = await sa.post(`${SA}/formula-sets/${v1.id}/version`, { data: {} });
     const v3 = (await json<{ formulaSet: FormulaSetDetail }>(r, 201)).formulaSet;
     ledgerFormulaSet(sa, ledger, v3);
@@ -126,7 +126,7 @@ test.describe("SuperAdmin formula sets", () => {
     expect(log.entries.find((e) => e.targetId === v3.id)).toMatchObject({ action: "formulaSet.newVersion", entity: `${name} v3` });
   });
 
-  test("PATCH an unused set: name / version / body â†’ 200; rules 400; (name, version) collision â†’ 409; unknown â†’ 404; audit UPDATE", async ({ sa, run }) => {
+  test("PATCH an unused set: name / version / body → 200; rules 400; (name, version) collision → 409; unknown → 404; audit UPDATE", async ({ sa, run }) => {
     const url = `${SA}/formula-sets/${v2.id}`;
     const renamed = `${name}-r`;
     expect((await json<{ formulaSet: FormulaSetDetail }>(await sa.patch(url, { data: { name: `  ${renamed} ` } }))).formulaSet).toMatchObject({ name: renamed, version: 2 });
@@ -155,7 +155,7 @@ test.describe("SuperAdmin formula sets", () => {
     expect(log.entries.filter((e) => e.targetId === v2.id && e.action === "formulaSet.update")).toHaveLength(3);
   });
 
-  test("assigned to throwaway org F (withRecordedGlobalState): locked â€” PATCH / DELETE 409 with inUseBy; revert proven; then DELETE 200 â†’ 404; audit", async ({ sa, run, ledger }) => {
+  test("assigned to throwaway org F (withRecordedGlobalState): locked — PATCH / DELETE 409 with inUseBy; revert proven; then DELETE 200 → 404; audit", async ({ sa, run, ledger }) => {
     test.setTimeout(150_000);
     const orgF = await createThrowawayOrg(sa, { run, ledger }, "f");
     const spec = {
@@ -170,7 +170,7 @@ test.describe("SuperAdmin formula sets", () => {
       async () => {
         const r = await json<{ org: { activeFormulaSetId: string; formulaSetLabel: string }; warnings: unknown[] }>(await sa.patch(`${SA}/orgs/${orgF.id}`, { data: { formulaSetId: v1.id } }));
         expect(r.org).toMatchObject({ activeFormulaSetId: v1.id, formulaSetLabel: `${name} v1` });
-        expect(r.warnings).toEqual([]); // same body as the seeded set â†’ structurally compatible
+        expect(r.warnings).toEqual([]); // same body as the seeded set → structurally compatible
       },
       async () => {
         expect(await detail(sa, v1.id)).toMatchObject({ locked: true, inUseBy: { orgCount: 1, projectCount: 0, calculationCount: 0 } });

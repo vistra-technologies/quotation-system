@@ -162,6 +162,7 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
   });
 
   test("give org C data to cascade: its admin signs in and creates a project; a calculation row is attached", async ({ playwright, baseURL }) => {
+    test.setTimeout(180_000); // sign-ins retry on 429 (rate limit 3 / 10 s / IP, shared by all workers)
     const ctx = await rawContext(playwright, baseURL);
     try {
       expect((await signIn(ctx, orgC.slug, "admin", runPassword())).status()).toBe(200);
@@ -195,6 +196,7 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
   // "its users get 401 / blocked sign-in". When suspension is enforced for the API and sign-in, change these
   // expectations to 401 (sign-in) and 401/403 (/me).
   test("DECISION NEEDED: a suspended org's users can still sign in and use the API (only pages are blocked)", async ({ playwright, baseURL }) => {
+    test.setTimeout(180_000); // sign-ins retry on 429 (rate limit 3 / 10 s / IP, shared by all workers)
     const ctx = await rawContext(playwright, baseURL);
     try {
       expect((await signIn(ctx, orgC.slug, "admin", runPassword())).status()).toBe(200);
@@ -294,6 +296,7 @@ test.describe("SuperAdmin org users (org B)", () => {
   });
 
   test("POST creates a user (trimmed fields, optional contact data) that can sign in; audit user.create under org B", async ({ sa, run, ledger, playwright, baseURL }) => {
+    test.setTimeout(180_000); // sign-ins retry on 429 (rate limit 3 / 10 s / IP, shared by all workers)
     const u = await createOrgBUser(sa, run, ledger, { mobile: "  +971 50 000 0000 ", profileEmail: " rgr@example.com " });
     expect(u.username).toBe(u.username.trim());
     expect((await listUsers(sa, run.orgB.id)).find((x) => x.id === u.id)).toEqual({
@@ -342,6 +345,7 @@ test.describe("SuperAdmin org users (org B)", () => {
   });
 
   test("PATCH edits fields (trimmed; '' clears contact data) and reports changedFields; password reset revokes sessions", async ({ sa, run, ledger, playwright, baseURL }) => {
+    test.setTimeout(180_000); // sign-ins retry on 429 (rate limit 3 / 10 s / IP, shared by all workers)
     const u = await createOrgBUser(sa, run, ledger, { mobile: "123", profileEmail: "a@b.c" });
     const url = `${SA}/orgs/${run.orgB.id}/users/${u.id}`;
     const r = await json<{ user: { id: string }; changedFields: string[] }>(await sa.patch(url, { data: { firstName: "  New ", lastName: " Name ", mobile: "", profileEmail: null, roleId: u.roles.Admin.id } }));

@@ -99,10 +99,12 @@ function subdomainNote(run: RunState): void {
 }
 
 test.describe("SuperAdmin auth gate: every SA route rejects everything but a valid SA session on the apex host", () => {
-  test("precondition: the org-user session used below is a live org session (so its rejection means something)", async ({ as, run }) => {
+  // What this proves: the org session used below is live, and setup's probe mode matches this target's host
+  // shape. What it does NOT prove: that the org subdomain host runs the SAME deployment as the apex (setup
+  // only checks that /api/health answers 200 there) — on test.easeetool.com both are the staging deployment.
+  test("precondition: the org-user session used below is live, and setup's subdomain-probe mode matches the target's host shape", async ({ as, run }) => {
     expect((await as.admin.get(orgApi(run.testOrg.slug, "/me"))).status()).toBe(200);
     expect(await orgSessionToken(as.admin)).toBeTruthy();
-    // setup's mode matches the target (no silent mode drift)
     expect(run.saSubdomainProbe).toBe(isSubdomain);
   });
 
@@ -138,6 +140,8 @@ test.describe("SuperAdmin auth gate: every SA route rejects everything but a val
       expect(sub.status()).toBe(401);
       expect(await sub.json()).toEqual({ error: "Unauthorized" });
     } else {
+      // path mode: this only re-checks that the target is not a subdomain-capable host (consistent with setup's
+      // mode); it does NOT exercise the subdomain rejection — that case is reported as an annotation instead
       expect(isSubdomain).toBe(false);
     }
   });
