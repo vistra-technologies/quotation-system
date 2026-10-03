@@ -12,7 +12,7 @@ import type { Factories } from "../fixtures/factories";
 import type { Role, RunState } from "../fixtures/run-state";
 import { isSubdomain, orgUrl } from "../../e2e/helpers";
 import { expectSubmitted, glassConfig, oneCellDesign } from "../api/project-helpers";
-import { collectProblems } from "./collect";
+import { collectProblems, trackInFlight } from "./collect";
 import type { ParamKey } from "./page-table";
 
 export type Who = Role | "orgB-admin" | "anon" | "sa";
@@ -20,20 +20,11 @@ export type Who = Role | "orgB-admin" | "anon" | "sa";
 export interface Opened {
   ctx: BrowserContext;
   page: Page;
+  /** Problems seen so far — read it only after `settle()`. */
   problems: () => string[];
-  /** True if a LoadingOverlay-shaped element (role=status "Processing..."/"Loading") was EVER in the DOM. */
-  overlaySeen: () => Promise<boolean>;
+  /** Same-origin requests still in flight. */
+  inFlight: () => string[];
 }
-
-const OVERLAY_PROBE = `
-  window.__rgrOverlaySeen = false;
-  new MutationObserver(() => {
-    for (const el of document.querySelectorAll('[role="status"]')) {
-      const label = (el.getAttribute('aria-label') || '') + ' ' + (el.textContent || '');
-      if (/Processing\\.\\.\\.|Loading/i.test(label)) window.__rgrOverlaySeen = true;
-    }
-  }).observe(document, { childList: true, subtree: true, attributes: true });
-`;
 
 /** A fresh browser context for `who` (anon = no cookies), with the problem collector attached. */
 export async function openAs(browser: Browser, run: RunState, who: Who, saToken?: string): Promise<Opened> {
@@ -47,11 +38,36 @@ export async function openAs(browser: Browser, run: RunState, who: Who, saToken?
     if (!saToken) throw new Error("openAs('sa') needs the worker's SuperAdmin token");
     await ctx.addCookies([{ name: "qs-sa-token", value: saToken, url: process.env.PLAYWRIGHT_BASE_URL!, httpOnly: true, secure: true, sameSite: "Lax" }]);
   }
-  await ctx.addInitScript(OVERLAY_PROBE);
   const page = await ctx.newPage();
-  const problems = collectProblems(page);
-  const overlaySeen = () => page.evaluate(() => (window as unknown as { __rgrOverlaySeen?: boolean }).__rgrOverlaySeen === true);
-  return { ctx, page, problems, overlaySeen };
+  return { ctx, page, problems: collectProblems(page), inFlight: trackInFlight(page) };
+}
+
+/**
+ * Wait until the page's post-mount calls have settled — no tracked same-origin request in flight, and still
+ * none after a 750 ms quiet window — then return the problems. Reading the collector any earlier (or closing
+ * the context with a call in flight) could miss a late console error / 5xx / failure. A request that never
+ * settles fails the test with its URL instead of being silently aborted by ctx.close().
+ *
+ * Not `networkidle`: the Vercel preview toolbar keeps connections open, so it times out on most pages; the
+ * tracker (collect.ts trackInFlight) ignores exactly that toolbar traffic and Next's <Link> prefetches.
+ */
+export async function settledProblems(o: Opened): Promise<string[]> {
+  await expect
+    .poll(
+      async () => {
+        if (o.inFlight().length) return o.inFlight();
+        await o.page.waitForTimeout(750);
+        return o.inFlight();
+      },
+      { timeout: 20_000, message: "same-origin requests still in flight before reading the collector" },
+    )
+    .toEqual([]);
+  return o.problems();
+}
+
+/** Poll an observed landing path (client-side redirects arrive after the first response). */
+export async function expectLands(observe: () => string, expected: string, message?: string): Promise<void> {
+  await expect.poll(observe, { timeout: 15_000, message }).toBe(expected);
 }
 
 /** Navigation target for an org-relative path ("/projects/…") in the Test Org (subdomain or path mode). */

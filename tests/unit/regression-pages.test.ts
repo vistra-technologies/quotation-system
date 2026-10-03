@@ -4,7 +4,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { enumeratePages } from "../regression/coverage-map";
 import { PAGES, fillPath, orgRelative } from "../regression/pages/page-table";
-import { ALLOWED } from "../regression/pages/collect";
+import { ALLOWED, suiteHosts } from "../regression/pages/collect";
+
+/** The collector ties its same-origin allow-list entries to the target host (read at call time). */
+function withBase(base: string, fn: () => void): void {
+  const prev = process.env.PLAYWRIGHT_BASE_URL;
+  process.env.PLAYWRIGHT_BASE_URL = base;
+  try {
+    fn();
+  } finally {
+    if (prev === undefined) delete process.env.PLAYWRIGHT_BASE_URL;
+    else process.env.PLAYWRIGHT_BASE_URL = prev;
+  }
+}
 
 const root = path.resolve(__dirname, "..", "..");
 
@@ -26,7 +38,7 @@ test("every row's params are fillable; orgRelative strips the org segment", () =
   assert.throws(() => fillPath("/x/[projectId]", {}), /no value for \[projectId\]/);
 });
 
-test("collector allow-list: only browser-aborted RSC, superseded navigations and Vercel tooling", () => {
+test("collector allow-list: only browser-aborted RSC, superseded navigations and Vercel tooling", () => withBase("https://test.easeetool.com", () => {
   const ok = (p: string) => ALLOWED.some((a) => a.match(p));
   assert.equal(ALLOWED.length, 3, "allow-list grew — justify the new entry in collect.ts and the task report");
   // allowed
@@ -48,4 +60,17 @@ test("collector allow-list: only browser-aborted RSC, superseded navigations and
   assert.ok(!ok("console.error: Failed to load resource: the server responded with a status of 500 ()"));
   assert.ok(!ok("pageerror: MISSING_MESSAGE: Could not resolve `selections` in messages"));
   assert.ok(!ok("HTTP 500 https://e2e-testorg.test.easeetool.com/projects"));
-});
+  assert.ok(!ok("request failed [fetch/rsc/POST] https://e2e-testorg.test.easeetool.com/projects net::ERR_ABORTED")); // server action
+  // same-origin entries are tied to PLAYWRIGHT_BASE_URL's host and the Test Org's subdomain of it
+  assert.ok(ok("request failed [fetch/OPTIONS] https://test.easeetool.com/controls/orgs net::ERR_ABORTED"));
+  assert.ok(!ok("request failed [fetch/OPTIONS] https://other-org.test.easeetool.com/dashboard net::ERR_ABORTED"));
+  assert.ok(!ok("request failed [fetch/OPTIONS] https://evil.example/dashboard net::ERR_ABORTED"));
+  assert.ok(!ok("request failed [fetch] https://evil.example/.well-known/vercel/jwe net::ERR_ABORTED"));
+}));
+
+test("collector hosts follow PLAYWRIGHT_BASE_URL (path-mode preview)", () => withBase("https://quotation-system-git-x.vercel.app", () => {
+  assert.deepEqual(suiteHosts(), ["quotation-system-git-x.vercel.app", "e2e-testorg.quotation-system-git-x.vercel.app"]);
+  const ok = (p: string) => ALLOWED.some((a) => a.match(p));
+  assert.ok(ok("request failed [fetch/OPTIONS] https://quotation-system-git-x.vercel.app/e2e-testorg/dashboard net::ERR_ABORTED"));
+  assert.ok(!ok("request failed [fetch/OPTIONS] https://e2e-testorg.test.easeetool.com/dashboard net::ERR_ABORTED"));
+}));

@@ -5,13 +5,15 @@
  *   - org / permission pages: unauthenticated → the Test Org's /login (content never rendered); org B's
  *     admin session → the Test Org's /login showing the cross-org notice (it is NOT clicked — that would
  *     sign the shared org-B session out); roles without the permission → /dashboard; the admin renders the
- *     page (HTTP 200, expected text, primary control enabled + React-hydrated, problem collector empty);
+ *     page (HTTP 200, expected text, primary control enabled + React-hydrated, problem collector empty once
+ *     the page's calls have settled — `settledProblems`);
  *     every other allowed role reaches it.
  *   - SuperAdmin pages: unauthenticated and an org session → /controls/login; the SA renders the page with
- *     an empty collector, the shared LoadingOverlay never mounted and no global-error screen.
+ *     an empty collector (a pageerror catches the AGENTS.md LoadingOverlay crash) and no global-error screen.
  *   - public pages: the anonymous render is the authorised render; signed-in visits land where pinned.
- * Plus: the apex 404 guard and subdomain routing, wizard pill gating (lock → submit → unlock → design edit
- * → re-lock), and KNOWN BUG / DECISION NEEDED pins.
+ * Plus: the apex 404 guard and subdomain routing, wizard pill gating (lock → Submit Design in the UI → unlock
+ * → width edit saved on the Design canvas → re-lock without a reload), and KNOWN BUG / DECISION NEEDED pins.
+ * Landing paths are polled (up to 15 s): many redirects arrive client-side in the RSC stream after a 200.
  *
  * Every expectation here was observed live on test.easeetool.com (Task 12 probe) and is the contract.
  * Data: params come from the factories (rgr-<runId>-…, ledgered, deleted at teardown); the wizard test uses
@@ -30,7 +32,9 @@ import {
   fillPath, isOrgPage, orgRelative, type PageRow,
 } from "./page-table";
 import { isHydrated } from "./collect";
-import { apexPathOf, openAs, orgPathOf, orgTarget, paramsFor, readyWall, type Opened, type ParamDeps } from "./page-helpers";
+import {
+  apexPathOf, expectLands, openAs, orgPathOf, orgTarget, paramsFor, readyWall, settledProblems, type Opened, type ParamDeps,
+} from "./page-helpers";
 
 coversPage("/");
 coversPage("/organizations");
@@ -74,6 +78,9 @@ coversPage("/controls/audit-log");
 
 // Rows are independent: spread them over the workers.
 test.describe.configure({ mode: "parallel" });
+// No traces for page tests: a trace.zip holds request headers and storage (session cookies, the Vercel bypass
+// header), and nothing here needs one to diagnose — the error context + collector output name the problem.
+test.use({ trace: "off" });
 
 type Fx = { browser: import("@playwright/test").Browser; run: import("../fixtures/run-state").RunState };
 
@@ -93,7 +100,12 @@ async function target(row: PageRow, d: ParamDeps): Promise<{ url: string; rel: s
   return { url: isOrgPage(row) ? orgTarget(d.run, rel) : rel, rel };
 }
 
-/** Text visible, the page hydrated (React owns the node), and — if the row has one — its primary control ready. */
+const wizardNav = (o: Opened) => o.page.getByRole("navigation", { name: "Project wizard steps" });
+
+/**
+ * Text visible, the page hydrated (React owns the node), and — if the row has one — its primary control
+ * ready. Project pages also need a hydrated wizard pill link (the breadcrumb's `wizard` namespace).
+ */
 async function expectRendered(o: Opened, row: PageRow): Promise<void> {
   const text = o.page.getByText(row.expectsText).filter({ visible: true }).first();
   await expect(text).toBeVisible();
@@ -105,11 +117,21 @@ async function expectRendered(o: Opened, row: PageRow): Promise<void> {
     await expect.poll(() => isHydrated(el), { message: `${row.path}: primary ${row.primary.role} "${row.primary.name}" is not hydrated (next-intl clientMessages class)` }).toBe(true);
     await el.click({ trial: true }); // actionable (not covered/inert) — never actually clicked
   }
+  if (row.project) {
+    const pill = wizardNav(o).getByRole("link", { name: "Project Details" });
+    await expect(pill).toBeVisible();
+    await expect.poll(() => isHydrated(pill), { message: `${row.path}: wizard pill link is not hydrated (wizard namespace)` }).toBe(true);
+  }
 }
 
-/** Content of `row` must not be on the page (denied visits). Headings only — body copy can repeat words. */
+/** Content of `row` must not be on the page (denied visits): no visible match of its text anywhere. */
 async function expectNoContent(o: Opened, row: PageRow): Promise<void> {
-  await expect(o.page.getByRole("heading", { name: row.expectsText })).toHaveCount(0);
+  await expect(o.page.getByText(row.expectsText).filter({ visible: true })).toHaveCount(0);
+}
+
+/** The /controls crash class (shared LoadingOverlay / any provider-less client component) = global-error. */
+async function expectNoGlobalError(o: Opened): Promise<void> {
+  await expect(o.page.getByText("Something went wrong")).toHaveCount(0);
 }
 
 const roleHas = (role: Role, row: PageRow): boolean =>
@@ -127,7 +149,7 @@ for (const row of PAGES) {
         await withPage({ browser, run }, "anon", undefined, async (o) => {
           const res = await o.page.goto(t.url);
           expect(res?.status()).toBe(200);
-          await expect.poll(() => orgPathOf(run, o.page.url())).toBe("/login");
+          await expectLands(() => orgPathOf(run, o.page.url()), "/login");
           await expect(o.page.getByText(ORG_LOGIN_TEXT)).toBeVisible();
           await expectNoContent(o, row);
         });
@@ -138,7 +160,7 @@ for (const row of PAGES) {
         await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
           const res = await o.page.goto(t.url);
           expect(res?.status()).toBe(200);
-          await expect.poll(() => orgPathOf(run, o.page.url())).toBe("/login");
+          await expectLands(() => orgPathOf(run, o.page.url()), "/login");
           await expect(o.page.getByText(CROSS_ORG_TEXT)).toBeVisible();
           await expect(o.page.getByText(`You are signed in to RGR ${run.runId} B.`, { exact: false })).toBeVisible(); // names org B only
           await expectNoContent(o, row);
@@ -152,22 +174,21 @@ for (const row of PAGES) {
           await withPage({ browser, run }, role, undefined, async (o) => {
             const res = await o.page.goto(t.url);
             expect(res?.status()).toBe(200);
-            await expect.poll(() => orgPathOf(run, o.page.url())).toBe("/dashboard");
+            await expectLands(() => orgPathOf(run, o.page.url()), "/dashboard");
             await expect(o.page.getByText(DASHBOARD_TEXT).first()).toBeVisible();
             await expectNoContent(o, row);
           });
         });
       }
 
-      test("admin: renders (200, text, hydrated primary control, no console/page/network errors)", async ({ browser, run, f, as, url }) => {
+      test("admin: renders (200, text, hydrated controls, no console/page/network errors once settled)", async ({ browser, run, f, as, url }) => {
         const t = await target(row, deps({ f, as, url, run }));
         await withPage({ browser, run }, "admin", undefined, async (o) => {
           const res = await o.page.goto(t.url);
           expect(res?.status()).toBe(200);
-          await expect.poll(() => orgPathOf(run, o.page.url())).toBe(t.rel);
+          await expectLands(() => orgPathOf(run, o.page.url()), t.rel);
           await expectRendered(o, row);
-          await o.page.waitForLoadState("load");
-          expect(o.problems()).toEqual([]);
+          expect(await settledProblems(o)).toEqual([]);
         });
       });
 
@@ -182,7 +203,7 @@ for (const row of PAGES) {
             await withPage({ browser, run }, role, undefined, async (o) => {
               const res = await o.page.goto(t.url);
               expect(res?.status(), role).toBe(200);
-              await expect.poll(() => orgPathOf(run, o.page.url()), role).toBe(t.rel);
+              await expectLands(() => orgPathOf(run, o.page.url()), t.rel, role);
               await expect(o.page.getByText(row.expectsText).filter({ visible: true }).first(), role).toBeVisible();
             });
           }
@@ -197,7 +218,7 @@ for (const row of PAGES) {
         await withPage({ browser, run }, "anon", undefined, async (o) => {
           const res = await o.page.goto(t.url);
           expect(res?.status()).toBe(200);
-          await expect.poll(() => apexPathOf(o.page.url())).toBe("/controls/login");
+          await expectLands(() => apexPathOf(o.page.url()), "/controls/login");
           await expect(o.page.getByText(SA_LOGIN_TEXT)).toBeVisible();
           await expectNoContent(o, row);
         });
@@ -207,43 +228,40 @@ for (const row of PAGES) {
         const t = await target(row, deps({ f, as, url, run }));
         await withPage({ browser, run }, "admin", undefined, async (o) => {
           await o.page.goto(t.url);
-          await expect.poll(() => apexPathOf(o.page.url())).toBe("/controls/login");
+          await expectLands(() => apexPathOf(o.page.url()), "/controls/login");
           await expect(o.page.getByText(SA_LOGIN_TEXT)).toBeVisible();
           await expectNoContent(o, row);
         });
       });
 
-      test("SuperAdmin: renders; LoadingOverlay never mounted; no global-error; no console/page/network errors", async ({ browser, run, f, as, url, sa }) => {
+      // The AGENTS.md LoadingOverlay crash (useTranslations with no provider under /controls) surfaces as a
+      // pageerror + the global-error screen — that is what this test asserts; it does not look for the overlay.
+      test("SuperAdmin: renders; no global-error screen; no console/page/network errors once settled", async ({ browser, run, f, as, url, sa }) => {
         const t = await target(row, deps({ f, as, url, run }));
         await withPage({ browser, run }, "sa", sa.token, async (o) => {
           const res = await o.page.goto(t.url);
           expect(res?.status()).toBe(200);
-          await expect.poll(() => apexPathOf(o.page.url())).toBe(t.rel);
+          await expectLands(() => apexPathOf(o.page.url()), t.rel);
           await expectRendered(o, row);
-          await o.page.waitForLoadState("load");
-          await expect(o.page.getByText("Something went wrong")).toHaveCount(0);
-          expect(await o.overlaySeen(), "the shared LoadingOverlay mounted on a /controls page (AGENTS.md)").toBe(false);
-          expect(o.problems()).toEqual([]);
+          const problems = await settledProblems(o);
+          await expectNoGlobalError(o);
+          expect(problems).toEqual([]);
         });
       });
     }
 
     // ── public pages ──────────────────────────────────────────────────────────
     if (row.access === "public") {
-      test("unauthenticated: renders (200, text, no console/page/network errors)", async ({ browser, run, f, as, url }) => {
+      test("unauthenticated: renders (200, text, no console/page/network errors once settled)", async ({ browser, run, f, as, url }) => {
         const t = await target(row, deps({ f, as, url, run }));
         await withPage({ browser, run }, "anon", undefined, async (o) => {
           const res = await o.page.goto(t.url);
           expect(res?.status()).toBe(200);
-          const landed = () => (isOrgPage(row) ? orgPathOf(run, o.page.url()) : apexPathOf(o.page.url()));
-          await expect.poll(landed).toBe(row.landsOn?.anon ?? t.rel);
+          await expectLands(() => (isOrgPage(row) ? orgPathOf(run, o.page.url()) : apexPathOf(o.page.url())), row.landsOn?.anon ?? t.rel);
           await expectRendered(o, row);
-          await o.page.waitForLoadState("load");
-          if (row.path.startsWith("/controls")) {
-            await expect(o.page.getByText("Something went wrong")).toHaveCount(0);
-            expect(await o.overlaySeen(), "the shared LoadingOverlay mounted on a /controls page (AGENTS.md)").toBe(false);
-          }
-          expect(o.problems()).toEqual([]);
+          const problems = await settledProblems(o);
+          if (row.path.startsWith("/controls")) await expectNoGlobalError(o);
+          expect(problems).toEqual([]);
         });
       });
 
@@ -254,9 +272,9 @@ for (const row of PAGES) {
           await withPage({ browser, run }, sa ? "sa" : "admin", sa ? saClient.token : undefined, async (o) => {
             const res = await o.page.goto(t.url);
             expect(res?.status()).toBe(200);
-            await expect.poll(() => (sa ? apexPathOf(o.page.url()) : orgPathOf(run, o.page.url()))).toBe(row.landsOn!.signedIn);
+            await expectLands(() => (sa ? apexPathOf(o.page.url()) : orgPathOf(run, o.page.url())), row.landsOn!.signedIn!);
             await expect(o.page.getByText(row.landsOn!.signedInText!).first()).toBeVisible();
-            expect(o.problems()).toEqual([]);
+            expect(await settledProblems(o)).toEqual([]);
           });
         });
       }
@@ -266,7 +284,7 @@ for (const row of PAGES) {
           const t = await target(row, deps({ f, as, url, run }));
           await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
             await o.page.goto(t.url);
-            await expect.poll(() => orgPathOf(run, o.page.url())).toBe("/login");
+            await expectLands(() => orgPathOf(run, o.page.url()), "/login");
             await expect(o.page.getByText(CROSS_ORG_TEXT)).toBeVisible();
             await expect(o.page.getByText(`You are signed in to RGR ${run.runId} B.`, { exact: false })).toBeVisible();
             await expect(o.page.getByText(ORG_LOGIN_TEXT)).toHaveCount(0); // the form is replaced by the notice
@@ -300,7 +318,7 @@ test.describe("routing", () => {
       for (const p of ["/projects", "/dashboard", `/${run.testOrg.slug}/login`]) {
         const res = await o.page.goto(p);
         expect(res?.status(), p).toBe(404);
-        await expect.poll(() => apexPathOf(o.page.url()), p).toBe(p);
+        expect(apexPathOf(o.page.url()), p).toBe(p);
       }
     });
   });
@@ -335,7 +353,7 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
   const STEPS = ["Project Details", "Configuration", "Design", "Summary", "Quotation"] as const;
 
   async function pillState(o: Opened): Promise<Record<string, "open" | "locked">> {
-    const nav = o.page.getByRole("navigation", { name: "Project wizard steps" });
+    const nav = wizardNav(o);
     await expect(nav).toBeVisible();
     const out: Record<string, "open" | "locked"> = {};
     for (const s of STEPS) {
@@ -354,13 +372,13 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       expect(await pillState(o)).toEqual({ "Project Details": "open", Configuration: "open", Design: "locked", Summary: "locked", Quotation: "locked" });
       for (const step of ["design", "summary", "quotation"]) {
         await o.page.goto(orgTarget(run, `/projects/${p.id}/${step}`));
-        await expect.poll(() => orgPathOf(run, o.page.url()), step).toBe(`/projects/${p.id}`);
+        await expectLands(() => orgPathOf(run, o.page.url()), `/projects/${p.id}`, step);
       }
-      expect(o.problems()).toEqual([]);
+      expect(await settledProblems(o)).toEqual([]);
     });
   });
 
-  test("selection + partition → Design opens; Submit Design (UI) unlocks Summary/Quotation; a design PATCH re-locks them", async ({ browser, run, f, as, url }) => {
+  test("Submit Design (UI) unlocks Summary/Quotation; a width edit saved on the Design canvas re-locks them with no reload", async ({ browser, run, f, as, url }) => {
     test.setTimeout(180_000);
     const w = await readyWall(f, as.admin, url);
     const detail = orgTarget(run, `/projects/${w.projectId}`);
@@ -370,7 +388,7 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       expect(await pillState(o)).toEqual({ "Project Details": "open", Configuration: "open", Design: "open", Summary: "locked", Quotation: "locked" });
       for (const step of ["summary", "quotation"]) {
         await o.page.goto(orgTarget(run, `/projects/${w.projectId}/${step}`));
-        await expect.poll(() => orgPathOf(run, o.page.url()), step).toBe(`/projects/${w.projectId}`);
+        await expectLands(() => orgPathOf(run, o.page.url()), `/projects/${w.projectId}`, step);
       }
 
       // 2. The real flow: click Submit Design on the Design page; the page router.refresh()es → pills unlock.
@@ -386,19 +404,45 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       await expect.poll(async () => (await pillState(o)).Summary, { timeout: 20_000 }).toBe("open");
       expect(await pillState(o)).toMatchObject({ Design: "open", Summary: "open", Quotation: "open" });
       await o.page.goto(orgTarget(run, `/projects/${w.projectId}/summary`));
-      await expect.poll(() => orgPathOf(run, o.page.url())).toBe(`/projects/${w.projectId}/summary`);
+      await expectLands(() => orgPathOf(run, o.page.url()), `/projects/${w.projectId}/summary`);
       await expect(o.page.getByText("Export PDF")).toBeVisible();
 
-      // 3. A design edit clears designSubmittedAt (API, same as the Design canvas save) → re-locked.
-      const edit = await as.admin.patch(url(`/partitions/${w.partitionId}`), {
-        data: { design: { schemaVersion: 2, sections: [{ id: "s1", widthMm: 2000, cells: [{ id: "s1-c0", heightMm: 2400, selectionId: w.selectionId }] }] } },
-      });
-      expect(edit.status(), await edit.text()).toBe(200);
-      await o.page.goto(detail);
+      // 3. Open the wall in the Design canvas's Configure mode (the problem popup's deep link). Before the edit
+      //    the pills are still unlocked.
+      await o.page.goto(orgTarget(run, `/projects/${w.projectId}/design?partition=${w.partitionId}`));
+      await expect(o.page.getByRole("button", { name: "Back to Room Layout" })).toBeVisible();
+      expect(await pillState(o)).toMatchObject({ Design: "open", Summary: "open", Quotation: "open" });
+
+      // 4. Change a real value through the canvas UI (width 2000 → 2100 mm) and Save. From here on there is NO
+      //    page.goto / reload: the pills must re-lock through the page's own router.refresh() (the Stage 25
+      //    bug class: a Design save path that forgets it leaves Summary/Quotation open on a stale design).
+      await o.page.getByTitle("Edit width", { exact: true }).click();
+      const width = o.page.getByLabel("Partition width");
+      await expect(width).toHaveValue("2000"); // mm display — the unit the API speaks
+      await width.fill("2100");
+      await o.page.getByTitle("Confirm width", { exact: true }).click();
+      const save = o.page.getByRole("button", { name: "Save changes" });
+      await expect(save).toBeEnabled();
+      const [patch] = await Promise.all([
+        o.page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes(`/partitions/${w.partitionId}`)),
+        save.click(),
+      ]);
+      expect(patch.status(), await patch.text()).toBe(200);
+      await expect(o.page.getByRole("button", { name: "Saved" })).toBeVisible();
+      await expect.poll(async () => (await pillState(o)).Summary, { timeout: 20_000, message: "Summary pill did not re-lock after a Design save (no router.refresh?)" }).toBe("locked");
       expect(await pillState(o)).toMatchObject({ Design: "open", Summary: "locked", Quotation: "locked" });
+
+      // The server agrees: the saved width is real and the submission is cleared.
+      const pr = await as.admin.get(url(`/partitions/${w.partitionId}`));
+      expect(pr.status()).toBe(200);
+      expect(((await pr.json()) as { partition: { widthMm: number } }).partition.widthMm).toBe(2100);
+      const pj = await as.admin.get(url(`/projects/${w.projectId}`));
+      expect(((await pj.json()) as { project: { designSubmittedAt: string | null } }).project.designSubmittedAt).toBeNull();
+      expect(await settledProblems(o)).toEqual([]);
+
+      // 5. And the locked URLs bounce again.
       await o.page.goto(orgTarget(run, `/projects/${w.projectId}/summary`));
-      await expect.poll(() => orgPathOf(run, o.page.url())).toBe(`/projects/${w.projectId}`);
-      expect(o.problems()).toEqual([]);
+      await expectLands(() => orgPathOf(run, o.page.url()), `/projects/${w.projectId}`);
     });
   });
 });
@@ -406,28 +450,34 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
 // ── KNOWN BUG / DECISION NEEDED pins (today's behaviour; the comment says what "fixed" looks like) ──
 
 test.describe("pins", () => {
-  test("KNOWN BUG: an external user opens another company's project and inquiry pages by URL (their lists hide them)", async ({ browser, run, f, as }) => {
+  test("KNOWN BUG: external users (distributor, architect) open another company's project and inquiry pages by URL (their lists hide them)", async ({ browser, run, f, as }) => {
     // KNOWN BUG — same root cause as the Task 8 API pins (inquiries #1, projects #5): GET-by-id is not scoped to
     // the external user's company. When fixed, update these expectations to the denial (likely notFound / 404).
     const p = await f.project(); // internal: no external company
     const inq = await f.inquiry();
     expect(await distributorCompanyId({ run, as })).toBeTruthy();
-    await withPage({ browser, run }, "distributor", undefined, async (o) => {
-      for (const [rel, text] of [
-        [`/projects/${p.id}`, "Project Information"],
-        [`/projects/${p.id}/edit`, "Edit Project"],
-        [`/inquiries/${inq.id}`, inq.name],
-        [`/inquiries/${inq.id}/edit`, "Edit Inquiry"],
-      ] as const) {
-        const res = await o.page.goto(orgTarget(run, rel));
-        expect(res?.status(), rel).toBe(200);
-        await expect.poll(() => orgPathOf(run, o.page.url()), rel).toBe(rel);
-        await expect(o.page.getByText(text).first(), rel).toBeVisible();
-      }
-      // …while the distributor's own lists do not show them:
-      await o.page.goto(orgTarget(run, `/projects?search=${encodeURIComponent(p.name)}`));
-      await expect(o.page.getByText(p.name)).toHaveCount(0);
-    });
+    for (const who of ["distributor", "architect"] as const) {
+      await withPage({ browser, run }, who, undefined, async (o) => {
+        for (const [rel, text] of [
+          [`/projects/${p.id}`, "Project Information"],
+          [`/projects/${p.id}/edit`, "Edit Project"],
+          [`/inquiries/${inq.id}`, inq.name],
+          [`/inquiries/${inq.id}/edit`, "Edit Inquiry"],
+        ] as const) {
+          const res = await o.page.goto(orgTarget(run, rel));
+          expect(res?.status(), `${who} ${rel}`).toBe(200);
+          await expectLands(() => orgPathOf(run, o.page.url()), rel, `${who} ${rel}`);
+          await expect(o.page.getByText(text).first(), `${who} ${rel}`).toBeVisible();
+        }
+        // …while their own lists do not show them (anchored on the list's empty-filter state):
+        await o.page.goto(orgTarget(run, `/projects?search=${encodeURIComponent(p.name)}`));
+        await expect(o.page.getByText("No projects match your filters."), who).toBeVisible();
+        await expect(o.page.getByText(p.name), who).toHaveCount(0);
+        await o.page.goto(orgTarget(run, `/inquiries?search=${encodeURIComponent(inq.name)}`));
+        await expect(o.page.getByText("No inquiries match your filters."), who).toBeVisible();
+        await expect(o.page.getByText(inq.name), who).toHaveCount(0);
+      });
+    }
   });
 
   test("DECISION NEEDED: /organizations is public on every host and lists every tenant (name, slug, created date)", async ({ browser, run }) => {
