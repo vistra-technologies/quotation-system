@@ -17,7 +17,7 @@ import { covers } from "../fixtures/covers";
 import { registerNegatives, GHOST, type Ctx } from "./api-matrix";
 import { orgApi, tag, foreignProjectId, distributorCompanyId, createLedgered } from "./project-helpers";
 import { ok, rejected, design, sharedWall, foreignTree, typeId, type Selection } from "./design-helpers";
-import { insertCalculation, readProjectState, setDesignSubmittedAt, setProjectStatus } from "../../e2e/db-helpers";
+import { rgrInsertCalculation, readProjectState, rgrSetDesignSubmittedAt, rgrSetProjectStatus } from "../../e2e/db-helpers";
 
 covers("GET /api/v1/orgs/[orgSlug]/selections");
 covers("POST /api/v1/orgs/[orgSlug]/selections");
@@ -81,8 +81,8 @@ registerNegatives([
 ]);
 
 async function armSubmitted(projectId: string) {
-  await setDesignSubmittedAt(projectId);
-  await insertCalculation(projectId);
+  await rgrSetDesignSubmittedAt(projectId);
+  await rgrInsertCalculation(projectId);
   expect(await readProjectState(projectId)).toMatchObject({ designSubmittedAt: expect.any(String), calcCount: 1 });
 }
 
@@ -282,18 +282,19 @@ test.describe("selections: delete / tenancy / roles / status", () => {
     await ok(await as.distributor.patch(url(`/selections/${own.id}`), { data: { label: nm({ run }, "S-by-dist") } }));
   });
 
-  test("KNOWN BUG: selection writes are not DRAFT-gated — a SUBMITTED project still accepts create / PATCH / DELETE", async ({ as, f, run, url }) => {
+  test("DECISION NEEDED: selection writes are not DRAFT-gated — a SUBMITTED project still accepts create / PATCH / DELETE", async ({ as, f, run, url }) => {
     const p = await f.project();
     const glass = await typeId(as.admin, run, "GLASS");
     try {
-      await setProjectStatus(p.id, "SUBMITTED");
-      // KNOWN BUG — createSelection/updateSelection/deleteSelection never check Project.status (project
-      // PATCH/DELETE/reset/config-update are DRAFT-only, 409). When gated, change each of these to 409.
+      await rgrSetProjectStatus(p.id, "SUBMITTED");
+      // DECISION NEEDED (not a confirmed bug) — createSelection/updateSelection/deleteSelection never check
+      // Project.status (project PATCH/DELETE/reset/config-update are DRAFT-only, 409; the design tree has no
+      // gate either, by Stage 19's choice). Pins today's behaviour; if gated, change each of these to 409.
       const s = (await ok<{ selection: Selection }>(await as.admin.post(url("/selections"), { data: { projectId: p.id, componentTypeId: glass, label: nm({ run }, "S"), config: {} } }), 201)).selection;
       await ok(await as.admin.patch(url(`/selections/${s.id}`), { data: { config: { category: "Single" } } }));
       expect(await ok(await as.admin.delete(url(`/selections/${s.id}`)))).toEqual({ id: s.id });
     } finally {
-      await setProjectStatus(p.id, "DRAFT"); // teardown deletes through the DRAFT-only route
+      await rgrSetProjectStatus(p.id, "DRAFT"); // teardown deletes through the DRAFT-only route
     }
   });
 

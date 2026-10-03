@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test";
+import { expect, type APIResponse } from "@playwright/test";
 import { randomBytes } from "node:crypto";
 import type { Guarded } from "./clients";
 import type { Ledger } from "./ledger";
@@ -15,6 +15,47 @@ export interface Factories {
   inventoryItem(over?: Record<string, unknown>): Promise<{ id: string; code: string }>;
   wall(label?: string): Promise<{ projectId: string; floorId: string; roomId: string; partitionId: string }>;
   selection(projectId: string, code: "GLASS" | "DOOR", config: Record<string, string>): Promise<{ id: string }>;
+}
+
+/**
+ * POST a project / inquiry create for the Test Org (`slug`).
+ *  - A 409 "A project number conflict occurred" (concurrent creates racing on the per-org MAX+1 number;
+ *    the route's transaction wrote nothing) is retried up to 3 times, each with a console.warn.
+ *  - A NETWORK error (no response — e.g. read ECONNRESET after the server committed) may hide a created
+ *    row: it is looked up once by its unique rgr- name and ledgered if found, then the error is rethrown.
+ * On an HTTP response the caller asserts on it and ledgers a 201 itself.
+ */
+export async function postCreate(
+  g: Guarded,
+  deps: { slug: string; ledger: Ledger },
+  kind: "project" | "inquiry",
+  data: Record<string, unknown>,
+): Promise<APIResponse> {
+  const path = kind === "project" ? "/projects" : "/inquiries";
+  const url = (p: string) => apiUrl(deps.slug, `/api/v1/orgs/${deps.slug}${p}`);
+  const name = typeof data.name === "string" ? data.name.trim() : "";
+  const post = async () => {
+    try {
+      return await g.post(url(path), { data });
+    } catch (err) {
+      if (name.startsWith("rgr-")) {
+        try {
+          const l = await g.get(url(`${path}?search=${encodeURIComponent(name)}`));
+          const rows = l.ok() ? ((await l.json()) as Record<string, { id: string; name: string }[]>)[kind === "project" ? "projects" : "inquiries"] ?? [] : [];
+          for (const row of rows.filter((x) => x.name === name)) deps.ledger.add({ kind, id: row.id, orgSlug: deps.slug, label: row.name });
+        } catch {
+          /* best effort — the next run's orphan sweep still finds an rgr- row */
+        }
+      }
+      throw err;
+    }
+  };
+  let r = await post();
+  for (let i = 0; i < 3 && r.status() === 409 && (await r.text()).includes("project number conflict"); i++) {
+    console.warn(`[regression] ${kind} create "${name}": project-number conflict (409), retry ${i + 1}/3`);
+    r = await post();
+  }
+  return r;
 }
 
 const ROLE_NAME: Record<Role, string> = {
@@ -42,12 +83,7 @@ export function makeFactories(deps: { admin: Guarded; run: RunState; ledger: Led
   const nm = (what: string) => `${run.prefix}${what}-${tag}${++n}`;
 
   const project: Factories["project"] = async (name = nm("proj")) => {
-    // Concurrent creates race on the per-org projectNumber (MAX+1): the route answers 409 "A project number
-    // conflict occurred — please try again." and writes nothing, so a bounded retry is safe.
-    let r = await admin.post(U("/projects"), { data: { name, currency: "AED", projectLocation: "Dubai, UAE" } });
-    for (let i = 0; i < 3 && r.status() === 409 && (await r.text()).includes("project number conflict"); i++) {
-      r = await admin.post(U("/projects"), { data: { name, currency: "AED", projectLocation: "Dubai, UAE" } });
-    }
+    const r = await postCreate(admin, { slug, ledger }, "project", { name, currency: "AED", projectLocation: "Dubai, UAE" });
     expect(r.status(), await r.text()).toBe(201);
     const id = ((await r.json()) as { project: { id: string } }).project.id;
     ledger.add({ kind: "project", id, orgSlug: slug, label: name });
@@ -73,7 +109,7 @@ export function makeFactories(deps: { admin: Guarded; run: RunState; ledger: Led
     externalCompany,
 
     async inquiry(name = nm("inq")) {
-      const r = await admin.post(U("/inquiries"), { data: { name, currency: "AED", projectLocation: "Dubai, UAE" } });
+      const r = await postCreate(admin, { slug, ledger }, "inquiry", { name, currency: "AED", projectLocation: "Dubai, UAE" });
       expect(r.status(), await r.text()).toBe(201);
       const id = ((await r.json()) as { inquiry: { id: string } }).inquiry.id;
       ledger.add({ kind: "inquiry", id, orgSlug: slug, label: name });

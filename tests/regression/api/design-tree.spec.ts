@@ -5,8 +5,8 @@
  * Gates (route source): every verb is "any authenticated org member" — no permission. Tenancy: each DAL
  * call scopes by the session's organizationId; list routes return [] for an unknown / foreign parent
  * id (no existence leak), by-id routes 404, create routes 400 ("… not found or access denied").
- * Floors/rooms/partitions are NOT DRAFT-gated and NOT company-scoped for external users (KNOWN BUG
- * pins below). Calculation invalidation (Stage 23 D-17…D-20, Stage 25 B2 route audit): partition
+ * Floors/rooms/partitions are NOT DRAFT-gated (DECISION NEEDED pin) and NOT company-scoped for external
+ * users (KNOWN BUG pin). Calculation invalidation (Stage 23 D-17…D-20, Stage 25 B2 route audit): partition
  * design/heightMm PATCH, a sides PATCH that adds or removes a partition, floor DELETE and room DELETE
  * clear `designSubmittedAt` and delete the ProjectCalculation; label-only edits, renames, creates and a
  * sides PATCH that keeps the same partitions do not.
@@ -33,12 +33,12 @@ import {
   type Partition,
 } from "./design-helpers";
 import {
-  insertCalculation,
+  rgrInsertCalculation,
   readPartitionRow,
   readProjectState,
-  seedV1Design,
-  setDesignSubmittedAt,
-  setProjectStatus,
+  rgrSeedV1Design,
+  rgrSetDesignSubmittedAt,
+  rgrSetProjectStatus,
 } from "../../e2e/db-helpers";
 
 covers("GET /api/v1/orgs/[orgSlug]/floors");
@@ -225,8 +225,8 @@ const wallAt = (admin: Guarded, url: (p: string) => string) => ({
 
 /** Stamp designSubmittedAt + insert a calculation, so the next write's invalidation is observable. */
 async function armSubmitted(projectId: string) {
-  await setDesignSubmittedAt(projectId);
-  await insertCalculation(projectId);
+  await rgrSetDesignSubmittedAt(projectId);
+  await rgrInsertCalculation(projectId);
   expect(await readProjectState(projectId)).toMatchObject({ designSubmittedAt: expect.any(String), calcCount: 1 });
 }
 
@@ -522,7 +522,7 @@ test.describe("partitions: design v2", () => {
 
   test("a stored v1 (panels) row: label-only PATCH keeps it; a v2 sections PATCH replaces panels and stamps schemaVersion 2", async ({ as, f, url }) => {
     const w = await f.wall();
-    await seedV1Design(w.partitionId, { panels: [{ id: "p1", type: "glass", widthMm: 2000, heightMm: 2400, selectionId: null }], stops: { top: null } });
+    await rgrSeedV1Design(w.partitionId, { panels: [{ id: "p1", type: "glass", widthMm: 2000, heightMm: 2400, selectionId: null }], stops: { top: null } });
     const P = url(`/partitions/${w.partitionId}`);
     const g = (await ok<{ partition: Partition }>(await as.admin.get(P))).partition;
     expect(g.design).toMatchObject({ panels: [expect.objectContaining({ id: "p1" })] });
@@ -651,15 +651,16 @@ test.describe("design tree: invalidation audit, tenancy, roles, status", () => {
     await ok(await as.architect.delete(url(`/rooms/${rm.id}`)));
   });
 
-  test("KNOWN BUG: design-tree writes are not DRAFT-gated — a SUBMITTED project still accepts floor/room/side/partition edits", async ({ as, f, run, url }) => {
+  test("DECISION NEEDED: design-tree writes are not DRAFT-gated — a SUBMITTED project still accepts floor/room/side/partition edits", async ({ as, f, run, url }) => {
     const w = await f.wall();
     try {
-      await setProjectStatus(w.projectId, "SUBMITTED");
+      await rgrSetProjectStatus(w.projectId, "SUBMITTED");
       // the project header itself is locked ...
       await rejected(await as.admin.patch(url(`/projects/${w.projectId}`), { data: { currency: "USD" } }), 409, "This project cannot be edited — only DRAFT projects are editable.");
-      // KNOWN BUG — none of the design-tree routes checks Project.status (only project PATCH/DELETE/reset/
-      // recompute/config-update are DRAFT-only). Possibly by design (Stage 19 gave floor DELETE no gate) —
-      // backlog it for a decision; when gated, change each expectation below to 409.
+      // DECISION NEEDED (not a confirmed bug) — none of the design-tree routes checks Project.status (only
+      // project PATCH/DELETE/reset/recompute/config-update are DRAFT-only); Stage 19 deliberately gave floor
+      // DELETE no gate. This pins today's behaviour; if design edits are made DRAFT-only, change each
+      // expectation below to 409.
       const fl = (await ok<{ floor: Floor }>(await as.admin.post(url("/floors"), { data: { projectId: w.projectId, label: nm({ run }, "F2") } }), 201)).floor;
       await ok(await as.admin.patch(url(`/floors/${w.floorId}`), { data: { label: nm({ run }, "F1b") } }));
       const rm = (await ok<{ room: Room }>(await as.admin.post(url("/rooms"), { data: { floorId: fl.id, label: nm({ run }, "R") } }), 201)).room;
@@ -669,7 +670,7 @@ test.describe("design tree: invalidation audit, tenancy, roles, status", () => {
       await ok(await as.admin.delete(url(`/floors/${fl.id}`)));
       expect((await readPartitionRow(w.partitionId)).widthMm).toBe(1800);
     } finally {
-      await setProjectStatus(w.projectId, "DRAFT"); // teardown deletes through the DRAFT-only route
+      await rgrSetProjectStatus(w.projectId, "DRAFT"); // teardown deletes through the DRAFT-only route
     }
   });
 

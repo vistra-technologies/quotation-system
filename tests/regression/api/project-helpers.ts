@@ -13,7 +13,7 @@ import { randomBytes } from "node:crypto";
 import { expect, type APIResponse } from "@playwright/test";
 import type { Guarded } from "../fixtures/clients";
 import type { Ledger } from "../fixtures/ledger";
-import type { Factories } from "../fixtures/factories";
+import { postCreate, type Factories } from "../fixtures/factories";
 import type { RunState } from "../fixtures/run-state";
 import { apiUrl } from "../../e2e/helpers";
 import type { Ctx } from "./api-matrix";
@@ -166,10 +166,7 @@ export async function createLedgered(
   data: Record<string, unknown>,
 ): Promise<{ res: APIResponse; id: string | null; body: Record<string, unknown> }> {
   const slug = deps.run.testOrg.slug;
-  const post = () => g.post(orgApi(slug, kind === "project" ? "/projects" : "/inquiries"), { data });
-  let res = await post();
-  // Concurrent project creates race on the per-org projectNumber → transactional 409 (nothing written).
-  for (let i = 0; i < 3 && res.status() === 409 && (await res.text()).includes("project number conflict"); i++) res = await post();
+  const res = await postCreate(g, { slug, ledger: deps.ledger }, kind, data); // 409 retry + network-error lookup
   const text = await res.text();
   let body: Record<string, unknown> = {};
   try {

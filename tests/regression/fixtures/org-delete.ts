@@ -6,7 +6,7 @@ import type { LedgerEntry } from "./ledger";
 import { RUN_PASSWORD_ENV, TEST_ORG } from "../env";
 import type { RunState } from "./run-state";
 import { apiSignIn, apiUrl } from "../../e2e/helpers";
-import { setProjectStatus } from "../../e2e/db-helpers";
+import { rgrSetProjectStatus } from "../../e2e/db-helpers";
 
 const ORG_API_PATH: Record<"project" | "inventoryItem" | "externalCompany", string> = {
   project: "projects",
@@ -138,7 +138,7 @@ export class OrgSessions {
     let r = await g.delete(url);
     if (r.status() === 409 && e.kind === "project") {
       // DELETE is DRAFT-only: put the (rgr-, in-scope, just 409'd by the org-scoped route) project back to DRAFT.
-      await setProjectStatus(e.id, "DRAFT");
+      await rgrSetProjectStatus(e.id, "DRAFT");
       r = await g.delete(url);
     }
     const s = r.status();

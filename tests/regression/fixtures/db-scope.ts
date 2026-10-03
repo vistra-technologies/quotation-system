@@ -21,3 +21,30 @@ export function assertDeletableInquiry(row: { name: string } | null): boolean {
   if (!row.name.startsWith("rgr-")) throw new Error(`regressionDelete refused: "${row.name}" is not an rgr- row`);
   return true;
 }
+
+/**
+ * Regression-suite variants of the legacy id-addressed write ops (the legacy ops stay unscoped for the
+ * older acme-glass e2e specs). `rgr:<op>` resolves the row named by `idKey` to its org and runs
+ * assertOrgInScope on that org's slug BEFORE the base op writes anything.
+ */
+export const SCOPED_OPS: Record<string, { base: string; model: "project" | "partition"; idKey: "projectId" | "partitionId" }> = {
+  "rgr:setProjectStatus": { base: "setProjectStatus", model: "project", idKey: "projectId" },
+  "rgr:setDesignSubmittedAt": { base: "setDesignSubmittedAt", model: "project", idKey: "projectId" },
+  "rgr:insertCalculation": { base: "insertCalculation", model: "project", idKey: "projectId" },
+  "rgr:seedV1Design": { base: "seedV1Design", model: "partition", idKey: "partitionId" },
+};
+
+/** The scoped-op descriptor for `op`, or null for an unscoped op. Throws on an unknown `rgr:` op. */
+export function scopedOp(op: string): (typeof SCOPED_OPS)[string] | null {
+  if (!op.startsWith("rgr:")) return null;
+  const s = SCOPED_OPS[op];
+  if (!s) throw new Error(`regression DB op refused: unknown scoped op "${op}"`);
+  return s;
+}
+
+/** Scope check for a scoped op: the row must exist and belong to the Test Org or an rgr- org. */
+export function assertRowInScope(op: string, id: unknown, orgSlug: string | null | undefined): void {
+  if (typeof id !== "string" || !id) throw new Error(`regression DB op refused: ${op} needs a row id`);
+  if (orgSlug == null) throw new Error(`regression DB op refused: ${op} row ${id} not found`);
+  assertOrgInScope(orgSlug);
+}

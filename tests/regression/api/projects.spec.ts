@@ -7,7 +7,7 @@
  * their company's projects. DRAFT-only: PATCH, DELETE, reset, recompute, config-update GET/POST.
  *
  * Test-Org projects come from `f.project` / `f.wall` or `createLedgered` (ledgered kind `project`; the
- * DRAFT-only DELETE is how teardown removes them, so every setProjectStatus is reverted in a finally).
+ * DRAFT-only DELETE is how teardown removes them, so every rgrSetProjectStatus is reverted in a finally).
  * Org-B projects (foreign-id probes) go with org B at teardown.
  */
 import type { APIResponse } from "@playwright/test";
@@ -33,7 +33,7 @@ import {
   readConfigSnapshot,
   readCalculation,
   readProjectState,
-  setProjectStatus,
+  rgrSetProjectStatus,
 } from "../../e2e/db-helpers";
 
 covers("GET /api/v1/orgs/[orgSlug]/projects");
@@ -221,12 +221,12 @@ test.describe("projects: create / read / patch / list", () => {
       expect(await r.json()).toEqual({ error });
     }
     try {
-      await setProjectStatus(id!, "SUBMITTED");
+      await rgrSetProjectStatus(id!, "SUBMITTED");
       const r = await as.admin.patch(url(`/projects/${id}`), { data: { name: `${renamed}-x` } });
       expect(r.status()).toBe(409);
       expect(await r.json()).toEqual({ error: "This project cannot be edited — only DRAFT projects are editable." });
     } finally {
-      await setProjectStatus(id!, "DRAFT");
+      await rgrSetProjectStatus(id!, "DRAFT");
     }
     expect((await json<{ project: Project }>(await as.admin.get(url(`/projects/${id}`)))).project.name).toBe(renamed);
   });
@@ -283,7 +283,7 @@ test.describe("projects: create / read / patch / list", () => {
       expect((body.project as Project).status).toBe("rgr-NOT-A-STATUS");
       expect((await as.admin.delete(url(`/projects/${id}`))).status()).toBe(409); // not DRAFT → undeletable via API
     } finally {
-      if (id) await setProjectStatus(id, "DRAFT"); // teardown deletes through the DRAFT-only route
+      if (id) await rgrSetProjectStatus(id, "DRAFT"); // teardown deletes through the DRAFT-only route
     }
   });
 
@@ -397,7 +397,7 @@ test.describe("projects: submit design / calculation / recompute", () => {
   test("DRAFT-only gates: a SUBMITTED project → 409 on recompute, PATCH, DELETE, reset, config-update GET/POST", async ({ as, f, url }) => {
     const w = await submitted(f, as.admin, url);
     try {
-      await setProjectStatus(w.projectId, "SUBMITTED");
+      await rgrSetProjectStatus(w.projectId, "SUBMITTED");
       const cases: Array<[string, () => Promise<APIResponse>, string]> = [
         ["recompute", () => as.admin.post(url(`/projects/${w.projectId}/recompute`)), "Only a DRAFT project can be recomputed."],
         ["PATCH", () => as.admin.patch(url(`/projects/${w.projectId}`), { data: { currency: "USD" } }), "This project cannot be edited — only DRAFT projects are editable."],
@@ -415,7 +415,7 @@ test.describe("projects: submit design / calculation / recompute", () => {
       expect(await readProjectState(w.projectId)).toMatchObject({ designSubmittedAt: expect.any(String), calcCount: 1 });
       expect((await as.admin.get(url(`/projects/${w.projectId}/calculation`))).status()).toBe(200);
     } finally {
-      await setProjectStatus(w.projectId, "DRAFT");
+      await rgrSetProjectStatus(w.projectId, "DRAFT");
     }
   });
 
@@ -423,14 +423,14 @@ test.describe("projects: submit design / calculation / recompute", () => {
     const w = await submitted(f, as.admin, url);
     const c0 = (await readCalculation(w.projectId))!.computedAt;
     try {
-      await setProjectStatus(w.projectId, "SUBMITTED");
+      await rgrSetProjectStatus(w.projectId, "SUBMITTED");
       // KNOWN BUG — submitDesign() never checks Project.status, unlike recompute/reset/PATCH/DELETE (all
       // DRAFT-only, 409). When fixed, change this expectation to 409 and assert computedAt is unchanged.
       const r = await as.admin.post(url(`/projects/${w.projectId}/submit-design`));
       expect(r.status(), await r.text()).toBe(200);
       expect(Date.parse((await readCalculation(w.projectId))!.computedAt)).toBeGreaterThan(Date.parse(c0));
     } finally {
-      await setProjectStatus(w.projectId, "DRAFT");
+      await rgrSetProjectStatus(w.projectId, "DRAFT");
     }
   });
 

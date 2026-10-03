@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry } from "../regression/fixtures/db-scope";
+import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry, scopedOp, assertRowInScope, SCOPED_OPS } from "../regression/fixtures/db-scope";
 
 test("assertOrgInScope accepts only the Test Org and rgr- orgs", () => {
   for (const ok of ["e2e-testorg", "rgr-x-b", "rgr-abc"]) assert.doesNotThrow(() => assertOrgInScope(ok));
@@ -19,4 +19,22 @@ test("assertDeletableInquiry: null → false, rgr- → true, anything else throw
   assert.equal(assertDeletableInquiry({ name: "rgr-inq-1" }), true);
   assert.throws(() => assertDeletableInquiry({ name: "Real customer inquiry" }), /refused/);
   assert.throws(() => assertDeletableInquiry({ name: "" }), /refused/);
+});
+
+test("scopedOp maps rgr: ops to their base op and rejects unknown rgr: ops; legacy ops are unscoped", () => {
+  assert.deepEqual(scopedOp("rgr:setProjectStatus"), { base: "setProjectStatus", model: "project", idKey: "projectId" });
+  assert.deepEqual(scopedOp("rgr:seedV1Design"), { base: "seedV1Design", model: "partition", idKey: "partitionId" });
+  assert.deepEqual(Object.values(SCOPED_OPS).map((s) => s.base).sort(), ["insertCalculation", "seedV1Design", "setDesignSubmittedAt", "setProjectStatus"]);
+  assert.equal(scopedOp("setProjectStatus"), null);
+  assert.throws(() => scopedOp("rgr:dropEverything"), /refused/);
+});
+
+test("assertRowInScope: the row must exist and live in the Test Org or an rgr- org", () => {
+  assert.doesNotThrow(() => assertRowInScope("rgr:setProjectStatus", "p1", "e2e-testorg"));
+  assert.doesNotThrow(() => assertRowInScope("rgr:seedV1Design", "x", "rgr-abc-b"));
+  assert.throws(() => assertRowInScope("rgr:setProjectStatus", "p1", "cloisons"), /refused/);
+  assert.throws(() => assertRowInScope("rgr:setProjectStatus", "p1", "acme-glass"), /refused/);
+  assert.throws(() => assertRowInScope("rgr:setProjectStatus", "p1", null), /not found/);
+  assert.throws(() => assertRowInScope("rgr:setProjectStatus", "", "e2e-testorg"), /needs a row id/);
+  assert.throws(() => assertRowInScope("rgr:setProjectStatus", 5, "e2e-testorg"), /needs a row id/);
 });

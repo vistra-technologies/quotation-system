@@ -24,7 +24,7 @@
  */
 import dotenv from "dotenv";
 import type { Prisma } from "../app/generated/prisma/client";
-import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry } from "../tests/regression/fixtures/db-scope";
+import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry, scopedOp, assertRowInScope } from "../tests/regression/fixtures/db-scope";
 
 // Same precedence as Next: real env > .env.local > .env (dotenv never overrides an already-set var).
 dotenv.config({ path: ".env.local", quiet: true });
@@ -49,7 +49,7 @@ async function readStdin(): Promise<string> {
 }
 
 async function main() {
-  const op = process.argv[2];
+  let op = process.argv[2];
   const url = process.env.DATABASE_URL ?? "";
   const endpoint = url ? endpointOf(url) : null;
   if (endpoint !== ALLOWED_ENDPOINT) {
@@ -68,6 +68,15 @@ async function main() {
   const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: url }) });
 
   try {
+    // Regression-suite scoped variants: refuse unless the target row is in the Test Org / an rgr- org.
+    const scoped = scopedOp(op);
+    if (scoped) {
+      const id = input[scoped.idKey];
+      const where = { where: { id: typeof id === "string" ? id : "" }, select: { organization: { select: { slug: true } } } };
+      const row = scoped.model === "project" ? await db.project.findUnique(where) : await db.partition.findUnique(where);
+      assertRowInScope(op, id, row?.organization.slug);
+      op = scoped.base;
+    }
     switch (op) {
       case "seedV1Design": {
         const { partitionId, design } = input as { partitionId: string; design: Record<string, unknown> };

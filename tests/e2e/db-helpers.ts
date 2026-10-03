@@ -211,6 +211,21 @@ export async function purgeE2eSuperAdminAudit(): Promise<number> {
  * owns a short-lived child process (and its own Prisma client) rather than a shared long-lived
  * connection, so there is nothing left open here to close.
  */
+// ── Regression suite: the same writes, refused unless the row is in the Test Org / an rgr- org ────────
+
+export async function rgrSeedV1Design(partitionId: string, design: Record<string, unknown>): Promise<void> {
+  runDbOp("rgr:seedV1Design", { partitionId, design });
+}
+export async function rgrInsertCalculation(projectId: string): Promise<void> {
+  runDbOp("rgr:insertCalculation", { projectId });
+}
+export async function rgrSetDesignSubmittedAt(projectId: string): Promise<void> {
+  runDbOp("rgr:setDesignSubmittedAt", { projectId });
+}
+export async function rgrSetProjectStatus(projectId: string, status: string): Promise<void> {
+  runDbOp("rgr:setProjectStatus", { projectId, status });
+}
+
 export async function closeTestDb(): Promise<void> {
   // no-op — see doc comment above.
 }
