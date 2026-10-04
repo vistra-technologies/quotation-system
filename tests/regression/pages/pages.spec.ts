@@ -311,7 +311,6 @@ test.describe("routing", () => {
   test("apex 404 guard: a non-root, non-/controls path on the apex host → 404 (subdomain hosts only)", async ({ browser, run }) => {
     if (!isSubdomain) {
       test.info().annotations.push({ type: "precondition", description: "path-mode target: the apex guard only exists on *.easeetool.com hosts (Task 3 mode log) — not exercised" });
-      expect(isSubdomain).toBe(false);
       return;
     }
     await withPage({ browser, run }, "admin", undefined, async (o) => {
@@ -326,7 +325,6 @@ test.describe("routing", () => {
   test("subdomain routing: /controls is apex-only — an org subdomain 404s it (even with an SA session)", async ({ browser, run, sa }) => {
     if (!isSubdomain) {
       test.info().annotations.push({ type: "precondition", description: "path-mode target: no org subdomains — not exercised" });
-      expect(isSubdomain).toBe(false);
       return;
     }
     for (const who of ["admin", "sa"] as const) {

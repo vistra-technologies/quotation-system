@@ -1,7 +1,7 @@
 /** Pure verdict + formatting logic for the regression reporter (no Playwright, no fs — unit-testable). */
 
 export type Outcome = "expected" | "unexpected" | "skipped" | "flaky";
-export interface Row { id: string; area: string; title: string; outcome: Outcome; error?: string }
+export interface Row { id: string; area: string; title: string; outcome: Outcome; error?: string; /** `precondition` annotations (I4) */ notExercised?: string[] }
 
 export interface SummaryInput {
   rows: Row[];
@@ -53,6 +53,13 @@ export function buildSummary(inp: SummaryInput): { text: string; pass: boolean; 
   }
   const flaky = rows.filter((r) => r.outcome === "flaky");
   if (flaky.length) lines.push("", `Flaky (passed on retry): ${flaky.map((f) => `[${f.area}] ${f.title}`).join("; ")}`);
+  // I4: what this target could not exercise — informational, never a failure, never hidden
+  const ne = new Map<string, number>();
+  for (const r of rows) for (const d of new Set(r.notExercised ?? [])) ne.set(d, (ne.get(d) ?? 0) + 1);
+  if (ne.size) {
+    lines.push("", "Not exercised on this target:");
+    for (const [d, n] of [...ne].sort()) lines.push(`  - ${d} (${n} test${n === 1 ? "" : "s"})`);
+  }
   if (inp.runStatus !== "passed" && !failed.length) problems.push(`Playwright run status "${inp.runStatus}"`);
 
   // --- cleanup ---
@@ -89,6 +96,9 @@ export function buildSummary(inp: SummaryInput): { text: string; pass: boolean; 
       `created / deleted   : ${created ?? UNKNOWN} / ${deleted ? deleted.length : UNKNOWN}`,
       `cleanup errors      : ${show("cleanupErrors", "none", (a) => a.map(String).join("; "))}`,
       `stray rgr- rows     : ${show("strays", "none", (a) => JSON.stringify(a))}`,
+      ...(isArr(c.straysRemoved) && isArr(c.strays) && c.strays.length
+        ? [`strays removed      : ${c.straysRemoved.length}${isArr(c.straysRemoveErrors) && c.straysRemoveErrors.length ? ` (could not remove: ${c.straysRemoveErrors.map(String).join("; ")})` : ""} — the run still FAILS: fix the registration bug`]
+        : []),
       `global reverts      : ${show("revertFailures", "all restored", (a) => a.map(String).join("; "))}`,
       `other-orgs diff     : ${show("delta", `clean (${orgs ?? UNKNOWN} orgs compared)`, (a) => "DELTA\n  " + a.map(String).join("\n  "))}`,
     );

@@ -29,9 +29,19 @@ const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object
 const isStrArr = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
 
 /** Playwright outcome -> report row. A flaky pass is a pass that is always listed. */
-export function toRow(r: { id: string; area: string; title: string; outcome: Outcome; durationMs: number; error?: string; trace?: string; screenshot?: string }): ResultRow {
+export function toRow(r: { id: string; area: string; title: string; outcome: Outcome; durationMs: number; error?: string; trace?: string; screenshot?: string; notExercised?: string[] }): ResultRow {
   const status = r.outcome === "unexpected" ? "failed" : r.outcome === "skipped" ? "skipped" : "passed";
-  return { id: r.id, area: r.area, title: r.title, status, durationMs: r.durationMs, flaky: r.outcome === "flaky", error: r.error, trace: r.trace, screenshot: r.screenshot };
+  return {
+    id: r.id, area: r.area, title: r.title, status, durationMs: r.durationMs, flaky: r.outcome === "flaky", error: r.error, trace: r.trace, screenshot: r.screenshot,
+    ...(r.notExercised?.length ? { notExercised: r.notExercised } : {}),
+  };
+}
+
+/** I4: distinct `precondition` descriptions across all rows, each with the number of tests that reported it. */
+export function collectNotExercised(rows: Array<{ notExercised?: string[] }>): Array<{ description: string; tests: number }> {
+  const m = new Map<string, number>();
+  for (const r of rows) for (const d of new Set(r.notExercised ?? [])) m.set(d, (m.get(d) ?? 0) + 1);
+  return [...m].sort(([a], [b]) => a.localeCompare(b)).map(([description, tests]) => ({ description, tests }));
 }
 
 /** The `--last-failed` re-run only contains the first pass's failures: fold it back into the full picture. */
@@ -85,7 +95,7 @@ export function assembleReportData(i: AssembleInput): ReportData {
   const areaMap = new Map<string, ReportTest[]>();
   for (const row of rows) {
     const { area } = row;
-    const t: ReportTest = { title: row.title, status: row.status, durationMs: row.durationMs, flaky: row.flaky, error: row.error, trace: row.trace, screenshot: row.screenshot };
+    const t: ReportTest = { title: row.title, status: row.status, durationMs: row.durationMs, flaky: row.flaky, error: row.error, trace: row.trace, screenshot: row.screenshot, ...(row.notExercised ? { notExercised: row.notExercised } : {}) };
     if (!areaMap.has(area)) areaMap.set(area, []);
     areaMap.get(area)!.push(t);
   }
@@ -129,6 +139,7 @@ export function assembleReportData(i: AssembleInput): ReportData {
       cleanupFailed: !cleanupOk ? undefined : cj!.cleanupFailed === true || !teardownOk,
     },
     notProduced: notProduced.length ? notProduced : undefined,
+    notExercised: collectNotExercised(rows),
   };
   // cleanup.json fine but last-teardown.json missing/foreign/failed -> cleanupFailed already true above.
   const safe = deepRedact(base, i.secrets ?? []);

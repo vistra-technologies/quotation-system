@@ -84,6 +84,10 @@ export function renderReport(d: ReportData): string {
   const flakyBlock = flakyL.length
     ? `<h2>Flaky (${flakyL.length})</h2><div class="card"><ul class="l">${flakyL.map((x) => `<li><span class="pill s">flaky*</span> &nbsp;<b>${esc(x.area)}</b> › ${esc(x.t.title)}</li>`).join("")}</ul></div>`
     : "";
+  const ne = d.notExercised ?? [];
+  const neBlock = ne.length
+    ? `<h2>Not exercised on this target (${ne.length})</h2><div class="card"><ul class="l">${ne.map((x) => `<li><span class="pill s">n/a</span> &nbsp;${esc(x.description)} <span style="color:var(--muted)">(${x.tests} test${x.tests === 1 ? "" : "s"})</span></li>`).join("")}</ul></div>`
+    : "";
   const areasJson = scriptJson(
     d.areas.map((a) => ({ name: a.name, tests: a.tests.map((t) => ({ title: t.title, status: t.status, dur: t.durationMs / 1000, flaky: t.flaky, err: t.error })) })),
   );
@@ -121,6 +125,7 @@ ${REPORT_CSS}</style>
   ${failBlock}
   ${gapBlock}
   ${flakyBlock}
+  ${neBlock}
 
   <h2>Results by area</h2>
   <div class="tools">

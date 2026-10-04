@@ -10,6 +10,8 @@ export interface ReportTest {
   /** Path relative to the report file (into Playwright's test-results/); never absolute, never a URL. */
   trace?: string;
   screenshot?: string;
+  /** `precondition` annotations: what this test could NOT exercise on this target (final review I4). */
+  notExercised?: string[];
 }
 export type Section = "results" | "cleanup" | "unit" | "coverage";
 
@@ -38,6 +40,8 @@ export interface ReportData {
     /** teardown's own verdict (cleanup.json / last-teardown.json); optional so a bare fixture stays valid. */
     cleanupFailed?: boolean;
   };
+  /** Behaviour NOT exercised on this target (`precondition` annotations), with how many tests reported each. Informational. */
+  notExercised?: Array<{ description: string; tests: number }>;
   /** Sources a crashed stage never produced; each renders "not produced — see console" and forces FAIL. */
   notProduced?: Section[];
 }

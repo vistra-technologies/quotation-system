@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { verdictOf, type ReportData } from "../regression/report/report-data";
 import { renderReport } from "../regression/report/render-html";
-import { parseUnitCounts, mergeResults, toRow, assembleReportData, type ResultsFile } from "../regression/report/assemble";
+import { parseUnitCounts, mergeResults, toRow, assembleReportData, collectNotExercised, type ResultsFile } from "../regression/report/assemble";
 
 const clean = (): Omit<ReportData, "verdict"> => ({
   runId: "r1", startedAt: "2026-10-02T13:00:00Z", durationMs: 372_000, target: "https://test.easeetool.com", commit: "abc1234",
@@ -149,4 +149,21 @@ test("assembleReportData: teardown problems fail the run", () => {
   assert.equal(assembleReportData({ ...src, teardown: null }).verdict, "FAIL");
   assert.equal(assembleReportData({ ...src, teardown: { runId: "other", cleanupFailed: false } }).verdict, "FAIL");
   assert.equal(assembleReportData({ ...src, teardown: { runId: "r1", cleanupFailed: true } }).verdict, "FAIL");
+});
+
+test("I4: precondition annotations are collected per description (tests counted once each) and rendered, without failing the run", () => {
+  const rows = [
+    toRow({ id: "1", area: "a", title: "t1", outcome: "expected", durationMs: 1, notExercised: ["no org subdomains", "no org subdomains"] }),
+    toRow({ id: "2", area: "a", title: "t2", outcome: "expected", durationMs: 1, notExercised: ["no org subdomains", "apex guard"] }),
+    toRow({ id: "3", area: "a", title: "t3", outcome: "expected", durationMs: 1 }),
+  ];
+  assert.equal("notExercised" in rows[2], false);
+  const ne = collectNotExercised(rows);
+  assert.deepEqual(ne, [{ description: "apex guard", tests: 1 }, { description: "no org subdomains", tests: 2 }]);
+  const d = { ...clean(), notExercised: ne };
+  assert.equal(verdictOf(d), "PASS");
+  const html = renderReport({ ...d, verdict: "PASS" });
+  assert.match(html, /Not exercised on this target \(2\)/);
+  assert.match(html, /no org subdomains <span[^>]*>\(2 tests\)/);
+  assert.doesNotMatch(renderReport({ ...clean(), verdict: "PASS" }), /Not exercised/);
 });

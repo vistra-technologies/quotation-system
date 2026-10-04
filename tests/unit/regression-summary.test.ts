@@ -60,3 +60,10 @@ test("cleanup.json or last-teardown.json from a different run -> FAIL", () => {
 test("non-passed run status with no test failures still fails", () => {
   assert.equal(buildSummary({ ...base, runStatus: "interrupted" }).pass, false);
 });
+
+test("I4: the console summary lists what was not exercised on this target (informational, still PASS)", () => {
+  const s = buildSummary({ ...base, rows: [{ ...row("1", "expected"), notExercised: ["path-mode target: no org subdomains"] }, { ...row("2", "expected"), notExercised: ["path-mode target: no org subdomains"] }] });
+  assert.equal(s.pass, true);
+  assert.match(s.text, /Not exercised on this target:\n  - path-mode target: no org subdomains \(2 tests\)/);
+  assert.doesNotMatch(buildSummary(base).text, /Not exercised/);
+});

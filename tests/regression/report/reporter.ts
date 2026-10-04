@@ -32,12 +32,15 @@ export default class RegressionReporter implements Reporter {
     const describes: string[] = [];
     for (let s: Suite | undefined = t.parent; s && s.type === "describe"; s = s.parent) describes.unshift(s.title);
     const title = [...describes, t.title].join(" › ");
+    // I4: `precondition` annotations = behaviour this target could not exercise (runtime ones live on the result)
+    const notExercised = [...new Set([...t.annotations, ...(r.annotations ?? [])].filter((a) => a.type === "precondition").map((a) => a.description ?? "(no description)"))];
     this.rows.set(t.id, {
       id: t.id,
       area,
       title,
       outcome: t.outcome(),
       error: redact(stripAnsi(r.errors[0]?.message ?? "").split("\n")[0], secretsFromEnv()) || undefined,
+      ...(notExercised.length ? { notExercised } : {}),
     });
     const runId = process.env[RUN_ID_ENV];
     const runDir = path.join(RUN_DIR, runId ?? "unknown");
@@ -49,6 +52,7 @@ export default class RegressionReporter implements Reporter {
         error: r.errors.length ? redact(stripAnsi(r.errors.map((e) => e.message ?? e.value ?? "").join("\n\n")), secretsFromEnv()).slice(0, 4000) : undefined,
         trace: rel(runDir, att("trace")),
         screenshot: rel(runDir, att("screenshot")),
+        notExercised,
       }),
     );
   }
