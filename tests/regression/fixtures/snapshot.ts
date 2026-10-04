@@ -38,6 +38,18 @@ export interface Snapshot {
   };
 }
 
+/**
+ * M-a: a run that CREATES the Test Org took its baseline before the org existed, so teardown's shared-config check
+ * would always report "not in the baseline". Fold the freshly created org's fingerprint into the baseline — only when
+ * the baseline lacks it (an existing baseline entry is never overwritten).
+ */
+export function withOrgBaseline(baseline: Snapshot, fresh: Snapshot, slug: string): Snapshot {
+  if (baseline.orgs[slug]) return baseline;
+  const f = fresh.orgs[slug];
+  if (!f) throw new Error(`baseline: org "${slug}" is in neither the baseline nor the fresh snapshot`);
+  return { ...baseline, orgs: { ...baseline.orgs, [slug]: f } };
+}
+
 /** " — added [..] removed [..] changed [..]" (ids, at most 10 each) when both sides carry per-row versions, else "". */
 export function changedRows(before: Record<string, string> | undefined, after: Record<string, string> | undefined): string {
   if (!before || !after) return "";

@@ -4,6 +4,7 @@ import { chromium } from "@playwright/test";
 import { requireEnv, TEST_ORG, RUN_DIR, LEDGER_FILE, LOCK_FILE, RUN_PASSWORD_ENV, RUN_ID_ENV } from "./env";
 import { acquireRunLock, releaseRunLock } from "./fixtures/run-lock";
 import { assertSameTarget } from "./fixtures/target-identity";
+import { withOrgBaseline } from "./fixtures/snapshot";
 import { Ledger } from "./fixtures/ledger";
 import { SaClient, Guarded, createAllowance } from "./fixtures/clients";
 import { clearRunState, writeRunState, type Role, type RunState } from "./fixtures/run-state";
@@ -54,11 +55,14 @@ async function setup(env: ReturnType<typeof requireEnv>, runId: string) {
   const listOrgs = () => recoveryCleaner.listOrgs();
 
   // C1: the API target must run on the dev DB the suite checks directly — proven BEFORE recovery or any mutation.
-  const apiOrgs = await listOrgs();
+  // M-b: the Test Org must already exist (its id is the proof) unless this is an explicit create-the-Test-Org run.
+  const createTestOrg = process.env.RGR_CREATE_TEST_ORG === "1";
+  let apiOrgs: Awaited<ReturnType<typeof listOrgs>>;
   try {
-    assertSameTarget(apiOrgs, (await regressionSnapshot()).orgs);
+    apiOrgs = await listOrgs();
+    assertSameTarget(apiOrgs, (await regressionSnapshot()).orgs, { requireTestOrg: !createTestOrg });
   } catch (err) {
-    await sa.dispose();
+    await sa.dispose(); // M-d: also when listOrgs() itself throws
     throw err;
   }
   console.log(`[regression] target identity: ${new URL(env.baseURL).host} serves the dev DB (${apiOrgs.length} org ids match)`);
@@ -93,7 +97,7 @@ async function setup(env: ReturnType<typeof requireEnv>, runId: string) {
   }
 
   // 1. Baseline snapshot BEFORE we touch anything (the final diff proves non-interference).
-  const baseline = await regressionSnapshot();
+  let baseline = await regressionSnapshot();
 
   // 2. Test Org: must exist; create via SA if missing (needs TEST_ADMIN_PASSWORD — Ruling R1).
   const fsId = await getSeededFormulaSetId(sa.ctx, sa.token);
@@ -103,8 +107,13 @@ async function setup(env: ReturnType<typeof requireEnv>, runId: string) {
     }
     const r = await sa.post("/api/v1/superadmin/orgs", { data: { name: "E2E Test Org", slug: TEST_ORG, adminPassword: env.adminPass, formulaSetId: fsId } });
     if (r.status() !== 201) throw new Error(`could not create Test Org: HTTP ${r.status()} ${await r.text()}`);
-    testOrg = (await listOrgs()).find((o) => o.slug === TEST_ORG)!;
+    const apiNow = await listOrgs();
+    const fresh = await regressionSnapshot();
+    // M-b: the org just created must be THE dev DB's row — proven before anything else is touched
+    assertSameTarget(apiNow, fresh.orgs, { requireTestOrg: true });
+    testOrg = apiNow.find((o) => o.slug === TEST_ORG)!;
     allowance.ids.add(testOrg.id);
+    baseline = withOrgBaseline(baseline, fresh, TEST_ORG); // M-a: teardown compares the Test Org's shared config to this
   }
 
   // 3. Prerequisites — the suite does NOT repair Test Org configuration; it fails loudly with the exact gap.

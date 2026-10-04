@@ -165,3 +165,16 @@ test("a delta on another org's rows names the changed row ids", () => {
   const after = snap({ cloisons: fp({ rowsHash: { project: "p2", user: "u1" }, rows: { project: { p1: "t2", p2: "t1" } } }) });
   assert.deepEqual(diffSnapshots(before, after, ignoreTest), ['org "cloisons": project rows modified — changed [p1]']);
 });
+
+test("M-a: withOrgBaseline folds a freshly created Test Org into a baseline that lacks it, never overwrites an existing entry", async () => {
+  const { withOrgBaseline } = await import("../regression/fixtures/snapshot");
+  const before = snap({ cloisons: fp() });
+  const fresh = snap({ cloisons: fp({ counts: { user: 9 } }), "e2e-testorg": fp({ sharedConfig: shared() }) });
+  const b2 = withOrgBaseline(before, fresh, "e2e-testorg");
+  assert.deepEqual(b2.orgs["e2e-testorg"], fresh.orgs["e2e-testorg"]);
+  assert.deepEqual(b2.orgs.cloisons, before.orgs.cloisons, "other orgs keep their ORIGINAL baseline");
+  assert.deepEqual(diffSharedConfig("e2e-testorg", b2.orgs["e2e-testorg"], fresh.orgs["e2e-testorg"]), []);
+  const existing = snap({ "e2e-testorg": fp({ sharedConfig: shared({ roles: "old" }) }) });
+  assert.equal(withOrgBaseline(existing, fresh, "e2e-testorg"), existing);
+  assert.throws(() => withOrgBaseline(before, snap({}), "e2e-testorg"), /neither/);
+});
