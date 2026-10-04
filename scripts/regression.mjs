@@ -11,6 +11,9 @@ const BASE = path.join(ROOT, ".engineering", "regression");
 const STATUS_FILE = path.join(BASE, "last-teardown.json"); // written by global-teardown
 const LATEST_RUN_FILE = path.join(BASE, "latest-run.json"); // written by the reporter; survives teardown (run.json does not)
 const UNIT_FILE = path.join(BASE, "unit.txt"); // captured node:test summary, parsed by the report
+// M6: both passes share ONE last-run file outside the per-pass output dirs, so --last-failed still finds the first
+// pass's failures although the re-run writes its traces to a different outputDir.
+const LAST_RUN = path.join(BASE, "last-run.json");
 
 const run = (label, cmd, args, env = process.env) => {
   console.log(`\n=== ${label} ===`);
@@ -51,14 +54,20 @@ process.stderr.write(unit.stderr ?? "");
 fs.writeFileSync(UNIT_FILE, ((unit.stdout ?? "") + (unit.stderr ?? "")).replace(/\u001b\[[0-9;]*m/g, ""));
 failed += (unit.status ?? 1) ? 1 : 0;
 
-let r = pass("regression (parallel)");
+fs.rmSync(LAST_RUN, { force: true });
+let r = pass("regression (parallel)", [], { ...process.env, RGR_OUTPUT_DIR: "test-results/regression", PLAYWRIGHT_LAST_RUN_OUTPUT_FILE: LAST_RUN });
 if (r.cleanupFailed) {
   console.log(`\n=== CLEANUP FAILED — not retrying (${r.reason}) ===`);
 } else if (r.testsFailed) {
   const firstRunId = r.runId;
   console.log("\n=== re-running failed tests once at --workers=1 (sign-in rate limit is a known flake source) ===");
   // RGR_MERGE_FROM: the reporter folds this re-run's results into the first pass's, marking recovered tests flaky.
-  r = pass("regression (failed only)", ["--last-failed", "--workers=1"], { ...process.env, ...(firstRunId ? { RGR_MERGE_FROM: firstRunId } : {}) });
+  r = pass("regression (failed only)", ["--last-failed", "--workers=1"], {
+    ...process.env,
+    RGR_OUTPUT_DIR: "test-results/regression-rerun", // M6: keep the first pass's traces (the report links to both)
+    PLAYWRIGHT_LAST_RUN_OUTPUT_FILE: LAST_RUN,
+    ...(firstRunId ? { RGR_MERGE_FROM: firstRunId } : {}),
+  });
   if (r.cleanupFailed) console.log(`\n=== CLEANUP FAILED on the re-run (${r.reason}) ===`);
 }
 failed += r.testsFailed || r.cleanupFailed ? 1 : 0;

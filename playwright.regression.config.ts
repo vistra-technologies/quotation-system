@@ -7,13 +7,24 @@ dotenv({ path: ".env.playwright.local", quiet: true });
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "";
 const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
 
+/** M8: RGR_WORKERS must be a small positive integer — a typo must not silently become NaN / one huge pool. */
+function workers(v = process.env.RGR_WORKERS): number {
+  if (v === undefined || v === "") return 3;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1 || n > 8) throw new Error(`RGR_WORKERS must be an integer 1-8, got "${v}"`);
+  return n;
+}
+
 export default defineConfig({
   testDir: "./tests/regression",
   testMatch: /.*\.spec\.ts/,
   globalSetup: "./tests/regression/global-setup.ts",
   globalTeardown: "./tests/regression/global-teardown.ts",
   fullyParallel: false, // files run in parallel (workers), tests inside a file stay ordered
-  workers: Number(process.env.RGR_WORKERS ?? 3),
+  workers: workers(),
+  // M6: each orchestrator pass gets its own output dir (Playwright empties outputDir at start), so the --last-failed
+  // re-run cannot delete the first pass's traces/screenshots that the report links to
+  outputDir: process.env.RGR_OUTPUT_DIR || "test-results/regression",
   retries: 0, // flake policy: the orchestrator re-runs failures once at --workers=1
   timeout: 90_000,
   reporter: [["list"], ["./tests/regression/report/reporter.ts"]],

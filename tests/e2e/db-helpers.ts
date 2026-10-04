@@ -50,12 +50,12 @@ function runDbOp<T>(op: string, args: Record<string, unknown> = {}): T {
     cwd: REPO_ROOT,
   });
   if (result.error) {
-    throw new Error(`stage22 DB test helper (${op}): failed to spawn tsx child process: ${result.error.message}`);
+    throw new Error(`regression/e2e DB test helper (${op}): failed to spawn tsx child process: ${result.error.message}`);
   }
   const stdout = (result.stdout ?? "").trim();
   if (!stdout) {
     throw new Error(
-      `stage22 DB test helper (${op}): child process produced no output (exit ${result.status}). ` +
+      `regression/e2e DB test helper (${op}): child process produced no output (exit ${result.status}). ` +
         `stderr: ${(result.stderr ?? "").trim()}`,
     );
   }
@@ -63,10 +63,10 @@ function runDbOp<T>(op: string, args: Record<string, unknown> = {}): T {
   try {
     parsed = JSON.parse(stdout) as { ok: boolean; data?: T; error?: string };
   } catch {
-    throw new Error(`stage22 DB test helper (${op}): could not parse child output as JSON: ${stdout}`);
+    throw new Error(`regression/e2e DB test helper (${op}): could not parse child output as JSON: ${stdout}`);
   }
   if (!parsed.ok) {
-    throw new Error(`stage22 DB test helper (${op}): ${parsed.error}`);
+    throw new Error(`regression/e2e DB test helper (${op}): ${parsed.error}`);
   }
   return parsed.data as T;
 }

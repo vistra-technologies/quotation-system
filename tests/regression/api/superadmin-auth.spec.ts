@@ -20,7 +20,8 @@ import { Guarded, createAllowance } from "../fixtures/clients";
 import type { RunState } from "../fixtures/run-state";
 import { apiUrl, isSubdomain } from "../../e2e/helpers";
 import { orgApi } from "./project-helpers";
-import { test, expect, SA, GHOST, SA_USER, cookie, rawContext, saLogin, expectStatus, json } from "./sa-helpers";
+import { test, expect, SA, GHOST, SA_USER, cookie, rawContext, saLogin, expectStatus, json, postAdmin, tag } from "./sa-helpers";
+import { generateRunPassword } from "../fixtures/cleanup-rules";
 
 covers("POST /api/v1/superadmin/login");
 covers("POST /api/v1/superadmin/logout");
@@ -89,12 +90,12 @@ async function orgSessionToken(ctx: Guarded): Promise<string> {
   return c.value;
 }
 
+/** I4: a `precondition` annotation = NOT exercised on this target; the report lists them under "Not exercised on this target". */
 function subdomainNote(run: RunState): void {
+  if (run.saSubdomainProbe) return; // asserted below — nothing to report
   test.info().annotations.push({
     type: "precondition",
-    description: run.saSubdomainProbe
-      ? "SA cookie on an org subdomain host: ASSERTED (target serves org subdomains — verified in global setup)"
-      : "SA cookie on an org subdomain host: NOT APPLICABLE — path-mode target without org subdomains (global setup logged this mode); the other three rejections are asserted",
+    description: "SA cookie on an org subdomain host: NOT exercised — path-mode target without org subdomains (global setup logged this mode); the other rejections are asserted",
   });
 }
 
@@ -139,11 +140,8 @@ test.describe("SuperAdmin auth gate: every SA route rejects everything but a val
       const sub = await anon.get(apiUrl(run.testOrg.slug, `${SA}/ping`), { headers: cookie(sa.token) });
       expect(sub.status()).toBe(401);
       expect(await sub.json()).toEqual({ error: "Unauthorized" });
-    } else {
-      // path mode: this only re-checks that the target is not a subdomain-capable host (consistent with setup's
-      // mode); it does NOT exercise the subdomain rejection — that case is reported as an annotation instead
-      expect(isSubdomain).toBe(false);
     }
+    // path mode: the subdomain rejection is not exercised — reported via the precondition annotation (subdomainNote)
   });
 
   test("GET /superadmin/orgs/[orgId] does not exist (405) — the org detail is only reachable via PATCH/DELETE", async ({ sa, run }) => {
@@ -168,10 +166,15 @@ test.describe("POST /api/v1/superadmin/login", () => {
     }
   });
 
-  test("401 'Invalid credentials' — identical for a wrong password and an unknown username (no enumeration), no cookie set", async ({ playwright, baseURL, run }) => {
+  test("401 'Invalid credentials' — identical for a wrong password and an unknown username (no enumeration), no cookie set", async ({ playwright, baseURL, run, sa, ledger }) => {
+    // M4: the wrong-password probe targets a throwaway rgr- SuperAdmin (ledgered), never the tester account —
+    // failed logins against TEST_SA_USERNAME could trip a lockout / rate limit for the whole run
+    const username = `${run.prefix}authprobe-${tag()}`;
+    const created = await postAdmin(sa, ledger, username, generateRunPassword());
+    expect(created.status(), await created.text()).toBe(201);
     const ctx = await rawContext(playwright, baseURL);
     try {
-      const wrong = await saLogin(ctx, SA_USER(), `${run.prefix}not-the-password`);
+      const wrong = await saLogin(ctx, username, `${run.prefix}not-the-password`);
       const unknown = await saLogin(ctx, `${run.prefix}nosuchadmin`, `${run.prefix}not-the-password`);
       for (const r of [wrong, unknown]) {
         expect(r.status).toBe(401);

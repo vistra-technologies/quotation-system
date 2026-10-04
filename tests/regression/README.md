@@ -6,11 +6,12 @@ Live API + UI regression of every route and page, run against `test.easeetool.co
 - `npm run test:regression` — the official run: coverage map → unit tests → Playwright (failed tests re-run once at `--workers=1`; a cleanup failure is never retried) → report. Ends with `REGRESSION PASS`/`REGRESSION FAIL` and a matching exit code.
 - `npm run test:regression:coverage` — static check only: every API route/page has a `covers()`/`coversPage()` and no test points at one that no longer exists.
 - `npm run test:regression:report` — rebuild the HTML report (`.engineering/regression/latest/report.html`; add `-- --open`).
-- One spec: `npx playwright test -c playwright.regression.config.ts tests/regression/api/orders.spec.ts` (setup/teardown and cleanup still run). `RGR_WORKERS` sets the worker count (default 3).
+- One spec: `npx playwright test -c playwright.regression.config.ts tests/regression/api/orders.spec.ts` (setup/teardown and cleanup still run). `RGR_WORKERS` sets the worker count (integer 1–8, default 3).
+- The report also lists what the target could **not exercise** (`precondition` annotations, e.g. org-subdomain probes on a path-mode preview) — informational, not a failure.
 
-**Env:** `PLAYWRIGHT_BASE_URL` (only `test.easeetool.com`, `*.test.easeetool.com` or a non-production `*.vercel.app` preview; anything else is refused), `DATABASE_URL` (the **dev** Neon endpoint `ep-dark-term-ai0ufj4k` — the snapshot/sweep helper refuses others), `TEST_SA_USERNAME`, `TEST_SA_PASSWORD`. Optional: `TEST_ADMIN_PASSWORD` (only if the Test Org must be created), `VERCEL_AUTOMATION_BYPASS_SECRET`. Never commit values.
+**Env:** `PLAYWRIGHT_BASE_URL` (only `test.easeetool.com`, `*.test.easeetool.com`, `v-quote-test.vercel.app` or a branch alias `quotation-system-git-<branch>-vistra-indias-projects.vercel.app` other than master/main — per-deployment hash URLs are refused because production has them too), `DATABASE_URL` (the **dev** Neon endpoint `ep-dark-term-ai0ufj4k` — the DB helper refuses others; setup then refuses to start unless the API target's org ids equal the dev DB's), `TEST_SA_USERNAME`, `TEST_SA_PASSWORD`. **Strongly recommended:** `TEST_ADMIN_PASSWORD` (Test Org `admin`) — needed to create a missing Test Org, and the fallback session orphan recovery uses when a crashed run left no `rgr-…-admin` to reset. Optional: `VERCEL_AUTOMATION_BYPASS_SECRET`. Never commit values.
 
-**Never run two live runs at once** (two shells, two agents): teardown would see the other run's rows as drift, and parallel sign-ins hit the sign-in rate limit (429).
+**Never run two live runs at once** (two shells, two agents): teardown would see the other run's rows as drift, and parallel sign-ins hit the sign-in rate limit (429). Setup takes an exclusive lock (`.engineering/regression/run.lock`, pid inside; a dead pid's lock is taken over) and refuses a second run in the same checkout — runs from *different* checkouts/machines are not locked out. The dev DB is shared with previews and other people: any concurrent activity in another org shows up as a teardown **delta FAIL**, which names the changed row ids — check who else was active before suspecting the suite.
 
 ## Add a test for a new route or page
 1. Pick the spec file for the route's group (`api/<group>.spec.ts`) or add a row to `pages/page-table.ts`.
@@ -23,7 +24,10 @@ Live API + UI regression of every route and page, run against `test.easeetool.co
 ## Cleanup guarantees
 - Only the Test Org (`e2e-testorg`) and a throwaway org B (`rgr-<runId>-b`) are mutated; the `Guarded` clients throw `GuardError` *before sending* any mutation aimed elsewhere.
 - Every row is ledgered (`.engineering/regression/ledger.json`); teardown drains it, sweeps for unledgered `rgr-` rows (**strays** → FAIL) and diffs a snapshot of every other org (**delta** → FAIL). Global-state edits go through `withRecordedGlobalState`; failed reverts are reported.
-- A killed run is cleaned by the next run's orphan recovery (`recovered N orphans`). Rows younger than 2 h are skipped by design (they may belong to a live run); `RGR_RECOVER_MIN_AGE_MS=0` overrides that, only when you know no other run is active.
+- The Test Org's shared configuration (component types/configs/categories, roles + permissions, org row) must be back to its baseline **content** after teardown (updatedAt ignored); a change names the hash that moved.
+- Strays are reported (the run fails) and then this run's own are deleted; a stray custom role has no delete route and is report-only.
+- A killed run is cleaned by the next run's orphan recovery (`recovered N orphans`). Rows younger than 2 h are skipped by design (they may belong to a live run).
+- Test seams: `RGR_RECOVER_MIN_AGE_MS=0` lets recovery delete young orphans (only when you know no other run is active); `RGR_KILL_AFTER_SETUP=1` exits right after setup, leaving ledgered rows behind to prove recovery.
 
 ## Conventions and gotchas
 - A suspected product bug is a plain test titled `KNOWN BUG: …` (or `DECISION NEEDED: …`) that pins today's behaviour with `// KNOWN BUG — backlog <ref>; when fixed, expect <correct>`. Never `test.fail()`, never a loosened assertion.
