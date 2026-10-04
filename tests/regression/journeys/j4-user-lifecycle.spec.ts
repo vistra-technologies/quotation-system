@@ -198,7 +198,9 @@ test("J4: user lifecycle — create → sign in → role change → deactivate �
         await ap.getByRole("button", { name: "Delete", exact: true }).click();
         await expect.poll(async () => (await users()).some((u) => u.id === userId), { timeout: 20_000 }).toBe(false);
         ledger.remove(userId);
-        await expect(ap.getByText(username)).toHaveCount(0);
+        // the list re-renders after the server action's refresh, which under parallel load can take longer than the
+        // default 5 s (seen once in the final-review proof run: API already 404, row still listed at 5 s)
+        await expect(ap.getByText(username)).toHaveCount(0, { timeout: 20_000 });
         expect((await as.admin.get(T(c, `/users/${userId}`))).status()).toBe(404);
       });
 
