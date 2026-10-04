@@ -15,6 +15,7 @@
     "test:regression:coverage": "tsx tests/regression/coverage-map.ts",
     "test:regression:report": "tsx scripts/regression-report.mjs",
     "migrate:design-v2": "tsx prisma/migrate-design-v1-to-v2.ts",
+    "backfill:audit-log": "tsx prisma/backfill-audit-log-labels.ts",
     "backfill:config-snapshot": "tsx prisma/backfill-config-snapshots.ts",
     "backfill:formula-pins": "tsx prisma/backfill-formula-set-pins.ts",
     "backfill:inventory-component-type": "tsx prisma/backfill-inventory-component-type.ts"

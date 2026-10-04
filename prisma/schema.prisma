@@ -592,6 +592,7 @@ model SuperAdminSession {
 // Every SuperAdmin mutation (create org, suspend/reactivate, role create/edit,
 // permission assignment change) writes one row. Read-only operations are not logged.
 // No UPDATE or DELETE may be issued against this table in application code.
+// Sole sanctioned exception: prisma/backfill-audit-log-labels.ts (human-run) fills NULL snapshot columns only.
 // targetId is polymorphic (no FK) — targetType tells you which table to look up.
 // ────────────────────────────────────────────────────────────
 
