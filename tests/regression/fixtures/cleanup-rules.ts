@@ -12,6 +12,19 @@ export const isDeletableOrgSlug = (slug: string) => typeof slug === "string" && 
 export const isDeletableSuperAdminUsername = (u: string) =>
   typeof u === "string" && ((u.startsWith("rgr-") && u.length > 4) || (u.startsWith("e2e-sa-") && u.length > 7));
 
+/**
+ * M1: the LIVE name/code of an org-API row (from its GET body) — project.name, item.code, company.name — must be a
+ * suite row before cleanup deletes it by id (never trust the ledger label). Inventory codes are compared trimmed and
+ * lower-cased, like the sweep (db-scope normalizeSweepCode). Returns the refusal reason, or null when deletable.
+ */
+export function orgRowDeleteRefusal(kind: "project" | "inventoryItem" | "externalCompany", body: unknown): string | null {
+  const b = (body ?? {}) as { project?: { name?: unknown }; item?: { code?: unknown }; company?: { name?: unknown } };
+  const live = kind === "project" ? b.project?.name : kind === "inventoryItem" ? b.item?.code : b.company?.name;
+  if (typeof live !== "string") return `${kind}: the GET body carries no ${kind === "inventoryItem" ? "code" : "name"}`;
+  const norm = kind === "inventoryItem" ? live.trim().toLowerCase() : live;
+  return norm.startsWith("rgr-") && norm.length > 4 ? null : `${kind} is "${live}" — not an rgr- row, will not delete`;
+}
+
 /** Only suite-created formula sets (platform-global rows) may ever be deleted. */
 export const isDeletableFormulaSetName = (name: string) => typeof name === "string" && name.startsWith("rgr-") && name.length > 4;
 
@@ -28,6 +41,39 @@ export function drainOrder(entries: LedgerEntry[]): LedgerEntry[] {
     return i === -1 ? Number.POSITIVE_INFINITY : i;
   };
   return [...entries].sort((a, b) => rank(a) - rank(b));
+}
+
+/**
+ * Kinds the sweep can find but the app offers NO delete route for (final review I2): a custom Role has no DELETE
+ * anywhere in the API. The suite never creates one in the Test Org (role tests write only in throwaway org B, which
+ * cascades), so a swept rgr- role is a registration bug to REPORT — never a reason for recovery/teardown to throw
+ * "no deleter wired" and block every later run.
+ */
+export const REPORT_ONLY_KINDS: ReadonlySet<string> = new Set(["role"]);
+export const reportOnlyNote = (e: { kind: string; label: string }) =>
+  `${e.kind}: "${e.label}" has no delete route in the app — REPORTED, not deleted; remove it by hand`;
+
+export type Stray = { kind: string; id: string; label: string; orgSlug: string | null };
+
+/**
+ * Final review I5: after teardown REPORTS its strays (the run still fails), it deletes the ones carrying THIS run's
+ * own prefix through the normal scoped deleters — no age gate, they are provably ours. Strays of any other prefix
+ * (another run, possibly still active) are left alone and stay report-only.
+ */
+export async function removeOwnStrays(
+  cleaner: { drain(entries: LedgerEntry[], onDeleted?: (e: LedgerEntry) => void): Promise<{ deleted: string[]; errors: string[] }> },
+  strays: Stray[],
+  prefix: string,
+  onDeleted?: (e: LedgerEntry) => void,
+): Promise<{ removed: string[]; errors: string[]; leftForOthers: string[] }> {
+  if (!prefix.startsWith("rgr-") || prefix.length <= 4) throw new Error(`removeOwnStrays: "${prefix}" is not a run prefix`);
+  const own = strays.filter((s) => s.label.toLowerCase().startsWith(prefix) && !REPORT_ONLY_KINDS.has(s.kind));
+  const reportOnly = strays.filter((s) => REPORT_ONLY_KINDS.has(s.kind)).map(reportOnlyNote);
+  const leftForOthers = strays.filter((s) => !own.includes(s) && !REPORT_ONLY_KINDS.has(s.kind)).map((s) => `${s.kind}:${s.label}`);
+  if (!own.length) return { removed: [], errors: reportOnly, leftForOthers };
+  const entries = own.map((s) => ({ kind: s.kind as LedgerEntry["kind"], id: s.id, orgSlug: s.orgSlug, label: s.label, createdAt: "" }));
+  const { deleted, errors } = await cleaner.drain(entries, onDeleted);
+  return { removed: deleted, errors: [...errors, ...reportOnly], leftForOthers };
 }
 
 /** Rows of a run younger than this are left alone by orphan recovery: that run may still be active (R19). */

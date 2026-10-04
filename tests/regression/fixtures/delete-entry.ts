@@ -11,6 +11,7 @@ import {
   isDeletableOrgSlug,
   isDeletableSuperAdminUsername,
   isRunAdminUsername,
+  reportOnlyNote,
 } from "./cleanup-rules";
 
 const inScope = (slug: string | null) => slug !== null && (slug === TEST_ORG || slug.startsWith("rgr-"));
@@ -153,6 +154,9 @@ export class Cleaner {
         await this.sessions.orgDelete(e as LedgerEntry & { kind: typeof e.kind });
         return;
       }
+      case "role":
+        // I2: the app has no DELETE route for a role; recovery/teardown report swept roles instead of draining them
+        throw new Error(`cleanup: ${reportOnlyNote(e)}`);
       default:
         throw new Error(`cleanup: no deleter wired for ${e.kind} (${e.label}) yet — add one before a test ledgers this kind`);
     }

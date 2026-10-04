@@ -3,7 +3,7 @@ import path from "node:path";
 
 export type LedgerKind =
   | "superadmin" | "project" | "inquiry" | "inventoryItem" | "externalCompany"
-  | "user" | "role" | "org" | "formulaSet" | "componentType";
+  | "user" | "role" | "org" | "formulaSet";
 
 export interface LedgerEntry {
   kind: LedgerKind;
@@ -16,7 +16,7 @@ export interface LedgerEntry {
 /** Children before parents. A project cascades floors/rooms/partitions/selections/calculations. */
 export const DELETE_ORDER: LedgerKind[] = [
   "project", "inquiry", "inventoryItem", "user", "externalCompany", "role",
-  "componentType", "formulaSet", "superadmin", "org",
+  "formulaSet", "superadmin", "org",
 ];
 
 type Op = { op: "add"; entry: LedgerEntry } | { op: "remove"; id: string };

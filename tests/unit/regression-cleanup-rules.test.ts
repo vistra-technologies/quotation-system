@@ -93,3 +93,15 @@ test("isDeletableFormulaSetName: only rgr- formula sets (platform-global rows) m
     assert.equal(isDeletableFormulaSetName(bad), false, bad);
   }
 });
+test("M1 orgRowDeleteRefusal: only a LIVE rgr- name/code may be deleted (case/padding-tolerant for inventory codes)", async () => {
+  const { orgRowDeleteRefusal } = await import("../regression/fixtures/cleanup-rules");
+  assert.equal(orgRowDeleteRefusal("project", { project: { name: "rgr-abc-proj" } }), null);
+  assert.equal(orgRowDeleteRefusal("externalCompany", { company: { name: "rgr-abc-co" } }), null);
+  assert.equal(orgRowDeleteRefusal("inventoryItem", { item: { code: "  RGR-abc-item-1 " } }), null);
+  assert.match(orgRowDeleteRefusal("project", { project: { name: "Real customer project" } })!, /not an rgr- row/);
+  assert.match(orgRowDeleteRefusal("externalCompany", { company: { name: "Acme" } })!, /not an rgr- row/);
+  assert.match(orgRowDeleteRefusal("inventoryItem", { item: { code: "GLS-10" } })!, /not an rgr- row/);
+  assert.match(orgRowDeleteRefusal("project", { project: { name: "rgr-" } })!, /not an rgr- row/);
+  assert.match(orgRowDeleteRefusal("project", { item: { code: "rgr-x" } })!, /no name/);
+  assert.match(orgRowDeleteRefusal("inventoryItem", null)!, /no code/);
+});

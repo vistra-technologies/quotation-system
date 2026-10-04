@@ -3,7 +3,7 @@ import type { Cleaner } from "./delete-entry";
 
 type Drainer = Pick<Cleaner, "drain">;
 import { TEST_ORG } from "../env";
-import { recoverDecision } from "./cleanup-rules";
+import { recoverDecision, REPORT_ONLY_KINDS, reportOnlyNote } from "./cleanup-rules";
 
 type Sweep = (orgSlug: string, prefix: string) => Promise<Array<{ kind: string; id: string; label: string }>>;
 
@@ -28,7 +28,7 @@ export async function recoverOrphans(opts: {
   rgrGlobals?: () => Promise<Array<{ kind: "superadmin" | "formulaSet"; id: string; label: string }>>;
   minAgeMs: number;
   now?: number;
-}): Promise<{ drained: string[]; swept: string[]; skipped: string[] }> {
+}): Promise<{ drained: string[]; swept: string[]; skipped: string[]; reportOnly: string[] }> {
   const now = opts.now ?? Date.now();
   const skipped: string[] = [];
   const skippedIds = new Set<string>();
@@ -49,8 +49,10 @@ export async function recoverOrphans(opts: {
   }));
   for (const o of await opts.rgrOrgs()) strays.push({ kind: "org", id: o.id, orgSlug: o.slug, label: o.slug, createdAt: "" });
   for (const g of (await opts.rgrGlobals?.()) ?? []) strays.push({ kind: g.kind, id: g.id, orgSlug: null, label: g.label, createdAt: "" });
+  // I2: kinds with no delete route (custom roles) are reported, never drained — a deleter can't exist for them
+  const reportOnly = strays.filter((e) => REPORT_ONLY_KINDS.has(e.kind)).map(reportOnlyNote);
   // a swept row that is already in the ledger is drained once, as the ledger entry
-  const fromSweep = strays.filter((e) => !ledgerIds.has(e.id) && !skippedIds.has(e.id) && keep(e));
+  const fromSweep = strays.filter((e) => !REPORT_ONLY_KINDS.has(e.kind) && !ledgerIds.has(e.id) && !skippedIds.has(e.id) && keep(e));
 
   // ONE drain batch (drainOrder: projects before the run admin, ...) — draining the ledger first would
   // let an UNLEDGERED project (e.g. a create whose 201 was lost) block the ledgered run admin's delete
@@ -74,5 +76,5 @@ export async function recoverOrphans(opts: {
   if (errors.length) {
     throw new Error(`orphan recovery FAILED — ${errors.length} row(s) could not be deleted:\n  ${errors.join("\n  ")}`);
   }
-  return { drained, swept, skipped };
+  return { drained, swept, skipped, reportOnly };
 }

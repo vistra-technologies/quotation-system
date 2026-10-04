@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { recoverOrphans } from "../regression/fixtures/recovery";
-import { drainOrder } from "../regression/fixtures/cleanup-rules";
+import { drainOrder, removeOwnStrays } from "../regression/fixtures/cleanup-rules";
 import { Ledger, type LedgerEntry } from "../regression/fixtures/ledger";
 
 const NOW = Date.UTC(2026, 9, 3, 12);
@@ -97,4 +97,66 @@ test("recovery: stale rgr- SuperAdmins / formula sets (no org) are swept; a youn
   assert.deepEqual([...rows.keys()], [youngFs.id]);
   assert.equal(res.skipped.length, 1);
   assert.match(res.skipped[0], /^formulaSet: .*younger than/);
+});
+test("I2: a swept rgr- ROLE (no delete route) is reported, never drained, and recovery does not throw", async () => {
+  const ledger = tmpLedger();
+  const proj = row("project", "p1", `rgr-${OLD}-proj-1`);
+  const rows = new Map([[proj.id, proj]]);
+  const drained: string[] = [];
+  const cleaner = {
+    async drain(entries: LedgerEntry[], onDeleted?: (e: LedgerEntry) => void) {
+      for (const e of entries) {
+        if (e.kind === "role") throw new Error("cleanup: no deleter wired for role");
+        drained.push(e.id);
+        rows.delete(e.id);
+        onDeleted?.(e);
+      }
+      return { deleted: entries.map((e) => `${e.kind}:${e.label}`), errors: [] };
+    },
+  };
+  const res = await recoverOrphans({
+    cleaner,
+    ledger,
+    sweep: async () => [{ kind: "role", id: "r1", label: `rgr-${OLD}-role-x` }, { kind: "project", id: proj.id, label: proj.label }],
+    rgrOrgs: async () => [],
+    minAgeMs: 2 * 60 * 60 * 1000,
+    now: NOW,
+  });
+  assert.deepEqual(drained, ["p1"]);
+  assert.equal(res.reportOnly.length, 1);
+  assert.match(res.reportOnly[0], /role: "rgr-.*-role-x" has no delete route/);
+});
+
+test("I5: removeOwnStrays deletes only THIS run's strays, reports roles and leaves other runs' strays alone", async () => {
+  const seen: string[] = [];
+  const onDel: string[] = [];
+  const cleaner = {
+    async drain(entries: LedgerEntry[], onDeleted?: (e: LedgerEntry) => void) {
+      seen.push(...entries.map((e) => `${e.kind}:${e.label}@${e.orgSlug}`));
+      for (const e of entries) onDeleted?.(e);
+      return { deleted: entries.map((e) => `${e.kind}:${e.label}`), errors: [] };
+    },
+  };
+  const res = await removeOwnStrays(
+    cleaner,
+    [
+      { kind: "project", id: "p1", label: "rgr-mine-leak", orgSlug: "e2e-testorg" },
+      { kind: "inventoryItem", id: "i1", label: "rgr-mine-item", orgSlug: "e2e-testorg" },
+      { kind: "project", id: "p2", label: "rgr-other-leak", orgSlug: "e2e-testorg" },
+      { kind: "role", id: "r1", label: "rgr-mine-role", orgSlug: "e2e-testorg" },
+    ],
+    "rgr-mine-",
+    (e) => onDel.push(e.id),
+  );
+  assert.deepEqual(seen, ["project:rgr-mine-leak@e2e-testorg", "inventoryItem:rgr-mine-item@e2e-testorg"]);
+  assert.deepEqual(onDel, ["p1", "i1"]);
+  assert.deepEqual(res.removed, ["project:rgr-mine-leak", "inventoryItem:rgr-mine-item"]);
+  assert.deepEqual(res.leftForOthers, ["project:rgr-other-leak"]);
+  assert.equal(res.errors.length, 1);
+  assert.match(res.errors[0], /role.*no delete route/);
+});
+
+test("I5: removeOwnStrays refuses a non-run prefix (it must never become a broad delete)", async () => {
+  const cleaner = { async drain() { throw new Error("must not be called"); } };
+  for (const p of ["", "rgr-", "e2e-", "x"]) await assert.rejects(removeOwnStrays(cleaner, [], p), /not a run prefix/);
 });

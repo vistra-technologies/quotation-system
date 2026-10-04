@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { diffSnapshots, type Snapshot } from "../regression/fixtures/snapshot";
+import { diffSnapshots, diffSharedConfig, changedRows, type Snapshot } from "../regression/fixtures/snapshot";
 
 const fp = (over = {}) => ({
   counts: { user: 3, project: 5 },
@@ -129,4 +129,39 @@ test("orgRowHash change reports 'org row modified'; ignored orgs stay ignored", 
   const before = snap({ cloisons: fp(), "e2e-testorg": fp() });
   const after = snap({ cloisons: fp({ orgRowHash: "o2" }), "e2e-testorg": fp({ orgRowHash: "o2" }) });
   assert.deepEqual(diffSnapshots(before, after, ignoreTest), ['org "cloisons": org row modified']);
+});
+
+const shared = (over = {}) => ({
+  componentTypes: "ct", componentTypeOrgConfig: "cfg", componentCategories: "cat", roles: "r", rolePermissions: "rp", org: "o", ...over,
+});
+
+test("diffSharedConfig: identical shared config → [] (row counts / updatedAt-based row hashes are NOT compared)", () => {
+  const before = fp({ sharedConfig: shared() });
+  const after = fp({ sharedConfig: shared(), counts: { user: 99 }, rowsHash: { componentType: "bumped-updatedAt" } });
+  assert.deepEqual(diffSharedConfig("e2e-testorg", before, after), []);
+});
+
+test("diffSharedConfig: names every hash that changed", () => {
+  const d = diffSharedConfig("e2e-testorg", fp({ sharedConfig: shared() }), fp({ sharedConfig: shared({ componentTypeOrgConfig: "x", rolePermissions: "y" }) }));
+  assert.equal(d.length, 2);
+  assert.match(d[0], /e2e-testorg.*componentTypeOrgConfig changed \(cfg → x\)/);
+  assert.match(d[1], /rolePermissions changed/);
+});
+
+test("diffSharedConfig: a missing org or a snapshot without sharedConfig is reported, never silently passed", () => {
+  assert.match(diffSharedConfig("e2e-testorg", fp({ sharedConfig: shared() }), undefined).join(), /disappeared/);
+  assert.match(diffSharedConfig("e2e-testorg", fp(), fp({ sharedConfig: shared() })).join(), /no sharedConfig/);
+});
+
+test("changedRows names added / removed / changed ids (capped at 10) and is empty without per-row data", () => {
+  assert.equal(changedRows(undefined, { a: "1" }), "");
+  assert.equal(changedRows({ a: "1", b: "1", c: "1" }, { a: "1", b: "2", d: "1" }), " — added [d]; removed [c]; changed [b]");
+  const many = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`id${i}`, "1"]));
+  assert.match(changedRows({}, many), /added \[id0, .*id9, …\+2\]/);
+});
+
+test("a delta on another org's rows names the changed row ids", () => {
+  const before = snap({ cloisons: fp({ rows: { project: { p1: "t1", p2: "t1" } } }) });
+  const after = snap({ cloisons: fp({ rowsHash: { project: "p2", user: "u1" }, rows: { project: { p1: "t2", p2: "t1" } } }) });
+  assert.deepEqual(diffSnapshots(before, after, ignoreTest), ['org "cloisons": project rows modified — changed [p1]']);
 });

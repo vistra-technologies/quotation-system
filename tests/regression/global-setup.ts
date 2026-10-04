@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { chromium } from "@playwright/test";
-import { requireEnv, TEST_ORG, RUN_DIR, LEDGER_FILE, RUN_PASSWORD_ENV, RUN_ID_ENV } from "./env";
+import { requireEnv, TEST_ORG, RUN_DIR, LEDGER_FILE, LOCK_FILE, RUN_PASSWORD_ENV, RUN_ID_ENV } from "./env";
+import { acquireRunLock, releaseRunLock } from "./fixtures/run-lock";
+import { assertSameTarget } from "./fixtures/target-identity";
 import { Ledger } from "./fixtures/ledger";
 import { SaClient, Guarded, createAllowance } from "./fixtures/clients";
 import { clearRunState, writeRunState, type Role, type RunState } from "./fixtures/run-state";
@@ -21,8 +23,20 @@ const ROLE_NAME: Record<Role, string> = {
 
 export default async function globalSetup() {
   const env = requireEnv();
-  clearRunState(); // a stale run.json must never be mistaken for this run's state
   const runId = Date.now().toString(36);
+  // I1: one live run per checkout — taken BEFORE run.json / storage states are touched. Released by global teardown,
+  // or here when setup itself fails (Playwright runs no global teardown for a setup that threw).
+  acquireRunLock(LOCK_FILE, { runId });
+  try {
+    await setup(env, runId);
+  } catch (err) {
+    releaseRunLock(LOCK_FILE);
+    throw err;
+  }
+}
+
+async function setup(env: ReturnType<typeof requireEnv>, runId: string) {
+  clearRunState(); // a stale run.json must never be mistaken for this run's state
   process.env[RUN_ID_ENV] = runId;
   const prefix = `rgr-${runId}-`;
   const orgBSlug = `rgr-${runId}-b`;
@@ -39,8 +53,18 @@ export default async function globalSetup() {
   const recoveryCleaner = new Cleaner(sa, { ...env, run: null });
   const listOrgs = () => recoveryCleaner.listOrgs();
 
+  // C1: the API target must run on the dev DB the suite checks directly — proven BEFORE recovery or any mutation.
+  const apiOrgs = await listOrgs();
+  try {
+    assertSameTarget(apiOrgs, (await regressionSnapshot()).orgs);
+  } catch (err) {
+    await sa.dispose();
+    throw err;
+  }
+  console.log(`[regression] target identity: ${new URL(env.baseURL).host} serves the dev DB (${apiOrgs.length} org ids match)`);
+
   // 0. Orphan recovery FIRST: a crashed previous run must not leak into this one.
-  let testOrg = (await listOrgs()).find((o) => o.slug === TEST_ORG);
+  let testOrg = apiOrgs.find((o) => o.slug === TEST_ORG);
   if (testOrg) allowance.ids.add(testOrg.id);
   const minAgeMs = recoverMinAgeMs();
   try {
@@ -58,6 +82,9 @@ export default async function globalSetup() {
         ? `[regression] recovered ${n} orphans (ledger: ${rec.drained.length}${rec.drained.length ? ` — ${rec.drained.join(", ")}` : ""}; sweep: ${rec.swept.length}${rec.swept.length ? ` — ${rec.swept.join(", ")} (UNLEDGERED — a registration bug)` : ""})`
         : "[regression] recovered 0 orphans",
     );
+    if (rec.reportOnly.length) {
+      console.log(`[regression] orphan recovery found ${rec.reportOnly.length} rgr- row(s) it cannot delete (no delete route — a registration bug; not blocking):\n  ${rec.reportOnly.join("\n  ")}`);
+    }
     if (rec.skipped.length) {
       console.log(`[regression] orphan recovery SKIPPED ${rec.skipped.length} row(s) younger than ${Math.round(minAgeMs / 60000)} min or of unknown age (not deleted):\n  ${rec.skipped.join("\n  ")}`);
     }

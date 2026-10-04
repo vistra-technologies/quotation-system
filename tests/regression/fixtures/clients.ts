@@ -7,6 +7,7 @@ import {
   type BrowserContext,
 } from "@playwright/test";
 import { assertMutationAllowed } from "./guard";
+import { retryTransient } from "./retry";
 import { TEST_ORG } from "../env";
 import type { Role, RunState } from "./run-state";
 import { apiUrl } from "../../e2e/helpers";
@@ -76,8 +77,18 @@ export class SaClient extends Guarded {
       baseURL,
       extraHTTPHeaders: bypass ? { "x-vercel-protection-bypass": bypass } : {},
     });
-    const res = await ctx.post("/api/v1/superadmin/login", { data: { username: user, password: pass } });
-    if (res.status() !== 200) throw new Error(`SuperAdmin login failed: HTTP ${res.status()}`);
+    // I5: bounded backoff on 429 (rate limit) / 5xx — a transient blip must not fail setup or strand a teardown
+    const { res } = await retryTransient(
+      async () => {
+        const r = await ctx.post("/api/v1/superadmin/login", { data: { username: user, password: pass } });
+        return { status: r.status(), res: r };
+      },
+      { onRetry: (s, ms, n) => console.warn(`[regression] SuperAdmin login → HTTP ${s}; retry ${n} in ${ms / 1000}s`) },
+    );
+    if (res.status() !== 200) {
+      await ctx.dispose();
+      throw new Error(`SuperAdmin login failed: HTTP ${res.status()}`);
+    }
     const token = /qs-sa-token=([^;]+)/.exec(res.headers()["set-cookie"] ?? "")?.[1];
     if (!token) throw new Error("SuperAdmin login: no qs-sa-token cookie");
     return new SaClient(ctx, allowance, token);

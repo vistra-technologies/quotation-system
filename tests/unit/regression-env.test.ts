@@ -24,19 +24,25 @@ test("requireEnv refuses localhost and production targets", () => {
   assert.throws(() => requireEnv({ ...base, PLAYWRIGHT_BASE_URL: "https://easeetool.com" }), /production/i);
   assert.throws(() => requireEnv({ ...base, PLAYWRIGHT_BASE_URL: "https://www.easeetool.com" }), /production/i);
   assert.throws(() => requireEnv({ ...base, PLAYWRIGHT_BASE_URL: "https://v-quote.vercel.app" }), /production/i);
+  assert.throws(() => requireEnv({ ...base, PLAYWRIGHT_BASE_URL: "https://quotation-system-git-master-vistra-indias-projects.vercel.app" }), /production/i);
+  assert.throws(() => requireEnv({ ...base, PLAYWRIGHT_BASE_URL: "https://quotation-system-abc123xyz-vistra-indias-projects.vercel.app" }), /hash URLs/i);
   assert.equal(
     requireEnv({ ...base, PLAYWRIGHT_BASE_URL: "https://test.easeetool.com" }).baseURL,
     "https://test.easeetool.com",
   );
 });
 
-test("assertAllowedTarget: allowlist — test.easeetool.com, *.test.easeetool.com, *.vercel.app previews only", () => {
+test("assertAllowedTarget: allowlist — test.easeetool.com, *.test.easeetool.com, the staging alias and non-production branch aliases only", () => {
   for (const ok of [
     "https://test.easeetool.com",
     "https://test.easeetool.com.",
     "https://TEST.easeetool.com/",
     "https://e2e-testorg.test.easeetool.com",
-    "https://quotation-system-git-feature-x-vistra.vercel.app",
+    "https://quotation-system-git-feature-x-vistra-indias-projects.vercel.app",
+    "https://quotation-system-git-feature-regression-suite-vistra-indias-projects.vercel.app",
+    "https://quotation-system-git-hotfix-previ-f9b2c7-vistra-indias-projects.vercel.app",
+    "https://quotation-system-git-staging-vistra-indias-projects.vercel.app",
+    "https://v-quote-test.vercel.app",
   ]) {
     assert.doesNotThrow(() => assertAllowedTarget(ok), ok);
   }
@@ -50,6 +56,15 @@ test("assertAllowedTarget: allowlist — test.easeetool.com, *.test.easeetool.co
     "https://v-quote.vercel.app",
     "https://v-quote.vercel.app.",
     "https://vercel.app",
+    // C1: production deployments are reachable on *.vercel.app too — hash URLs, master/main aliases, other projects
+    "https://quotation-system-git-master-vistra-indias-projects.vercel.app",
+    "https://quotation-system-git-main-vistra-indias-projects.vercel.app",
+    "https://quotation-system-ezjf6j8iz-vistra-indias-projects.vercel.app",
+    "https://quotation-system-vistra-indias-projects.vercel.app",
+    "https://quotation-system.vercel.app",
+    "https://quotation-system-git-feature-x-vistra.vercel.app",
+    "https://some-other-app.vercel.app",
+    "https://quotation-system-git-feature-x-vistra-indias-projects.vercel.app.evil.io",
     "https://test.easeetool.com.evil.io",
     "https://example.com",
     "http://localhost:3000",

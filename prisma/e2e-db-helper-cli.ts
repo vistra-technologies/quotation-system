@@ -54,7 +54,7 @@ async function main() {
   const endpoint = url ? endpointOf(url) : null;
   if (endpoint !== ALLOWED_ENDPOINT) {
     throw new Error(
-      `stage22 DB test helper refuses to run: DATABASE_URL targets "${endpoint ?? "(unset/unparseable)"}", ` +
+      `regression/e2e DB test helper refuses to run: DATABASE_URL targets "${endpoint ?? "(unset/unparseable)"}", ` +
         `not the dev branch (${ALLOWED_ENDPOINT}). This suite must never touch any other database.`,
     );
   }
@@ -277,6 +277,7 @@ async function main() {
           { t: "selection", hasUpdatedAt: true }, { t: "floor", hasUpdatedAt: true }, { t: "room", hasUpdatedAt: true },
           { t: "partition", hasUpdatedAt: true }, { t: "projectCalculation", hasUpdatedAt: true }, { t: "componentType", hasUpdatedAt: true },
           { t: "componentTypeOrgConfig", hasUpdatedAt: true }, { t: "itemPrice", hasUpdatedAt: true },
+          { t: "componentCategory", hasUpdatedAt: true },
         ] as const;
         const counts: Record<string, Record<string, number>> = {};
         const rowsByOrg: Record<string, Record<string, Array<{ id: string; updatedAt: Date }>>> = {};
@@ -302,18 +303,50 @@ async function main() {
           select: { roleId: true, permissionId: true, role: { select: { organizationId: true } } },
           orderBy: [{ roleId: "asc" }, { permissionId: "asc" }],
         });
+        // Content (NOT updatedAt) of the org's shared configuration — the Test Org's teardown check (final review
+        // I3): the suite edits and reverts these, and a revert restores content but always bumps updatedAt.
+        const ctFull = await db.componentType.findMany({
+          select: { id: true, organizationId: true, code: true, name: true, categoryId: true, fieldsSchema: true, active: true, sortOrder: true, createdAt: true },
+          orderBy: { id: "asc" },
+        });
+        const cfgFull = await db.componentTypeOrgConfig.findMany({
+          select: { id: true, organizationId: true, componentTypeId: true, fieldOptionsConfig: true, createdAt: true },
+          orderBy: { id: "asc" },
+        });
+        const cats = await db.componentCategory.findMany({ select: { id: true, organizationId: true, name: true, createdAt: true }, orderBy: { id: "asc" } });
+        const roles = await db.role.findMany({ select: { id: true, organizationId: true, name: true, description: true, isInternalRole: true }, orderBy: { id: "asc" } });
+        const strip = <T extends { organizationId: string }>(rows: T[], orgId: string) =>
+          rows.filter((r) => r.organizationId === orgId).map(({ organizationId: _o, ...r }) => r); // eslint-disable-line @typescript-eslint/no-unused-vars
         const out: Record<string, unknown> = {};
         for (const o of orgs) {
           const rowsHash: Record<string, string> = {};
           for (const [t, rows] of Object.entries(rowsByOrg[o.id] ?? {})) rowsHash[t] = sha(rows);
+          // Role has no updatedAt: hash its editable content instead so a rename/description edit is caught (M2)
+          const orgRoles = strip(roles, o.id);
+          if (orgRoles.length) rowsHash.role = sha(orgRoles.map((r) => [r.id, r.name, r.description]));
+          // Per-row version (updatedAt, or the role's content hash) so a delta can NAME the rows that changed (M3)
+          const rows: Record<string, Record<string, string>> = {};
+          for (const [t, list] of Object.entries(rowsByOrg[o.id] ?? {})) rows[t] = Object.fromEntries(list.map((r) => [r.id, new Date(r.updatedAt).toISOString()]));
+          if (orgRoles.length) rows.role = Object.fromEntries(orgRoles.map((r) => [r.id, sha([r.name, r.description])]));
+          const rolePermissionsHash = sha(rps.filter((r) => r.role.organizationId === o.id).map((r) => [r.roleId, r.permissionId]));
           out[o.slug] = {
+            id: o.id,
             counts: counts[o.id] ?? {},
             componentTypesHash: sha(cts.filter((c) => c.organizationId === o.id)),
-            rolePermissionsHash: sha(rps.filter((r) => r.role.organizationId === o.id).map((r) => [r.roleId, r.permissionId])),
+            rolePermissionsHash,
             rowsHash,
+            rows,
             orgRowHash: sha([o.name, o.slug, o.isSuspended, o.activeFormulaSetId, o.updatedAt]),
             isSuspended: o.isSuspended,
             activeFormulaSetId: o.activeFormulaSetId,
+            sharedConfig: {
+              componentTypes: sha(strip(ctFull, o.id)),
+              componentTypeOrgConfig: sha(strip(cfgFull, o.id)),
+              componentCategories: sha(strip(cats, o.id)),
+              roles: sha(orgRoles),
+              rolePermissions: rolePermissionsHash,
+              org: sha([o.name, o.slug, o.isSuspended, o.activeFormulaSetId]),
+            },
           };
         }
         const fsets = await db.formulaSet.findMany({ select: { id: true, name: true, version: true, body: true }, orderBy: { id: "asc" } });

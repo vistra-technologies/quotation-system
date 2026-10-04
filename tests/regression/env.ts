@@ -6,6 +6,8 @@ export const RUN_DIR = path.resolve(__dirname, "..", "..", ".engineering", "regr
 /** Persists across runs — a crashed run's rows are drained by the next run's orphan recovery. */
 export const LEDGER_FILE = path.join(RUN_DIR, "ledger.json");
 export const RUN_FILE = path.join(RUN_DIR, "run.json");
+/** Exclusive per-checkout run lock (pid inside) — taken by global setup, released by global teardown. */
+export const LOCK_FILE = path.join(RUN_DIR, "run.lock");
 /** Last teardown's outcome, read by scripts/regression.mjs to decide whether a retry is allowed (R16). */
 export const TEARDOWN_STATUS_FILE = path.join(RUN_DIR, "last-teardown.json");
 /**
@@ -27,11 +29,23 @@ export interface RegEnv {
 
 const REQUIRED = ["PLAYWRIGHT_BASE_URL", "TEST_SA_USERNAME", "TEST_SA_PASSWORD"] as const;
 const PRODUCTION_ALIAS = "v-quote.vercel.app";
+/** The staging branch's legacy alias (root CLAUDE.md, branching table) — still re-pointed at staging deployments. */
+const STAGING_ALIAS = "v-quote-test.vercel.app";
+/**
+ * Vercel's per-BRANCH alias: quotation-system-git-<branch>-vistra-indias-projects.vercel.app (a long branch name
+ * is truncated + hashed, e.g. quotation-system-git-hotfix-previ-f9b2c7-vistra-indias-projects.vercel.app).
+ * The production branches (master / main) are refused below.
+ */
+const BRANCH_ALIAS = /^quotation-system-git-(.+)-vistra-indias-projects\.vercel\.app$/;
+const PRODUCTION_BRANCH = /^(master|main)(-|$)/;
 
 /**
- * ALLOWLIST of targets (R15): test.easeetool.com, *.test.easeetool.com, and *.vercel.app branch
- * previews other than the production alias v-quote.vercel.app. Every other host is refused —
- * including localhost and any other *.easeetool.com (production org subdomains).
+ * ALLOWLIST of targets (R15 + final review C1): test.easeetool.com, *.test.easeetool.com, the staging alias
+ * v-quote-test.vercel.app, and per-branch git aliases of any branch except master/main. Every other host is
+ * refused — localhost, any other *.easeetool.com (production org subdomains), the production alias, and the
+ * per-deployment hash URLs (quotation-system-<hash>-vistra-indias-projects.vercel.app), because a hash URL
+ * looks the same for a production deployment as for a preview. Global setup additionally proves the target's
+ * DB is the dev DB (API org ids must equal the dev DB's — fixtures/target-identity.ts).
  */
 export function assertAllowedTarget(baseURL: string): void {
   let host: string;
@@ -44,13 +58,20 @@ export function assertAllowedTarget(baseURL: string): void {
     throw new Error("regression suite: refusing a local target — run against a Vercel preview or test.easeetool.com (CLAUDE.md rule 7)");
   }
   if (host === PRODUCTION_ALIAS) throw new Error("regression suite: refusing the production host");
+  const branch = BRANCH_ALIAS.exec(host)?.[1];
+  if (branch !== undefined && PRODUCTION_BRANCH.test(branch)) {
+    throw new Error(`regression suite: refusing "${host}" — the ${branch.split("-")[0]} branch alias is the production deployment`);
+  }
   const ok =
     host === "test.easeetool.com" ||
     host.endsWith(".test.easeetool.com") ||
-    (host.endsWith(".vercel.app") && host.length > ".vercel.app".length);
+    host === STAGING_ALIAS ||
+    branch !== undefined;
   if (!ok) {
     throw new Error(
-      `regression suite: refusing target "${host}" — only test.easeetool.com, *.test.easeetool.com and *.vercel.app previews are allowed (anything else may be production)`,
+      `regression suite: refusing target "${host}" — only test.easeetool.com, *.test.easeetool.com, ${STAGING_ALIAS} and ` +
+        `quotation-system-git-<branch>-vistra-indias-projects.vercel.app (not master/main) are allowed; per-deployment hash URLs ` +
+        `are refused because a production deployment has one too — use the branch alias`,
     );
   }
 }

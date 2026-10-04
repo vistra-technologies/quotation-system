@@ -1,11 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { requireEnv, TEST_ORG, LEDGER_FILE, RUN_DIR, TEARDOWN_STATUS_FILE } from "./env";
+import { requireEnv, TEST_ORG, LEDGER_FILE, LOCK_FILE, RUN_DIR, TEARDOWN_STATUS_FILE } from "./env";
 import { Ledger } from "./fixtures/ledger";
 import { SaClient, allowanceFromRun } from "./fixtures/clients";
 import { tryReadRunState, deleteRunArtifacts, type RunState } from "./fixtures/run-state";
 import { Cleaner } from "./fixtures/delete-entry";
-import { diffSnapshots } from "./fixtures/snapshot";
+import { diffSharedConfig, diffSnapshots } from "./fixtures/snapshot";
+import { removeOwnStrays, type Stray } from "./fixtures/cleanup-rules";
+import { releaseRunLock } from "./fixtures/run-lock";
 import { globalStateFailuresFile, readGlobalStateFailures, stuckTemporaryTypeNames } from "./fixtures/global-state";
 import { regressionSnapshot, regressionSweep } from "../e2e/db-helpers";
 
@@ -16,6 +18,14 @@ function writeStatus(s: { runId: string | null; cleanupFailed: boolean; reason?:
 }
 
 export default async function globalTeardown() {
+  try {
+    await teardownAndReport();
+  } finally {
+    releaseRunLock(LOCK_FILE); // I1: taken by global setup in this same process
+  }
+}
+
+async function teardownAndReport() {
   const run = tryReadRunState();
   writeStatus({ runId: run?.runId ?? null, cleanupFailed: true, reason: "teardown started but did not finish" });
   if (!run) {
@@ -44,10 +54,11 @@ async function teardown(run: RunState) {
 
   // 1. drain this run's ledger entries (children first; the run admin last among org-API deletes)
   const cleaner = new Cleaner(sa, { ...env, run });
-  const strays: Array<{ kind: string; id: string; label: string }> = [];
+  const strays: Stray[] = [];
   let deleted: string[];
   let errors: string[];
   const stuckNames: string[] = [];
+  let strayRemoval: Awaited<ReturnType<typeof removeOwnStrays>> = { removed: [], errors: [], leftForOthers: [] };
   try {
     ({ deleted, errors } = await cleaner.drainLedger(ledger, mine));
     if (errors.length) {
@@ -71,33 +82,47 @@ async function teardown(run: RunState) {
     }
     // R20: any org of THIS run still listed after the drain is a stray
     for (const o of await cleaner.listOrgs()) {
-      if (o.slug.startsWith(run.prefix)) strays.push({ kind: "org", id: o.id, label: o.slug });
+      if (o.slug.startsWith(run.prefix)) strays.push({ kind: "org", id: o.id, label: o.slug, orgSlug: o.slug });
     }
     // platform-level rows of THIS run (SuperAdmins, formula sets) still present after the drain are strays too
-    strays.push(...(await cleaner.globalsWithPrefix(run.prefix)));
+    strays.push(...(await cleaner.globalsWithPrefix(run.prefix)).map((g) => ({ ...g, orgSlug: null })));
+    // 2. sweep: anything still there with our prefix means a factory failed to register it
+    for (const slug of [TEST_ORG, run.orgB.slug]) {
+      strays.push(...(await regressionSweep(slug, run.prefix)).map((r) => ({ ...r, orgSlug: slug })));
+    }
+    // I5: the strays are REPORTED (the run fails) — then the ones carrying THIS run's prefix are deleted through the
+    // scoped deleters so they don't linger until a recovery 2 h later. Any other prefix stays report-only.
+    if (strays.length) {
+      strayRemoval = await removeOwnStrays(cleaner, strays, run.prefix, (e) => {
+        if (ledger.all().some((x) => x.id === e.id)) ledger.remove(e.id);
+      });
+    }
   } finally {
     await cleaner.dispose();
     await sa.dispose();
   }
-  // 2. sweep: anything still there with our prefix means a factory failed to register it
-  strays.push(...(await regressionSweep(TEST_ORG, run.prefix)), ...(await regressionSweep(run.orgB.slug, run.prefix)));
-  // 3. the other-orgs diff — the mechanical proof of "did not disturb anything"
+  // 3. the other-orgs diff — the mechanical proof of "did not disturb anything" — plus (I3) the Test Org's shared
+  // configuration, whose CONTENT must be back to the baseline exactly (updatedAt and suite-created rows excluded)
   const after = await regressionSnapshot();
   const ignore = (slug: string) => slug === TEST_ORG || slug.startsWith("rgr-");
-  const delta = diffSnapshots(run.baseline, after, ignore);
+  const delta = [...diffSnapshots(run.baseline, after, ignore), ...diffSharedConfig(TEST_ORG, run.baseline.orgs[TEST_ORG], after.orgs[TEST_ORG])];
   const orgsCompared = Object.keys(run.baseline.orgs).filter((s) => !ignore(s)).length;
   // global-state revert failures are appended by withRecordedGlobalState via this file
   const stateFile = globalStateFailuresFile(run.storageDir);
   const revertFailures: string[] = [...readGlobalStateFailures(stateFile), ...stuckNames];
 
   const failed = errors.length > 0 || strays.length > 0 || delta.length > 0 || revertFailures.length > 0;
-  const report = { runId: run.runId, cleanupFailed: failed, created, deleted, cleanupErrors: errors, strays, orgsCompared, delta, revertFailures };
+  const report = {
+    runId: run.runId, cleanupFailed: failed, created, deleted, cleanupErrors: errors, strays,
+    straysRemoved: strayRemoval.removed, straysRemoveErrors: strayRemoval.errors, straysLeftForOtherRuns: strayRemoval.leftForOthers,
+    orgsCompared, delta, revertFailures,
+  };
   fs.writeFileSync(path.join(run.storageDir, "cleanup.json"), JSON.stringify(report, null, 2));
-  console.log(`[regression] teardown: created ${created}, deleted ${deleted.length}, errors ${errors.length}, strays ${strays.length}, orgs compared ${orgsCompared}, delta ${delta.length}, revert failures ${revertFailures.length}`);
+  console.log(`[regression] teardown: created ${created}, deleted ${deleted.length}, errors ${errors.length}, strays ${strays.length}${strays.length ? ` (removed ${strayRemoval.removed.length}, remove errors ${strayRemoval.errors.length})` : ""}, orgs compared ${orgsCompared}, delta ${delta.length}, revert failures ${revertFailures.length}`);
   // run.json and the storage states (session cookies) go; only cleanup.json stays (R18). Done even on a
   // failed cleanup: recovery never needs them (it works from the ledger + SA routes).
   deleteRunArtifacts(run);
   if (failed) {
-    throw new Error(`regression cleanup FAILED\n${JSON.stringify({ cleanupErrors: errors, strays, delta, revertFailures }, null, 2)}`);
+    throw new Error(`regression cleanup FAILED\n${JSON.stringify({ cleanupErrors: errors, strays, straysRemoved: strayRemoval.removed, straysRemoveErrors: strayRemoval.errors, delta, revertFailures }, null, 2)}`);
   }
 }

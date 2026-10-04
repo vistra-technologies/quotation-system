@@ -7,6 +7,7 @@ import { RUN_PASSWORD_ENV, TEST_ORG } from "../env";
 import type { RunState } from "./run-state";
 import { apiSignIn, apiUrl } from "../../e2e/helpers";
 import { rgrSetProjectStatus } from "../../e2e/db-helpers";
+import { orgRowDeleteRefusal } from "./cleanup-rules";
 
 const ORG_API_PATH: Record<"project" | "inventoryItem" | "externalCompany", string> = {
   project: "projects",
@@ -135,6 +136,12 @@ export class OrgSessions {
     if (!e.orgSlug) throw new Error(`cleanup: ${e.kind} ${e.label} has no orgSlug`);
     const g = await this.session(e.orgSlug);
     const url = apiUrl(e.orgSlug, `/api/v1/orgs/${e.orgSlug}/${ORG_API_PATH[e.kind]}/${e.id}`);
+    // M1: read the LIVE row first — never delete by a ledger id alone
+    const live = await g.get(url);
+    if (live.status() === 404) return; // already gone
+    if (live.status() !== 200) throw new Error(`cleanup: read ${e.kind} ${e.label} → HTTP ${live.status()}`);
+    const refusal = orgRowDeleteRefusal(e.kind, await live.json().catch(() => null));
+    if (refusal) throw new Error(`cleanup REFUSED: ${e.kind} ${e.id} (ledger said "${e.label}"): ${refusal}`);
     let r = await g.delete(url);
     if (r.status() === 409 && e.kind === "project") {
       // DELETE is DRAFT-only: put the (rgr-, in-scope, just 409'd by the org-scoped route) project back to DRAFT.
