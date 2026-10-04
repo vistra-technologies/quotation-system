@@ -144,7 +144,8 @@ test("J5: SuperAdmin temp org — create → real data in every table → Suspen
         // Until proxy.ts's per-instance org cache (60 s) expires, an instance may still answer from a stale
         // entry: 403 "suspended" (cached at the second Suspend) or — seen once, an instance that cached the org
         // as ACTIVE — a /dashboard ↔ /login redirect loop for the held session (ERR_TOO_MANY_REDIRECTS), or that
-        // loop resolving on the login page (200 on /login). All are recorded as annotations; the state must converge
+        // loop resolving on the login page (200 on /login), or the /login hop answered by an instance that already
+        // has the org as gone (404 "not found" on /login) or as suspended (403 on /login). All are recorded as annotations; the state must converge
         // on 404 "Organization not found".
         const transient = new Set<string>();
         await expect
@@ -153,7 +154,11 @@ test("J5: SuperAdmin temp org — create → real data in every table → Suspen
             try {
               const r = await (orgPage as Page).goto(orgUrl(org.slug, "/dashboard"));
               const onLogin = /\/login$/.test(new URL(orgPage.url()).pathname);
-              state = onLogin ? `${r?.status()} login` : `${r?.status()} ${(await r?.text())?.includes("Organization not found") ? "not-found" : "other"}`;
+              const body = (await r?.text()) ?? "";
+              const kind = body.includes("Organization not found") ? "not-found" : /has been suspended/.test(body) ? "suspended" : "other";
+              // A stale instance redirects /dashboard → /login; the /login hop may land on an instance that already
+              // knows the org is gone (404 not-found), still has it cached as suspended (403), or as active (200 form).
+              state = onLogin ? `${r?.status()} login${kind === "other" ? "" : ` ${kind}`}` : `${r?.status()} ${kind === "not-found" ? "not-found" : "other"}`;
             } catch (e) {
               state = /ERR_TOO_MANY_REDIRECTS/.test(String(e)) ? "redirect-loop" : `error ${String(e).slice(0, 80)}`;
             }
@@ -162,7 +167,7 @@ test("J5: SuperAdmin temp org — create → real data in every table → Suspen
           }, { timeout: PAGE_CACHE_MS, intervals: [5_000] })
           .toBe("404 not-found");
         for (const t of transient) test.info().annotations.push({ type: "transient (proxy org cache)", description: t });
-        expect([...transient].filter((t) => !["403 other", "redirect-loop", "200 login"].includes(t)), "only the known cache-window states").toEqual([]);
+        expect([...transient].filter((t) => !["403 other", "redirect-loop", "200 login", "403 login suspended", "404 login not-found"].includes(t)), "only the known cache-window states").toEqual([]);
         // the held session's API calls now fail too (the org is gone)
         expect((await ctx.request.get(B("/me"))).status()).toBeGreaterThanOrEqual(400);
       });
