@@ -28,6 +28,7 @@ import { orgUrl } from "../../e2e/helpers";
 import { orgApi } from "../api/project-helpers";
 import { runPassword, signIn } from "../api/sign-in";
 import { apexPathOf, settledProblems } from "../pages/page-helpers";
+import { isHydrated } from "../pages/collect";
 import { glassCfg, makeItemSet, orgItems } from "../engine/materials";
 import { PLAIN, addSelection, buildRoom, designOf, wallOf, withPage } from "./journey-helpers";
 
@@ -95,8 +96,10 @@ test("J5: SuperAdmin temp org — create → real data in every table → Suspen
             await d.dismiss();
           }
         };
+        const btn = row().getByRole("button", { name: button, exact: true });
+        await expect.poll(() => isHydrated(btn), { message: `${button} button hydrated` }).toBe(true);
         if (confirmName) page.once("dialog", onDialog);
-        await row().getByRole("button", { name: button, exact: true }).click();
+        await btn.click();
         expect(wrong, "the confirm dialog named another org").toBeNull();
       };
       const listed = async () => (await listOrgs(sa)).find((o) => o.id === org.id);
@@ -140,15 +143,17 @@ test("J5: SuperAdmin temp org — create → real data in every table → Suspen
         expect(await countProjectCalculations(org.id)).toBe(0);
         // Until proxy.ts's per-instance org cache (60 s) expires, an instance may still answer from a stale
         // entry: 403 "suspended" (cached at the second Suspend) or — seen once, an instance that cached the org
-        // as ACTIVE — a /dashboard ↔ /login redirect loop for the held session (ERR_TOO_MANY_REDIRECTS). Both are
-        // recorded as annotations; the state must converge on 404 "Organization not found".
+        // as ACTIVE — a /dashboard ↔ /login redirect loop for the held session (ERR_TOO_MANY_REDIRECTS), or that
+        // loop resolving on the login page (200 on /login). All are recorded as annotations; the state must converge
+        // on 404 "Organization not found".
         const transient = new Set<string>();
         await expect
           .poll(async () => {
             let state: string;
             try {
               const r = await (orgPage as Page).goto(orgUrl(org.slug, "/dashboard"));
-              state = `${r?.status()} ${(await r?.text())?.includes("Organization not found") ? "not-found" : "other"}`;
+              const onLogin = /\/login$/.test(new URL(orgPage.url()).pathname);
+              state = onLogin ? `${r?.status()} login` : `${r?.status()} ${(await r?.text())?.includes("Organization not found") ? "not-found" : "other"}`;
             } catch (e) {
               state = /ERR_TOO_MANY_REDIRECTS/.test(String(e)) ? "redirect-loop" : `error ${String(e).slice(0, 80)}`;
             }
@@ -157,7 +162,8 @@ test("J5: SuperAdmin temp org — create → real data in every table → Suspen
           }, { timeout: PAGE_CACHE_MS, intervals: [5_000] })
           .toBe("404 not-found");
         for (const t of transient) test.info().annotations.push({ type: "transient (proxy org cache)", description: t });
-        expect([...transient].filter((t) => !["403 other", "redirect-loop"].includes(t)), "only the known cache-window states").toEqual([]);        // the held session's API calls now fail too (the org is gone)
+        expect([...transient].filter((t) => !["403 other", "redirect-loop", "200 login"].includes(t)), "only the known cache-window states").toEqual([]);
+        // the held session's API calls now fail too (the org is gone)
         expect((await ctx.request.get(B("/me"))).status()).toBeGreaterThanOrEqual(400);
       });
 

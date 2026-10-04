@@ -101,7 +101,7 @@ test("J1: inquiry → edit → convert → Configuration → Design canvas → S
       expect(snap?.takenAt, "config snapshot frozen at conversion").toEqual(expect.any(String));
       expect(snap!.componentTypes.map((t) => t.code)).toEqual(expect.arrayContaining(["GLASS", "DOOR"]));
       // a fresh project: only Details / Configuration open
-      expect(await pillState(o)).toEqual({ "Project Details": "open", Configuration: "open", Design: "locked", Summary: "locked", Quotation: "locked" });
+      await expect.poll(() => pillState(o, false), { timeout: 20_000 }).toEqual({ "Project Details": "open", Configuration: "open", Design: "locked", Summary: "locked", Quotation: "locked" });
     });
 
     // ── 4. Configuration: two saved components ────────────────────────────────
@@ -115,7 +115,7 @@ test("J1: inquiry → edit → convert → Configuration → Design canvas → S
       await page.goto(orgTarget(run, `/projects/${projectId}/configuration`));
       await expect(page.getByText(glassLabel).first()).toBeVisible();
       await expect(page.getByText(doorLabel).first()).toBeVisible();
-      expect(await pillState(o)).toMatchObject({ Design: "open", Summary: "locked", Quotation: "locked" });
+      await expect.poll(() => pillState(o, false), { timeout: 20_000 }).toMatchObject({ Design: "open", Summary: "locked", Quotation: "locked" });
     });
 
     // ── 5. Design canvas: floor → room → wall → glass on every panel + a door ─

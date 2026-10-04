@@ -169,13 +169,10 @@ test("J6: formula set author → assign → new version → assign → what pinn
     await ctx.dispose();
   }
 
-  // the org (and with it every pin) goes; then the sets can go
+  // the org (and with it every pin) goes; then v2 can go too
   await hardDeleteOrg(sa, org.id);
   ledger.remove(org.id);
-  for (const s of [v2!]) {
-
-    expect(await json(await sa.delete(`${SA}/formula-sets/${s.id}`))).toEqual({ id: s.id });
-    ledger.remove(s.id);
-    expect((await sa.get(`${SA}/formula-sets/${s.id}`)).status()).toBe(404);
-  }
+  expect(await json(await sa.delete(`${SA}/formula-sets/${v2!.id}`))).toEqual({ id: v2!.id });
+  ledger.remove(v2!.id);
+  expect((await sa.get(`${SA}/formula-sets/${v2!.id}`)).status()).toBe(404);
 });

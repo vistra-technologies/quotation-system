@@ -38,7 +38,6 @@ import {
   type Calculation, type ItemSet,
 } from "./materials";
 
-test.describe.configure({ mode: "serial" });
 test.setTimeout(180_000);
 
 /** The formula set the copied tuples were verified against. */
@@ -244,11 +243,15 @@ test.describe("calculation engine: exact material lists (copied tuples)", () => 
     const full = await glassDoor((gs, ds) => [[900, [[3000, ds]]], [1100, [[3000, gs]]], [1000, [[3000, gs]]], [1000, [[3000, gs]]]]);
     expectLines(full.materialList, g, { profileU: 3.1 }, "full-height door");
 
-    // "profileU: transom door does NOT reduce": 900 section = 1000 glass over a 2000 door → 4; and the v1
-    // baseline of "formula set v2: transom door removes L/I" (sections 1033 / 900 transom / 1033 / 1034):
-    // v1 leaves L/I untouched → profileL 10, whiteSeal 14.
-    const transom = await glassDoor((gs, ds) => [[1033, [[3000, gs]]], [900, [[1000, gs], [2000, ds]]], [1033, [[3000, gs]]], [1034, [[3000, gs]]]]);
-    expectLines(transom.materialList, g, { profileU: 4, profileL: 10, whiteSeal: 14 }, "transom door (v1)");
+    // Two separate source tuples, each with its own literal layout:
+    // (a) materials-evaluate.test.ts "profileU: transom door does NOT reduce doorWidthMmFullHeight": sections
+    //     900 (1000 glass over a 2000 door) / 1033 / 1033 / 1034 → profileU 4.
+    const transomFirst = await glassDoor((gs, ds) => [[900, [[1000, gs], [2000, ds]]], [1033, [[3000, gs]]], [1033, [[3000, gs]]], [1034, [[3000, gs]]]]);
+    expectLines(transomFirst.materialList, g, { profileU: 4 }, "transom door (profileU)");
+    // (b) materials-evaluate.test.ts "formula set v2: transom door removes L/I", test "v1 baseline: transom door
+    //     leaves L/I untouched": sections 1033 / 900 transom / 1033 / 1034 → profileL 10, whiteSeal 14 (v1).
+    const transomSecond = await glassDoor((gs, ds) => [[1033, [[3000, gs]]], [900, [[1000, gs], [2000, ds]]], [1033, [[3000, gs]]], [1034, [[3000, gs]]]]);
+    expectLines(transomSecond.materialList, g, { profileL: 10, whiteSeal: 14 }, "transom door (v1 baseline)");
 
     // "doorConnector excludes corner door (test 10)": a door at the left end → 0
     const corner = await glassDoor((gs, ds) => [[900, [[3000, ds]]], [1033, [[3000, gs]]], [1033, [[3000, gs]]], [1034, [[3000, gs]]]]);

@@ -67,7 +67,7 @@ test("J3: Delete floor → Reset project → Delete project (UI), with the casca
 
     await test.step("1. Delete floor (Design page): only floor 1's subtree goes; the submission is dropped; floor 2 re-submits alone", async () => {
       await page.goto(orgTarget(run, `/projects/${projectId}/design`));
-      expect(await pillState(o)).toMatchObject({ Summary: "open", Quotation: "open" });
+      await expect.poll(() => pillState(o, false), { timeout: 20_000 }).toMatchObject({ Summary: "open", Quotation: "open" });
       const floorSelect = page.getByRole("combobox").first();
       await expect(floorSelect).toHaveText(`${run.prefix}1F`);
       const del = page.getByTitle("Delete floor", { exact: true });
@@ -99,7 +99,7 @@ test("J3: Delete floor → Reset project → Delete project (UI), with the casca
       const snapBefore = await readConfigSnapshot(projectId);
       const before = await getProject(as.admin, c, projectId);
       await page.goto(orgTarget(run, `/projects/${projectId}`));
-      expect(await pillState(o)).toMatchObject({ Design: "open", Summary: "open" });
+      await expect.poll(() => pillState(o, false), { timeout: 20_000 }).toMatchObject({ Design: "open", Summary: "open" });
       const reset = page.getByRole("button", { name: "Reset project" });
       await expect.poll(() => isHydrated(reset)).toBe(true);
       await reset.click();
@@ -113,7 +113,7 @@ test("J3: Delete floor → Reset project → Delete project (UI), with the casca
       await expect
         .poll(async () => (await pillState(o, false)).Design, { timeout: 20_000, message: "pills re-lock via router.refresh()" })
         .toBe("locked");
-      expect(await pillState(o)).toMatchObject({ "Project Details": "open", Configuration: "open", Design: "locked", Summary: "locked", Quotation: "locked" });
+      await expect.poll(() => pillState(o, false), { timeout: 20_000 }).toMatchObject({ "Project Details": "open", Configuration: "open", Design: "locked", Summary: "locked", Quotation: "locked" });
 
       expect(await floors()).toEqual([]);
       expect(await selections()).toEqual([]);

@@ -65,7 +65,7 @@ test("J2: edits after Submit Design — invalidation, Recompute gate, pills, and
     await test.step("A: a stale Summary tab — Recompute after an edit elsewhere → 409 shown in place; reload bounces", async () => {
       await page.goto(orgTarget(run, `/projects/${projectId}/summary`));
       await expectLands(() => orgPathOf(run, page.url()), `/projects/${projectId}/summary`);
-      expect(await pillState(o)).toMatchObject({ Summary: "open", Quotation: "open" });
+      await expect.poll(() => pillState(o, false), { timeout: 20_000 }).toMatchObject({ Summary: "open", Quotation: "open" });
       const btn = page.getByRole("button", { name: "Recompute" });
       await expect.poll(() => isHydrated(btn)).toBe(true);
 
@@ -80,7 +80,7 @@ test("J2: edits after Submit Design — invalidation, Recompute gate, pills, and
       await expect(page.getByRole("alert").filter({ hasText: "has never been submitted or computed" })).toBeVisible();
       await page.goto(orgTarget(run, `/projects/${projectId}/summary`));
       await expectLands(() => orgPathOf(run, page.url()), `/projects/${projectId}`, "Summary bounces once the submission is cleared");
-      expect(await pillState(o)).toMatchObject({ Design: "open", Summary: "locked", Quotation: "locked" });
+      await expect.poll(() => pillState(o, false), { timeout: 20_000 }).toMatchObject({ Design: "open", Summary: "locked", Quotation: "locked" });
     });
 
     let k1!: Calculation;
@@ -89,7 +89,7 @@ test("J2: edits after Submit Design — invalidation, Recompute gate, pills, and
       expect(walls(k1).map((w) => [w.glass.map((g) => g.heightMm), w.doors.map((d) => d.heightMm)])).toEqual([[[2600], [2600]]]);
       expect(k1.materialList).not.toEqual(k0.materialList); // taller wall → longer profiles
       await page.goto(orgTarget(run, `/projects/${projectId}`));
-      expect(await pillState(o)).toMatchObject({ Summary: "open", Quotation: "open" });
+      await expect.poll(() => pillState(o, false), { timeout: 20_000 }).toMatchObject({ Summary: "open", Quotation: "open" });
     });
 
     await test.step("C: label-only edits keep the submission; the stored summary keeps the old labels until Recompute", async () => {
