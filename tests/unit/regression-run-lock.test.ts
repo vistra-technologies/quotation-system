@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { acquireRunLock, releaseRunLock, pidAlive } from "../regression/fixtures/run-lock";
+import { acquireRunLock, releaseRunLock, pidAlive, teardownRefusal, lockHolderPid } from "../regression/fixtures/run-lock";
 
 const tmp = () => path.join(fs.mkdtempSync(path.join(os.tmpdir(), "rgr-lock-")), "run.lock");
 
@@ -51,4 +51,24 @@ test("pidAlive: our own pid is alive; an exited child's pid is not; nonsense pid
   assert.equal(pidAlive(child.pid!), false);
   assert.equal(pidAlive(0), false);
   assert.equal(pidAlive(-5), false);
+});
+
+test("IMP-1 teardownRefusal: only the process that holds the lock AND set up this run.json may tear down", () => {
+  // the live run A's own teardown
+  assert.equal(teardownRefusal({ lockPid: 100, pid: 100, runRunId: "runA", envRunId: "runA" }), null);
+  // run B, refused at the lock: its teardown must not touch run A (B never set RGR_RUN_ID)
+  assert.match(teardownRefusal({ lockPid: 100, pid: 200, runRunId: "runA", envRunId: undefined })!, /not our run/);
+  // even with a stray RGR_RUN_ID inherited from the environment, the lock decides
+  assert.match(teardownRefusal({ lockPid: 100, pid: 200, runRunId: "runA", envRunId: "runA" })!, /held by pid 100, not this process \(pid 200\)/);
+  // our setup failed and released the lock: nothing to tear down here
+  assert.match(teardownRefusal({ lockPid: null, pid: 100, runRunId: null, envRunId: "runB" })!, /held by nobody/);
+  // we hold the lock but run.json is another run's (must never happen; refuse rather than drain it)
+  assert.match(teardownRefusal({ lockPid: 100, pid: 100, runRunId: "runA", envRunId: "runB" })!, /belongs to run runA/);
+});
+
+test("lockHolderPid reads the holder's pid; null when there is no lock", () => {
+  const f = tmp();
+  assert.equal(lockHolderPid(f), null);
+  acquireRunLock(f, { pid: 4242, isAlive: () => true });
+  assert.equal(lockHolderPid(f), 4242);
 });

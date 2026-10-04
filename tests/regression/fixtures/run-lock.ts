@@ -59,3 +59,21 @@ export function releaseRunLock(file: string, pid: number = process.pid): void {
   const held = readLock(file);
   if (held && held.pid === pid) fs.rmSync(file, { force: true });
 }
+
+/** The pid currently recorded in the lock file, or null (missing / unreadable). */
+export function lockHolderPid(file: string): number | null {
+  return readLock(file)?.pid ?? null;
+}
+
+/**
+ * Final re-review IMP-1: Playwright registers global teardown BEFORE global setup runs, so a run whose setup was
+ * REFUSED at the lock still runs teardown — which would read the LIVE run's run.json and tear that run down.
+ * Teardown may only act when THIS process holds the lock AND run.json belongs to the run THIS process set up
+ * (RGR_RUN_ID, set by setup in the same process). Returns null when allowed, else the reason to do nothing.
+ */
+export function teardownRefusal(o: { lockPid: number | null; pid: number; runRunId: string | null | undefined; envRunId: string | undefined }): string | null {
+  if (!o.envRunId) return "this process never completed the lock step of global setup (no RGR_RUN_ID) — not our run";
+  if (o.lockPid !== o.pid) return `the run lock is held by ${o.lockPid === null ? "nobody" : `pid ${o.lockPid}`}, not this process (pid ${o.pid})`;
+  if (o.runRunId && o.runRunId !== o.envRunId) return `run.json belongs to run ${o.runRunId}, not this process's run ${o.envRunId}`;
+  return null;
+}

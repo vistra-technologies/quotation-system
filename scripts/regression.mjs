@@ -14,6 +14,37 @@ const UNIT_FILE = path.join(BASE, "unit.txt"); // captured node:test summary, pa
 // M6: both passes share ONE last-run file outside the per-pass output dirs, so --last-failed still finds the first
 // pass's failures although the re-run writes its traces to a different outputDir.
 const LAST_RUN = path.join(BASE, "last-run.json");
+const LOCK_FILE = path.join(BASE, "run.lock"); // taken by global-setup (tests/regression/fixtures/run-lock.ts)
+
+/**
+ * IMP-1: the pid of a LIVE run holding the lock, else null. Checked before this orchestrator deletes ANY shared file
+ * (last-teardown.json, latest-run.json, last-run.json, unit.txt): a second orchestrator must not clobber the status
+ * files of the run that is still going. (A dead pid's lock is stale — global-setup takes it over.)
+ */
+function liveLockHolder() {
+  let pid;
+  try {
+    pid = JSON.parse(fs.readFileSync(LOCK_FILE, "utf-8")).pid;
+  } catch {
+    return null;
+  }
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  try {
+    process.kill(pid, 0);
+    return pid;
+  } catch (e) {
+    return e.code === "EPERM" ? pid : null;
+  }
+}
+const refuseIfLocked = () => {
+  const pid = liveLockHolder();
+  if (pid !== null) {
+    console.error(`
+REGRESSION REFUSED: another run is live (${LOCK_FILE} held by pid ${pid}) — never run two live runs at once. Nothing was touched.`);
+    process.exit(1);
+  }
+};
+refuseIfLocked();
 
 const run = (label, cmd, args, env = process.env) => {
   console.log(`\n=== ${label} ===`);
@@ -23,6 +54,7 @@ const run = (label, cmd, args, env = process.env) => {
 
 /** Runs one playwright pass; returns { testsFailed, cleanupFailed, reason, runId }. */
 const pass = (label, extra = [], env = process.env) => {
+  refuseIfLocked(); // a run may have started since the last check — never delete its status files
   fs.rmSync(STATUS_FILE, { force: true });
   fs.rmSync(LATEST_RUN_FILE, { force: true }); // never let the report pick up a previous run's id
   const code = run(label, "npx", ["playwright", "test", "-c", "playwright.regression.config.ts", ...extra], env);

@@ -1,13 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { requireEnv, TEST_ORG, LEDGER_FILE, LOCK_FILE, RUN_DIR, TEARDOWN_STATUS_FILE } from "./env";
+import { requireEnv, TEST_ORG, LEDGER_FILE, LOCK_FILE, RUN_DIR, TEARDOWN_STATUS_FILE, RUN_ID_ENV } from "./env";
 import { Ledger } from "./fixtures/ledger";
 import { SaClient, allowanceFromRun } from "./fixtures/clients";
 import { tryReadRunState, deleteRunArtifacts, type RunState } from "./fixtures/run-state";
 import { Cleaner } from "./fixtures/delete-entry";
 import { diffSharedConfig, diffSnapshots } from "./fixtures/snapshot";
 import { removeOwnStrays, type Stray } from "./fixtures/cleanup-rules";
-import { releaseRunLock } from "./fixtures/run-lock";
+import { releaseRunLock, lockHolderPid, teardownRefusal } from "./fixtures/run-lock";
 import { globalStateFailuresFile, readGlobalStateFailures, stuckTemporaryTypeNames } from "./fixtures/global-state";
 import { regressionSnapshot, regressionSweep } from "../e2e/db-helpers";
 
@@ -18,6 +18,19 @@ function writeStatus(s: { runId: string | null; cleanupFailed: boolean; reason?:
 }
 
 export default async function globalTeardown() {
+  // IMP-1: Playwright registers this teardown BEFORE global setup runs, so it also runs for a run whose setup was
+  // refused at the lock. Such a process must touch NOTHING — not run.json, the ledger, last-teardown.json or the lock
+  // of the live run that holds it.
+  const refusal = teardownRefusal({
+    lockPid: lockHolderPid(LOCK_FILE),
+    pid: process.pid,
+    runRunId: tryReadRunState()?.runId,
+    envRunId: process.env[RUN_ID_ENV],
+  });
+  if (refusal) {
+    console.log(`[regression] teardown: skipped — ${refusal}`);
+    return;
+  }
   try {
     await teardownAndReport();
   } finally {
