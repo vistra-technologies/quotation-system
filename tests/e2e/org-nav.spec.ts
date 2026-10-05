@@ -36,6 +36,10 @@ import { orgUrl, orgUrlPattern, apiSignIn } from "./helpers";
 // but serial is safe everywhere.)
 test.describe.configure({ mode: "serial" });
 
+// Org slug under test. Default unchanged ("vistra" exists on the dev DB only); on a DB that has just
+// the Test Org run with ORG_E2E_SLUG=e2e-testorg (same pattern as LOGIN_E2E_ORG in login.spec.ts).
+const ORG = process.env.ORG_E2E_SLUG ?? "vistra";
+
 // ---------------------------------------------------------------------------
 // Item 12-a  The apex page must not point anywhere at localhost, and (Stage 28
 // B2) carries no org links at all — every link is an in-page "#" anchor.
@@ -103,10 +107,10 @@ test("unauthenticated request to /{orgSlug}/dashboard redirects to /{orgSlug}/lo
 }) => {
   // Open in a fresh context with no session cookies.
   // The Server Component calls getSession() → null (no cookie) → redirect.
-  const response = await page.goto(orgUrl("vistra", "/dashboard"));
+  const response = await page.goto(orgUrl(ORG, "/dashboard"));
 
   // After following redirects, we must be on the login page
-  expect(page.url()).toMatch(orgUrlPattern("vistra", "/login"));
+  expect(page.url()).toMatch(orgUrlPattern(ORG, "/login"));
 
   // The login form must be visible — Stage 10 removed the "Sign in to" heading;
   // the autocomplete="username" input is the stable anchor post-rebuild.
@@ -125,7 +129,7 @@ test("full flow: org login → sign in → dashboard → sign out", async ({
 }) => {
   // Step 1: Open the org's own login URL. Stage 28 B2: the apex no longer lists
   // orgs, so users reach their login directly at {orgSlug}.easeetool.com.
-  const orgSlug = "vistra";
+  const orgSlug = ORG;
   await page.goto(orgUrl(orgSlug, "/login"));
 
   // Stage 10 removed the "Sign in to" heading — wait for the form input instead.
@@ -168,7 +172,7 @@ test("cross-org session replay: vistra session rejected on acme-glass dashboard"
   page,
 }) => {
   // Sign in as vistra admin
-  await page.goto(orgUrl("vistra", "/login"));
+  await page.goto(orgUrl(ORG, "/login"));
   // Stage 10: "Sign in to" heading gone — wait for the form input instead.
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible();
   // Stage 10: label renamed "Username" → "User ID"; exact match on "Password" to
@@ -179,7 +183,7 @@ test("cross-org session replay: vistra session rejected on acme-glass dashboard"
 
   // Confirm we're on vistra dashboard
   // Stage 12 Batch 7b: heading is "Welcome, {firstName}", not "Dashboard".
-  await page.waitForURL(orgUrlPattern("vistra", "/dashboard"), { timeout: 10_000 });
+  await page.waitForURL(orgUrlPattern(ORG, "/dashboard"), { timeout: 10_000 });
   await expect(page.locator("h1")).toBeVisible({ timeout: 10_000 });
 
   // Now navigate to a DIFFERENT org's dashboard using the same session cookie.

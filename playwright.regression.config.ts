@@ -1,7 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
-import { config as dotenv } from "dotenv";
+import { loadRegressionEnv } from "./tests/regression/fixtures/env-files";
 
-dotenv({ path: ".env.playwright.local", quiet: true });
+// Resolved next to this file, falling back to the main checkout, so the suite runs from a git worktree too
+// (the git-ignored env files are not checked out there). Fails early naming the files to copy.
+loadRegressionEnv(__dirname);
 
 // Target validation (no localhost / production) happens in global-setup via requireEnv().
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? "";

@@ -61,3 +61,14 @@ Host header (via better-auth's dynamic-baseURL support, or an equivalent per-req
 build-time env var, so a single deployment can correctly serve both `*.easeetool.com` hosts and ad-hoc
 `*.vercel.app` preview hosts at once.
 <!-- END:nextjs-agent-rules -->
+
+## Escape handling: a workspace-level `document` keydown listener swallows Escape from nested inputs
+
+Workspace-level shortcuts here (e.g. the design canvas) register `document.addEventListener("keydown", …)`
+and treat Escape as "close/deselect". An input nested inside that workspace (a field in a popover or panel)
+that wants Escape for itself (cancel an edit, close its own dropdown) never gets to finish: the document
+listener also fires and tears the workspace state down. React's `e.stopPropagation()` does **not** help — React
+listens at the root and the native event has already bubbled to `document` listeners registered natively. In
+the nested input's `onKeyDown`, call `e.nativeEvent.stopImmediatePropagation()` (plus the local handling) so
+the native `document` listener is never reached. Found twice in Stage 27; a regression test should press
+Escape inside the nested input and assert the workspace state is unchanged.

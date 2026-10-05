@@ -32,20 +32,40 @@ test.describe.configure({ mode: "serial" });
 // Fixed subdomain targets — always hit the live staging domain aliases, regardless
 // of PLAYWRIGHT_BASE_URL.  These are stable: test.easeetool.com and its subdomains
 // are permanently aliased to the staging branch in Vercel.
-const APEX = "https://test.easeetool.com";
-const VISTRA_LOGIN = "https://vistra.test.easeetool.com/login";
-const VISTRA_DASHBOARD = "https://vistra.test.easeetool.com/dashboard";
-const VISTRA_ROOT = "https://vistra.test.easeetool.com/";
-const UNKNOWN_ORG_ROOT = "https://nope.test.easeetool.com/";
+//
+// Parameterised (Stage 28 test-infra cleanup, defaults unchanged): the host comes from
+// PLAYWRIGHT_BASE_URL when that is an *.easeetool.com host, else test.easeetool.com; the org
+// slug comes from ORG_E2E_SLUG (default "vistra" — that org only exists on the dev DB; on a DB
+// that has just the Test Org run with ORG_E2E_SLUG=e2e-testorg).
+const DEFAULT_HOST = "test.easeetool.com";
+function apexHost(): string {
+  try {
+    const h = new URL(process.env.PLAYWRIGHT_BASE_URL ?? "").hostname;
+    if (h === "easeetool.com" || h.endsWith(".easeetool.com")) return h;
+  } catch {
+    /* unset / not a URL → default */
+  }
+  return DEFAULT_HOST;
+}
+const HOST = apexHost();
+const ORG = process.env.ORG_E2E_SLUG ?? "vistra";
+const ORG_ORIGIN = `https://${ORG}.${HOST}`;
+const APEX = `https://${HOST}`;
+const VISTRA_LOGIN = `${ORG_ORIGIN}/login`;
+const VISTRA_DASHBOARD = `${ORG_ORIGIN}/dashboard`;
+const VISTRA_ROOT = `${ORG_ORIGIN}/`;
+const UNKNOWN_ORG_ROOT = `https://nope.${HOST}/`;
+const ORG_LOGIN_RE = new RegExp(`${ORG}.*\/login`);
+const ORG_DASHBOARD_RE = new RegExp(`${ORG}.*\/dashboard`);
 // Narrowed in Stage 16 Batch A: must NOT be a /controls path — the proxy now
 // carves /controls out of the BUG-3 guard. Use a clearly non-controls path.
-const APEX_NON_ROOT = "https://test.easeetool.com/definitely-not-controls/login";
-const APEX_CONTROLS = "https://test.easeetool.com/controls";
+const APEX_NON_ROOT = `${APEX}/definitely-not-controls/login`;
+const APEX_CONTROLS = `${APEX}/controls`;
 
 // ---------------------------------------------------------------------------
 // 1.  Apex root → 200 with the landing page
 // ---------------------------------------------------------------------------
-test("test.easeetool.com/ → 200 with the landing page", async ({ page }) => {
+test(`${HOST}/ → 200 with the landing page`, async ({ page }) => {
   const response = await page.goto(APEX, { waitUntil: "commit" });
   expect(response?.status()).toBe(200);
   // Stage 28 B2: the org selector is gone; the hero <h1> is the readiness signal.
@@ -56,7 +76,7 @@ test("test.easeetool.com/ → 200 with the landing page", async ({ page }) => {
 // 2.  Apex root lists no organizations (Stage 28 B2; replaces the BUG-1 org-link
 //     href guard — the apex no longer links to any org subdomain or path)
 // ---------------------------------------------------------------------------
-test("test.easeetool.com/ exposes no org links (in-page anchors only)", async ({
+test(`${HOST}/ exposes no org links (in-page anchors only)`, async ({
   page,
 }) => {
   await page.goto(APEX);
@@ -74,7 +94,7 @@ test("test.easeetool.com/ exposes no org links (in-page anchors only)", async ({
 // ---------------------------------------------------------------------------
 // 3.  Apex non-root path → 404 JSON  (BUG-3 guard)
 // ---------------------------------------------------------------------------
-test("test.easeetool.com/<non-root-path> → 404 JSON", async ({ page }) => {
+test(`${HOST}/<non-root-path> → 404 JSON`, async ({ page }) => {
   // The proxy rejects any non-root path on the apex host immediately — no DB lookup,
   // no path-based org routing.  This prevents the silent pass-through that made
   // test.easeetool.com/nonexistent-org/login return 200 before BUG-3 was fixed.
@@ -90,7 +110,7 @@ test("test.easeetool.com/<non-root-path> → 404 JSON", async ({ page }) => {
 // ---------------------------------------------------------------------------
 // 3b. Proxy carve-out: test.easeetool.com/controls must NOT 404 (Stage 16 Batch A)
 // ---------------------------------------------------------------------------
-test("test.easeetool.com/controls does not 404 (proxy carve-out for /controls)", async ({
+test(`${HOST}/controls does not 404 (proxy carve-out for /controls)`, async ({
   page,
 }) => {
   // Stage 16 Stage A: the proxy carves /controls out of the BUG-3 guard.
@@ -104,7 +124,7 @@ test("test.easeetool.com/controls does not 404 (proxy carve-out for /controls)",
 // ---------------------------------------------------------------------------
 // 4.  Known org subdomain login page → 200 with login form
 // ---------------------------------------------------------------------------
-test("vistra.test.easeetool.com/login → 200 with login form", async ({
+test(`${ORG}.${HOST}/login → 200 with login form`, async ({
   page,
 }) => {
   const response = await page.goto(VISTRA_LOGIN, { waitUntil: "commit" });
@@ -116,7 +136,7 @@ test("vistra.test.easeetool.com/login → 200 with login form", async ({
 // ---------------------------------------------------------------------------
 // 5.  Unknown org subdomain root → 404 JSON
 // ---------------------------------------------------------------------------
-test("nope.test.easeetool.com/ → 404 JSON (unknown org)", async ({ page }) => {
+test(`nope.${HOST}/ → 404 JSON (unknown org)`, async ({ page }) => {
   const response = await page.goto(UNKNOWN_ORG_ROOT, { waitUntil: "commit" });
   expect(response?.status()).toBe(404);
 
@@ -127,7 +147,7 @@ test("nope.test.easeetool.com/ → 404 JSON (unknown org)", async ({ page }) => 
 // ---------------------------------------------------------------------------
 // 6.  Org subdomain root (/) → redirects to login  (BUG-4 regression guard)
 // ---------------------------------------------------------------------------
-test("vistra.test.easeetool.com/ → redirects to login page", async ({
+test(`${ORG}.${HOST}/ → redirects to login page`, async ({
   page,
 }) => {
   // Proxy rewrites vistra.test.easeetool.com/ → /vistra/ internally.
@@ -138,13 +158,13 @@ test("vistra.test.easeetool.com/ → redirects to login page", async ({
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
     timeout: 10_000,
   });
-  expect(page.url()).toMatch(/vistra.*\/login/);
+  expect(page.url()).toMatch(ORG_LOGIN_RE);
 });
 
 // ---------------------------------------------------------------------------
 // 7.  Org subdomain dashboard unauthenticated → redirect to login
 // ---------------------------------------------------------------------------
-test("vistra.test.easeetool.com/dashboard unauthenticated → redirect to login", async ({
+test(`${ORG}.${HOST}/dashboard unauthenticated → redirect to login`, async ({
   page,
 }) => {
   // Fresh context, no session cookie.  Server component calls getSession() → null
@@ -154,14 +174,14 @@ test("vistra.test.easeetool.com/dashboard unauthenticated → redirect to login"
     timeout: 10_000,
   });
   // Must have redirected to the login path, not the dashboard
-  expect(page.url()).toMatch(/vistra.*\/login/);
+  expect(page.url()).toMatch(ORG_LOGIN_RE);
 });
 
 // ---------------------------------------------------------------------------
 // 8.  Full auth round-trip via org subdomain
 //     Sign in → dashboard reachable → sign out
 // ---------------------------------------------------------------------------
-test("full sign-in via vistra.test.easeetool.com/login → dashboard → sign out", async ({
+test(`full sign-in via ${ORG}.${HOST}/login → dashboard → sign out`, async ({
   page,
 }) => {
   // Navigate to subdomain login page directly (absolute URL)
@@ -178,7 +198,7 @@ test("full sign-in via vistra.test.easeetool.com/login → dashboard → sign ou
   await page.getByRole("button", { name: /Sign in/i }).click();
 
   // Dashboard must render
-  await page.waitForURL(/vistra.*\/dashboard/, { timeout: 30_000 });
+  await page.waitForURL(ORG_DASHBOARD_RE, { timeout: 30_000 });
   await expect(
     page.getByRole("heading", { name: /Welcome/i }),
   ).toBeVisible();
@@ -186,7 +206,7 @@ test("full sign-in via vistra.test.easeetool.com/login → dashboard → sign ou
   // Sign out and confirm redirect back to login
   await page.getByRole("button", { name: "Profile" }).click();
   await page.getByRole("button", { name: "Log Out" }).click();
-  await page.waitForURL(/vistra.*\/login/, { timeout: 10_000 });
+  await page.waitForURL(ORG_LOGIN_RE, { timeout: 10_000 });
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
     timeout: 5_000,
   });
@@ -196,7 +216,7 @@ test("full sign-in via vistra.test.easeetool.com/login → dashboard → sign ou
 // 9.  Subdomain: inquiries list → detail navigation produces clean URLs
 //     (Bug 2 regression guard — row links must not embed /{orgSlug}/ in path)
 // ---------------------------------------------------------------------------
-test("vistra.test.easeetool.com inquiries list row links have no org-slug prefix", async ({
+test(`${ORG}.${HOST} inquiries list row links have no org-slug prefix`, async ({
   page,
 }) => {
   // Sign in via the subdomain login page.
@@ -209,12 +229,12 @@ test("vistra.test.easeetool.com inquiries list row links have no org-slug prefix
     process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!",
   );
   await page.getByRole("button", { name: /Sign in/i }).click();
-  await page.waitForURL(/vistra.*\/dashboard/, { timeout: 30_000 });
+  await page.waitForURL(ORG_DASHBOARD_RE, { timeout: 30_000 });
 
   // Create a test inquiry via the API so this test is self-contained.
   // page.request shares the authenticated browser context cookies.
   const createRes = await page.request.post(
-    "https://vistra.test.easeetool.com/api/v1/orgs/vistra/inquiries",
+    `${ORG_ORIGIN}/api/v1/orgs/${ORG}/inquiries`,
     {
       data: {
         name: "Subdomain back-link regression",
@@ -228,7 +248,7 @@ test("vistra.test.easeetool.com inquiries list row links have no org-slug prefix
   const inquiryId = inquiry.id;
 
   // Navigate to the inquiries list.
-  await page.goto("https://vistra.test.easeetool.com/inquiries");
+  await page.goto(`${ORG_ORIGIN}/inquiries`);
   await expect(
     page.getByRole("heading", { name: /Inquiries/i }),
   ).toBeVisible({ timeout: 15_000 });
@@ -240,7 +260,7 @@ test("vistra.test.easeetool.com inquiries list row links have no org-slug prefix
   await expect(rowLink).toBeVisible({ timeout: 10_000 });
   const href = await rowLink.getAttribute("href");
   expect(href, `Row link href must not contain org slug prefix, got: "${href}"`).not.toMatch(
-    /^\/vistra\//,
+    new RegExp(`^\/${ORG}\/`),
   );
   expect(href).toBe(`/inquiries/${inquiryId}`);
 });
@@ -249,7 +269,7 @@ test("vistra.test.easeetool.com inquiries list row links have no org-slug prefix
 // 10.  Subdomain: inquiry detail "back" link navigates without protocol-relative error
 //      (Bug 1 regression guard — orgHref(orgSlug, "") must not produce "//…" hrefs)
 // ---------------------------------------------------------------------------
-test("vistra.test.easeetool.com inquiry detail back link navigates cleanly", async ({
+test(`${ORG}.${HOST} inquiry detail back link navigates cleanly`, async ({
   page,
 }) => {
   // Sign in via the subdomain login page.
@@ -262,11 +282,11 @@ test("vistra.test.easeetool.com inquiry detail back link navigates cleanly", asy
     process.env.TEST_ADMIN_PASSWORD ?? "Seed1234!",
   );
   await page.getByRole("button", { name: /Sign in/i }).click();
-  await page.waitForURL(/vistra.*\/dashboard/, { timeout: 30_000 });
+  await page.waitForURL(ORG_DASHBOARD_RE, { timeout: 30_000 });
 
   // Create a test inquiry via the API so this test is self-contained.
   const createRes = await page.request.post(
-    "https://vistra.test.easeetool.com/api/v1/orgs/vistra/inquiries",
+    `${ORG_ORIGIN}/api/v1/orgs/${ORG}/inquiries`,
     {
       data: {
         name: "Back-link click-through regression",
@@ -279,7 +299,7 @@ test("vistra.test.easeetool.com inquiry detail back link navigates cleanly", asy
   const { inquiry } = (await createRes.json()) as { inquiry: { id: string } };
 
   // Navigate to the inquiry detail page directly.
-  await page.goto(`https://vistra.test.easeetool.com/inquiries/${inquiry.id}`);
+  await page.goto(`${ORG_ORIGIN}/inquiries/${inquiry.id}`);
   // Detail page must render — the back link is the key assertion target.
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible({
     timeout: 15_000,
@@ -299,7 +319,7 @@ test("vistra.test.easeetool.com inquiry detail back link navigates cleanly", asy
   // Click the back link and verify we land on the inquiries list — not a broken
   // protocol-relative navigation that hangs or redirects to an external host.
   await backLink.click();
-  await page.waitForURL("https://vistra.test.easeetool.com/inquiries", {
+  await page.waitForURL(`${ORG_ORIGIN}/inquiries`, {
     timeout: 15_000,
   });
   // Inquiries list must actually render (not a blank page or error).
@@ -307,5 +327,5 @@ test("vistra.test.easeetool.com inquiry detail back link navigates cleanly", asy
     page.getByRole("heading", { name: /Inquiries/i }),
   ).toBeVisible({ timeout: 10_000 });
   // URL must be the clean subdomain URL — no org slug leaked into the path.
-  expect(page.url()).toBe("https://vistra.test.easeetool.com/inquiries");
+  expect(page.url()).toBe(`${ORG_ORIGIN}/inquiries`);
 });

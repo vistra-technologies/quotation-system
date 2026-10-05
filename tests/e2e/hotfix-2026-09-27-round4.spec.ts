@@ -153,10 +153,14 @@ test("H-13-SA-UI: Component Types edit form — Code field enabled, no locked hi
 
   // Check Code input field is present and NOT disabled
   // The edit form renders an input with the code value
-  const codeInput = page.locator("input").filter({ hasValue: "GLASS" });
-  const codeInputCount = await codeInput.count();
-  if (codeInputCount > 0) {
-    const isDisabled = await codeInput.first().isDisabled();
+  // Match on the live `value` PROPERTY (controlled inputs may not mirror it to the attribute, so
+  // input[value="GLASS"] is not reliable). Playwright has no `hasValue` filter option.
+  const codeInputs = await page
+    .locator("input")
+    .evaluateAll((els) => (els as HTMLInputElement[]).map((el) => ({ value: el.value, disabled: el.disabled })));
+  const glassInputs = codeInputs.filter((i) => i.value === "GLASS");
+  if (glassInputs.length > 0) {
+    const isDisabled = glassInputs[0].disabled;
     expect(isDisabled, "GLASS Code field must not be disabled (H-13 lifted lock)").toBe(false);
     console.log("H-13-UI PASS: GLASS Code input is enabled (not disabled)");
   } else {
