@@ -169,6 +169,9 @@ export function LoginForm({
     // Enter in an input submits the form even while the button is disabled.
     if (cooldown > 0) return;
 
+    // Drop any stale server error so it can't sit beside a new inline one.
+    setError(null);
+
     // Empty fields: inline error + focus the first bad one, no network call.
     const userMissing = username.trim().length === 0;
     const pwMissing = password.length === 0;
@@ -183,7 +186,6 @@ export function LoginForm({
       return;
     }
 
-    setError(null);
     setLoading(true);
 
     try {
@@ -246,7 +248,7 @@ export function LoginForm({
           />
         </div>
         {userIdMissing && (
-          <div id="userId-error" className={s.fieldError}>
+          <div id="userId-error" className={s.fieldError} aria-live="polite">
             Enter your user ID.
           </div>
         )}
@@ -335,7 +337,7 @@ export function LoginForm({
           </button>
         </div>
         {passwordMissing && (
-          <div id="password-error" className={s.fieldError}>
+          <div id="password-error" className={s.fieldError} aria-live="polite">
             Enter your password.
           </div>
         )}
