@@ -710,8 +710,9 @@ test.describe("restyled login page (Stage 28 B1)", () => {
     page,
   }) => {
     await goToLogin(page);
-    // The chip is aria-hidden decoration; assert by text presence + visibility.
-    const chip = page.getByText("Privacy glass engaged");
+    // The chip is aria-hidden decoration; its opacity (on the chip element, the
+    // text's parent) is what the "show" state toggles.
+    const chip = page.getByText("Privacy glass engaged").locator("xpath=..");
     await expect(chip).toHaveCSS("opacity", "0");
     await page.locator("#password").focus();
     await expect(chip).toHaveCSS("opacity", "1");
