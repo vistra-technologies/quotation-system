@@ -1,14 +1,8 @@
 /**
- * Login page spec — Task 1.5 (UI-inclusive exception).
- *
- * This is the ONE file this stage that includes DOM/layout/styling assertions,
- * per the explicit one-time exception documented in stage-10.md §1.5 and
- * decision #3.  The login page mockup was declared >90% final by the human,
- * lifting CLAUDE.md working-agreement rule 5 for this page only.
- *
- * All other new pages this stage (project-details restyle, configuration
- * restyle, orders placeholder) stay under the normal rule — behavior-level
- * assertions only, no DOM/layout/styling checks.
+ * Login page spec — Task 1.5 (UI-inclusive exception, Stage 10), extended in
+ * Stage 28 B1 for the restyled page (animated scene, inline field errors,
+ * footer, submitting state). DOM/layout assertions are allowed everywhere now
+ * (CLAUDE.md rule 5, lifted 2026-09-15).
  *
  * Runs against localhost using the path-based proxy fallback (proxy.ts) — no
  * *.localhost DNS configuration required for local/CI runs.
@@ -31,7 +25,9 @@ import { orgUrl, orgUrlPattern } from "./helpers";
 // account) that would interfere with concurrent runs.
 test.describe.configure({ mode: "serial" });
 
-const ORG = "acme-glass"; // primary test org
+// primary test org. LOGIN_E2E_ORG lets a run that only exercises mocked flows
+// (page.route) point at the Test Org instead (e.g. LOGIN_E2E_ORG=e2e-testorg).
+const ORG = process.env.LOGIN_E2E_ORG ?? "acme-glass";
 const ORG2 = "vistra"; // secondary org for cross-org test
 // orgUrl() returns the routing-mode-correct login URL:
 //   path mode:     "/acme-glass/login"
@@ -103,31 +99,53 @@ test("wrong password shows error message", async ({ page }) => {
 // 3. Empty username → form blocks submission
 // ---------------------------------------------------------------------------
 test("empty username blocks form submission", async ({ page }) => {
+  // Stage 28 B1: the form is noValidate; a client-side check shows an inline
+  // field error and returns before any network call.
+  let signInCalls = 0;
+  await page.route("**/api/auth/sign-in/email", (route) => {
+    signInCalls++;
+    return route.abort();
+  });
   await goToLogin(page);
   // Fill password but leave username empty
   await page.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
   await page.getByRole("button", { name: /Sign in/i }).click();
 
-  // HTML5 required validation fires; page must stay on login
   await expect(page).toHaveURL(orgUrlPattern(ORG, "/login"));
-  // No app error alert should appear (browser-native validation, not JS error).
-  // Scope to <p role="alert"> to exclude Next.js's always-present
-  // <div id="__next-route-announcer__" role="alert">.
+  await expect(page.getByText("Enter your user ID.")).toBeVisible();
+  await expect(page.getByLabel("User ID")).toBeFocused();
+  // The inline field error is not a server error alert. Scope to <p role="alert">
+  // to exclude Next.js's always-present <div id="__next-route-announcer__" role="alert">.
   await expect(page.locator('p[role="alert"]')).not.toBeVisible();
+  expect(signInCalls).toBe(0);
+
+  // The error clears as soon as the user types.
+  await page.getByLabel("User ID").fill("a");
+  await expect(page.getByText("Enter your user ID.")).toHaveCount(0);
 });
 
 // ---------------------------------------------------------------------------
 // 4. Empty password → form blocks submission
 // ---------------------------------------------------------------------------
 test("empty password blocks form submission", async ({ page }) => {
+  let signInCalls = 0;
+  await page.route("**/api/auth/sign-in/email", (route) => {
+    signInCalls++;
+    return route.abort();
+  });
   await goToLogin(page);
   // Fill username but leave password empty
   await page.getByLabel("User ID").fill("admin");
   await page.getByRole("button", { name: /Sign in/i }).click();
 
-  // HTML5 required validation fires; page must stay on login
   await expect(page).toHaveURL(orgUrlPattern(ORG, "/login"));
+  await expect(page.getByText("Enter your password.")).toBeVisible();
+  await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
   await expect(page.locator('p[role="alert"]')).not.toBeVisible();
+  expect(signInCalls).toBe(0);
+
+  await page.getByLabel("Password", { exact: true }).fill("x");
+  await expect(page.getByText("Enter your password.")).toHaveCount(0);
 });
 
 // ---------------------------------------------------------------------------
@@ -270,8 +288,8 @@ test("cross-org notice names only the session org", async ({ page }) => {
   await page.getByLabel("Password", { exact: true }).fill(ADMIN_PASSWORD);
 
   // Rate-limit guard: this is the 4th real sign-in POST in the suite (tests 1,
-  // 2, and 5 each send one; tests 3 and 4 are blocked by HTML5 validation before
-  // reaching the server).  better-auth's default rate limiter allows at most 3
+  // 2, and 5 each send one; tests 3 and 4 are blocked by the client-side empty
+  // check before reaching the server).  better-auth's default rate limiter allows at most 3
   // /sign-in* requests per 10-second window per IP (see
   // node_modules/better-auth/dist/api/rate-limiter/index.mjs,
   // getDefaultSpecialRules() — window: 10, max: 3).  Without a wait, all four
@@ -400,9 +418,10 @@ test.describe("contact popup", () => {
     await expect(page.getByRole("dialog")).toBeVisible({ timeout: 5_000 });
 
     // Click the fixed backdrop overlay at a corner well outside the inner card.
-    // The backdrop is the outermost fixed div; clicking inside the card is
-    // stopped by stopPropagation, so we target {x:5, y:5} (top-left corner).
-    await page.locator(".fixed.inset-0").click({ position: { x: 5, y: 5 } });
+    // The backdrop is the outermost fixed div (data-testid, since CSS-module
+    // class names are hashed); clicking inside the card is stopped by
+    // stopPropagation, so we target {x:5, y:5} (top-left corner).
+    await page.locator('[data-testid="modal-scrim"]').click({ position: { x: 5, y: 5 } });
 
     await expect(page.getByRole("dialog")).toHaveCount(0);
   });
@@ -561,7 +580,8 @@ test.describe("another session is active", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 10. Mobile viewport (390px): no horizontal overflow
+// 10. Mobile viewport (390px): no horizontal overflow, and the sign-in form is
+//     reachable without scrolling (Stage 28 mobile amendment: shortened scene)
 // ---------------------------------------------------------------------------
 test("mobile viewport has no horizontal overflow", async ({ browser }) => {
   const ctx = await browser.newContext({
@@ -579,7 +599,124 @@ test("mobile viewport has no horizontal overflow", async ({ browser }) => {
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
     );
     expect(hasOverflow).toBe(false);
+
+    // The submit button sits within the first viewport height (no scrolling needed).
+    const box = await mobilePage
+      .getByRole("button", { name: /Sign in/i })
+      .boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y + box!.height).toBeLessThanOrEqual(844);
   } finally {
     await ctx.close();
   }
+});
+
+// ---------------------------------------------------------------------------
+// 11. Stage 28 B1 — restyled page structure. All sign-in traffic is mocked, so
+//     none of these spend the real sign-in rate-limit budget.
+// ---------------------------------------------------------------------------
+test.describe("restyled login page (Stage 28 B1)", () => {
+  test("scene, flow tabs, footer and subtitle render", async ({ page }) => {
+    await goToLogin(page);
+
+    // Animated scene: five panes, a three-tab workflow rail, scene headline.
+    const scene = page.getByRole("region", {
+      name: /glass partition estimation/i,
+    });
+    await expect(scene).toBeVisible();
+    await expect(scene.getByRole("heading", { level: 1 })).toContainText(
+      "glass partition",
+    );
+    const tabs = page.getByRole("tablist", { name: "Workflow" }).getByRole("tab");
+    await expect(tabs).toHaveCount(3);
+    await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+    await tabs.nth(2).click();
+    await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "true");
+
+    // Subtitle (real text — the regression page table asserts it) + footer.
+    await expect(page.getByText("Sign in to continue to your account")).toBeVisible();
+    await expect(page.getByText("© 2026 EaseeTool")).toBeVisible();
+    await expect(page.getByRole("link", { name: /privacy|terms/i })).toHaveCount(0);
+  });
+
+  test("footer Support opens the same contact popup", async ({ page }) => {
+    await goToLogin(page);
+    await page.getByRole("button", { name: "Support", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Contact support" });
+    await expect(dialog).toBeVisible();
+    await expect(
+      dialog.getByRole("link", { name: "+91 8149007006" }),
+    ).toHaveAttribute("href", "tel:+918149007006");
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("prefers-reduced-motion: the workflow autoplay does not advance", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await goToLogin(page);
+    const tabs = page.getByRole("tablist", { name: "Workflow" }).getByRole("tab");
+    await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+    // Autoplay steps every 3.6 s; give it comfortably longer than one step.
+    await page.waitForTimeout(5_000);
+    await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
+    // Tabs stay clickable under reduced motion.
+    await tabs.nth(1).click();
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
+  });
+
+  test("default motion: the workflow autoplay advances on its own", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await goToLogin(page);
+    const tabs = page.getByRole("tablist", { name: "Workflow" }).getByRole("tab");
+    await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true", {
+      timeout: 8_000,
+    });
+  });
+
+  test("submitting shows 'Signing in…' then the result, with no success screen", async ({
+    page,
+  }) => {
+    // Delay the (mocked) sign-in so the in-flight state is observable.
+    await page.route("**/api/auth/sign-in/email", async (route) => {
+      await new Promise((r) => setTimeout(r, 1_500));
+      await route.fulfill({
+        status: 401,
+        contentType: "application/json",
+        body: JSON.stringify({ message: "Invalid username or password" }),
+      });
+    });
+    await goToLogin(page);
+    await page.getByLabel("User ID").fill("admin");
+    await page.getByLabel("Password", { exact: true }).fill("whatever-123");
+    await page.getByRole("button", { name: /Sign in/i }).click();
+
+    const busy = page.getByRole("button", { name: /Signing in/ });
+    await expect(busy).toBeVisible();
+    await expect(busy).toBeDisabled();
+
+    // Then the server error shows; there is never a "You're in" success screen.
+    await expect(page.locator('p[role="alert"]')).toHaveText(
+      "Invalid username or password",
+    );
+    await expect(page.getByText(/You're in/i)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Sign in/ })).toBeEnabled();
+  });
+
+  test("privacy glass chip shows while the masked password field is focused", async ({
+    page,
+  }) => {
+    await goToLogin(page);
+    // The chip is aria-hidden decoration; assert by text presence + visibility.
+    const chip = page.getByText("Privacy glass engaged");
+    await expect(chip).toHaveCSS("opacity", "0");
+    await page.locator("#password").focus();
+    await expect(chip).toHaveCSS("opacity", "1");
+    // Revealing the password clears the glass.
+    await page.getByRole("button", { name: "Show password" }).click();
+    await expect(chip).toHaveCSS("opacity", "0");
+  });
 });

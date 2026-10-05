@@ -1,6 +1,8 @@
 "use client";
 
 import { authClient } from "@/lib/auth-client";
+import brand from "@/components/brand/brand.module.css";
+import s from "./login-form.module.css";
 
 interface CrossOrgNoticeProps {
   /** Slug of the org the visitor is currently signed in to (org X). */
@@ -20,8 +22,10 @@ interface CrossOrgNoticeProps {
  * org's login page (org Y).
  *
  * Stage 10 (Task 1.4): restyled with Sage Ease tokens. Component no longer
- * owns its own full-page wrapper — the parent page.tsx provides the two-panel
- * layout; this component renders only the right-panel card content.
+ * owns its own full-page wrapper — the page layout (login-experience.tsx)
+ * provides the scene + auth column; this component renders only the notice
+ * that replaces the form inside the auth column. Stage 28 B1: restyled to the
+ * login-page-poc.html mockup (CSS modules); props and handlers unchanged.
  *
  * Security constraint: unchanged. This component ONLY renders information about
  * org X (the session org). It receives no information about org Y and cannot
@@ -61,25 +65,25 @@ export function CrossOrgNotice({
   }
 
   return (
-    <div>
-      <h2 className="mb-3 text-[22px] font-extrabold tracking-tight text-text-heading">
-        {title}
-      </h2>
-      <p className="mb-7 text-[13.5px] leading-relaxed text-text-muted">{message}</p>
+    <div className={s.notice}>
+      <h2 className={s.noticeTitle}>{title}</h2>
+      <p className={s.noticeMsg}>{message}</p>
 
-      <div className="flex flex-col gap-3">
+      <div className={s.noticeBtns}>
         {/* Primary: logout and stay on this org's login page */}
         <button
+          type="button"
           onClick={handleLogout}
-          className="flex w-full items-center justify-center rounded-sm bg-primary px-4 py-[13px] text-sm font-bold text-text-on-primary transition-colors hover:bg-primary-dark"
+          className={`${brand.btn} ${brand.btnPrimary} ${brand.btnBlock}`}
         >
           {logoutLabel}
         </button>
 
         {/* Secondary: go to the session org's dashboard */}
         <button
+          type="button"
           onClick={handleGoToDashboard}
-          className="flex w-full items-center justify-center rounded-sm border border-border bg-bg-white px-4 py-[13px] text-sm font-bold text-text-body transition-colors hover:bg-primary-softer hover:text-text-heading"
+          className={`${brand.btn} ${brand.btnOutline} ${brand.btnBlock}`}
         >
           {dashboardLabel}
         </button>

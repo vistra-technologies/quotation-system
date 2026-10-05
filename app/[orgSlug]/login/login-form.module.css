@@ -1,0 +1,281 @@
+/*
+  Login form, popups and the cross-org notice (Stage 28 B1).
+  Ported from design-docs/mockups/login-page-poc.html. Buttons that appear in
+  more than one place come from components/brand/brand.module.css.
+*/
+
+/* ── Fields ── */
+.field {
+  margin-bottom: 18px;
+}
+.label {
+  display: block;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-heading);
+  margin-bottom: 8px;
+}
+.inputWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.iconLeft {
+  position: absolute;
+  left: 14px;
+  width: 17px;
+  height: 17px;
+  color: var(--color-text-placeholder);
+  pointer-events: none;
+  transition: color 0.15s ease;
+}
+.inputWrap:focus-within > .iconLeft {
+  color: var(--color-primary);
+}
+.input {
+  width: 100%;
+  font: inherit;
+  font-size: 14px;
+  color: var(--color-text-body);
+  background: var(--color-bg-white);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: 13px 14px 13px 42px;
+}
+.input::placeholder {
+  color: var(--color-text-placeholder);
+}
+.input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px var(--color-primary-softer);
+}
+.inputPw {
+  padding-right: 46px;
+}
+.hasError .input,
+.hasError .input:focus {
+  border-color: var(--color-status-failed-text);
+  box-shadow: 0 0 0 4px var(--color-status-failed-bg);
+}
+.fieldError {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-status-failed-text);
+  margin-top: 6px;
+}
+
+.pwToggle {
+  position: absolute;
+  right: 6px;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-text-placeholder);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.pwToggle:hover {
+  background: var(--color-primary-softer);
+  color: var(--color-primary-dark);
+}
+.pwToggle svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* server error / rate-limit message slot */
+.formError {
+  margin: -2px 0 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-status-failed-text);
+}
+
+/* ── Submit (extends the shared .btn from brand.module.css) ── */
+.submit {
+  padding: 14px 20px;
+  font-size: 15px;
+  position: relative;
+  overflow: hidden;
+}
+.submit svg {
+  width: 17px;
+  height: 17px;
+  transition: transform 0.25s ease;
+}
+.submit:hover svg {
+  transform: translateX(3px);
+}
+.submit:disabled:hover svg {
+  transform: none;
+}
+.spinner {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.footnote {
+  margin: 26px 0 0;
+  text-align: center;
+  font-size: 13.5px;
+  color: var(--color-text-muted);
+}
+.footnoteBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  cursor: pointer;
+}
+.footnoteBtn:hover {
+  text-decoration: underline;
+}
+
+/* ── Cross-org "already signed in" notice (replaces the form) ── */
+/* (the auth column's entrance animation in login-page.module.css covers it) */
+.notice {
+  display: block;
+}
+.noticeTitle {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--color-text-heading);
+  margin: 0 0 12px;
+}
+.noticeMsg {
+  margin: 0 0 28px;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+.noticeBtns {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Popups ── */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.4);
+}
+.modal {
+  width: 100%;
+  max-width: 384px;
+  background: var(--color-bg-white);
+  border-radius: var(--radius-md);
+  padding: 24px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+.modalTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-heading);
+}
+.modalText {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--color-text-body);
+}
+.modalHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.modalX {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 14px;
+}
+.modalX:hover {
+  background: var(--color-primary-softer);
+  color: var(--color-text-heading);
+}
+.contactList {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+}
+.contactList a {
+  font-weight: 700;
+  color: var(--color-primary-dark);
+  text-decoration: none;
+}
+.contactList a:hover {
+  text-decoration: underline;
+}
+.session {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary-softer);
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  font-size: 14px;
+}
+.session dt {
+  color: var(--color-text-muted);
+}
+.session dd {
+  margin: 0;
+  font-weight: 700;
+  color: var(--color-text-heading);
+}
+.modalError {
+  margin: 12px 0 0;
+  font-size: 14px;
+  color: var(--color-status-failed-text);
+}
+.modalActions {
+  margin-top: 20px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.modalActions .modalBtn {
+  padding: 12px 16px;
+  font-size: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}

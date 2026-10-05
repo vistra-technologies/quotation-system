@@ -1,0 +1,125 @@
+/*
+  Login page layout — scene | auth column | footer (Stage 28 B1).
+  Ported from design-docs/mockups/login-page-poc.html; the mockup's :root, body
+  and reset rules are deliberately not ported (app/globals.css owns those).
+*/
+
+.landing {
+  display: flex;
+  min-height: 100dvh;
+  overflow-x: clip;
+}
+
+/* ================= right: sign-in ================= */
+.auth {
+  flex: 1 1 42%;
+  max-width: 620px;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-page);
+  position: relative;
+}
+.authMain {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 40px;
+}
+.authCol {
+  width: 100%;
+  max-width: 380px;
+}
+.authLogo {
+  margin-bottom: 28px;
+}
+.authSub {
+  font-size: 14.5px;
+  color: var(--color-text-muted);
+  margin: 0 0 30px;
+  line-height: 1.55;
+}
+
+/* entrance for the form column */
+.authCol > * {
+  animation: rise 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.authCol > *:nth-child(2) {
+  animation-delay: 0.08s;
+}
+.authCol > *:nth-child(3) {
+  animation-delay: 0.16s;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* footer: copyright + Support (opens the contact popup) */
+.authFoot {
+  padding: 0 40px 28px;
+  font-size: 12px;
+  color: var(--color-text-placeholder);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.linkBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.linkBtn:hover {
+  color: var(--color-text-muted);
+}
+
+/* ================= responsive ================= */
+@media (max-height: 820px) {
+  .authMain {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+  .authSub {
+    margin-bottom: 20px;
+  }
+  .authFoot {
+    padding-bottom: 20px;
+  }
+}
+@media (max-width: 900px) {
+  .landing {
+    flex-direction: column;
+  }
+  .authLogo {
+    display: none; /* brand already shown in the scene header */
+  }
+  .authSub {
+    margin-bottom: 20px;
+  }
+  .auth {
+    max-width: none;
+  }
+  .authMain {
+    align-items: flex-start;
+    padding: 20px 16px 20px;
+  }
+  .authFoot {
+    padding: 0 16px 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .authCol > * {
+    animation: none;
+  }
+}

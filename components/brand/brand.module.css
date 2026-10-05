@@ -1,0 +1,105 @@
+/*
+  Shared brand styles for the public (pre-auth) pages — org login (Stage 28 B1)
+  and the apex landing (Stage 28 B2). Plain CSS + the Sage Ease theme vars from
+  app/globals.css; the mockups' own :root / body / reset blocks are NOT ported.
+*/
+
+/* ── Logo ── */
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logoMark {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.logoWord {
+  font-weight: 800;
+  font-size: 22px;
+  color: var(--color-text-heading);
+}
+
+.sm {
+  gap: 8px;
+}
+.sm .logoMark {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+.sm .logoWord {
+  font-size: 18px;
+}
+
+/* On the dark scene panel */
+.onDark .logoMark {
+  box-shadow: 0 0 0 1px rgba(236, 240, 237, 0.18), 0 10px 26px -10px rgba(0, 0, 0, 0.6);
+}
+.onDark .logoWord {
+  color: #f7f8ef;
+}
+
+/* ── Scene palette (derived from the Sage Ease primary + heading colours).
+   Scoped to a class, not :root, so nothing leaks to the rest of the app. ── */
+.sceneTokens {
+  --scene-deep: #142019;
+  --scene-mid: #1f3325;
+  --scene-lift: #2b4632;
+  --glass-edge: rgba(236, 240, 237, 0.55);
+  --glass-tint: rgba(203, 223, 205, 0.1);
+  --pane-w: 120px;
+  --pane-h: 300px;
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  padding: 11px 20px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.btnPrimary {
+  background: var(--color-primary);
+  color: var(--color-text-on-primary);
+}
+.btnPrimary:hover {
+  background: var(--color-primary-dark);
+}
+
+.btnOutline {
+  background: var(--color-bg-white);
+  border-color: var(--color-border);
+  color: var(--color-text-body);
+}
+.btnOutline:hover {
+  background: var(--color-primary-softer);
+  color: var(--color-text-heading);
+}
+
+.btnBlock {
+  width: 100%;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
