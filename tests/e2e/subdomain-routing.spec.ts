@@ -43,35 +43,31 @@ const APEX_NON_ROOT = "https://test.easeetool.com/definitely-not-controls/login"
 const APEX_CONTROLS = "https://test.easeetool.com/controls";
 
 // ---------------------------------------------------------------------------
-// 1.  Apex root → 200 with EaseeTool heading
+// 1.  Apex root → 200 with the landing page
 // ---------------------------------------------------------------------------
-test("test.easeetool.com/ → 200 with EaseeTool heading", async ({ page }) => {
+test("test.easeetool.com/ → 200 with the landing page", async ({ page }) => {
   const response = await page.goto(APEX, { waitUntil: "commit" });
   expect(response?.status()).toBe(200);
-  await expect(page.getByRole("heading", { name: /Select your organization/i })).toBeVisible({ timeout: 10_000 });
+  // Stage 28 B2: the org selector is gone; the hero <h1> is the readiness signal.
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("made easy", { timeout: 10_000 });
 });
 
 // ---------------------------------------------------------------------------
-// 2.  Apex root org links emit subdomain hrefs (BUG-1 regression guard)
+// 2.  Apex root lists no organizations (Stage 28 B2; replaces the BUG-1 org-link
+//     href guard — the apex no longer links to any org subdomain or path)
 // ---------------------------------------------------------------------------
-test("test.easeetool.com/ org links point at org subdomains, not path-based URLs", async ({
+test("test.easeetool.com/ exposes no org links (in-page anchors only)", async ({
   page,
 }) => {
   await page.goto(APEX);
-  await expect(page.getByRole("heading", { name: /Select your organization/i })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("made easy", { timeout: 10_000 });
 
-  const nav = page.locator("nav");
-  const links = await nav.locator("a").all();
-  expect(links.length).toBeGreaterThanOrEqual(1);
-
-  for (const link of links) {
-    const href = (await link.getAttribute("href")) ?? "";
-    // Each org link must be an absolute subdomain URL, not a path-based relative URL.
-    // Path-based hrefs on the apex domain would cause an infinite login redirect loop
-    // (proxy never injects x-org-id for apex-passthrough paths — BUG-1 root cause).
-    expect(href, `Expected subdomain href but got: "${href}"`).toMatch(
-      /^https:\/\/[^.]+\.test\.easeetool\.com\//,
-    );
+  const hrefs = await page
+    .locator("a[href]")
+    .evaluateAll((els) => els.map((e) => e.getAttribute("href") ?? ""));
+  expect(hrefs.length).toBeGreaterThan(0);
+  for (const href of hrefs) {
+    expect(href, `Expected an in-page anchor but got: "${href}"`).toMatch(/^#/);
   }
 });
 

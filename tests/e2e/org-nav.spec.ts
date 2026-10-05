@@ -2,7 +2,7 @@
  * Org-navigation regression spec (Items 7, 9, 11, 12).
  *
  * Exercises the real-browser flows that prior curl-only passes could not reach:
- *   - Apex page org-selector link destinations (no localhost hardcode)
+ *   - Apex landing page carries no org links / no localhost hardcode (Stage 28 B2)
  *   - Path-based org routing: known slug → login page, unknown slug → 404
  *   - Full sign-in → dashboard → sign-out flow
  *   - Cross-org session-replay guard (path-based routing, shared cookie jar)
@@ -18,16 +18,18 @@
  * x-vercel-protection-bypass and x-vercel-set-bypass-cookie headers on every
  * request so Vercel's SSO wall is bypassed without repeated header injection.
  *
- * Stage 12 update: the apex page was redesigned in Stage 11 (Batch 9).
- * "EaseeTool" is now in a <span> brand mark; the actual <h1> reads
- * "Select your organization". The dashboard was redesigned in Stage 12
+ * Stage 28 (Batch 2): the apex page is now a show-only marketing landing — the
+ * org selector (and its "Select your organization" heading) is gone, so the
+ * org-link tests below were rewritten: the full flow starts from the org's own
+ * login URL, and the apex is asserted to expose no org/localhost links at all.
+ * Stage 12 update: the dashboard was redesigned in Stage 12
  * (Batch 7b): heading is now "Welcome, {firstName}", not "Dashboard";
  * the dt/dd identity block is gone; KPI tiles replace it. Sign out is now
  * Profile (icon button) → "Log Out" dropdown item.
  */
 
 import { test, expect } from "@playwright/test";
-import { orgUrl, orgUrlPattern, isSubdomain, apiSignIn } from "./helpers";
+import { orgUrl, orgUrlPattern, apiSignIn } from "./helpers";
 
 // Run this file serially — auth-flow tests are flaky under concurrent Turbopack
 // compilation load on local dev. (On a pre-built Vercel preview this is not needed,
@@ -35,109 +37,39 @@ import { orgUrl, orgUrlPattern, isSubdomain, apiSignIn } from "./helpers";
 test.describe.configure({ mode: "serial" });
 
 // ---------------------------------------------------------------------------
-// Helper — extract org links from the apex org-selector page
+// Item 12-a  The apex page must not point anywhere at localhost, and (Stage 28
+// B2) carries no org links at all — every link is an in-page "#" anchor.
 // ---------------------------------------------------------------------------
-async function getOrgLinks(page: import("@playwright/test").Page) {
+test("apex landing has no org links and no localhost hrefs", async ({ page }) => {
   await page.goto("/");
-  // Stage 11 Batch 9: the <h1> reads "Select your organization";
-  // "EaseeTool" is in a <span> brand mark, not a heading.
-  await expect(
-    page.getByRole("heading", { name: "Select your organization" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("made easy");
 
-  // Collect all org <a> elements in the nav (exclude the dev-tools links)
-  const nav = page.locator("nav");
-  const links = await nav.locator("a").all();
-  const result: { name: string; href: string }[] = [];
-  for (const link of links) {
-    const name = (await link.textContent()) ?? "";
-    const href = (await link.getAttribute("href")) ?? "";
-    result.push({ name: name.trim(), href });
-  }
-  return result;
-}
-
-// ---------------------------------------------------------------------------
-// Item 12-a  Org links on the apex page must NOT point at localhost
-// ---------------------------------------------------------------------------
-test("apex org-selector links point at the deployed origin, not localhost", async ({
-  page,
-  baseURL,
-}) => {
-  const links = await getOrgLinks(page);
-
-  // Must have at least the 4 seeded orgs
-  expect(links.length).toBeGreaterThanOrEqual(4);
-
-  for (const { name, href } of links) {
-    // Each href must not contain 'localhost' in any form
-    expect(
-      href,
-      `Org "${name.replace(/\s+/g, " ")}" link href contains localhost`,
-    ).not.toContain("localhost");
-
-    // Under path-based routing org links are relative paths like /{slug}/login.
-    // Allow relative paths (no host) or absolute URLs on the same deployed origin
-    // — but never a different host entirely.
-    if (href.startsWith("http://") || href.startsWith("https://")) {
-      const url = new URL(href, baseURL ?? "https://test.easeetool.com");
-      expect(
-        url.hostname,
-        `Org "${name.replace(/\s+/g, " ")}" link points at unexpected host: ${url.hostname}`,
-      ).not.toBe("localhost");
-    }
+  const hrefs = await page
+    .locator("a[href]")
+    .evaluateAll((els) => els.map((e) => e.getAttribute("href") ?? ""));
+  expect(hrefs.length).toBeGreaterThan(0);
+  for (const href of hrefs) {
+    expect(href, `apex link "${href}" must be an in-page anchor`).toMatch(/^#/);
+    expect(href).not.toContain("localhost");
   }
 });
 
 // ---------------------------------------------------------------------------
-// Item 12-b  Clicking an org link stays on the deployed domain
+// Item 12-b  Clicking an apex nav tab stays on the deployed origin (in-page
+// scroll, no navigation away, never localhost).
 // ---------------------------------------------------------------------------
-test("clicking an org link stays on the deployed domain, not localhost", async ({
-  page,
-  baseURL,
-}) => {
-  // This assertion is only meaningful against a deployed environment.
-  // When baseURL is localhost the final URL will always contain "localhost" — a
-  // false failure, not a real regression.  The Stage 2 bug it guards (hardcoded
-  // localhost in org link hrefs) is already caught by the href-inspection test
-  // above, which passes correctly on localhost.
-  test.skip(
-    !baseURL || baseURL.includes("localhost"),
-    "Skipped on localhost — test targets deployed environments only (always false-fails locally).",
-  );
-
-  const links = await getOrgLinks(page);
-  expect(links.length).toBeGreaterThanOrEqual(1);
-
-  const firstLinkText = links[0].name;
-  const firstLinkHref = links[0].href;
-
-  // Navigate via click
-  let navigationError: Error | null = null;
-  let finalUrl = "";
-
-  try {
-    await Promise.all([
-      page.waitForURL(/.+/, { timeout: 10_000 }),
-      page.locator("nav a").first().click(),
-    ]);
-    finalUrl = page.url();
-  } catch (err) {
-    navigationError = err as Error;
-    finalUrl = page.url();
-  }
-
-  expect(
-    finalUrl,
-    `After clicking org "${firstLinkText}" (href="${firstLinkHref}"), browser ended up at an unexpected URL`,
-  ).not.toContain("localhost");
-
-  if (!navigationError) {
-    const landed = new URL(finalUrl);
-    expect(
-      landed.hostname,
-      `Browser navigated to the wrong host: ${landed.hostname}`,
-    ).not.toBe("localhost");
+test("clicking an apex nav tab stays on the same origin", async ({ page, baseURL }) => {
+  await page.goto("/");
+  const before = new URL(page.url()).origin;
+  await page
+    .getByRole("navigation", { name: "Sections" })
+    .getByRole("link", { name: "About us" })
+    .click();
+  await expect(page).toHaveURL(/#about$/);
+  const after = new URL(page.url());
+  expect(after.origin).toBe(before);
+  if (baseURL && !baseURL.includes("localhost")) {
+    expect(after.hostname).not.toBe("localhost");
   }
 });
 
@@ -186,52 +118,21 @@ test("unauthenticated request to /{orgSlug}/dashboard redirects to /{orgSlug}/lo
 });
 
 // ---------------------------------------------------------------------------
-// Item 12 (full flow)  Apex → org login → sign in → dashboard → sign out
+// Item 12 (full flow)  Org login → sign in → dashboard → sign out
 // ---------------------------------------------------------------------------
-test("full flow: apex org link → login page → sign in → dashboard → sign out", async ({
+test("full flow: org login → sign in → dashboard → sign out", async ({
   page,
-  baseURL,
 }) => {
-  // Step 1: Load apex
-  await page.goto("/");
-  // Stage 11 Batch 9: heading is "Select your organization", not "EaseeTool".
-  await expect(
-    page.getByRole("heading", { name: "Select your organization" }),
-  ).toBeVisible();
-
-  // Step 2: Inspect the href — record it before clicking
-  const firstLink = page.locator("nav a").first();
-  const orgHref = await firstLink.getAttribute("href");
-
-  // If the href points at localhost, the flow is broken — fail immediately with a clear description
-  if (orgHref?.includes("localhost")) {
-    throw new Error(
-      `REGRESSION (Item 12): Org link href is "${orgHref}" — hardcoded to localhost. ` +
-        `In production this takes the user to the local dev server, not to the deployed org login page. ` +
-        `Root cause: app/page.tsx builds href with localhost instead of a relative path.`,
-    );
-  }
-
-  // Step 3: Click and wait for the login page.
-  // In subdomain mode the org link points at {orgSlug}.test.easeetool.com/login;
-  // in path mode it points at /{orgSlug}/login.  Both end at a URL containing "/login".
-  await Promise.all([
-    page.waitForURL(/\/login/, { timeout: 10_000 }),
-    firstLink.click(),
-  ]);
+  // Step 1: Open the org's own login URL. Stage 28 B2: the apex no longer lists
+  // orgs, so users reach their login directly at {orgSlug}.easeetool.com.
+  const orgSlug = "vistra";
+  await page.goto(orgUrl(orgSlug, "/login"));
 
   // Stage 10 removed the "Sign in to" heading — wait for the form input instead.
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible({
     timeout: 5_000,
   });
-
-  // Extract org slug from the URL we've landed on.
-  // Path mode:     /vistra/login → pathname.split("/")[1] = "vistra"
-  // Subdomain mode: vistra.test.easeetool.com/login → hostname.split(".")[0] = "vistra"
-  const loginUrl = new URL(page.url());
-  const orgSlug = isSubdomain
-    ? loginUrl.hostname.split(".")[0]
-    : loginUrl.pathname.split("/")[1];
+  await expect(page).toHaveURL(/\/login/);
 
   // Step 4: Sign in with the org's admin credentials
   // Stage 10: label renamed "Username" → "User ID"; "Password" needs exact match

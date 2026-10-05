@@ -4,10 +4,10 @@ import { test, expect } from "@playwright/test";
 // real navigation). Intentionally does not assert on org-selector link destinations or auth
 // flows — that's the tester agent's job to write and run against this harness.
 //
-// Stage 12 update: apex page was redesigned in Stage 11 (Batch 9). "EaseeTool" is now in
-// a <span> brand mark, not an <h1>. The actual <h1> reads "Select your organization".
-test("apex page loads and renders the organization selector", async ({ page }) => {
+// Stage 28 (Batch 2): the apex is now the show-only landing page (no org selector),
+// so the readiness signal is the hero <h1>.
+test("apex page loads and renders the landing page", async ({ page }) => {
   const response = await page.goto("/");
   expect(response?.ok()).toBeTruthy();
-  await expect(page.getByRole("heading", { name: "Select your organization" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("made easy");
 });

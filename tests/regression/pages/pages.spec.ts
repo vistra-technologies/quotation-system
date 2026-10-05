@@ -36,7 +36,6 @@ import {
   apexPathOf, expectLands, openAs, orgPathOf, orgTarget, paramsFor, readyWall, settledProblems, type Opened, type ParamDeps,
 } from "./page-helpers";
 
-coversPage("/");
 coversPage("/organizations");
 coversPage("/[orgSlug]");
 coversPage("/[orgSlug]/login");
