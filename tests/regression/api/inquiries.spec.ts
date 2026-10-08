@@ -316,16 +316,20 @@ test.describe("inquiries: rules", () => {
     expect(await listIds(as.member, q("&scope=mine"), "inquiries")).toEqual([]);
   });
 
-  test("KNOWN BUG: an external user can GET another company's inquiry by id (list hides it, the id route does not)", async ({ as, f, run, ledger, url }) => {
+  // Hotfix 2026-10-05 (backlog "Cross-company access by id"): company ownership is applied on every by-id path.
+  test("an external user cannot GET or PATCH another company's inquiry by id (404, like a missing id)", async ({ as, f, run, ledger, url }) => {
     const otherCo = await f.externalCompany();
     const { id, body } = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-idor"), currency: "AED", externalCompanyId: otherCo.id });
     expect(id, JSON.stringify(body)).not.toBeNull();
-    expect(await listIds(as.distributor, url(`/inquiries?search=${encodeURIComponent((body.inquiry as Inquiry).name)}`), "inquiries")).toEqual([]);
-    // KNOWN BUG — getInquiryById scopes by org only, not by the external user's company; when fixed,
-    // change this expectation to 404 (same as the list visibility rule).
+    const name = (body.inquiry as Inquiry).name;
+    expect(await listIds(as.distributor, url(`/inquiries?search=${encodeURIComponent(name)}`), "inquiries")).toEqual([]);
     const r = await as.distributor.get(url(`/inquiries/${id}`));
-    expect(r.status(), await r.text()).toBe(200);
-    expect(((await r.json()) as { inquiry: Inquiry }).inquiry.externalCompanyId).toBe(otherCo.id);
+    expect(r.status(), await r.text()).toBe(404);
+    const ghost = await as.distributor.get(url(`/inquiries/${GHOST}`));
+    expect(await r.json()).toEqual(await ghost.json());
+    const p = await as.distributor.patch(url(`/inquiries/${id}`), { data: { name: `${name}-by-dist` } });
+    expect(p.status(), await p.text()).toBe(404);
+    expect((await as.member.get(url(`/inquiries/${id}`))).status()).toBe(200); // internal baseline
   });
 
   test("KNOWN BUG: currency is not validated — \"EUR\" (not one of INR/AED/USD) is accepted", async ({ as, run, ledger }) => {

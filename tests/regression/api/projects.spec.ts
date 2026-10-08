@@ -18,6 +18,7 @@ import { globalStateFailuresFile, withRecordedGlobalState } from "../fixtures/gl
 import { withTestOrgConfigLock } from "../fixtures/config-window";
 import { pending, restorePendingRenames } from "../fixtures/pending-restore";
 import type { Factories } from "../fixtures/factories";
+import { bypass, runPassword, signIn } from "./sign-in";
 import { registerNegatives, GHOST, type Ctx } from "./api-matrix";
 import {
   orgApi,
@@ -261,19 +262,53 @@ test.describe("projects: create / read / patch / list", () => {
     expect(await listIds(as.distributor, q("&scope=mine"), "projects")).toEqual([]);
   });
 
-  test("KNOWN BUG: an external user can read AND edit another company's project by id", async ({ as, f, run, ledger, url }) => {
+  // Hotfix 2026-10-05 (backlog "Cross-company access by id"): company ownership is applied on every by-id path.
+  test("an external user cannot read or edit another company's project by id (404, like a missing id)", async ({ as, f, run, ledger, url }) => {
     const otherCo = await f.externalCompany();
     const { id, body } = await createLedgered(as.admin, { run, ledger }, "project", { name: nm({ run }, "proj-idor"), currency: "AED", externalCompanyId: otherCo.id });
     expect(id, JSON.stringify(body)).not.toBeNull();
     const name = (body.project as Project).name;
     expect(await listIds(as.distributor, url(`/projects?search=${encodeURIComponent(name)}`), "projects")).toEqual([]);
-    // KNOWN BUG — getProjectById/updateProject scope by org only, not by the external user's company;
-    // when fixed, change both expectations to 404 and assert the name is unchanged.
     const g = await as.distributor.get(url(`/projects/${id}`));
-    expect(g.status(), await g.text()).toBe(200);
+    expect(g.status(), await g.text()).toBe(404);
+    const ghost = await as.distributor.get(url(`/projects/${GHOST}`));
+    expect(await g.json()).toEqual(await ghost.json()); // a foreign id leaks nothing a missing id would not
     const p = await as.distributor.patch(url(`/projects/${id}`), { data: { name: `${name}-by-dist` } });
-    expect(p.status(), await p.text()).toBe(200);
-    expect((await json<{ project: Project }>(await as.admin.get(url(`/projects/${id}`)))).project.name).toBe(`${name}-by-dist`);
+    expect(p.status(), await p.text()).toBe(404);
+    expect((await json<{ project: Project }>(await as.admin.get(url(`/projects/${id}`)))).project.name).toBe(name);
+    // internal baseline: the Company Member still reads any company's project
+    expect((await as.member.get(url(`/projects/${id}`))).status()).toBe(200);
+  });
+
+  // Fail closed (HF-3): an external user whose company was deleted (users.externalCompanyId -> NULL) owns nothing.
+  test("an external user whose company was deleted owns nothing: empty lists, zero stats, 404 by id, 403 on create", async ({ as, f, url, run, ledger, playwright, baseURL }) => {
+    const target = await f.project(); // Test Org project, internal-created (company-less)
+    await f.inquiry();
+    const u = await f.user("distributor"); // the factory creates + ledgers its company
+    const g = await as.admin.get(url(`/users/${u.id}`));
+    const coId = ((await g.json()) as { user: { externalCompanyId: string | null } }).user.externalCompanyId;
+    expect(coId).toEqual(expect.any(String));
+    const d = await as.admin.delete(url(`/external-companies/${coId}`));
+    expect(d.status(), await d.text()).toBe(200);
+    ledger.remove(coId!);
+
+    const ctx = await playwright.request.newContext({ baseURL, extraHTTPHeaders: bypass() });
+    try {
+      const login = await signIn(ctx, run.testOrg.slug, u.username, runPassword());
+      expect(login.status(), await login.text()).toBe(200);
+      expect(((await (await ctx.get(url("/projects"))).json()) as { projects: unknown[] }).projects).toEqual([]);
+      expect(((await (await ctx.get(url("/inquiries"))).json()) as { inquiries: unknown[] }).inquiries).toEqual([]);
+      const st = await ctx.get(url("/stats"));
+      expect(await st.json()).toEqual({ projectsTotal: 0, projectsInProgress: 0, inquiriesTotal: 0, inquiriesNew: 0 });
+      expect((await ctx.get(url(`/projects/${target.id}`))).status()).toBe(404);
+      const post = await ctx.post(url("/projects"), { data: { name: nm({ run }, "proj-orphan"), currency: "AED" } });
+      expect(post.status(), await post.text()).toBe(403);
+      expect(await post.json()).toEqual({ error: "Your account is not linked to a company" });
+      const postInq = await ctx.post(url("/inquiries"), { data: { name: nm({ run }, "inq-orphan"), currency: "AED" } });
+      expect(postInq.status(), await postInq.text()).toBe(403);
+    } finally {
+      await ctx.dispose(); // the user itself is ledgered; teardown deletes it
+    }
   });
 
   test("KNOWN BUG: POST accepts any client-supplied status (an unknown value is stored, the project is then locked)", async ({ as, run, ledger, url }) => {
