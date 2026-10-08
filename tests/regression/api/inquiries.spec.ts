@@ -329,6 +329,8 @@ test.describe("inquiries: rules", () => {
     expect(await r.json()).toEqual(await ghost.json());
     const p = await as.distributor.patch(url(`/inquiries/${id}`), { data: { name: `${name}-by-dist` } });
     expect(p.status(), await p.text()).toBe(404);
+    const after = await as.admin.get(url(`/inquiries/${id}`)); // the rejected PATCH wrote nothing
+    expect(((await after.json()) as { inquiry: Inquiry }).inquiry.name).toBe(name);
     expect((await as.member.get(url(`/inquiries/${id}`))).status()).toBe(200); // internal baseline
   });
 

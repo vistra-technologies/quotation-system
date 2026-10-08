@@ -299,7 +299,7 @@ test.describe("projects: create / read / patch / list", () => {
       expect(((await (await ctx.get(url("/projects"))).json()) as { projects: unknown[] }).projects).toEqual([]);
       expect(((await (await ctx.get(url("/inquiries"))).json()) as { inquiries: unknown[] }).inquiries).toEqual([]);
       const st = await ctx.get(url("/stats"));
-      expect(await st.json()).toEqual({ projectsTotal: 0, projectsInProgress: 0, inquiriesTotal: 0, inquiriesNew: 0 });
+      expect(await st.json()).toEqual({ projectsTotal: 0, projectsInProgress: 0, inquiriesTotal: 0, inquiriesNew: 0, ordersTotal: 0 });
       expect((await ctx.get(url(`/projects/${target.id}`))).status()).toBe(404);
       const post = await ctx.post(url("/projects"), { data: { name: nm({ run }, "proj-orphan"), currency: "AED" } });
       expect(post.status(), await post.text()).toBe(403);
