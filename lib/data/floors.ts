@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { invalidateProjectCalculation } from "@/lib/data/formula-pin";
 import type { SessionData } from "@/lib/session";
+import { ownedProjectWhere } from "@/lib/data/ownership";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -10,14 +11,19 @@ import type { SessionData } from "@/lib/session";
 
 /**
  * List all floors for a project, ordered by orderIndex (ascending).
- * Tenancy guard: filters by both projectId AND organizationId.
+ * Tenancy guard: filters by projectId, organizationId AND company ownership of the project (HF-3).
+ * A foreign project yields an empty list.
  */
 export async function listFloorsByProject(
+  session: SessionData,
   projectId: string,
-  organizationId: string,
 ) {
   return prisma.floor.findMany({
-    where: { projectId, organizationId },
+    where: {
+      projectId,
+      organizationId: session.organizationId,
+      project: ownedProjectWhere(session),
+    },
     orderBy: { orderIndex: "asc" },
   });
 }
@@ -36,16 +42,26 @@ export async function listFloorsByProject(
  * a concurrent race that slips through the findFirst is caught as P2002 and
  * surfaced as { code: "DUPLICATE_FLOOR_LABEL" }.
  *
+ * Returns null if the project is missing or not owned by the caller (route -> 404).
  * Throws { code: "DUPLICATE_FLOOR_LABEL" } on a concurrent race collision.
  * All other errors propagate to the caller.
  */
 export async function createFloorIfNotExists(
+  session: SessionData,
   projectId: string,
   label: string,
-  organizationId: string,
 ) {
+  const organizationId = session.organizationId;
   try {
     return await prisma.$transaction(async (tx) => {
+      // HF-3/HF-5: the caller must own the parent project before any find-or-create.
+      // Returns null for a missing or foreign project (caller -> 404).
+      const project = await tx.project.findFirst({
+        where: { id: projectId, ...ownedProjectWhere(session) },
+        select: { id: true },
+      });
+      if (!project) return null;
+
       // Return the existing floor if the label is already in use for this project.
       const existing = await tx.floor.findFirst({
         where: { projectId, label, organizationId },
@@ -102,7 +118,11 @@ export async function renameFloor(
   label: string,
 ) {
   const existing = await prisma.floor.findFirst({
-    where: { id: floorId, organizationId: session.organizationId },
+    where: {
+      id: floorId,
+      organizationId: session.organizationId,
+      project: ownedProjectWhere(session),
+    },
     select: { id: true },
   });
   if (!existing) return null;
@@ -137,7 +157,11 @@ export async function renameFloor(
  */
 export async function deleteFloor(session: SessionData, floorId: string) {
   const existing = await prisma.floor.findFirst({
-    where: { id: floorId, organizationId: session.organizationId },
+    where: {
+      id: floorId,
+      organizationId: session.organizationId,
+      project: ownedProjectWhere(session),
+    },
     select: { id: true, projectId: true },
   });
   if (!existing) return null;

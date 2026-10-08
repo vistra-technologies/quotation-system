@@ -58,7 +58,7 @@ export async function GET(
   }
 
   try {
-    const partitions = await listPartitionsByRoom(roomId, session.organizationId);
+    const partitions = await listPartitionsByRoom(session, roomId);
     return NextResponse.json({ partitions });
   } catch (err) {
     console.error(

@@ -51,7 +51,7 @@ export async function GET(
   }
 
   try {
-    const partition = await getPartitionById(id, session.organizationId);
+    const partition = await getPartitionById(session, id);
     if (!partition) {
       return apiNotFound("Partition not found or access denied");
     }

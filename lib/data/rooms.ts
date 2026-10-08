@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { invalidateProjectCalculation } from "@/lib/data/formula-pin";
 import type { Prisma } from "@/app/generated/prisma/client";
 import type { SessionData } from "@/lib/session";
+import { ownedProjectWhere } from "@/lib/data/ownership";
 import { createPartitionInTx } from "@/lib/data/partitions";
 import { seedSectionsDesign } from "@/lib/partition-design";
 
@@ -73,7 +74,11 @@ export class InvalidSidesError extends Error {
  */
 export async function listRoomsByFloor(session: SessionData, floorId: string) {
   const floor = await prisma.floor.findFirst({
-    where: { id: floorId, organizationId: session.organizationId },
+    where: {
+      id: floorId,
+      organizationId: session.organizationId,
+      project: ownedProjectWhere(session),
+    },
     select: { id: true },
   });
   if (!floor) return [];
@@ -90,7 +95,11 @@ export async function listRoomsByFloor(session: SessionData, floorId: string) {
  */
 export async function getRoomById(session: SessionData, roomId: string) {
   return prisma.room.findFirst({
-    where: { id: roomId, organizationId: session.organizationId },
+    where: {
+      id: roomId,
+      organizationId: session.organizationId,
+      floor: { project: ownedProjectWhere(session) },
+    },
   });
 }
 
@@ -127,7 +136,11 @@ export async function createRoom(
   try {
     return await prisma.$transaction(async (tx) => {
       const floor = await tx.floor.findFirst({
-        where: { id: floorId, organizationId: session.organizationId },
+        where: {
+          id: floorId,
+          organizationId: session.organizationId,
+          project: ownedProjectWhere(session),
+        },
         select: { id: true },
       });
       if (!floor) {
@@ -192,7 +205,11 @@ export async function renameRoom(
   label: string,
 ) {
   const existing = await prisma.room.findFirst({
-    where: { id: roomId, organizationId: session.organizationId },
+    where: {
+      id: roomId,
+      organizationId: session.organizationId,
+      floor: { project: ownedProjectWhere(session) },
+    },
     select: { id: true },
   });
   if (!existing) return null;
@@ -236,7 +253,11 @@ export async function reorderRooms(
 ) {
   return prisma.$transaction(async (tx) => {
     const floor = await tx.floor.findFirst({
-      where: { id: floorId, organizationId: session.organizationId },
+      where: {
+        id: floorId,
+        organizationId: session.organizationId,
+        project: ownedProjectWhere(session),
+      },
       select: { id: true },
     });
     if (!floor) {
@@ -284,7 +305,11 @@ export async function reorderRooms(
  */
 export async function deleteRoom(session: SessionData, roomId: string) {
   const existing = await prisma.room.findFirst({
-    where: { id: roomId, organizationId: session.organizationId },
+    where: {
+      id: roomId,
+      organizationId: session.organizationId,
+      floor: { project: ownedProjectWhere(session) },
+    },
     select: { id: true, floor: { select: { projectId: true } } },
   });
   if (!existing) return null;
@@ -350,7 +375,11 @@ export async function replaceSides(
 ) {
   return prisma.$transaction(async (tx) => {
     const room = await tx.room.findFirst({
-      where: { id: roomId, organizationId: session.organizationId },
+      where: {
+        id: roomId,
+        organizationId: session.organizationId,
+        floor: { project: ownedProjectWhere(session) },
+      },
       include: { floor: { select: { projectId: true } } },
     });
     if (!room) return null;

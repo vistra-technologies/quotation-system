@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { invalidateProjectCalculation } from "@/lib/data/formula-pin";
 import type { Prisma } from "@/app/generated/prisma/client";
 import type { SessionData } from "@/lib/session";
+import { ownedProjectWhere } from "@/lib/data/ownership";
 import {
   PartitionDesignError,
   assertSectionHeights,
@@ -40,14 +41,18 @@ export class InvalidDesignError extends Error {}
 
 /**
  * List all partitions for a room, ordered by partitionNumber (ascending).
- * Tenancy guard: filters by both roomId AND organizationId.
+ * Tenancy guard: filters by roomId, organizationId AND company ownership of the project (HF-3).
  */
 export async function listPartitionsByRoom(
+  session: SessionData,
   roomId: string,
-  organizationId: string,
 ) {
   return prisma.partition.findMany({
-    where: { roomId, organizationId },
+    where: {
+      roomId,
+      organizationId: session.organizationId,
+      room: { floor: { project: ownedProjectWhere(session) } },
+    },
     orderBy: { partitionNumber: "asc" },
   });
 }
@@ -56,9 +61,13 @@ export async function listPartitionsByRoom(
  * Get a single partition by id, scoped to the session org (tenancy guard).
  * Returns null if not found or if it belongs to a different org.
  */
-export async function getPartitionById(id: string, organizationId: string) {
+export async function getPartitionById(session: SessionData, id: string) {
   return prisma.partition.findFirst({
-    where: { id, organizationId },
+    where: {
+      id,
+      organizationId: session.organizationId,
+      room: { floor: { project: ownedProjectWhere(session) } },
+    },
   });
 }
 
@@ -164,7 +173,11 @@ export async function updatePartition(
   patch: UpdatePartitionPatch,
 ) {
   const existing = await prisma.partition.findFirst({
-    where: { id, organizationId: session.organizationId },
+    where: {
+      id,
+      organizationId: session.organizationId,
+      room: { floor: { project: ownedProjectWhere(session) } },
+    },
     include: {
       room: {
         include: {

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { invalidateProjectCalculation } from "@/lib/data/formula-pin";
 import type { SessionData } from "@/lib/session";
+import { ownedProjectWhere } from "@/lib/data/ownership";
 import { getComponentTypeById } from "@/lib/data/components";
 import { isComponentTypeFullyConfigured } from "@/lib/configurator-gating";
 import { parseFieldsSchema, parseFieldOptionsConfig } from "@/lib/parse-field-config";
@@ -34,15 +35,19 @@ export interface UpdateSelectionInput {
  * (rather than leaking that the project exists in another org).
  */
 export async function listSelections(session: SessionData, projectId: string) {
-  // Tenancy guard — verify the project belongs to the session's org.
+  // Tenancy guard — verify the project belongs to the session's org AND is owned by the caller's company (HF-3).
   const project = await prisma.project.findFirst({
-    where: { id: projectId, organizationId: session.organizationId },
+    where: { id: projectId, ...ownedProjectWhere(session) },
     select: { id: true },
   });
   if (!project) return [];
 
   return prisma.selection.findMany({
-    where: { projectId, organizationId: session.organizationId },
+    where: {
+      projectId,
+      organizationId: session.organizationId,
+      project: ownedProjectWhere(session),
+    },
     orderBy: { orderIndex: "asc" },
     include: {
       componentType: { select: { id: true, name: true, code: true } },
@@ -105,7 +110,7 @@ export async function createSelection(
   // configSnapshot (Stage 22 decision #11): the configuredness/active guard below validates against
   // it, not live ComponentType rows, so it agrees with what the Configuration page offered.
   const project = await prisma.project.findFirst({
-    where: { id: input.projectId, organizationId: session.organizationId },
+    where: { id: input.projectId, ...ownedProjectWhere(session) },
     select: { id: true, configSnapshot: true },
   });
   if (!project) throw new Error("Project not found or access denied.");
@@ -168,7 +173,11 @@ export async function updateSelection(
 ) {
   // Tenancy guard — verify the selection belongs to the session's org.
   const existing = await prisma.selection.findFirst({
-    where: { id, organizationId: session.organizationId },
+    where: {
+      id,
+      organizationId: session.organizationId,
+      project: ownedProjectWhere(session),
+    },
     select: { id: true, projectId: true },
   });
   if (!existing) return null;
@@ -215,7 +224,11 @@ interface DesignRefsShape {
  */
 export async function deleteSelection(session: SessionData, id: string) {
   const existing = await prisma.selection.findFirst({
-    where: { id, organizationId: session.organizationId },
+    where: {
+      id,
+      organizationId: session.organizationId,
+      project: ownedProjectWhere(session),
+    },
     select: { id: true, projectId: true },
   });
   if (!existing) return null;

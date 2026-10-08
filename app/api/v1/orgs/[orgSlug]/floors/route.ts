@@ -56,7 +56,7 @@ export async function GET(
   }
 
   try {
-    const floors = await listFloorsByProject(projectId, session.organizationId);
+    const floors = await listFloorsByProject(session, projectId);
     return NextResponse.json({ floors });
   } catch (err) {
     console.error("[GET /api/v1/orgs/[orgSlug]/floors] listFloorsByProject", err);
@@ -121,11 +121,8 @@ export async function POST(
   }
 
   try {
-    const floor = await createFloorIfNotExists(
-      projectId,
-      label,
-      session.organizationId,
-    );
+    const floor = await createFloorIfNotExists(session, projectId, label);
+    if (!floor) return apiBadRequest("Project not found or access denied.");
     return NextResponse.json({ floor }, { status: 201 });
   } catch (err) {
     if (
