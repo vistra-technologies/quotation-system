@@ -240,9 +240,10 @@ test.describe("inquiries: rules", () => {
   });
 
   test("convert → 201 DRAFT project with the inquiry's fields + a frozen snapshot; twice → 409; deleting the project re-opens the inquiry", async ({ as, f, run, ledger, url }) => {
-    const co = await f.externalCompany();
+    // Use the architect's own company so the architect (external user) can access the inquiry post-fix (D-1 class).
+    const archCoId = await distributorCompanyId({ run, as });
     const { id: inqId, body } = await createLedgered(as.admin, { run, ledger }, "inquiry", {
-      name: nm({ run }, "inq-conv"), currency: "AED", externalCompanyId: co.id, projectLocation: "Abu Dhabi", endClientName: "EC1", projectDeadline: "2026-12-31",
+      name: nm({ run }, "inq-conv"), currency: "AED", externalCompanyId: archCoId, projectLocation: "Abu Dhabi", endClientName: "EC1", projectDeadline: "2026-12-31",
     });
     expect(inqId, JSON.stringify(body)).not.toBeNull();
     const inq = body.inquiry as Inquiry;
@@ -253,7 +254,7 @@ test.describe("inquiries: rules", () => {
     ledger.add({ kind: "project", id: project.id as string, orgSlug: run.testOrg.slug, label: project.name as string });
     expect(project).toMatchObject({
       name: inq.name, currency: "AED", projectLocation: "Abu Dhabi", destinationCountry: "UAE", status: "DRAFT",
-      externalCompanyId: co.id, inquiryId: inqId, endClientName: "EC1", projectDeadline: "2026-12-31T00:00:00.000Z",
+      externalCompanyId: archCoId, inquiryId: inqId, endClientName: "EC1", projectDeadline: "2026-12-31T00:00:00.000Z",
       organizationId: run.testOrg.id, createdByUserId: run.users.architect.id, companyProjectNumber: 1,
     });
     expect(project.formulaSetId).toEqual(expect.any(String));

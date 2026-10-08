@@ -164,7 +164,9 @@ test.describe("projects: create / read / patch / list", () => {
     expect((await readProjectState(id!)).formulaSetId).toBe(p.formulaSetId);
     expect(p.formulaSetId).toEqual(expect.any(String));
 
-    const g = await as.architect.get(url(`/projects/${id}`));
+    // Switch to as.member (internal role): admin-created project has no externalCompanyId,
+    // so external users can no longer see it post-fix (D-1 class).
+    const g = await as.member.get(url(`/projects/${id}`));
     expect(g.status(), await g.text()).toBe(200);
     const got = (await json<{ project: Project & { configSnapshot: Snapshot; selectionCount: number; partitionCount: number; createdBy: unknown; externalCompany: unknown; inquiry: unknown } }>(g)).project;
     expect(got).toMatchObject({ id, name, selectionCount: 0, partitionCount: 0, externalCompany: null, inquiry: null });
@@ -381,14 +383,16 @@ test.describe("projects: submit design / calculation / recompute", () => {
   test("submit-design happy path → 200; calculation GET shape without materialByRoom (present in the DB)", async ({ as, f, url }) => {
     const w = await readyWall(f, as.admin, url);
     const before = Date.now();
-    const s = await as.architect.post(url(`/projects/${w.projectId}/submit-design`));
+    // Switch to as.member: readyWall creates a company-less project; external roles can no longer
+    // access it post-fix (D-1 class). as.member is internal and has the same "any member" access.
+    const s = await as.member.post(url(`/projects/${w.projectId}/submit-design`));
     await expectSubmitted(s);
     const sp = (await json<{ project: { id: string; designSubmittedAt: string } }>(s)).project;
     expect(Object.keys(sp).sort()).toEqual(["designSubmittedAt", "id"]);
     expect(sp.id).toBe(w.projectId);
     expect(Date.parse(sp.designSubmittedAt)).toBeGreaterThan(before - 120_000);
 
-    const c = await as.distributor.get(url(`/projects/${w.projectId}/calculation`));
+    const c = await as.member.get(url(`/projects/${w.projectId}/calculation`));
     expect(c.status(), await c.text()).toBe(200);
     const raw = await c.text();
     expect(raw).not.toContain("materialByRoom");
@@ -492,7 +496,9 @@ test.describe("projects: reset / delete / config-update / cross-tenant", () => {
     const w = await submitted(f, as.admin, url);
     const before = (await json<{ project: Project }>(await as.admin.get(url(`/projects/${w.projectId}`)))).project;
     const snap0 = (await readConfigSnapshot(w.projectId))!;
-    const r = await as.distributor.post(url(`/projects/${w.projectId}/reset`)); // any member
+    // Switch to as.member: submitted() creates a company-less project; external roles can no longer
+    // access it post-fix (D-1 class). as.member is internal and has the same "any member" access.
+    const r = await as.member.post(url(`/projects/${w.projectId}/reset`)); // any member
     expect(r.status(), await r.text()).toBe(200);
     expect(await r.json()).toEqual({ id: w.projectId });
 
