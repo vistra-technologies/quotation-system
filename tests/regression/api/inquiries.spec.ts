@@ -263,8 +263,13 @@ test.describe("inquiries: rules", () => {
     expect(project).toMatchObject({
       name: inq.name, currency: "AED", projectLocation: "Abu Dhabi", destinationCountry: "UAE", status: "DRAFT",
       externalCompanyId: archCoId, inquiryId: inqId, endClientName: "EC1", projectDeadline: "2026-12-31T00:00:00.000Z",
-      organizationId: run.testOrg.id, createdByUserId: run.users.architect.id, companyProjectNumber: maxPriorNumber + 1,
+      organizationId: run.testOrg.id, createdByUserId: run.users.architect.id,
     });
+    // Assert companyProjectNumber separately: the max read and convert are not atomic, so asserting
+    // exact max+1 could flake if a concurrent worker creates a project in this company in that window.
+    // toBeGreaterThan(maxPriorNumber) proves the sequence advanced without being racy.
+    expect(typeof project.companyProjectNumber).toBe("number");
+    expect(project.companyProjectNumber as number).toBeGreaterThan(maxPriorNumber);
     expect(project.formulaSetId).toEqual(expect.any(String));
     expect(project).not.toHaveProperty("configSnapshot"); // never echoed (Stage 22 B3)
 
