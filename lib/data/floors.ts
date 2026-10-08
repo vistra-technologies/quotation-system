@@ -42,7 +42,7 @@ export async function listFloorsByProject(
  * a concurrent race that slips through the findFirst is caught as P2002 and
  * surfaced as { code: "DUPLICATE_FLOOR_LABEL" }.
  *
- * Returns null if the project is missing or not owned by the caller (route -> 404).
+ * Returns null if the project is missing or not owned by the caller (route -> 400, same as a random UUID).
  * Throws { code: "DUPLICATE_FLOOR_LABEL" } on a concurrent race collision.
  * All other errors propagate to the caller.
  */
@@ -55,7 +55,7 @@ export async function createFloorIfNotExists(
   try {
     return await prisma.$transaction(async (tx) => {
       // HF-3/HF-5: the caller must own the parent project before any find-or-create.
-      // Returns null for a missing or foreign project (caller -> 404).
+      // Returns null for a missing or foreign project (route -> 400, same as a random UUID).
       const project = await tx.project.findFirst({
         where: { id: projectId, ...ownedProjectWhere(session) },
         select: { id: true },
@@ -108,7 +108,7 @@ export async function createFloorIfNotExists(
 
 /**
  * Rename a Floor. Tenancy guard: verifies the floor belongs to the session's
- * org before updating. Returns null if not found (caller -> 404).
+ * org before updating. Returns null if not found (route -> 400, same as a random UUID).
  * Throws { code: "DUPLICATE_FLOOR_LABEL" } on a @@unique([projectId, label])
  * collision — mirrors createFloorIfNotExists's own mapping.
  */
@@ -153,7 +153,7 @@ export async function renameFloor(
  * org before deleting. Rooms under it (Room.floorId, onDelete: Cascade) and
  * their Partitions (Partition.roomId, onDelete: Cascade) are removed
  * automatically by the DB — no manual cleanup needed.
- * Returns null if not found (caller -> 404).
+ * Returns null if not found (route -> 400, same as a random UUID).
  */
 export async function deleteFloor(session: SessionData, floorId: string) {
   const existing = await prisma.floor.findFirst({

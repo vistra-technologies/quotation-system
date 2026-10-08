@@ -630,7 +630,17 @@ test.describe("design tree: invalidation audit, tenancy, roles, status", () => {
       const r = await t.sides(rm.id, [newSide(nm({ run }, "W")), ...PLAIN3]);
       const pid = r.sides[0].partitionId!;
       await ok(await g.patch(url(`/partitions/${pid}`), { data: { design: design([{ w: 2000, cells: [[2400, null]] }]) } }));
+      // positive reads/writes for the rightful owner: a filter that matched nothing for owners would fail here
+      const rm2 = await t.room(fl.id, nm({ run }, "R-b"));
+      expect((await ok<{ floors: Floor[] }>(await g.get(url(`/floors?projectId=${projectId}`)))).floors.map((x) => x.id), who).toEqual([fl.id]);
+      expect((await ok<{ rooms: Room[] }>(await g.get(url(`/rooms?floorId=${fl.id}`)))).rooms.map((x) => x.id).sort(), who).toEqual([rm.id, rm2.id].sort());
+      expect((await ok<{ partitions: Partition[] }>(await g.get(url(`/partitions?roomId=${rm.id}`)))).partitions.map((x) => x.id), who).toEqual([pid]);
+      expect((await ok<{ partition: Partition }>(await g.get(url(`/partitions/${pid}`)))).partition.id, who).toBe(pid);
+      await ok(await g.patch(url(`/floors/${fl.id}`), { data: { label: nm({ run }, "F-ren") } }));
+      await ok(await g.patch(url("/rooms"), { data: { floorId: fl.id, orderedRoomIds: [rm2.id, rm.id] } }));
+      expect((await ok<{ rooms: Room[] }>(await g.get(url(`/rooms?floorId=${fl.id}`)))).rooms.map((x) => x.id), who).toEqual([rm2.id, rm.id]);
       await ok(await g.patch(url(`/rooms/${rm.id}`), { data: { label: nm({ run }, "R2") } }));
+      await ok(await g.delete(url(`/rooms/${rm2.id}`)));
       await ok(await g.delete(url(`/rooms/${rm.id}`)));
       await ok(await g.delete(url(`/floors/${fl.id}`)));
     }
