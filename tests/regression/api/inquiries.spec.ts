@@ -239,7 +239,7 @@ test.describe("inquiries: rules", () => {
     expect(await conv.json()).toEqual({ error: "This inquiry is already closed." });
   });
 
-  test("convert → 201 DRAFT project with the inquiry's fields + a frozen snapshot; twice → 409; deleting the project re-opens the inquiry", async ({ as, f, run, ledger, url }) => {
+  test("convert → 201 DRAFT project with the inquiry's fields + a frozen snapshot; twice → 409; deleting the project re-opens the inquiry", async ({ as, run, ledger, url }) => {
     // Use the architect's own company so the architect (external user) can access the inquiry post-fix (D-1 class).
     const archCoId = await distributorCompanyId({ run, as });
     const { id: inqId, body } = await createLedgered(as.admin, { run, ledger }, "inquiry", {
@@ -248,6 +248,14 @@ test.describe("inquiries: rules", () => {
     expect(inqId, JSON.stringify(body)).not.toBeNull();
     const inq = body.inquiry as Inquiry;
 
+    // Read the company's current max companyProjectNumber before converting. The distributor's
+    // project list is scoped to their company by the API, so no extra filter is needed.
+    // Other specs create projects in the same company concurrently, so asserting == 1 would be
+    // non-deterministic; asserting maxBefore + 1 keeps the strength while being run-order safe.
+    const priorList = await as.distributor.get(url(`/projects?pageSize=100`));
+    const priorProjs = ((await priorList.json()) as { projects: { companyProjectNumber: number | null }[] }).projects;
+    const maxPriorNumber = priorProjs.reduce((m, p) => Math.max(m, p.companyProjectNumber ?? 0), 0);
+
     const c = await as.architect.post(url(`/inquiries/${inqId}/convert`)); // any member may convert
     expect(c.status(), await c.text()).toBe(201);
     const project = ((await c.json()) as { project: Record<string, unknown> }).project;
@@ -255,7 +263,7 @@ test.describe("inquiries: rules", () => {
     expect(project).toMatchObject({
       name: inq.name, currency: "AED", projectLocation: "Abu Dhabi", destinationCountry: "UAE", status: "DRAFT",
       externalCompanyId: archCoId, inquiryId: inqId, endClientName: "EC1", projectDeadline: "2026-12-31T00:00:00.000Z",
-      organizationId: run.testOrg.id, createdByUserId: run.users.architect.id, companyProjectNumber: 1,
+      organizationId: run.testOrg.id, createdByUserId: run.users.architect.id, companyProjectNumber: maxPriorNumber + 1,
     });
     expect(project.formulaSetId).toEqual(expect.any(String));
     expect(project).not.toHaveProperty("configSnapshot"); // never echoed (Stage 22 B3)

@@ -264,6 +264,20 @@ test.describe("projects: create / read / patch / list", () => {
     expect(await listIds(as.distributor, q("&scope=mine"), "projects")).toEqual([]);
   });
 
+  // Hotfix 2026-10-05: positive own-company path — an external user reads a project they own.
+  // (The 3 switches to as.member above handle company-less projects; this keeps external-role GET coverage.)
+  test("external user reads their own company's project by id → 200 with configSnapshot (positive own-company)", async ({ as, run, ledger, url }) => {
+    const distCoId = await distributorCompanyId({ run, as });
+    const { res, id, body } = await createLedgered(as.distributor, { run, ledger }, "project", { name: nm({ run }, "own-get"), currency: "AED" });
+    expect(res.status(), JSON.stringify(body)).toBe(201);
+    expect((body.project as Project).externalCompanyId).toBe(distCoId); // API forces own company on create
+    const g = await as.distributor.get(url(`/projects/${id!}`));
+    expect(g.status(), await g.text()).toBe(200);
+    const got = (await json<{ project: Project & { configSnapshot: Snapshot; selectionCount: number } }>(g)).project;
+    expect(got).toMatchObject({ id: id!, externalCompanyId: distCoId, selectionCount: 0 });
+    expect(got.configSnapshot).toBeTruthy();
+  });
+
   // Hotfix 2026-10-05 (backlog "Cross-company access by id"): company ownership is applied on every by-id path.
   test("an external user cannot read or edit another company's project by id (404, like a missing id)", async ({ as, f, run, ledger, url }) => {
     const otherCo = await f.externalCompany();
