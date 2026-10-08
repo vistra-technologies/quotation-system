@@ -86,11 +86,19 @@ export async function getApiSession(
   }
 
   // ── Step 6: Return typed SessionData ────────────────────────────────────────
+  // External is decided from the role, never from the company id. Missing role or a role
+  // from another org => external (fail closed).
+  const role = await prisma.role.findFirst({
+    where: { id: u.roleId as string, organizationId: org.id },
+    select: { isInternalRole: true },
+  });
+
   return {
     userId: u.id as string,
     organizationId: u.organizationId as string,
     roleId: u.roleId as string,
     externalCompanyId: (u.externalCompanyId as string | null | undefined) ?? null,
+    isExternal: role ? !role.isInternalRole : true,
     username: u.username as string,
     name: u.name as string,
   };

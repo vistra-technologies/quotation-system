@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 
 /**
  * Typed shape returned by getSession().  The authoritative organizationId comes
@@ -11,6 +12,8 @@ export type SessionData = {
   organizationId: string;
   roleId: string;
   externalCompanyId: string | null;
+  /** true when the role is not internal (Role.isInternalRole = false) or cannot be resolved (fail closed). */
+  isExternal: boolean;
   username: string;
   name: string;
 };
@@ -70,11 +73,19 @@ async function getSessionImpl(): Promise<SessionData | null> {
     return null;
   }
 
+  // External is decided from the role, never from the company id. Missing role or a role
+  // from another org => external (fail closed).
+  const role = await prisma.role.findFirst({
+    where: { id: u.roleId as string, organizationId: u.organizationId as string },
+    select: { isInternalRole: true },
+  });
+
   return {
     userId: u.id as string,
     organizationId: u.organizationId as string,
     roleId: u.roleId as string,
     externalCompanyId: (u.externalCompanyId as string | null | undefined) ?? null,
+    isExternal: role ? !role.isInternalRole : true,
     username: u.username as string,
     name: u.name as string,
   };

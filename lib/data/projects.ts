@@ -8,6 +8,7 @@ import {
 import { loadInventoryMap } from "@/lib/data/inventory";
 import { loadConfigSnapshot } from "@/lib/config-snapshot";
 import { resolveFormulaSetPin } from "@/lib/data/formula-pin";
+import { ownedProjectWhere } from "@/lib/data/ownership";
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
 import { buildSummary } from "@/lib/summary";
@@ -69,30 +70,12 @@ export interface ListProjectsParams {
 // ─── Queries ────────────────────────────────────────────────────────────────
 
 /**
- * List all projects for the session org, newest-first.
- * Includes externalCompany name (nullable) for the list table.
- *
- * @deprecated Use listProjectsPaginated for all new callers.
- */
-export async function listProjects(session: SessionData) {
-  return prisma.project.findMany({
-    where: { organizationId: session.organizationId },
-    orderBy: { createdAt: "desc" },
-    // configSnapshot is 3-30 KB/row and never needed in lists (Stage 22 B3, D-10).
-    omit: { configSnapshot: true },
-    include: {
-      externalCompany: { select: { id: true, name: true } },
-    },
-  });
-}
-
-/**
  * Paginated, filtered project list with RBAC visibility rules.
  *
  * Visibility rules (enforced server-side from session — never from URL params):
  *   scope="mine"  — always filters to createdByUserId = session.userId
- *   scope="all"   — external user (externalCompanyId != null): own company only
- *                 — internal user (externalCompanyId === null): full org scope
+ *   scope="all"   — external user (session.isExternal): own company only (none if unlinked)
+ *                 — internal user: full org scope
  *
  * Returns { projects, total } — total is the count before pagination, used
  * by the caller to compute page count.
@@ -114,23 +97,19 @@ export async function listProjectsPaginated(
   // Build AND conditions incrementally to keep the where clause type-safe
   // without explicitly importing Prisma namespace types.
   const andConditions: ProjectWhereInput[] = [
-    { organizationId: session.organizationId },
+    ownedProjectWhere(session),
   ];
 
-  // Scope: my own vs. role-scoped "all"
+  // Scope: my own vs. role-scoped "all".  Company ownership (external users) is
+  // already enforced by ownedProjectWhere above for BOTH scopes.
   if (scope === "mine") {
     andConditions.push({ createdByUserId: session.userId });
-  } else if (session.externalCompanyId !== null) {
-    // External user: "all" = only their external company's projects.
-    // Value from server-side session — cannot be spoofed by URL params.
-    andConditions.push({ externalCompanyId: session.externalCompanyId });
   }
-  // Internal user + scope=all: no extra condition — sees all org projects.
 
   // Optional external-company filter — internal users only.
   // Narrows within the org; never replaces the org-level scope above.
   // Ignored for external users (their externalCompanyId is already enforced above).
-  if (params.externalCompanyId && session.externalCompanyId === null) {
+  if (params.externalCompanyId && !session.isExternal) {
     andConditions.push({ externalCompanyId: params.externalCompanyId });
   }
 
@@ -194,7 +173,7 @@ export async function getProjectById(
 ) {
   const [project, selectionCount, partitionCount] = await Promise.all([
     prisma.project.findFirst({
-      where: { id: projectId, organizationId: session.organizationId },
+      where: { id: projectId, ...ownedProjectWhere(session) },
       // configSnapshot: true only when asked for — needed for Configuration page snapshot reads.
       omit: { configSnapshot: !options.includeConfigSnapshot },
       include: {
@@ -268,13 +247,16 @@ export async function createProject(
   session: SessionData,
   input: CreateProjectInput,
 ) {
-  // Defense in depth: if the session user is tied to a fixed company,
-  // always use that — ignore whatever the client submitted.  Only when
-  // session.externalCompanyId is null does the caller-supplied value apply.
-  const resolvedExternalCompanyId =
-    session.externalCompanyId !== null
-      ? session.externalCompanyId
-      : (input.externalCompanyId ?? null);
+  // External users always get their session company (client value ignored); an
+  // unlinked external user is refused.  Internal users may pick any company.
+  if (session.isExternal && session.externalCompanyId === null) {
+    throw Object.assign(new Error("Your account is not linked to a company"), {
+      code: "NO_COMPANY",
+    });
+  }
+  const resolvedExternalCompanyId = session.isExternal
+    ? session.externalCompanyId
+    : (input.externalCompanyId ?? null);
 
   try {
     return await prisma.$transaction(async (tx) => {
@@ -393,7 +375,7 @@ export async function updateProject(
 ) {
   // Verify the project exists, belongs to this org, and is still DRAFT.
   const existing = await prisma.project.findFirst({
-    where: { id: projectId, organizationId: session.organizationId },
+    where: { id: projectId, ...ownedProjectWhere(session) },
     select: { id: true, status: true },
   });
 
@@ -525,7 +507,7 @@ export async function submitDesign(
 ): Promise<SubmitDesignResult> {
   return prisma.$transaction(async (tx): Promise<SubmitDesignResult> => {
     const existing = await tx.project.findFirst({
-      where: { id: projectId, organizationId: session.organizationId },
+      where: { id: projectId, ...ownedProjectWhere(session) },
       select: { id: true },
     });
     if (!existing) return null;
@@ -641,7 +623,7 @@ export async function recomputeProject(
 ): Promise<RecomputeProjectResult> {
   return prisma.$transaction(async (tx): Promise<RecomputeProjectResult> => {
     const existing = await tx.project.findFirst({
-      where: { id: projectId, organizationId: session.organizationId },
+      where: { id: projectId, ...ownedProjectWhere(session) },
       select: { id: true, status: true, designSubmittedAt: true },
     });
     if (!existing) return null;
@@ -772,7 +754,7 @@ export async function deleteProject(session: SessionData, projectId: string) {
     // TOCTOU window: a concurrent PATCH could promote the project off DRAFT
     // between an outer findFirst and the delete below.
     const existing = await tx.project.findFirst({
-      where: { id: projectId, organizationId: session.organizationId },
+      where: { id: projectId, ...ownedProjectWhere(session) },
       select: { id: true, status: true, inquiryId: true },
     });
 
@@ -834,7 +816,7 @@ export async function resetProject(session: SessionData, projectId: string) {
   return prisma.$transaction(async (tx) => {
     // Existence + DRAFT re-checked inside the tx (same TOCTOU reasoning as deleteProject).
     const existing = await tx.project.findFirst({
-      where: { id: projectId, organizationId: session.organizationId },
+      where: { id: projectId, ...ownedProjectWhere(session) },
       select: { id: true, status: true },
     });
     if (!existing) return null;

@@ -1,6 +1,7 @@
 import type { Prisma } from "@/app/generated/prisma/client";
 import { loadConfigSnapshot } from "@/lib/config-snapshot";
 import { resolveFormulaSetPin } from "@/lib/data/formula-pin";
+import { ownedInquiryWhere } from "@/lib/data/ownership";
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
 
@@ -81,28 +82,12 @@ export interface ListInquiriesParams {
 // ─── Queries ────────────────────────────────────────────────────────────────
 
 /**
- * List all inquiries for the session org, newest-first.
- * Includes externalCompany name (nullable) for the list table.
- *
- * @deprecated Use listInquiriesPaginated for all new callers.
- */
-export async function listInquiries(session: SessionData) {
-  return prisma.inquiry.findMany({
-    where: { organizationId: session.organizationId },
-    orderBy: { createdAt: "desc" },
-    include: {
-      externalCompany: { select: { id: true, name: true } },
-    },
-  });
-}
-
-/**
  * Paginated, filtered inquiry list with RBAC visibility rules.
  *
  * Visibility rules (enforced server-side from session — never from URL params):
  *   scope="mine"  — always filters to createdByUserId = session.userId
- *   scope="all"   — external user (externalCompanyId != null): own company only
- *                 — internal user (externalCompanyId === null): full org scope
+ *   scope="all"   — external user (session.isExternal): own company only (none if unlinked)
+ *                 — internal user: full org scope
  *
  * Returns { inquiries, total } — total is the count before pagination, used
  * by the caller to compute page count.
@@ -124,23 +109,19 @@ export async function listInquiriesPaginated(
   // Build AND conditions incrementally to keep the where clause type-safe
   // without explicitly importing Prisma namespace types.
   const andConditions: InquiryWhereInput[] = [
-    { organizationId: session.organizationId },
+    ownedInquiryWhere(session),
   ];
 
-  // Scope: my own vs. role-scoped "all"
+  // Scope: my own vs. role-scoped "all".  Company ownership (external users) is
+  // already enforced by ownedInquiryWhere above for BOTH scopes.
   if (scope === "mine") {
     andConditions.push({ createdByUserId: session.userId });
-  } else if (session.externalCompanyId !== null) {
-    // External user: "all" = only their external company's inquiries.
-    // Value from server-side session — cannot be spoofed by URL params.
-    andConditions.push({ externalCompanyId: session.externalCompanyId });
   }
-  // Internal user + scope=all: no extra condition — sees all org inquiries.
 
   // Optional external-company filter — internal users only.
   // Narrows within the org; never replaces the org-level scope above.
   // Ignored for external users (their externalCompanyId is already enforced above).
-  if (params.externalCompanyId && session.externalCompanyId === null) {
+  if (params.externalCompanyId && !session.isExternal) {
     andConditions.push({ externalCompanyId: params.externalCompanyId });
   }
 
@@ -189,7 +170,7 @@ export async function listInquiriesPaginated(
  */
 export async function getInquiryById(session: SessionData, inquiryId: string) {
   return prisma.inquiry.findFirst({
-    where: { id: inquiryId, organizationId: session.organizationId },
+    where: { id: inquiryId, ...ownedInquiryWhere(session) },
     include: {
       // country included so the edit page can derive GST conditional (D20) without an extra fetch
       externalCompany: { select: { id: true, name: true, country: true } },
@@ -225,13 +206,16 @@ export async function createInquiry(
   session: SessionData,
   input: CreateInquiryInput,
 ) {
-  // Defense in depth: if the session user is tied to a fixed company,
-  // always use that — ignore whatever the client submitted.  Only when
-  // session.externalCompanyId is null does the caller-supplied value apply.
-  const resolvedExternalCompanyId =
-    session.externalCompanyId !== null
-      ? session.externalCompanyId
-      : (input.externalCompanyId ?? null);
+  // External users always get their session company (client value ignored); an
+  // unlinked external user is refused.  Internal users may pick any company.
+  if (session.isExternal && session.externalCompanyId === null) {
+    throw Object.assign(new Error("Your account is not linked to a company"), {
+      code: "NO_COMPANY",
+    });
+  }
+  const resolvedExternalCompanyId = session.isExternal
+    ? session.externalCompanyId
+    : (input.externalCompanyId ?? null);
 
   try {
     return await prisma.$transaction(async (tx) => {
@@ -333,7 +317,7 @@ export async function updateInquiry(
   input: UpdateInquiryInput,
 ) {
   const inquiry = await prisma.inquiry.findFirst({
-    where: { id: inquiryId, organizationId: session.organizationId },
+    where: { id: inquiryId, ...ownedInquiryWhere(session) },
     select: { id: true, status: true },
   });
 
@@ -411,7 +395,7 @@ export async function updateInquiry(
  */
 export async function dismissInquiry(session: SessionData, inquiryId: string) {
   const inquiry = await prisma.inquiry.findFirst({
-    where: { id: inquiryId, organizationId: session.organizationId },
+    where: { id: inquiryId, ...ownedInquiryWhere(session) },
     select: { id: true, status: true },
   });
 
@@ -458,7 +442,7 @@ export async function convertInquiryToProject(
     return await prisma.$transaction(async (tx) => {
       // Step 1: fetch + tenancy guard
       const inquiry = await tx.inquiry.findFirst({
-        where: { id: inquiryId, organizationId: session.organizationId },
+        where: { id: inquiryId, ...ownedInquiryWhere(session) },
       });
       if (!inquiry) {
         throw Object.assign(new Error("Inquiry not found."), { code: "NOT_FOUND" });

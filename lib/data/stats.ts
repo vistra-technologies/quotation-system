@@ -1,3 +1,4 @@
+import { ownedProjectWhere, ownedInquiryWhere } from "@/lib/data/ownership";
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
 
@@ -28,12 +29,9 @@ export interface DashboardStats {
  * "DRAFT" as the only value in use (no status-update DAL exists). "In progress"
  * is interpreted as DRAFT projects — recorded in plan-batch7b.md.
  *
- * D3 Stage 15: role-based scoping.
- * - Admin / Company Member (session.externalCompanyId === null) → org-wide totals
- * - All other roles (session.externalCompanyId !== null) → records linked to the
- *   user's external company only.  The discriminator is externalCompanyId on the
- *   session (same pattern used consistently across list routes).  This prevents
- *   external users from seeing counts that span the whole organisation.
+ * D3 Stage 15 / Hotfix 2026-10-05: role-based scoping via ownedProjectWhere /
+ * ownedInquiryWhere.  Internal roles -> org-wide totals; external roles
+ * (session.isExternal) -> their company's records only, zero if unlinked.
  *
  * The filter is externalCompanyId = session.externalCompanyId, NOT
  * createdByUserId = session.userId — so the card total matches the list page
@@ -42,16 +40,8 @@ export interface DashboardStats {
 export async function getDashboardStats(
   session: SessionData,
 ): Promise<DashboardStats> {
-  const orgId = session.organizationId;
-
-  // External users see only their company's records; internal users see org-wide.
-  const externalCompanyId = session.externalCompanyId ?? undefined;
-  const projectWhere = externalCompanyId
-    ? { organizationId: orgId, externalCompanyId }
-    : { organizationId: orgId };
-  const inquiryWhere = externalCompanyId
-    ? { organizationId: orgId, externalCompanyId }
-    : { organizationId: orgId };
+  const projectWhere = ownedProjectWhere(session);
+  const inquiryWhere = ownedInquiryWhere(session);
 
   const [projectsTotal, projectsInProgress, inquiriesTotal, inquiriesNew] =
     await Promise.all([

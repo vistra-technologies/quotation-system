@@ -9,6 +9,7 @@
  */
 import type { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { ownedProjectWhere } from "@/lib/data/ownership";
 import type { SessionData } from "@/lib/session";
 import { loadConfigSnapshot, type ConfigSnapshot } from "@/lib/config-snapshot";
 import { isComponentTypeFullyConfigured } from "@/lib/configurator-gating";
@@ -85,7 +86,7 @@ export async function getConfigUpdatePreview(
   projectId: string,
 ): Promise<ConfigUpdatePreview | null | { notDraft: true }> {
   const project = await prisma.project.findFirst({
-    where: { id: projectId, organizationId: session.organizationId },
+    where: { id: projectId, ...ownedProjectWhere(session) },
     select: {
       id: true,
       status: true,
@@ -170,7 +171,7 @@ export async function applyConfigUpdate(
   return prisma.$transaction(async (tx) => {
     // Existence + DRAFT re-checked inside the tx (same TOCTOU reasoning as resetProject).
     const project = await tx.project.findFirst({
-      where: { id: projectId, organizationId: session.organizationId },
+      where: { id: projectId, ...ownedProjectWhere(session) },
       select: { id: true, status: true },
     });
     if (!project) return null;

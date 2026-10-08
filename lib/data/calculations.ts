@@ -21,6 +21,7 @@ import type { ConfigSnapshot } from "@/lib/config-snapshot";
 import { prisma } from "@/lib/prisma";
 import type { FormulaSetBody, MaterialByRoomEntry, MaterialListLine, Summary, SummaryInput, SummaryResult } from "@/lib/summary/types";
 import { ProblemCollector } from "@/lib/materials/problems";
+import { ownedProjectWhere } from "@/lib/data/ownership";
 import type { SessionData } from "@/lib/session";
 
 type Db = Prisma.TransactionClient | typeof prisma;
@@ -337,7 +338,7 @@ export async function getProjectCalculationForRead(
   projectId: string,
 ): Promise<ProjectCalculationForRead | { noCalculation: true } | null> {
   const project = await prisma.project.findFirst({
-    where: { id: projectId, organizationId: session.organizationId },
+    where: { id: projectId, ...ownedProjectWhere(session) },
     select: { id: true },
   });
   if (!project) return null;

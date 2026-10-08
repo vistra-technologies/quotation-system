@@ -55,6 +55,10 @@ async function getPermissionsSession(
     organizationId: u.organizationId as string,
     roleId: u.roleId as string,
     externalCompanyId: (u.externalCompanyId as string | null | undefined) ?? null,
+    // Hotfix 2026-10-05: required by SessionData.  This session only feeds the MANAGE_FEATURES
+    // check (roleId/organizationId) and never reaches project/inquiry data, so we do not spend a
+    // role read on it; true is the fail-closed value.
+    isExternal: true,
     username: u.username as string,
     name: u.name as string,
   };

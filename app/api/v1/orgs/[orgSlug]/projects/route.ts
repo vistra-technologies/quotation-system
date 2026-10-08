@@ -239,6 +239,15 @@ export async function POST(
         "A project number conflict occurred — please try again.",
       );
     }
+    // Hotfix 2026-10-05 HF-5: external user whose company was deleted.
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as { code: string }).code === "NO_COMPANY"
+    ) {
+      return apiForbidden("Your account is not linked to a company");
+    }
     if (
       typeof err === "object" &&
       err !== null &&
