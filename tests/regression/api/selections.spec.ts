@@ -94,7 +94,7 @@ test.describe("selections: create / list / patch", () => {
     const config = { category: "Single", thickness: "12", rgrFlag: true, rgrNum: 7, rgrNull: null };
     const s = (await ok<{ selection: Selection }>(await as.member.post(url("/selections"), { data: { projectId: ` ${p.id} `, componentTypeId: glass, label: ` ${L} `, config, orderIndex: 4 } }), 201)).selection;
     expect(s).toMatchObject({ projectId: p.id, componentTypeId: glass, label: L, config, orderIndex: 4, organizationId: run.testOrg.id });
-    const list = (await ok<{ selections: Selection[] }>(await as.architect.get(url(`/selections?projectId=${p.id}`)))).selections;
+    const list = (await ok<{ selections: Selection[] }>(await as.member.get(url(`/selections?projectId=${p.id}`)))).selections;
     expect(list).toHaveLength(1);
     // the name is not asserted: projects.spec.ts may be renaming GLASS in parallel (rename window)
     expect(list[0]).toMatchObject({ id: s.id, config, componentType: { id: glass, code: "GLASS", name: expect.any(String) } });
@@ -127,7 +127,7 @@ test.describe("selections: create / list / patch", () => {
       (await ok<{ selection: Selection }>(await as.admin.post(url("/selections"), { data: { projectId: p.id, componentTypeId: glass, label: nm({ run }, "S"), config: { a: "1", b: "2" }, orderIndex } }), 201)).selection;
     const [s0, s1] = [await mk(0), await mk(1)];
     const L = nm({ run }, "S-renamed");
-    const u = (await ok<{ selection: Selection }>(await as.distributor.patch(url(`/selections/${s0.id}`), { data: { label: ` ${L} `, config: { b: "3" }, orderIndex: 9, componentTypeId: door } }))).selection;
+    const u = (await ok<{ selection: Selection }>(await as.member.patch(url(`/selections/${s0.id}`), { data: { label: ` ${L} `, config: { b: "3" }, orderIndex: 9, componentTypeId: door } }))).selection;
     expect(u).toMatchObject({ id: s0.id, label: L, config: { b: "3" }, orderIndex: 0, componentTypeId: glass });
     const lbl = (await ok<{ selection: Selection }>(await as.admin.patch(url(`/selections/${s0.id}`), { data: { label: `${L}-2` } }))).selection;
     expect(lbl.config).toEqual({ b: "3" }); // label-only PATCH leaves config alone
@@ -214,7 +214,7 @@ test.describe("selections: delete / tenancy / roles / status", () => {
     await rejected(await as.member.delete(url(`/selections/${s.id}`)), 409, inUse(1));
     await ok(await as.admin.patch(url(`/partitions/${w.partitionId}`), { data: { design: { stops: { top: null } } } }));
 
-    expect(await ok(await as.architect.delete(url(`/selections/${s.id}`)))).toEqual({ id: s.id });
+    expect(await ok(await as.member.delete(url(`/selections/${s.id}`)))).toEqual({ id: s.id });
     expect((await ok<{ selections: Selection[] }>(await as.admin.get(url(`/selections?projectId=${w.projectId}`)))).selections).toEqual([]);
     await rejected(await as.admin.delete(url(`/selections/${s.id}`)), 404, "Selection not found or access denied");
     await rejected(await as.admin.patch(url(`/selections/${s.id}`), { data: { label: "rgr-gone" } }), 404, "Selection not found or access denied");
@@ -269,17 +269,31 @@ test.describe("selections: delete / tenancy / roles / status", () => {
     }
   });
 
-  test("KNOWN BUG: an external user can list, create and edit selections on another company's project", async ({ as, f, run, ledger, url }) => {
+  test("an external user cannot list, create, edit or delete selections on another company's project (foreign parent looks like a missing one)", async ({ as, f, run, ledger, url }) => {
+    // Fixed by Hotfix 2026-10-05 (HF-3/HF-4, backlog 2026-10-04 "Cross-company access by id"): selections are
+    // scoped through the owning project's company. Every foreign request answers like a random UUID would.
     const otherCo = await f.externalCompany();
     const { id: projectId, body } = await createLedgered(as.admin, { run, ledger }, "project", { name: nm({ run }, "p-idor"), currency: "AED", externalCompanyId: otherCo.id });
     expect(projectId, JSON.stringify(body)).not.toBeNull();
     const own = await f.selection(projectId!, "GLASS", {});
-    // KNOWN BUG — listSelections/createSelection/updateSelection scope by organizationId only, never by
-    // the external user's company (same root cause as the projects by-id pin); when fixed, change these
-    // to [] / 400 / 404.
-    expect((await ok<{ selections: Selection[] }>(await as.distributor.get(url(`/selections?projectId=${projectId}`)))).selections.map((s) => s.id)).toEqual([own.id]);
-    await ok(await as.architect.post(url("/selections"), { data: { projectId, componentTypeId: await typeId(as.admin, run, "GLASS"), label: nm({ run }, "S-by-arch"), config: {} } }), 201);
-    await ok(await as.distributor.patch(url(`/selections/${own.id}`), { data: { label: nm({ run }, "S-by-dist") } }));
+    const glass = await typeId(as.admin, run, "GLASS");
+    const before = (await ok<{ selections: Selection[] }>(await as.admin.get(url(`/selections?projectId=${projectId}`)))).selections;
+    expect(before.map((s) => s.id)).toEqual([own.id]);
+    for (const who of ["distributor", "architect"] as const) {
+      const g = as[who];
+      const same = async (foreign: APIResponse, ghost: APIResponse, what: string) => {
+        expect([foreign.status(), await foreign.text()], `${who} ${what}`).toEqual([ghost.status(), await ghost.text()]);
+      };
+      await same(await g.get(url(`/selections?projectId=${projectId}`)), await g.get(url(`/selections?projectId=${GHOST}`)), "GET list");
+      const mk = (pid: string) => ({ data: { projectId: pid, componentTypeId: glass, label: nm({ run }, `S-by-${who}`), config: {} } });
+      const created = await g.post(url("/selections"), mk(projectId!));
+      await same(created, await g.post(url("/selections"), mk(GHOST)), "POST");
+      expect(created.status(), `${who} POST`).toBe(400);
+      await same(await g.patch(url(`/selections/${own.id}`), { data: { label: nm({ run }, `S-ren-${who}`) } }), await g.patch(url(`/selections/${GHOST}`), { data: { label: nm({ run }, `S-ren-${who}`) } }), "PATCH");
+      await same(await g.delete(url(`/selections/${own.id}`)), await g.delete(url(`/selections/${GHOST}`)), "DELETE");
+    }
+    // ... and nothing was written: the owner-side list is unchanged.
+    expect((await ok<{ selections: Selection[] }>(await as.admin.get(url(`/selections?projectId=${projectId}`)))).selections).toEqual(before);
   });
 
   test("DECISION NEEDED: selection writes are not DRAFT-gated — a SUBMITTED project still accepts create / PATCH / DELETE", async ({ as, f, run, url }) => {

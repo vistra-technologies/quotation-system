@@ -3,10 +3,10 @@
  * PATCH/DELETE by id, PATCH sides), partitions (GET list, GET/PATCH by id).
  *
  * Gates (route source): every verb is "any authenticated org member" — no permission. Tenancy: each DAL
- * call scopes by the session's organizationId; list routes return [] for an unknown / foreign parent
+ * call scopes by the session's organizationId (+ the owning project's company for external users); list routes return [] for an unknown / foreign parent
  * id (no existence leak), by-id routes 404, create routes 400 ("… not found or access denied").
- * Floors/rooms/partitions are NOT DRAFT-gated (DECISION NEEDED pin) and NOT company-scoped for external
- * users (KNOWN BUG pin). Calculation invalidation (Stage 23 D-17…D-20, Stage 25 B2 route audit): partition
+ * Floors/rooms/partitions are NOT DRAFT-gated (DECISION NEEDED pin) but ARE company-scoped for external
+ * users through the owning project (Hotfix 2026-10-05: a foreign project's tree answers like a missing one). Calculation invalidation (Stage 23 D-17…D-20, Stage 25 B2 route audit): partition
  * design/heightMm PATCH, a sides PATCH that adds or removes a partition, floor DELETE and room DELETE
  * clear `designSubmittedAt` and delete the ProjectCalculation; label-only edits, renames, creates and a
  * sides PATCH that keeps the same partitions do not.
@@ -243,10 +243,10 @@ test.describe("floors", () => {
     const again = (await ok<{ floor: Floor }>(await mk(`${L}-2`), 201)).floor; // idempotent by (projectId, label)
     expect(again).toMatchObject({ id: b.id, orderIndex: 1 });
 
-    const list = async () => (await ok<{ floors: Floor[] }>(await as.architect.get(url(`/floors?projectId=${p.id}`)))).floors;
+    const list = async () => (await ok<{ floors: Floor[] }>(await as.member.get(url(`/floors?projectId=${p.id}`)))).floors;
     expect((await list()).map((x) => [x.id, x.orderIndex])).toEqual([[a.id, 0], [b.id, 1], [c.id, 2]]);
 
-    const r = (await ok<{ floor: Floor }>(await as.distributor.patch(url(`/floors/${c.id}`), { data: { label: ` ${L}-3x ` } }))).floor;
+    const r = (await ok<{ floor: Floor }>(await as.member.patch(url(`/floors/${c.id}`), { data: { label: ` ${L}-3x ` } }))).floor;
     expect(r).toMatchObject({ id: c.id, label: `${L}-3x`, orderIndex: 2 });
     await rejected(await as.admin.patch(url(`/floors/${c.id}`), { data: { label: `${L}-1` } }), 400, "A floor with this name already exists in this project.");
 
@@ -262,7 +262,7 @@ test.describe("floors", () => {
     await ok(await as.admin.patch(url(`/partitions/${w.partitionId}`), { data: { design: design([{ w: 2000, cells: [[2400, sel.id]] }]) } }));
     await armSubmitted(w.projectId);
 
-    expect(await ok(await as.architect.delete(url(`/floors/${w.floorId}`)))).toEqual({ ok: true });
+    expect(await ok(await as.member.delete(url(`/floors/${w.floorId}`)))).toEqual({ ok: true });
     expect(await readProjectState(w.projectId)).toMatchObject({ designSubmittedAt: null, calcCount: 0 });
     expect((await ok<{ floors: Floor[] }>(await as.admin.get(url(`/floors?projectId=${w.projectId}`)))).floors).toEqual([]);
     expect((await ok<{ rooms: Room[] }>(await as.admin.get(url(`/rooms?floorId=${w.floorId}`)))).rooms).toEqual([]);
@@ -285,7 +285,7 @@ test.describe("rooms", () => {
     const fl = await t.floor(p.id, nm({ run }, "F"));
     const fl2 = await t.floor(p.id, nm({ run }, "F2"));
     const L = nm({ run }, "R");
-    const r1 = (await ok<{ room: Room }>(await as.distributor.post(url("/rooms"), { data: { floorId: ` ${fl.id} `, label: ` ${L}-a ` } }), 201)).room;
+    const r1 = (await ok<{ room: Room }>(await as.member.post(url("/rooms"), { data: { floorId: ` ${fl.id} `, label: ` ${L}-a ` } }), 201)).room;
     expect(r1).toMatchObject({ floorId: fl.id, label: `${L}-a`, orderIndex: 0, isClosed: true, organizationId: run.testOrg.id });
     expect(r1.sides).toHaveLength(4);
     for (const s of r1.sides) expect(s).toMatchObject({ kind: "PLAIN", partitionId: null, turnDegrees: 90, lengthMm: null, label: null, id: expect.any(String) });
@@ -306,13 +306,13 @@ test.describe("rooms", () => {
     const [r1, r2, r3] = [await t.room(fl.id, `${L}-1`), await t.room(fl.id, `${L}-2`), await t.room(fl.id, `${L}-3`)];
     const elsewhere = await t.room(other.id, `${L}-x`);
 
-    const rn = (await ok<{ room: Room }>(await as.architect.patch(url(`/rooms/${r2.id}`), { data: { label: ` ${L}-2b ` } }))).room;
+    const rn = (await ok<{ room: Room }>(await as.member.patch(url(`/rooms/${r2.id}`), { data: { label: ` ${L}-2b ` } }))).room;
     expect(rn).toMatchObject({ id: r2.id, label: `${L}-2b`, orderIndex: 1 });
     await rejected(await as.admin.patch(url(`/rooms/${r2.id}`), { data: { label: `${L}-1` } }), 400, "A room with this name already exists on this floor.");
 
     const ro = (await ok<{ rooms: Room[] }>(await as.member.patch(url("/rooms"), { data: { floorId: fl.id, orderedRoomIds: [r3.id, r1.id, r2.id] } }))).rooms;
     expect(ro.map((r) => [r.id, r.orderIndex])).toEqual([[r3.id, 0], [r1.id, 1], [r2.id, 2]]);
-    const listed = (await ok<{ rooms: Room[] }>(await as.distributor.get(url(`/rooms?floorId=${fl.id}`)))).rooms;
+    const listed = (await ok<{ rooms: Room[] }>(await as.member.get(url(`/rooms?floorId=${fl.id}`)))).rooms;
     expect(listed.map((r) => r.id)).toEqual([r3.id, r1.id, r2.id]);
 
     const exact = "orderedRoomIds must contain exactly the rooms currently on this floor.";
@@ -372,7 +372,7 @@ test.describe("rooms/:id/sides topology", () => {
     expect(p1).toEqual(expect.any(String));
     expect(p2).toEqual(expect.any(String));
 
-    const listed = (await ok<{ partitions: Partition[] }>(await as.architect.get(url(`/partitions?roomId=${room.id}`)))).partitions;
+    const listed = (await ok<{ partitions: Partition[] }>(await as.member.get(url(`/partitions?roomId=${room.id}`)))).partitions;
     expect(listed.map((x) => x.id)).toEqual([p1, p2]); // ordered by partitionNumber
     expect(listed[1].partitionNumber).toBeGreaterThan(listed[0].partitionNumber);
     const a = await t.partition(p1);
@@ -472,7 +472,7 @@ test.describe("partitions: design v2", () => {
         { id: "b", widthMm: 800, cells: [{ id: "b0", heightMm: 1000, selectionId: null }, { id: "b1", heightMm: 1400, selectionId: sel.id, hinging: "right" }] },
       ],
     };
-    const p1 = (await ok<{ partition: Partition }>(await as.distributor.patch(P, { data: { design: d1 } }))).partition;
+    const p1 = (await ok<{ partition: Partition }>(await as.member.patch(P, { data: { design: d1 } }))).partition;
     expect(p1.widthMm).toBe(2000);
     expect(p1.design).toEqual(d1);
     // Partition.widthMm is DERIVED from the sections (Stage 18 invariant 3) — no "must equal the wall" rule
@@ -515,7 +515,7 @@ test.describe("partitions: design v2", () => {
     const s = (await ok<{ partition: Partition }>(await as.admin.patch(P, { data: { design: { stops: { bottom: sel.id } } } }))).partition;
     expect(s.design).toEqual({ ...d, measurements: { rgr: 1 }, stops: { bottom: sel.id } });
     const L = nm({ run }, "relabel");
-    const l = (await ok<{ partition: Partition }>(await as.architect.patch(P, { data: { label: ` ${L} ` } }))).partition;
+    const l = (await ok<{ partition: Partition }>(await as.member.patch(P, { data: { label: ` ${L} ` } }))).partition;
     expect(l).toMatchObject({ label: L, widthMm: 2000, heightMm: 2400 });
     expect(l.design).toEqual(s.design);
   });
@@ -636,19 +636,50 @@ test.describe("design tree: invalidation audit, tenancy, roles, status", () => {
     }
   });
 
-  test("KNOWN BUG: an external user can read and write the design tree of another company's project", async ({ as, f, run, ledger, url }) => {
+  test("an external user cannot read or write the design tree of another company's project (foreign parent looks like a missing one)", async ({ as, f, run, ledger, url }) => {
+    // Fixed by Hotfix 2026-10-05 (HF-3/HF-4, backlog 2026-10-04 "Cross-company access by id"): floors/rooms/
+    // partitions are scoped through the owning project's company. Every foreign request must answer exactly
+    // like the same request against a random UUID.
     const otherCo = await f.externalCompany();
     const { id: projectId, body } = await createLedgered(as.admin, { run, ledger }, "project", { name: nm({ run }, "p-idor"), currency: "AED", externalCompanyId: otherCo.id });
     expect(projectId, JSON.stringify(body)).not.toBeNull();
-    const fl = await wallAt(as.admin, url).floor(projectId!, nm({ run }, "F"));
-    // KNOWN BUG — floors/rooms/partitions DAL calls scope by organizationId only, never by the external
-    // user's company (same root cause as the projects GET/PATCH by id pin in projects.spec.ts); when fixed,
-    // change these to [] / 400 / 404.
-    expect((await ok<{ floors: Floor[] }>(await as.distributor.get(url(`/floors?projectId=${projectId}`)))).floors.map((x) => x.id)).toEqual([fl.id]);
-    const rm = (await ok<{ room: Room }>(await as.distributor.post(url("/rooms"), { data: { floorId: fl.id, label: nm({ run }, "R-by-dist") } }), 201)).room;
-    const fl2 = (await ok<{ floor: Floor }>(await as.architect.post(url("/floors"), { data: { projectId, label: nm({ run }, "F-by-arch") } }), 201)).floor;
-    expect(fl2.projectId).toBe(projectId);
-    await ok(await as.architect.delete(url(`/rooms/${rm.id}`)));
+    const t = wallAt(as.admin, url);
+    const fl = await t.floor(projectId!, nm({ run }, "F"));
+    const rm = await t.room(fl.id, nm({ run }, "R"));
+    const sd = await t.sides(rm.id, [newSide(nm({ run }, "W")), ...PLAIN3]);
+    const pid = sd.sides[0].partitionId!;
+    const before = await t.partition(pid);
+
+    // [method, path against the foreign tree, body, same path against a random UUID, body]
+    type Call = [method: "get" | "post" | "patch" | "delete", foreign: string, ghost: string, foreignBody?: object, ghostBody?: object];
+    const calls: Call[] = [
+      ["get", `/floors?projectId=${projectId}`, `/floors?projectId=${GHOST}`],
+      ["post", "/floors", "/floors", { projectId, label: nm({ run }, "F-x") }, { projectId: GHOST, label: nm({ run }, "F-x") }],
+      ["patch", `/floors/${fl.id}`, `/floors/${GHOST}`, { label: nm({ run }, "F-ren") }, { label: nm({ run }, "F-ren") }],
+      ["delete", `/floors/${fl.id}`, `/floors/${GHOST}`],
+      ["get", `/rooms?floorId=${fl.id}`, `/rooms?floorId=${GHOST}`],
+      ["post", "/rooms", "/rooms", { floorId: fl.id, label: nm({ run }, "R-x") }, { floorId: GHOST, label: nm({ run }, "R-x") }],
+      ["patch", "/rooms", "/rooms", { floorId: fl.id, orderedRoomIds: [rm.id] }, { floorId: GHOST, orderedRoomIds: [rm.id] }],
+      ["patch", `/rooms/${rm.id}`, `/rooms/${GHOST}`, { label: nm({ run }, "R-ren") }, { label: nm({ run }, "R-ren") }],
+      ["patch", `/rooms/${rm.id}/sides`, `/rooms/${GHOST}/sides`, { sides: PLAIN3 }, { sides: PLAIN3 }],
+      ["delete", `/rooms/${rm.id}`, `/rooms/${GHOST}`],
+      ["get", `/partitions?roomId=${rm.id}`, `/partitions?roomId=${GHOST}`],
+      ["get", `/partitions/${pid}`, `/partitions/${GHOST}`],
+      ["patch", `/partitions/${pid}`, `/partitions/${GHOST}`, { label: nm({ run }, "W-ren") }, { label: nm({ run }, "W-ren") }],
+    ];
+    for (const who of ["distributor", "architect"] as const) {
+      for (const [method, foreign, ghost, foreignBody, ghostBody] of calls) {
+        const rf = await as[who][method](url(foreign), foreignBody ? { data: foreignBody } : undefined);
+        const rg = await as[who][method](url(ghost), ghostBody ? { data: ghostBody } : undefined);
+        const label = `${who} ${method} ${foreign}`;
+        expect([rf.status(), await rf.text()], label).toEqual([rg.status(), await rg.text()]);
+        if (method !== "get") expect(rf.status(), label).toBeGreaterThanOrEqual(400);
+      }
+    }
+    // ... and nothing was written: the owner-side tree is exactly as built.
+    expect((await ok<{ floors: Floor[] }>(await as.admin.get(url(`/floors?projectId=${projectId}`)))).floors.map((x) => [x.id, x.label])).toEqual([[fl.id, fl.label]]);
+    expect((await ok<{ rooms: Room[] }>(await as.admin.get(url(`/rooms?floorId=${fl.id}`)))).rooms.map((x) => [x.id, x.label])).toEqual([[rm.id, rm.label]]);
+    expect(await t.partition(pid)).toEqual(before);
   });
 
   test("DECISION NEEDED: design-tree writes are not DRAFT-gated — a SUBMITTED project still accepts floor/room/side/partition edits", async ({ as, f, run, url }) => {

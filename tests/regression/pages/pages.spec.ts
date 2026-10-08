@@ -191,8 +191,8 @@ for (const row of PAGES) {
         });
       });
 
-      // External users reaching ANOTHER company's (here: an internal) project / inquiry is a KNOWN BUG pinned
-      // separately below, so detail pages are reached only by the internal member here.
+      // External users reaching ANOTHER company's (here: an internal) project / inquiry is pinned
+      // separately below (the 404 test), so detail pages are reached only by the internal member here.
       const scoped = /\[(projectId|inquiryId)\]/.test(row.path);
       const others = ROLES.filter((r) => r !== "admin" && roleHas(r, row) && !(scoped && (r === "distributor" || r === "architect")));
       if (others.length) {
@@ -447,26 +447,28 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
 // ── KNOWN BUG / DECISION NEEDED pins (today's behaviour; the comment says what "fixed" looks like) ──
 
 test.describe("pins", () => {
-  test("KNOWN BUG: external users (distributor, architect) open another company's project and inquiry pages by URL (their lists hide them)", async ({ browser, run, f, as }) => {
-    // KNOWN BUG — same root cause as the Task 8 API pins (inquiries #1, projects #5): GET-by-id is not scoped to
-    // the external user's company. When fixed, update these expectations to the denial (likely notFound / 404).
+  test("external users (distributor, architect) get the app's 404 on another company's project and inquiry pages (their lists hide them too)", async ({ browser, run, f, as }) => {
+    // Fixed by Hotfix 2026-10-05 (HF-1/HF-4; backlog 2026-10-04 "Cross-company access by id"): the detail/edit
+    // pages read through the API, which now answers 404 for a foreign record, and each page maps a non-OK
+    // response to notFound(). Same denial as a random UUID.
     const p = await f.project(); // internal: no external company
     const inq = await f.inquiry();
     expect(await distributorCompanyId({ run, as })).toBeTruthy();
     for (const who of ["distributor", "architect"] as const) {
       await withPage({ browser, run }, who, undefined, async (o) => {
-        for (const [rel, text] of [
-          [`/projects/${p.id}`, "Project Information"],
-          [`/projects/${p.id}/edit`, "Edit Project"],
-          [`/inquiries/${inq.id}`, inq.name],
-          [`/inquiries/${inq.id}/edit`, "Edit Inquiry"],
-        ] as const) {
-          const res = await o.page.goto(orgTarget(run, rel));
-          expect(res?.status(), `${who} ${rel}`).toBe(200);
-          await expectLands(() => orgPathOf(run, o.page.url()), rel, `${who} ${rel}`);
-          await expect(o.page.getByText(text).first(), `${who} ${rel}`).toBeVisible();
+        for (const rel of [
+          `/projects/${p.id}`,
+          `/projects/${p.id}/edit`,
+          `/projects/${p.id}/design`,
+          `/projects/${p.id}/summary`,
+          `/inquiries/${inq.id}`,
+          `/inquiries/${inq.id}/edit`,
+        ]) {
+          // No status assertion: the routes stream behind a loading.tsx, so notFound() can arrive after a 200 shell.
+          await o.page.goto(orgTarget(run, rel));
+          await expect(o.page.getByRole("heading", { name: "Page not found" }), `${who} ${rel}`).toBeVisible();
         }
-        // …while their own lists do not show them (anchored on the list's empty-filter state):
+        // ... and their own lists do not show them (anchored on the list's empty-filter state):
         await o.page.goto(orgTarget(run, `/projects?search=${encodeURIComponent(p.name)}`));
         await expect(o.page.getByText("No projects match your filters."), who).toBeVisible();
         await expect(o.page.getByText(p.name), who).toHaveCount(0);
