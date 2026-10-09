@@ -40,3 +40,12 @@ test("nested run shadows and the outer context is restored", () => {
     assert.equal(getContext()!.userId, undefined);
   });
 });
+
+test("S30-15: setContext merges username and saUsername and ignores undefined", () => {
+  runWithContext(mk("a"), () => {
+    setContext({ userId: "u", username: "alice", saId: "s", saUsername: "root" });
+    setContext({ username: undefined });
+    const c = getContext()!;
+    assert.deepEqual([c.userId, c.username, c.saId, c.saUsername], ["u", "alice", "s", "root"]);
+  });
+});

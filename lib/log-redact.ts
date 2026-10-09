@@ -17,7 +17,6 @@ export const DENY_KEYS: readonly string[] = Object.freeze([
   "cookie",
   "set-cookie",
   "authorization",
-  "username",
   "email",
   "phone",
   "ip",
@@ -25,7 +24,15 @@ export const DENY_KEYS: readonly string[] = Object.freeze([
   "x-real-ip",
 ]);
 
+/**
+ * Keys that are explicitly allowed even though they look like identity (S30-15, human decision
+ * 2026-10-10: usernames are not PII). An allow-listed key is never redacted, wins over the deny-list,
+ * and exists so the deny-list above stays strict for email, ip, passwords, tokens and the rest.
+ */
+export const ALLOW_KEYS: readonly string[] = Object.freeze(["username", "saUsername"]);
+
 const DENY_LOWER = new Set(DENY_KEYS.map((k) => k.toLowerCase()));
+const ALLOW_LOWER = new Set(ALLOW_KEYS.map((k) => k.toLowerCase()));
 
 /** Objects nested deeper than this are replaced by "[DEPTH]" rather than copied unscanned. */
 export const MAX_DEPTH = 4;
@@ -75,7 +82,8 @@ export function redactValue(value: unknown, depth = 0): unknown {
     if (Array.isArray(value)) return value.map((v) => redactValue(v, depth + 1));
     const out: Record<string, unknown> = {};
     for (const key of Object.keys(value)) {
-      if (DENY_LOWER.has(key.toLowerCase())) {
+      const lower = key.toLowerCase();
+      if (DENY_LOWER.has(lower) && !ALLOW_LOWER.has(lower)) {
         out[key] = "[REDACTED]";
         continue;
       }

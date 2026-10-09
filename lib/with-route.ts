@@ -98,6 +98,49 @@ function digestOf(err: unknown): string {
   return typeof d === "string" ? d : "";
 }
 
+/**
+ * Best-effort identity for an action's log context (S30-15 / bugs-1 finding 1). Thin-marshaler actions
+ * only call internalFetch and never getSession(), so nothing would set orgSlug/userId/saId on
+ * `action.end`. This starts the cached getSession() (and, if there is no org session, the SuperAdmin
+ * lookup) concurrently with the action body; both call setContext() on the active store. Cost: every
+ * wrapped action pays ~3 indexed single-row reads (auth session, org, role; 1 for SuperAdmin), run in
+ * parallel with the body, so added latency is ~0. The per-request cache does NOT dedupe inside server
+ * actions: a getSession() the body makes itself is a separate read. Never throws.
+ */
+async function defaultResolveIdentity(): Promise<void> {
+  try {
+    const { getSession } = await import("@/lib/session");
+    if (await getSession()) return;
+    const { requireSuperAdmin } = await import("@/lib/superadmin-guard");
+    await requireSuperAdmin();
+  } catch {
+    // no session / no request scope: the line simply carries no identity
+  }
+}
+
+let identityResolver: () => Promise<void> = defaultResolveIdentity;
+/** Test seam: replaces the identity lookup. Pass nothing to restore the default. */
+export function setActionIdentityResolver(fn?: () => Promise<void>): void {
+  identityResolver = fn ?? defaultResolveIdentity;
+}
+
+/** Max time `action.end` waits for the identity lookup; the action itself is never held up beyond this. */
+const IDENTITY_WAIT_MS = 1000;
+
+async function settleIdentity(pending: Promise<void>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      pending,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, IDENTITY_WAIT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export function withAction<A extends unknown[], R>(
   actionId: string,
   fn: (...args: A) => Promise<R>,
@@ -119,20 +162,30 @@ export function withAction<A extends unknown[], R>(
 
     return runWithContext(ctx, async () => {
       const started = Date.now();
+      let identity: Promise<void> = Promise.resolve();
+      try {
+        identity = identityResolver().catch(() => undefined);
+      } catch {
+        // a throwing resolver must not affect the action
+      }
       try {
         const result = await fn(...args);
-        log.info("action.end", { ok: true, durationMs: Date.now() - started });
+        const durationMs = Date.now() - started;
+        await settleIdentity(identity);
+        log.info("action.end", { ok: true, durationMs });
         return result;
       } catch (err) {
+        const durationMs = Date.now() - started;
+        await settleIdentity(identity);
         const digest = digestOf(err);
         if (digest.startsWith("NEXT_REDIRECT")) {
-          log.info("action.end", { ok: true, outcome: "redirect", durationMs: Date.now() - started });
+          log.info("action.end", { ok: true, outcome: "redirect", durationMs });
         } else if (digest.startsWith("NEXT_HTTP_ERROR_FALLBACK")) {
-          log.info("action.end", { ok: false, outcome: "not_found", durationMs: Date.now() - started });
+          log.info("action.end", { ok: false, outcome: "not_found", durationMs });
         } else {
           log.error("action.end", {
             ok: false,
-            durationMs: Date.now() - started,
+            durationMs,
             err: serializeError(err),
           });
         }

@@ -2,16 +2,21 @@ import { test, mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { NextResponse } from "next/server";
 import { notFound, redirect } from "next/navigation";
-import { withRoute, withAction } from "@/lib/with-route";
+import { withRoute, withAction, setActionIdentityResolver } from "@/lib/with-route";
+import { setContext } from "@/lib/log-context";
 import { apiServerError } from "@/lib/api-error";
 
 let lines: { stream: "log" | "error"; line: Record<string, unknown> }[];
 beforeEach(() => {
   lines = [];
+  setActionIdentityResolver(async () => {}); // keep the real session lookup (auth/prisma imports) out of unit tests
   mock.method(console, "log", (s: string) => void lines.push({ stream: "log", line: JSON.parse(s) }));
   mock.method(console, "error", (s: string) => void lines.push({ stream: "error", line: JSON.parse(s) }));
 });
-afterEach(() => mock.restoreAll());
+afterEach(() => {
+  mock.restoreAll();
+  setActionIdentityResolver();
+});
 
 const req = (headers: Record<string, string> = {}, init: RequestInit = {}) =>
   new Request("http://localhost/api/x", { headers, ...init });
@@ -151,4 +156,32 @@ test("withAction: success logs ok:true; throw logs ok:false and rethrows; redire
   await assert.rejects(() => withAction("a#nf", async () => { notFound(); })());
   l = terminal("action.end")[0].line;
   assert.deepEqual([l.ok, l.outcome], [false, "not_found"]);
+});
+
+test("withAction: identity is filled on action.end for an action that never reads the session (S30-15)", async () => {
+  setActionIdentityResolver(async () => {
+    await new Promise((r) => setTimeout(r, 30)); // longer than the (instant) action body: only the wait lets it land
+    setContext({ orgSlug: "acme", userId: "u1", username: "alice" });
+  });
+  await withAction("a#thin", async () => 1)();
+  const l = terminal("action.end")[0].line;
+  assert.deepEqual([l.orgSlug, l.userId, l.username], ["acme", "u1", "alice"]);
+  // also on a throwing action
+  lines.length = 0;
+  await assert.rejects(() => withAction("a#thinbad", async () => { throw new Error("x"); })());
+  assert.equal(terminal("action.end")[0].line.username, "alice");
+});
+
+test("withAction: a failing or hanging identity lookup never breaks or long-delays the action", async () => {
+  setActionIdentityResolver(async () => { throw new Error("db down"); });
+  assert.equal(await withAction("a#f", async () => 7)(), 7);
+  assert.equal(terminal("action.end")[0].line.ok, true);
+  setActionIdentityResolver(() => { throw new Error("sync throw"); });
+  assert.equal(await withAction("a#g", async () => 8)(), 8);
+  lines.length = 0;
+  setActionIdentityResolver(() => new Promise<void>(() => {}));
+  const t0 = Date.now();
+  assert.equal(await withAction("a#h", async () => 9)(), 9);
+  assert.ok(Date.now() - t0 < 3000);
+  assert.equal("userId" in terminal("action.end")[0].line, false);
 });

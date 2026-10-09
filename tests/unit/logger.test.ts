@@ -1,13 +1,13 @@
 import { test, mock, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { log, MAX_LINE_BYTES } from "@/lib/logger";
-import { DENY_KEYS, redactValue, scrubString, serializeError } from "@/lib/log-redact";
-import { runWithContext, type LogContext } from "@/lib/log-context";
+import { ALLOW_KEYS, DENY_KEYS, redactValue, scrubString, serializeError } from "@/lib/log-redact";
+import { runWithContext, setContext, type LogContext } from "@/lib/log-context";
 
-// The spec's deny list (S30-7), hard-coded so removing a key from lib/log-redact.ts fails a test.
+// The spec's deny list (S30-7, minus `username` since S30-15), hard-coded so removing a key from lib/log-redact.ts fails a test.
 const SPEC_DENY = [
   "password", "newPassword", "currentPassword", "initialAdminPassword", "token", "accessToken",
-  "refreshToken", "secret", "cookie", "set-cookie", "authorization", "username", "email", "phone",
+  "refreshToken", "secret", "cookie", "set-cookie", "authorization", "email", "phone",
   "ip", "x-forwarded-for", "x-real-ip",
 ];
 
@@ -236,4 +236,36 @@ test("inside a context the line carries identity and is buffered (cap 200)", () 
     for (let i = 0; i < 300; i++) log.info("many");
     assert.equal(ctx.buffer.length, 200);
   });
+});
+test("S30-15: username/saUsername are allow-listed and kept at any depth; email, ip and the rest stay redacted", () => {
+  assert.deepEqual([...ALLOW_KEYS].sort(), ["saUsername", "username"]);
+  assert.ok(!DENY_KEYS.map((k) => k.toLowerCase()).includes("username"));
+  const r = redactValue({ username: "alice", a: { saUsername: "root", b: [{ USERNAME: "bob" }] }, email: "a@b.c", ip: "1.2.3.4", password: "p" }) as Record<string, unknown>;
+  assert.equal(r.username, "alice");
+  assert.equal((r.a as { saUsername: string }).saUsername, "root");
+  assert.equal(JSON.stringify(r).includes("bob"), true);
+  assert.equal(r.email, "[REDACTED]");
+  assert.equal(r.ip, "[REDACTED]");
+  assert.equal(r.password, "[REDACTED]");
+});
+
+test("S30-15: the line carries username/saUsername from the context; a caller field cannot overwrite them", () => {
+  const ctx: LogContext = { requestId: "r1", route: "GET /x", method: "GET", buffer: [] };
+  runWithContext(ctx, () => {
+    setContext({ userId: "u", username: "alice", saId: "s", saUsername: "root" });
+    log.info("x", { username: "spoof", saUsername: "spoof2", email: "a@b.c" });
+    const p = JSON.parse(out[0]);
+    assert.equal(p.username, "alice");
+    assert.equal(p.saUsername, "root");
+    assert.equal(p.field_username, "spoof");
+    assert.equal(p.field_saUsername, "spoof2");
+    assert.equal(p.email, "[REDACTED]");
+  });
+});
+
+test("S30-15: a username that equals an env secret is scrubbed in the base keys too", () => {
+  process.env.AXIOM_TOKEN = "axiomtoken-ddd444";
+  const ctx: LogContext = { requestId: "r1", route: "r", method: "GET", username: "axiomtoken-ddd444", buffer: [] };
+  runWithContext(ctx, () => log.info("x"));
+  assert.ok(!out[0].includes("axiomtoken-ddd444"));
 });
