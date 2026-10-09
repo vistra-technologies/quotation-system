@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
  * Workspace Overview tab (Server Component).
  *
  * Name, read-only slug, created date, and suspend / reactivate. The formula-set picker lives on
- * the Formula & Pricing tab. (`userLimit` joins this form in Stage 29 Batch 2.)
+ * the Formula & Pricing tab. Also the SuperAdmin-only `userLimit` field (Stage 29 Batch 2).
  *
  * Auth: enforced by app/controls/(authenticated)/layout.tsx.
  *
@@ -30,6 +30,8 @@ export default async function OrgOverviewPage({
       initialName={org.name}
       slug={org.slug}
       isSuspended={org.isSuspended}
+      userLimit={org.userLimit}
+      userCount={org.userCount}
       createdLabel={org.createdAt.toISOString().slice(0, 10)}
     />
   );

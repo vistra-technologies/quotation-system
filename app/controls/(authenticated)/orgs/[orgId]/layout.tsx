@@ -57,7 +57,7 @@ export default async function OrgWorkspaceLayout({
         >
           {org.isSuspended ? "Suspended" : "Active"}
         </span>
-        <SeatPill used={org.userCount} />
+        <SeatPill used={org.userCount} limit={org.userLimit} />
       </div>
       <p className="mt-1.5">
         <span className="rounded-sm bg-[rgba(27,40,30,0.06)] px-1.5 py-0.5 font-mono text-xs text-text-muted">
@@ -75,7 +75,7 @@ export default async function OrgWorkspaceLayout({
         </div>
       )}
 
-      <OrgTabs orgId={org.id} userCount={org.userCount} />
+      <OrgTabs orgId={org.id} userCount={org.userCount} userLimit={org.userLimit} />
 
       {children}
     </div>

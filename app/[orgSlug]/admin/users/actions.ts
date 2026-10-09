@@ -69,8 +69,17 @@ export async function createUser(
   if (!res.ok) {
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
-      const body = (await res.json()) as { error?: string };
+      const body = (await res.json()) as {
+        error?: string;
+        code?: string;
+        limit?: number;
+        current?: number;
+      };
       if (body.error) errorMessage = body.error;
+      // Stage 29: 409 USER_LIMIT_REACHED is surfaced as form state (never a 500).
+      if (res.status === 409 && body.code === "USER_LIMIT_REACHED") {
+        errorMessage = `User limit reached (${body.current}/${body.limit}). Contact your platform administrator.`;
+      }
     } catch {
       // ignore JSON parse failure
     }

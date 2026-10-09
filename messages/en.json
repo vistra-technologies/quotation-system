@@ -23,6 +23,8 @@
   "users": {
     "pageTitle": "User Management",
     "pageSubtitle": "Manage users in your organization.",
+    "seatsTitle": "{used} of {limit} users",
+    "limitBanner": "Your organization has reached its user limit ({used}/{limit}). Contact your platform administrator to add more users.",
     "colUsername": "Username",
     "colFullName": "Full Name",
     "colRole": "Role",

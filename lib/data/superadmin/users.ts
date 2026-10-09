@@ -7,6 +7,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { toAuthEmail } from "@/lib/auth-utils";
+import { assertUserSeatAvailable, UserLimitReachedError } from "@/lib/data/user-limit";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -42,8 +43,12 @@ export type CreateUserInOrgResult =
         | "company_not_in_org"
         | "company_required"
         | "duplicate_username"
+        | "user_limit_reached"
         | "unknown_error";
       message: string;
+      /** Set when reason is "user_limit_reached" (the route's 409 body carries them). */
+      limit?: number;
+      current?: number;
     };
 
 // ─── Queries ─────────────────────────────────────────────────────────────────
@@ -70,6 +75,21 @@ export async function listUsersInOrg(orgId: string): Promise<UserRow[]> {
       role: { select: { id: true, name: true } },
     },
   });
+}
+
+/**
+ * Seat usage for an org (Stage 29): `limit` is Organization.userLimit, `used` every User row.
+ * Returns null if the org does not exist.
+ *
+ * superadmin-only — intentionally cross-org
+ */
+export async function getSeatsForOrg(orgId: string): Promise<{ limit: number; used: number } | null> {
+  // superadmin-only — intentionally cross-org
+  const [org, used] = await Promise.all([
+    prisma.organization.findUnique({ where: { id: orgId }, select: { userLimit: true } }),
+    prisma.user.count({ where: { organizationId: orgId } }),
+  ]);
+  return org ? { limit: org.userLimit, used } : null;
 }
 
 /**
@@ -183,6 +203,8 @@ export async function createUserInOrg(
 
   try {
     const newUser = await prisma.$transaction(async (tx) => {
+      // Stage 29: seat check inside the same transaction as the insert (locks the org row).
+      await assertUserSeatAvailable(tx, orgId);
       const user = await tx.user.create({
         data: {
           name: `${input.firstName} ${input.lastName}`,
@@ -215,6 +237,15 @@ export async function createUserInOrg(
 
     return { ok: true, user: { id: newUser.id, username: newUser.username } };
   } catch (err) {
+    if (err instanceof UserLimitReachedError) {
+      return {
+        ok: false,
+        reason: "user_limit_reached",
+        message: err.message,
+        limit: err.limit,
+        current: err.current,
+      };
+    }
     // Prisma unique-constraint violation — most likely the synthetic email (username in use).
     if (
       err instanceof Error &&

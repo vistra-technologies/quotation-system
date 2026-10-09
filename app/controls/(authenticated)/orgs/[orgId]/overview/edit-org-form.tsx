@@ -11,6 +11,8 @@ interface EditOrgFormProps {
   initialName: string;
   slug: string;
   isSuspended: boolean;
+  userLimit: number;
+  userCount: number;
   /** Pre-formatted creation date (read-only). */
   createdLabel: string;
 }
@@ -30,6 +32,8 @@ export function EditOrgForm({
   initialName,
   slug,
   isSuspended,
+  userLimit,
+  userCount,
   createdLabel,
 }: EditOrgFormProps) {
   const [state, formAction, isPending] = useActionState(editOrg, initialState);
@@ -81,6 +85,31 @@ export function EditOrgForm({
             <p className="text-xs text-text-muted">
               The slug is fixed — it is the org&apos;s subdomain (
               <code className="font-mono">{slug}.easeetool.com</code>) and cannot be changed after creation.
+            </p>
+          </div>
+
+          {/* User limit — SuperAdmin only (this whole console is). Every user counts, active or not. */}
+          <div className="flex flex-col gap-1">
+            <label htmlFor="editOrgUserLimit" className={`${labelCls} flex items-center gap-2`}>
+              User limit
+              <span className="rounded-pill bg-primary-softer px-2 py-px text-[11px] font-bold normal-case tracking-normal text-primary-dark">
+                SuperAdmin only
+              </span>
+            </label>
+            <input
+              id="editOrgUserLimit"
+              name="userLimit"
+              type="number"
+              required
+              min={1}
+              max={10000}
+              step={1}
+              defaultValue={userLimit}
+              className={`${inputCls} max-w-[160px]`}
+            />
+            <p className="text-xs text-text-muted">
+              Currently {userCount} of {userLimit} used. Default 3 for new orgs (1–10000). Every user counts toward
+              the limit, active or deactivated. Lowering it below current usage is allowed and only blocks new adds.
             </p>
           </div>
 

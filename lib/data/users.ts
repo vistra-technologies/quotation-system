@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { toAuthEmail } from "@/lib/auth-utils";
+import { assertUserSeatAvailable } from "@/lib/data/user-limit";
 import type { SessionData } from "@/lib/session";
 
 // ─── Reads ───────────────────────────────────────────────────────────────────
@@ -12,6 +13,22 @@ export async function listUsers(session: SessionData) {
     include: { role: { select: { id: true, name: true } } },
     orderBy: { username: "asc" },
   });
+}
+
+/**
+ * Seat usage for the session org (Stage 29): `used` counts every User row, active or deactivated,
+ * exactly as assertUserSeatAvailable does.
+ */
+export async function getUserSeats(session: SessionData): Promise<{ limit: number; used: number }> {
+  const [org, used] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: session.organizationId },
+      select: { userLimit: true },
+    }),
+    prisma.user.count({ where: { organizationId: session.organizationId } }),
+  ]);
+  if (!org) throw new Error("Organization not found");
+  return { limit: org.userLimit, used };
 }
 
 /**
@@ -58,6 +75,7 @@ export type CreateUserInput = {
  *   - role must belong to session org
  *   - externalCompany (if supplied) must belong to session org
  *   - username must be unique within session org
+ *   - org must have a free seat (userLimit) — checked inside the transaction, throws UserLimitReachedError
  *
  * The password is hashed with better-auth's own hasher (same Scrypt impl as sign-in).
  * The synthetic email uses toAuthEmail(username, orgSlug) so better-auth can route sign-ins.
@@ -106,8 +124,10 @@ export async function createUser(session: SessionData, input: CreateUserInput): 
   const authCtx = await auth.$context;
   const passwordHash = await authCtx.password.hash(password);
 
-  // Atomic: user row + credential account in one transaction.
+  // Atomic: seat check + user row + credential account in one transaction.
+  // Throws UserLimitReachedError (route -> 409) when the org is at its userLimit (Stage 29).
   await prisma.$transaction(async (tx) => {
+    await assertUserSeatAvailable(tx, session.organizationId);
     const newUser = await tx.user.create({
       data: {
         // better-auth core display name — use full name going forward

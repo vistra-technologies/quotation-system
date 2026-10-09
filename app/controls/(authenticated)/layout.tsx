@@ -55,7 +55,6 @@ export default async function ControlsAuthenticatedLayout({
         name: o.name,
         isSuspended: o.isSuspended,
         userCount: o.userCount,
-        // Stage 29 Batch 2 adds userLimit to the list; until then it is undefined and renders as an em dash.
         userLimit: o.userLimit,
       }))
     : [];

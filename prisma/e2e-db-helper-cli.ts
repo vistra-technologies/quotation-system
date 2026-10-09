@@ -30,7 +30,7 @@ import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry, scopedOp, 
 dotenv.config({ path: ".env.local", quiet: true });
 dotenv.config({ path: ".env", quiet: true });
 
-const ALLOWED_ENDPOINT = "ep-dark-term-ai0ufj4k";
+const ALLOWED_ENDPOINT = "ep-solitary-unit-ais3pnxi";
 
 function endpointOf(url: string): string | null {
   try {

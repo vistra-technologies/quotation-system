@@ -17,6 +17,7 @@ import {
   getOrgForEdit,
 } from "@/lib/data/superadmin/orgs";
 import { getFormulaSet } from "@/lib/data/superadmin/formula-sets";
+import { isValidUserLimit, USER_LIMIT_RANGE_MESSAGE } from "@/lib/data/user-limit";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -89,8 +90,10 @@ export async function DELETE(
 
 // ─── PATCH /api/v1/superadmin/orgs/[orgId] ───────────────────────────────────
 //
-// Updates org name and/or formula set assignment.
-// At least one of { name, formulaSetId } must be provided.
+// Updates org name, formula set assignment and/or user limit.
+// At least one of { name, formulaSetId, userLimit } must be provided. userLimit is an integer
+// 1-10000 (400 otherwise); lowering it below current usage is allowed (it only blocks new adds)
+// and is audit-logged as org.update { userLimit: { from, to } }.
 // Returns mismatch warnings when the new formula set has a structural mismatch
 // with the org's current component types (S25-13 — advisory, never blocking).
 //
@@ -133,10 +136,15 @@ export async function PATCH(
   const b = body as Record<string, unknown>;
   const name = typeof b.name === "string" ? b.name.trim() : undefined;
   const formulaSetId = typeof b.formulaSetId === "string" ? b.formulaSetId.trim() : undefined;
+  const userLimitRaw = b.userLimit === null ? undefined : b.userLimit;
 
-  if (name === undefined && formulaSetId === undefined) {
-    return apiBadRequest("At least one of name or formulaSetId must be provided");
+  if (name === undefined && formulaSetId === undefined && userLimitRaw === undefined) {
+    return apiBadRequest("At least one of name, formulaSetId or userLimit must be provided");
   }
+  if (userLimitRaw !== undefined && !isValidUserLimit(userLimitRaw)) {
+    return apiBadRequest(USER_LIMIT_RANGE_MESSAGE);
+  }
+  const userLimit = userLimitRaw;
   if (name !== undefined && name.length === 0) {
     return apiBadRequest("name must not be empty");
   }
@@ -150,7 +158,7 @@ export async function PATCH(
     }
   }
 
-  const result = await updateOrgSettings(orgId, { name, formulaSetId });
+  const result = await updateOrgSettings(orgId, { name, formulaSetId, userLimit });
   if (!result.ok) {
     if (result.reason === "not_found") {
       return apiNotFound(result.message);
@@ -163,6 +171,10 @@ export async function PATCH(
   await createOrgAuditLog(sa.superAdminId, orgId, "org.update", {
     ...(name !== undefined ? { name } : {}),
     ...(formulaSetId !== undefined ? { formulaSetId } : {}),
+    // Only when it actually changed: the Overview form always posts the current value alongside the name.
+    ...(userLimit !== undefined && result.previousUserLimit !== userLimit
+      ? { userLimit: { from: result.previousUserLimit ?? null, to: userLimit } }
+      : {}),
   });
 
   // Fetch the updated org for the response + mismatch warnings.
@@ -182,6 +194,7 @@ export async function PATCH(
       name: updatedOrg.name,
       slug: updatedOrg.slug,
       isSuspended: updatedOrg.isSuspended,
+      userLimit: updatedOrg.userLimit,
       activeFormulaSetId: updatedOrg.activeFormulaSetId,
       formulaSetLabel: activeFs ? `${activeFs.name} v${activeFs.version}` : null,
     },

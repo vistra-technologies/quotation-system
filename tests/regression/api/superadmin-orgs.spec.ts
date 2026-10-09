@@ -17,6 +17,8 @@ import type { RunState } from "../fixtures/run-state";
 import { orgUrl } from "../../e2e/helpers";
 import { countProjectCalculations, regressionSnapshot, rgrInsertCalculation } from "../../e2e/db-helpers";
 import { orgApi } from "./project-helpers";
+import { ORG_B_USER_LIMIT } from "../fixtures/test-org-limit";
+import { RESERVED_ORG_SLUGS } from "@/lib/auth-utils";
 import { runPassword, signIn } from "./sign-in";
 import {
   test, expect, SA, GHOST, SA_USER, tag, rawContext, expectStatus, json, auditLog, listOrgs, type OrgRow,
@@ -41,13 +43,15 @@ test.describe("GET /api/v1/superadmin/orgs", () => {
     const b = orgs.find((o) => o.id === run.orgB.id)!;
     expect(b).toMatchObject({ slug: run.orgB.slug, name: `RGR ${run.runId} B`, isSuspended: false, activeFormulaSetId: run.formulaSetId, hasMismatch: false });
     expect(b.userCount).toBeGreaterThanOrEqual(1);
+    expect(b.userLimit).toBe(ORG_B_USER_LIMIT); // global-setup creates org B with an explicit limit
     expect(b.formulaSetLabel).toMatch(/ v\d+$/);
     const t = orgs.find((o) => o.id === run.testOrg.id)!;
     expect(t).toMatchObject({ slug: run.testOrg.slug, isSuspended: false });
     expect(t.userCount).toBeGreaterThanOrEqual(4); // the run's four role users at least
+    expect(t.userLimit).toBeGreaterThanOrEqual(t.userCount); // global-setup raised it for the run (restored at teardown)
     // oldest first
     for (let i = 1; i < orgs.length; i++) expect(orgs[i - 1].createdAt <= orgs[i].createdAt).toBe(true);
-    for (const o of orgs) expect(Object.keys(o).sort()).toEqual(["activeFormulaSetId", "createdAt", "formulaSetLabel", "hasMismatch", "id", "isSuspended", "name", "slug", "userCount"]);
+    for (const o of orgs) expect(Object.keys(o).sort()).toEqual(["activeFormulaSetId", "createdAt", "formulaSetLabel", "hasMismatch", "id", "isSuspended", "name", "slug", "userCount", "userLimit"]);
   });
 });
 
@@ -58,6 +62,12 @@ test.describe("POST /api/v1/superadmin/orgs — rules (nothing is created by any
     const cases: Array<[string, Record<string, unknown>, number, string | RegExp]> = [
       ["reserved slug 'platform'", { ...base, slug: "platform" }, 400, '"platform" is a reserved slug and cannot be used'],
       ["reserved slug, case-folded", { ...base, slug: "  PLATFORM " }, 400, '"platform" is a reserved slug and cannot be used'],
+      // Stage 29 (S29-10): every reserved slug is refused; 'controls' and 'www' also case-folded / padded
+      ...RESERVED_ORG_SLUGS.map((s): [string, Record<string, unknown>, number, string] => [`reserved slug '${s}'`, { ...base, slug: s }, 400, `"${s}" is a reserved slug and cannot be used`]),
+      ["reserved slug 'controls', upper-cased", { ...base, slug: " CONTROLS " }, 400, '"controls" is a reserved slug and cannot be used'],
+      ["reserved slug 'www', upper-cased", { ...base, slug: "WWW" }, 400, '"www" is a reserved slug and cannot be used'],
+      // Stage 29 (S29-7): userLimit is validated BEFORE anything is written (an unknown formula set would otherwise be 404)
+      ...[0, -1, 10001, 1.5, "3", true].map((v): [string, Record<string, unknown>, number, string] => [`userLimit ${JSON.stringify(v)}`, { ...base, slug: `${p}bad6`, userLimit: v }, 400, "userLimit must be a whole number between 1 and 10000"]),
       ["consecutive hyphens", { ...base, slug: `${p}bad--x` }, 400, "slug must not contain consecutive hyphens"],
       ["64 characters", { ...base, slug: `${p}bad`.padEnd(64, "a") }, 400, "slug must be 63 characters or fewer"],
       ["illegal characters", { ...base, slug: `${p}bad_slug!` }, 400, /^slug must contain only lowercase letters/],
@@ -111,7 +121,7 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     expect(body).toEqual({ org: { id: expect.any(String), slug, name: `RGR ${run.runId} C` }, warnings: [] }); // slug lower-cased + trimmed, name trimmed
 
     const listed = (await listOrgs(sa)).find((o) => o.id === orgC.id)!;
-    expect(listed).toMatchObject({ slug, isSuspended: false, userCount: 1, activeFormulaSetId: run.formulaSetId, hasMismatch: false });
+    expect(listed).toMatchObject({ slug, isSuspended: false, userCount: 1, userLimit: 3, activeFormulaSetId: run.formulaSetId, hasMismatch: false }); // userLimit: the default for a new org
 
     const u = await json<{ users: UserRow[]; externalCompanies: unknown[] }>(await sa.get(`${SA}/orgs/${orgC.id}/users`));
     expect(u.externalCompanies).toEqual([]);
@@ -129,13 +139,18 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     const url = `${SA}/orgs/${orgC.id}`;
     const ok = await json<{ org: Record<string, unknown>; warnings: unknown[] }>(await sa.patch(url, { data: { name: `  RGR ${run.runId} C renamed ` } }));
     expect(ok).toEqual({
-      org: { id: orgC.id, name: `RGR ${run.runId} C renamed`, slug: orgC.slug, isSuspended: false, activeFormulaSetId: run.formulaSetId, formulaSetLabel: expect.stringMatching(/ v\d+$/) },
+      org: { id: orgC.id, name: `RGR ${run.runId} C renamed`, slug: orgC.slug, isSuspended: false, userLimit: 3, activeFormulaSetId: run.formulaSetId, formulaSetLabel: expect.stringMatching(/ v\d+$/) },
       warnings: [],
     });
     expect((await json<{ org: { activeFormulaSetId: string } }>(await sa.patch(url, { data: { formulaSetId: run.formulaSetId } }))).org.activeFormulaSetId).toBe(run.formulaSetId);
 
     const cases: Array<[string, unknown, number, string]> = [
-      ["no updatable field", { slug: "x" }, 400, "At least one of name or formulaSetId must be provided"],
+      ["no updatable field", { slug: "x" }, 400, "At least one of name, formulaSetId or userLimit must be provided"],
+      ["userLimit 0", { userLimit: 0 }, 400, "userLimit must be a whole number between 1 and 10000"],
+      ["userLimit 10001", { userLimit: 10001 }, 400, "userLimit must be a whole number between 1 and 10000"],
+      ["userLimit 1.5", { userLimit: 1.5 }, 400, "userLimit must be a whole number between 1 and 10000"],
+      ["userLimit as a string", { userLimit: "3" }, 400, "userLimit must be a whole number between 1 and 10000"],
+      ["valid name + invalid userLimit writes nothing", { name: "rgr-should-not-apply", userLimit: 0 }, 400, "userLimit must be a whole number between 1 and 10000"],
       ["blank name", { name: "  " }, 400, "name must not be empty"],
       ["unknown formula set", { formulaSetId: GHOST }, 404, "Formula set not found"],
     ];
@@ -287,7 +302,9 @@ test.describe("SuperAdmin org users (org B)", () => {
     const r = await sa.get(`${SA}/orgs/${run.orgB.id}/users`);
     const raw = await expectStatus(r, 200);
     expect(raw).not.toMatch(/password|hash/i);
-    const body = JSON.parse(raw) as { users: UserRow[]; externalCompanies: { id: string; name: string }[] };
+    const body = JSON.parse(raw) as { users: UserRow[]; externalCompanies: { id: string; name: string }[]; seats: { limit: number; used: number } };
+    expect(body.seats.limit).toBe(ORG_B_USER_LIMIT); // Stage 29: seats alongside the list
+    expect(body.seats.used).toBe(body.users.length);
     expect(body.users.find((u) => u.username === "admin")).toMatchObject({ role: { name: "Admin" }, active: true });
     const names = body.users.map((u) => u.username);
     expect(names).toEqual([...names].sort());

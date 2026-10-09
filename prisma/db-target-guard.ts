@@ -8,7 +8,7 @@
  * Pure: no env/process access, so it is unit-testable.
  */
 
-export const DEV_ENDPOINT = "ep-dark-term-ai0ufj4k";
+export const DEV_ENDPOINT = "ep-solitary-unit-ais3pnxi";
 export const PROD_ENDPOINT = "ep-little-paper-aipm0o0i";
 /** The only endpoints EXPECT_ENDPOINT may name. */
 export const KNOWN_ENDPOINTS: ReadonlySet<string> = new Set([DEV_ENDPOINT, PROD_ENDPOINT]);

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { getTranslations } from "next-intl/server";
@@ -57,6 +58,7 @@ export default async function OrgUsersPage({
 
   const org = await loadWorkspaceOrg(orgId);
   if (!org) notFound();
+  const atCap = org.userCount >= org.userLimit;
 
   // ── Fetch users, roles, and external companies for the org ──────────────────
 
@@ -103,16 +105,36 @@ export default async function OrgUsersPage({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <h2 className="text-lg font-bold text-text-heading">Users</h2>
-            <SeatPill used={org.userCount} />
+            <SeatPill used={org.userCount} limit={org.userLimit} />
           </div>
           {roles && roles.length > 0 && (
             <AddUserButton
               orgId={orgId}
               roles={roles}
               externalCompanies={externalCompanies ?? []}
+              disabledReason={
+                atCap ? "User limit reached. Raise the limit on the Overview tab." : undefined
+              }
             />
           )}
         </div>
+
+        {/* Stage 29: at the cap the Add button is disabled and this explains why. */}
+        {atCap && (
+          <div
+            role="status"
+            className="mt-4 rounded-md border border-status-pending-border bg-status-pending-bg px-4 py-3 text-sm font-semibold text-status-pending-text"
+          >
+            User limit reached ({org.userCount}/{org.userLimit}). Deactivated users count toward the limit.{" "}
+            <Link
+              href={`/controls/orgs/${encodeURIComponent(orgId)}/overview`}
+              className="underline"
+            >
+              Raise the limit on the Overview tab
+            </Link>{" "}
+            to add more.
+          </div>
+        )}
 
         {/* ── Users table ── */}
         {users && users.length > 0 ? (
