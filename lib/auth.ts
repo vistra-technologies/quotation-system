@@ -2,6 +2,7 @@ import { betterAuth, APIError } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
 import { prisma } from "@/lib/prisma";
+import { ORG_SUSPENDED_CODE, ORG_SUSPENDED_MESSAGE } from "@/lib/org-suspended";
 
 /**
  * better-auth server instance.
@@ -145,12 +146,20 @@ export const auth = betterAuth({
         before: async (session) => {
           const user = await prisma.user.findUnique({
             where: { id: session.userId },
-            select: { active: true },
+            select: { active: true, organization: { select: { isSuspended: true } } },
           });
           if (user?.active === false) {
             throw new APIError("UNAUTHORIZED", {
               message: "Account is deactivated.",
               code: "ACCOUNT_DEACTIVATED",
+            });
+          }
+          // Stage 29 (S29-9): a suspended org's users cannot sign in at all; no session is issued.
+          // Reactivation restores everything (existing sessions were never deleted).
+          if (user?.organization.isSuspended) {
+            throw new APIError("FORBIDDEN", {
+              message: ORG_SUSPENDED_MESSAGE,
+              code: ORG_SUSPENDED_CODE,
             });
           }
         },

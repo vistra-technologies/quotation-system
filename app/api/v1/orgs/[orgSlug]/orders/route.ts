@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
-import { getApiSession, ApiAuthError } from "@/lib/api-auth";
+import { getApiSession, ApiAuthError, apiAuthErrorResponse } from "@/lib/api-auth";
 import {
-  apiUnauthorized,
-  apiForbidden,
-  apiNotFound,
   apiServerError,
 } from "@/lib/api-error";
 
@@ -39,9 +36,7 @@ export async function GET(
     await getApiSession(request, orgSlug);
   } catch (err) {
     if (err instanceof ApiAuthError) {
-      if (err.status === 401) return apiUnauthorized(err.message);
-      if (err.status === 403) return apiForbidden(err.message);
-      if (err.status === 404) return apiNotFound(err.message);
+      return apiAuthErrorResponse(err);
     }
     console.error("[GET /api/v1/orgs/[orgSlug]/orders]", err);
     return apiServerError();

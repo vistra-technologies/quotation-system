@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { getApiSession, ApiAuthError } from "@/lib/api-auth";
+import { getApiSession, ApiAuthError, apiAuthErrorResponse } from "@/lib/api-auth";
 import {
-  apiUnauthorized,
-  apiForbidden,
   apiNotFound,
   apiConflict,
   apiServerError,
@@ -19,9 +17,7 @@ async function authed(request: Request, orgSlug: string) {
     return { session: await getApiSession(request, orgSlug) };
   } catch (err) {
     if (err instanceof ApiAuthError) {
-      if (err.status === 401) return { res: apiUnauthorized(err.message) };
-      if (err.status === 403) return { res: apiForbidden(err.message) };
-      if (err.status === 404) return { res: apiNotFound(err.message) };
+      return { res: apiAuthErrorResponse(err) };
     }
     console.error("[config-update] auth", err);
     return { res: apiServerError() };
