@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 const REQUEST_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
 /**
@@ -9,5 +7,5 @@ const REQUEST_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
  */
 export function requestIdFrom(vercelId: string | null | undefined): string {
   const seg = (vercelId ?? "").split("::").pop() ?? "";
-  return REQUEST_ID_RE.test(seg) ? seg : randomUUID();
+  return REQUEST_ID_RE.test(seg) ? seg : globalThis.crypto.randomUUID(); // Web Crypto: also valid in the Edge instrumentation bundle
 }
