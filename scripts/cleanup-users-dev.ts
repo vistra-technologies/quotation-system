@@ -12,7 +12,7 @@ import "dotenv/config";
 import { PrismaClient } from "../app/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
-const DEV_BRANCH_HOSTNAME = "ep-dark-term-ai0ufj4k";
+const DEV_BRANCH_HOSTNAME = "ep-solitary-unit-ais3pnxi";
 const PROD_BRANCH_HOSTNAME = "ep-little-paper-aipm0o0i";
 
 const url = process.env.DATABASE_URL ?? "";

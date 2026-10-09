@@ -15,7 +15,7 @@
  *     `--dry-run` config (npm swallows it without forwarding) always win. npm also swallows unknown flags
  *     placed before `--`, so `--write` must come after it.
  *   - Fail-closed destination guard (prisma/db-target-guard.ts, D-19): DATABASE_URL must resolve to the dev
- *     Neon endpoint (ep-dark-term-ai0ufj4k) by default. Production only with the explicit opt-in
+ *     Neon endpoint (ep-solitary-unit-ais3pnxi) by default. Production only with the explicit opt-in
  *     EXPECT_ENDPOINT=ep-little-paper-aipm0o0i set in the operator's own shell AND equal to the URL's endpoint;
  *     anything else aborts. Production runs print "*** PRODUCTION ***". Only with human go-ahead.
  *   - Env precedence matches Next: process env > .env.local > .env. The target endpoint is printed first.
