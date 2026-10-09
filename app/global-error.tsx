@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { reportClientError } from "@/lib/client-error-report";
 import "./globals.css";
 
 /**
@@ -18,6 +20,10 @@ export default function GlobalError({
   error: Error & { digest?: string };
   unstable_retry: () => void;
 }) {
+  useEffect(() => {
+    reportClientError(error, "global");
+  }, [error]);
+
   return (
     <html lang="en" className="h-full antialiased">
       <body className="flex min-h-full flex-col items-center justify-center gap-3 bg-bg-page p-6">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reportClientError } from "@/lib/client-error-report";
 
 /**
  * Scoped error boundary for the /[orgSlug]/admin/* sub-tree.
@@ -19,6 +20,7 @@ export default function AdminError({
 }) {
   useEffect(() => {
     console.error(error);
+    reportClientError(error, "admin");
   }, [error]);
 
   return (

@@ -1,11 +1,14 @@
-import { randomUUID } from "node:crypto";
 import { headers } from "next/headers";
 import { unstable_rethrow } from "next/navigation";
 import { after, NextResponse } from "next/server";
 import { apiServerError } from "@/lib/api-error";
+import { flushToAxiom } from "@/lib/axiom";
 import { runWithContext, type LogContext } from "@/lib/log-context";
 import { log } from "@/lib/logger";
 import { serializeError } from "@/lib/log-redact";
+import { requestIdFrom } from "@/lib/request-id";
+
+export { requestIdFrom };
 
 /**
  * Request wrappers (Stage 30, S30-4 / S30-5).
@@ -20,28 +23,13 @@ import { serializeError } from "@/lib/log-redact";
 
 const PARENT_ID_RE = /^[A-Za-z0-9:_-]{1,128}$/;
 
-const REQUEST_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
-
 /**
- * requestId = the segment after the last `::` of x-vercel-id (equals Vercel's runtime-log id);
- * randomUUID() when the header is missing, empty, or the segment fails REQUEST_ID_RE (Stage 30 S2 ruling).
+ * Registers the end-of-request Axiom flush (S30-8). The buffer is captured BY REFERENCE: ALS is not
+ * readable inside `after()` (spike S3). `after()` throws outside a Next request scope (unit tests).
  */
-export function requestIdFrom(vercelId: string | null | undefined): string {
-  const seg = (vercelId ?? "").split("::").pop() ?? "";
-  return REQUEST_ID_RE.test(seg) ? seg : randomUUID();
-}
-
-/** Placeholder for the Axiom transport (Batch 3). Kept here so `after()` is already registered. */
-function flushBuffer(buffer: unknown[]): number {
-  return buffer.length;
-}
-
-/** Registers the end-of-request flush. `after()` throws outside a Next request scope (unit tests). */
 function registerFlush(buffer: unknown[]): void {
   try {
-    after(() => {
-      flushBuffer(buffer);
-    });
+    after(() => flushToAxiom(buffer));
   } catch {
     // no request scope: nothing to flush after
   }
