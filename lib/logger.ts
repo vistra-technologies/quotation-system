@@ -63,6 +63,8 @@ function write(level: Level, msg: string, fields?: Record<string, unknown>): voi
     if (byteLength(line) > MAX_LINE_BYTES) {
       // Keep the identity/core keys and the small scalars the dashboards filter on; drop the rest.
       const kept: Record<string, unknown> = { ...base, truncated: true };
+      // Cap the message first: a huge dynamic msg must not cost us the err below.
+      kept.msg = String(kept.msg).slice(0, 1000);
       for (const k of ["status", "durationMs", "ok", "outcome"]) {
         if (k in extra) kept[k] = extra[k];
       }
@@ -83,10 +85,6 @@ function write(level: Level, msg: string, fields?: Record<string, unknown>): voi
       }
       if (byteLength(line) > MAX_LINE_BYTES) {
         delete kept.err;
-        line = JSON.stringify(kept);
-      }
-      if (byteLength(line) > MAX_LINE_BYTES) {
-        kept.msg = String(kept.msg).slice(0, 1000);
         line = JSON.stringify(kept);
       }
     }

@@ -135,6 +135,17 @@ test("a long-message error keeps its name and a truncated message under the 8 KB
   assert.equal(p.status, 500);
 });
 
+test("a huge msg is capped first, so the err survives the overflow shrink", () => {
+  log.error("m".repeat(20000), { err: new Error("boom") });
+  const raw = errOut[0];
+  assert.ok(Buffer.byteLength(raw) <= MAX_LINE_BYTES);
+  const p = JSON.parse(raw);
+  assert.equal(p.truncated, true);
+  assert.equal(p.msg.length, 1000);
+  assert.equal(p.err.name, "Error");
+  assert.equal(p.err.message, "boom");
+});
+
 test("caller fields cannot overwrite reserved keys; they are renamed field_<key>", () => {
   log.info("real", { level: "debug", msg: "overwritten", requestId: "spoof", userId: "target", route: "r", extra: 1 });
   const p = JSON.parse(out[0]);
