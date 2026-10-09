@@ -37,6 +37,24 @@ export function apiAuthErrorResponse(err: ApiAuthError): NextResponse {
 }
 
 /**
+ * Suspension guard for the few routes that authenticate WITHOUT an orgSlug (the global
+ * /api/v1/permissions catalog), where getApiSession()'s step 4 cannot run. Same rule, same body:
+ * an uncached read of the session's own org, so a suspended org's existing session is refused on
+ * its very next request.
+ *
+ * @throws ApiAuthError(401) — the session's org no longer exists
+ * @throws ApiAuthError(403) — the org is suspended (code "ORG_SUSPENDED")
+ */
+export async function assertSessionOrgNotSuspended(organizationId: string): Promise<void> {
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { isSuspended: true },
+  });
+  if (!org) throw new ApiAuthError(401, "Not authenticated");
+  if (org.isSuspended) throw new ApiAuthError(403, ORG_SUSPENDED_MESSAGE, ORG_SUSPENDED_CODE);
+}
+
+/**
  * Route-handler-safe session resolver — the API-layer replacement for lib/session.ts's getSession().
  *
  * Cannot use getSession() here because proxy.ts's matcher EXCLUDES all /api/* paths, so API route

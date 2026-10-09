@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { startTransition, useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { SelectField } from "@/components/select-field";
@@ -45,6 +45,16 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
   const selectedRole = roles.find((r) => r.id === selectedRoleId);
   const companyRequired = selectedRole ? !selectedRole.isInternalRole : false;
 
+  // Fix round 1: a `<form action={fn}>` makes React reset every field after the action settles, so a
+  // server-side error (USER_LIMIT_REACHED, duplicate username...) wiped what the admin typed. Submitting
+  // through onSubmit + startTransition runs the same action (isPending/state still work) without the reset.
+  // Native validation (required/minLength) still runs first. On success the action redirects away.
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const data = new FormData(e.currentTarget);
+    startTransition(() => formAction(data));
+  }
+
   const inputCls =
     "rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]";
   const labelCls = "text-xs font-bold uppercase tracking-wide text-text-muted";
@@ -61,7 +71,7 @@ export function CreateUserForm({ orgSlug, roles, externalCompanies }: CreateUser
 
       {/* H-19: 2-column grid — (First name, Last name), (Username, Role),
           (Initial password, Mobile), (Email, External company). */}
-      <form action={formAction} className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 gap-5 sm:grid-cols-2">
         <input type="hidden" name="orgSlug" value={orgSlug} />
 
         {/* First Name + Last Name — side by side, spanning both columns */}
