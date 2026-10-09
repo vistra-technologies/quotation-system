@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import { withAction } from "@/lib/with-route";
 
 // ---------------------------------------------------------------------------
 // deleteInventoryItem
@@ -20,7 +21,9 @@ import { orgHref } from "@/lib/orgHref";
  *
  * Hotfix 2026-09-27 H-6.
  */
-export async function deleteInventoryItem(formData: FormData): Promise<void> {
+export const deleteInventoryItem = withAction(
+  "app/[orgSlug]/admin/inventory/actions#deleteInventoryItem",
+  async (formData: FormData): Promise<void> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const itemId = formData.get("itemId") as string | null;
 
@@ -47,4 +50,4 @@ export async function deleteInventoryItem(formData: FormData): Promise<void> {
   }
 
   revalidatePath(`/${orgSlug}/admin/inventory`);
-}
+});

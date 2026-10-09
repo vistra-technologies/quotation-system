@@ -8,6 +8,8 @@ import {
 } from "@/lib/api-error";
 import { listComponentCategoriesForOrg } from "@/lib/data/superadmin/component-types";
 import { getOrgById } from "@/lib/data/superadmin/orgs";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -19,14 +21,16 @@ export const dynamic = "force-dynamic";
 // Auth: valid SuperAdmin session (qs-sa-token cookie).
 // Query: ?orgId=<organizationId>
 
-export async function GET(request: Request): Promise<NextResponse> {
+export const GET = withRoute(
+  "GET /api/v1/superadmin/component-categories",
+  async (request: Request): Promise<NextResponse> => {
   try {
     await requireSuperAdminFromRequest(request);
   } catch (err) {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[GET /api/v1/superadmin/component-categories] auth error", err);
+    log.error("[GET /api/v1/superadmin/component-categories] auth error", { err });
     return apiServerError();
   }
 
@@ -47,7 +51,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const categories = await listComponentCategoriesForOrg(orgId);
     return NextResponse.json({ categories });
   } catch (err) {
-    console.error("[GET /api/v1/superadmin/component-categories] listComponentCategoriesForOrg", err);
+    log.error("[GET /api/v1/superadmin/component-categories] listComponentCategoriesForOrg", { err });
     return apiServerError();
   }
-}
+});

@@ -15,6 +15,8 @@ import {
   deleteUserFromOrg,
   type UpdateUserInOrgInput,
 } from "@/lib/data/superadmin/users";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -35,10 +37,12 @@ export const dynamic = "force-dynamic";
 // Returns 401 when not authenticated as SuperAdmin.
 // Returns 404 if the user is not in this org.
 
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/superadmin/orgs/[orgId]/users/[userId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgId: string; userId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -46,7 +50,7 @@ export async function PATCH(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[PATCH /api/v1/superadmin/orgs/[orgId]/users/[userId]] auth error", err);
+    log.error("[PATCH /api/v1/superadmin/orgs/[orgId]/users/[userId]] auth error", { err });
     return apiServerError();
   }
 
@@ -108,7 +112,7 @@ export async function PATCH(
   try {
     result = await updateUserInOrg(orgId, userId, input);
   } catch (err) {
-    console.error("[PATCH /api/v1/superadmin/orgs/[orgId]/users/[userId]] updateUserInOrg", err);
+    log.error("[PATCH /api/v1/superadmin/orgs/[orgId]/users/[userId]] updateUserInOrg", { err });
     return apiServerError();
   }
 
@@ -127,7 +131,7 @@ export async function PATCH(
   );
 
   return NextResponse.json({ user: { id: userId }, changedFields: result.changedFields });
-}
+});
 
 // ─── DELETE /api/v1/superadmin/orgs/[orgId]/users/[userId] ────────────────────
 //
@@ -146,10 +150,12 @@ export async function PATCH(
 // Returns 401 when not authenticated as SuperAdmin.
 // Returns 404 if the user is not found in this org.
 
-export async function DELETE(
+export const DELETE = withRoute(
+  "DELETE /api/v1/superadmin/orgs/[orgId]/users/[userId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgId: string; userId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -157,7 +163,7 @@ export async function DELETE(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[DELETE /api/v1/superadmin/orgs/[orgId]/users/[userId]] auth error", err);
+    log.error("[DELETE /api/v1/superadmin/orgs/[orgId]/users/[userId]] auth error", { err });
     return apiServerError();
   }
 
@@ -173,7 +179,7 @@ export async function DELETE(
   try {
     result = await deleteUserFromOrg(orgId, userId);
   } catch (err) {
-    console.error("[DELETE /api/v1/superadmin/orgs/[orgId]/users/[userId]] deleteUserFromOrg", err);
+    log.error("[DELETE /api/v1/superadmin/orgs/[orgId]/users/[userId]] deleteUserFromOrg", { err });
     return apiServerError();
   }
 
@@ -192,4 +198,4 @@ export async function DELETE(
   );
 
   return NextResponse.json({ deleted: true });
-}
+});

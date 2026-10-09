@@ -10,6 +10,8 @@ import {
 import { validateSuperAdminPassword } from "@/lib/superadmin-accounts";
 import { changeSuperAdminPassword, deleteSuperAdmin } from "@/lib/data/superadmin/admins";
 import { writeSuperAdminAudit } from "@/lib/data/superadmin/audit";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -23,10 +25,12 @@ export const dynamic = "force-dynamic";
 //
 // Returns 200 { admin: { id }, sessionsRevoked }; 400 invalid; 401; 404.
 
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/superadmin/admins/[adminId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ adminId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -34,7 +38,7 @@ export async function PATCH(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[PATCH /api/v1/superadmin/admins/[adminId]] auth error", err);
+    log.error("[PATCH /api/v1/superadmin/admins/[adminId]] auth error", { err });
     return apiServerError();
   }
 
@@ -61,7 +65,7 @@ export async function PATCH(
       adminId === sa.superAdminId ? sa.sessionId : null,
     );
   } catch (err) {
-    console.error("[PATCH /api/v1/superadmin/admins/[adminId]] changeSuperAdminPassword", err);
+    log.error("[PATCH /api/v1/superadmin/admins/[adminId]] changeSuperAdminPassword", { err });
     return apiServerError();
   }
   if (!result.ok) return apiNotFound(result.message);
@@ -75,7 +79,7 @@ export async function PATCH(
   });
 
   return NextResponse.json({ admin: { id: adminId }, sessionsRevoked: result.sessionsRevoked });
-}
+});
 
 // ─── DELETE /api/v1/superadmin/admins/[adminId] ──────────────────────────────
 //
@@ -85,10 +89,12 @@ export async function PATCH(
 // Returns 200 { deleted: true }; 400 self-delete or last remaining SuperAdmin;
 // 403 protected account (`devadmin`); 401; 404.
 
-export async function DELETE(
+export const DELETE = withRoute(
+  "DELETE /api/v1/superadmin/admins/[adminId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ adminId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -96,7 +102,7 @@ export async function DELETE(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[DELETE /api/v1/superadmin/admins/[adminId]] auth error", err);
+    log.error("[DELETE /api/v1/superadmin/admins/[adminId]] auth error", { err });
     return apiServerError();
   }
 
@@ -106,7 +112,7 @@ export async function DELETE(
   try {
     result = await deleteSuperAdmin(adminId, sa.superAdminId);
   } catch (err) {
-    console.error("[DELETE /api/v1/superadmin/admins/[adminId]] deleteSuperAdmin", err);
+    log.error("[DELETE /api/v1/superadmin/admins/[adminId]] deleteSuperAdmin", { err });
     return apiServerError();
   }
 
@@ -125,4 +131,4 @@ export async function DELETE(
   });
 
   return NextResponse.json({ deleted: true });
-}
+});

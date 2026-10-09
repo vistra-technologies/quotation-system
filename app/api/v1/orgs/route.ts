@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { apiServerError } from "@/lib/api-error";
 import { listOrganizationsForSelector } from "@/lib/data/admin";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — org list should always be live.
 export const dynamic = "force-dynamic";
@@ -15,12 +17,14 @@ export const dynamic = "force-dynamic";
  *
  * Returns: { orgs: Array<{ id, slug, name }> } ordered A→Z by name.
  */
-export async function GET(): Promise<NextResponse> {
+export const GET = withRoute(
+  "GET /api/v1/orgs",
+  async (): Promise<NextResponse> => {
   try {
     const orgs = await listOrganizationsForSelector();
     return NextResponse.json({ orgs });
   } catch (err) {
-    console.error("[GET /api/v1/orgs]", err);
+    log.error("[GET /api/v1/orgs]", { err });
     return apiServerError();
   }
-}
+});

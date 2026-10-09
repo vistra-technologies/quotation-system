@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { SA_SESSION_COOKIE } from "@/lib/superadmin-guard";
 import { deleteSuperAdminSession } from "@/lib/data/superadmin/sessions";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -15,7 +17,9 @@ export const dynamic = "force-dynamic";
 // logout is safe and should succeed silently (the cookie is already gone or
 // was never set; the session row, if any, is deleted anyway).
 
-export async function POST(request: Request): Promise<NextResponse> {
+export const POST = withRoute(
+  "POST /api/v1/superadmin/logout",
+  async (request: Request): Promise<NextResponse> => {
   const cookieHeader = request.headers.get("cookie") ?? "";
   const token = _extractCookieValue(cookieHeader, SA_SESSION_COOKIE);
 
@@ -24,7 +28,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     try {
       await deleteSuperAdminSession(token);
     } catch (err) {
-      console.error("[POST /api/v1/superadmin/logout] session delete error", err);
+      log.error("[POST /api/v1/superadmin/logout] session delete error", { err });
     }
   }
 
@@ -42,7 +46,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   });
 
   return response;
-}
+});
 
 /**
  * Extract a named cookie value from a raw Cookie header string.

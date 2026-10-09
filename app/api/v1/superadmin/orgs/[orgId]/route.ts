@@ -18,6 +18,8 @@ import {
 } from "@/lib/data/superadmin/orgs";
 import { getFormulaSet } from "@/lib/data/superadmin/formula-sets";
 import { isValidUserLimit, USER_LIMIT_RANGE_MESSAGE } from "@/lib/data/user-limit";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -39,10 +41,12 @@ export const dynamic = "force-dynamic";
 // Returns 500 on unexpected errors (including audit log write failure — every
 //   mutation must have an audit row; propagating as 500 is the correct signal).
 
-export async function DELETE(
+export const DELETE = withRoute(
+  "DELETE /api/v1/superadmin/orgs/[orgId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   // Authenticate.
   let sa;
   try {
@@ -51,7 +55,7 @@ export async function DELETE(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[DELETE /api/v1/superadmin/orgs/[orgId]] auth error", err);
+    log.error("[DELETE /api/v1/superadmin/orgs/[orgId]] auth error", { err });
     return apiServerError();
   }
 
@@ -67,10 +71,7 @@ export async function DELETE(
     if (result.reason === "not_suspended") {
       return apiBadRequest(result.message);
     }
-    console.error(
-      "[DELETE /api/v1/superadmin/orgs/[orgId]] deleteOrganization error",
-      result.message,
-    );
+    log.error("[DELETE /api/v1/superadmin/orgs/[orgId]] deleteOrganization error", { detail: result.message });
     return apiServerError();
   }
 
@@ -86,7 +87,7 @@ export async function DELETE(
   );
 
   return NextResponse.json({ ok: true });
-}
+});
 
 // ─── PATCH /api/v1/superadmin/orgs/[orgId] ───────────────────────────────────
 //
@@ -104,10 +105,12 @@ export async function DELETE(
 // Returns 401 when not authenticated as SuperAdmin.
 // Returns 404 when orgId or formulaSetId not found.
 
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/superadmin/orgs/[orgId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   // Authenticate.
   let sa;
   try {
@@ -116,7 +119,7 @@ export async function PATCH(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[PATCH /api/v1/superadmin/orgs/[orgId]] auth error", err);
+    log.error("[PATCH /api/v1/superadmin/orgs/[orgId]] auth error", { err });
     return apiServerError();
   }
 
@@ -163,7 +166,7 @@ export async function PATCH(
     if (result.reason === "not_found") {
       return apiNotFound(result.message);
     }
-    console.error("[PATCH /api/v1/superadmin/orgs/[orgId]] updateOrgSettings error", result.message);
+    log.error("[PATCH /api/v1/superadmin/orgs/[orgId]] updateOrgSettings error", { detail: result.message });
     return apiServerError();
   }
 
@@ -200,4 +203,4 @@ export async function PATCH(
     },
     warnings,
   });
-}
+});

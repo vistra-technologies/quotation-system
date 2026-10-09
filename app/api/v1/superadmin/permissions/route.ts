@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireSuperAdminFromRequest, SuperAdminUnauthorizedError } from "@/lib/superadmin-guard";
 import { apiUnauthorized, apiServerError } from "@/lib/api-error";
 import { listAllPermissionsCatalog } from "@/lib/data/superadmin/roles";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -14,14 +16,16 @@ export const dynamic = "force-dynamic";
 //
 // Auth: valid SuperAdmin session (qs-sa-token cookie).
 
-export async function GET(request: Request): Promise<NextResponse> {
+export const GET = withRoute(
+  "GET /api/v1/superadmin/permissions",
+  async (request: Request): Promise<NextResponse> => {
   try {
     await requireSuperAdminFromRequest(request);
   } catch (err) {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[GET /api/v1/superadmin/permissions] auth error", err);
+    log.error("[GET /api/v1/superadmin/permissions] auth error", { err });
     return apiServerError();
   }
 
@@ -29,7 +33,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     const permissions = await listAllPermissionsCatalog();
     return NextResponse.json({ permissions });
   } catch (err) {
-    console.error("[GET /api/v1/superadmin/permissions] listAllPermissionsCatalog", err);
+    log.error("[GET /api/v1/superadmin/permissions] listAllPermissionsCatalog", { err });
     return apiServerError();
   }
-}
+});

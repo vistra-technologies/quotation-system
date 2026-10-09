@@ -17,6 +17,8 @@ import {
   getSeatsForOrg,
   createUserInOrg,
 } from "@/lib/data/superadmin/users";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -29,17 +31,19 @@ export const dynamic = "force-dynamic";
 // Auth: valid SuperAdmin session (qs-sa-token cookie).
 // Returns 404 if the org does not exist.
 
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/superadmin/orgs/[orgId]/users",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   try {
     await requireSuperAdminFromRequest(request);
   } catch (err) {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[GET /api/v1/superadmin/orgs/[orgId]/users] auth error", err);
+    log.error("[GET /api/v1/superadmin/orgs/[orgId]/users] auth error", { err });
     return apiServerError();
   }
 
@@ -59,10 +63,10 @@ export async function GET(
     ]);
     return NextResponse.json({ users, externalCompanies, seats });
   } catch (err) {
-    console.error("[GET /api/v1/superadmin/orgs/[orgId]/users]", err);
+    log.error("[GET /api/v1/superadmin/orgs/[orgId]/users]", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/superadmin/orgs/[orgId]/users ───────────────────────────────
 //
@@ -81,10 +85,12 @@ export async function GET(
 // Returns 409 { error, code: "USER_LIMIT_REACHED", limit, current } when the org is at its userLimit.
 // Returns 401 when not authenticated as SuperAdmin.
 
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/superadmin/orgs/[orgId]/users",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -92,7 +98,7 @@ export async function POST(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[POST /api/v1/superadmin/orgs/[orgId]/users] auth error", err);
+    log.error("[POST /api/v1/superadmin/orgs/[orgId]/users] auth error", { err });
     return apiServerError();
   }
 
@@ -169,7 +175,7 @@ export async function POST(
     ) {
       return apiBadRequest(result.message);
     }
-    console.error("[POST /api/v1/superadmin/orgs/[orgId]/users] createUserInOrg", result.message);
+    log.error("[POST /api/v1/superadmin/orgs/[orgId]/users] createUserInOrg", { detail: result.message });
     return apiServerError();
   }
 
@@ -184,4 +190,4 @@ export async function POST(
   );
 
   return NextResponse.json({ user: result.user }, { status: 201 });
-}
+});

@@ -56,6 +56,21 @@ const eslintConfig = defineConfig([
       }],
     },
   },
+  // Stage 30 (S30-13): server code logs through lib/logger.ts, never console.*. Client components,
+  // scripts/** and prisma/** are exempt; lib/logger.ts is the one sanctioned writer (inline disable).
+  {
+    files: [
+      "app/api/**/*.ts",
+      "lib/**/*.ts",
+      "lib/**/*.tsx",
+      "instrumentation.ts",
+      "app/**/actions.ts",
+      "app/**/admin-actions.ts",
+    ],
+    rules: {
+      "no-console": "error",
+    },
+  },
 ]);
 
 export default eslintConfig;

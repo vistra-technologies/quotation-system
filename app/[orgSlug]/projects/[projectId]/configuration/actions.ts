@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import { withAction } from "@/lib/with-route";
 
 // ---------------------------------------------------------------------------
 // createSelection
@@ -27,10 +28,12 @@ export type UpdateSelectionState = { error: string | null };
  * (e.g. tenancy violations on malformed payloads) rather than crashing to an
  * error boundary.
  */
-export async function createSelection(
+export const createSelection = withAction(
+  "app/[orgSlug]/projects/[projectId]/configuration/actions#createSelection",
+  async (
   prevState: CreateSelectionState,
   formData: FormData,
-): Promise<CreateSelectionState> {
+): Promise<CreateSelectionState> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
 
   const projectId = (formData.get("projectId") as string | null)?.trim();
@@ -89,7 +92,7 @@ export async function createSelection(
     await orgHref(orgSlug, `/projects/${projectId}/configuration`),
     RedirectType.replace,
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // updateSelection
@@ -104,10 +107,12 @@ export async function createSelection(
  *
  * Uses the useActionState signature so the client form can surface errors.
  */
-export async function updateSelection(
+export const updateSelection = withAction(
+  "app/[orgSlug]/projects/[projectId]/configuration/actions#updateSelection",
+  async (
   prevState: UpdateSelectionState,
   formData: FormData,
-): Promise<UpdateSelectionState> {
+): Promise<UpdateSelectionState> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const projectId = (formData.get("projectId") as string | null)?.trim();
   const selectionId = (formData.get("selectionId") as string | null)?.trim();
@@ -156,7 +161,7 @@ export async function updateSelection(
     await orgHref(orgSlug, `/projects/${projectId}/configuration`),
     RedirectType.replace,
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // deleteSelection
@@ -174,10 +179,12 @@ export type DeleteSelectionState = { error: string | null };
  * Returns { error } on failure — including the 409 "still in use" case from
  * the route handler — so the client can show it inline without a redirect.
  */
-export async function deleteSelection(
+export const deleteSelection = withAction(
+  "app/[orgSlug]/projects/[projectId]/configuration/actions#deleteSelection",
+  async (
   prevState: DeleteSelectionState,
   formData: FormData,
-): Promise<DeleteSelectionState> {
+): Promise<DeleteSelectionState> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const projectId = (formData.get("projectId") as string | null)?.trim();
   const selectionId = (formData.get("selectionId") as string | null)?.trim();
@@ -208,4 +215,4 @@ export async function deleteSelection(
 
   revalidatePath(`/${orgSlug}/projects/${projectId}/configuration`);
   return { error: null };
-}
+});

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import { withAction } from "@/lib/with-route";
 
 // ---------------------------------------------------------------------------
 // createExternalCompany
@@ -22,10 +23,12 @@ export type CreateExternalCompanyState = { error: string | null };
  * Stage 12 Batch 6: thin marshaler — FormData → internalFetch → error state or redirect.
  * Stage 13 Batch 2: added country + defaultCurrency fields.
  */
-export async function createExternalCompany(
+export const createExternalCompany = withAction(
+  "app/[orgSlug]/admin/external-companies/actions#createExternalCompany",
+  async (
   prevState: CreateExternalCompanyState,
   formData: FormData,
-): Promise<CreateExternalCompanyState> {
+): Promise<CreateExternalCompanyState> => {
   const orgSlug = formData.get("orgSlug") as string | null;
   const name = (formData.get("name") as string | null)?.trim();
   const type = formData.get("type") as string | null;
@@ -72,7 +75,7 @@ export async function createExternalCompany(
 
   revalidatePath(`/${orgSlug}/admin/external-companies`);
   redirect(await orgHref(orgSlug ?? "", "/admin/external-companies"), RedirectType.replace);
-}
+});
 
 // ---------------------------------------------------------------------------
 // updateExternalCompany
@@ -87,10 +90,12 @@ export type UpdateExternalCompanyState = { error: string | null };
  *
  * Stage 13 Batch 2.
  */
-export async function updateExternalCompany(
+export const updateExternalCompany = withAction(
+  "app/[orgSlug]/admin/external-companies/actions#updateExternalCompany",
+  async (
   prevState: UpdateExternalCompanyState,
   formData: FormData,
-): Promise<UpdateExternalCompanyState> {
+): Promise<UpdateExternalCompanyState> => {
   const orgSlug = formData.get("orgSlug") as string | null;
   const companyId = formData.get("companyId") as string | null;
   const name = (formData.get("name") as string | null)?.trim();
@@ -137,7 +142,7 @@ export async function updateExternalCompany(
 
   revalidatePath(`/${orgSlug}/admin/external-companies`);
   redirect(await orgHref(orgSlug, "/admin/external-companies"), RedirectType.replace);
-}
+});
 
 // ---------------------------------------------------------------------------
 // deleteExternalCompany
@@ -153,7 +158,9 @@ export async function updateExternalCompany(
  *
  * Stage 13 Batch 2.
  */
-export async function deleteExternalCompany(formData: FormData): Promise<void> {
+export const deleteExternalCompany = withAction(
+  "app/[orgSlug]/admin/external-companies/actions#deleteExternalCompany",
+  async (formData: FormData): Promise<void> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const companyId = formData.get("companyId") as string | null;
 
@@ -179,4 +186,4 @@ export async function deleteExternalCompany(formData: FormData): Promise<void> {
   }
 
   revalidatePath(`/${orgSlug}/admin/external-companies`);
-}
+});

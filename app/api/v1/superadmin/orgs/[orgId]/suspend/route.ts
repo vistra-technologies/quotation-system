@@ -10,6 +10,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { toggleOrgSuspension, createOrgAuditLog } from "@/lib/data/superadmin/orgs";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -32,10 +34,12 @@ export const dynamic = "force-dynamic";
 // Returns 500 on unexpected errors (including audit log write failure — every
 //   mutation must have an audit row; propagating as 500 is the correct signal).
 
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/superadmin/orgs/[orgId]/suspend",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   // Authenticate.
   let sa;
   try {
@@ -44,7 +48,7 @@ export async function POST(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[POST /api/v1/superadmin/orgs/[orgId]/suspend] auth error", err);
+    log.error("[POST /api/v1/superadmin/orgs/[orgId]/suspend] auth error", { err });
     return apiServerError();
   }
 
@@ -75,10 +79,7 @@ export async function POST(
     if (result.reason === "not_found") {
       return apiNotFound(result.message);
     }
-    console.error(
-      "[POST /api/v1/superadmin/orgs/[orgId]/suspend] toggleOrgSuspension error",
-      result.message,
-    );
+    log.error("[POST /api/v1/superadmin/orgs/[orgId]/suspend] toggleOrgSuspension error", { detail: result.message });
     return apiServerError();
   }
 
@@ -90,4 +91,4 @@ export async function POST(
   await createOrgAuditLog(sa.superAdminId, orgId, action);
 
   return NextResponse.json({ ok: true });
-}
+});

@@ -1,4 +1,4 @@
-// This file is the one sanctioned console writer (Stage 30, S30-1); Batch 2 adds the no-console lint rule with an override for it.
+/* eslint-disable no-console -- the one sanctioned console writer (Stage 30, S30-1 / S30-13) */
 import { BUFFER_CAP, getContext } from "@/lib/log-context";
 import { redactValue, scrubString } from "@/lib/log-redact";
 

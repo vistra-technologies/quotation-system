@@ -6,6 +6,7 @@ import {
   findSuperAdminByEmail,
   createSuperAdminSession,
 } from "@/lib/data/superadmin/sessions";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -26,7 +27,9 @@ const DUMMY_HASH = "a".repeat(32) + ":" + "b".repeat(128);
 // On failure: constant-time 401 (always runs password.verify to prevent
 // timing-based user enumeration).
 
-export async function POST(request: Request): Promise<NextResponse> {
+export const POST = withRoute(
+  "POST /api/v1/superadmin/login",
+  async (request: Request): Promise<NextResponse> => {
   let body: unknown;
   try {
     body = await request.json();
@@ -87,4 +90,4 @@ export async function POST(request: Request): Promise<NextResponse> {
   });
 
   return response;
-}
+});

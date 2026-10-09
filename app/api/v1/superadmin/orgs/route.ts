@@ -16,6 +16,8 @@ import {
   computeOrgMismatchWarnings,
 } from "@/lib/data/superadmin/orgs";
 import { getFormulaSet } from "@/lib/data/superadmin/formula-sets";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -25,14 +27,16 @@ export const dynamic = "force-dynamic";
 // Returns all organizations with suspension status and user count.
 // Auth: valid SuperAdmin session (qs-sa-token cookie).
 
-export async function GET(request: Request): Promise<NextResponse> {
+export const GET = withRoute(
+  "GET /api/v1/superadmin/orgs",
+  async (request: Request): Promise<NextResponse> => {
   try {
     await requireSuperAdminFromRequest(request);
   } catch (err) {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[GET /api/v1/superadmin/orgs] auth error", err);
+    log.error("[GET /api/v1/superadmin/orgs] auth error", { err });
     return apiServerError();
   }
 
@@ -40,10 +44,10 @@ export async function GET(request: Request): Promise<NextResponse> {
     const orgs = await listAllOrganizations();
     return NextResponse.json({ orgs });
   } catch (err) {
-    console.error("[GET /api/v1/superadmin/orgs] listAllOrganizations", err);
+    log.error("[GET /api/v1/superadmin/orgs] listAllOrganizations", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/superadmin/orgs ────────────────────────────────────────────
 //
@@ -62,7 +66,9 @@ export async function GET(request: Request): Promise<NextResponse> {
 // Slug must be lowercase alphanumeric with hyphens; 1–63 chars; no leading/trailing hyphens.
 const SLUG_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 
-export async function POST(request: Request): Promise<NextResponse> {
+export const POST = withRoute(
+  "POST /api/v1/superadmin/orgs",
+  async (request: Request): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -70,7 +76,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[POST /api/v1/superadmin/orgs] auth error", err);
+    log.error("[POST /api/v1/superadmin/orgs] auth error", { err });
     return apiServerError();
   }
 
@@ -149,7 +155,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (result.reason === "slug_conflict") {
       return apiConflict(result.message);
     }
-    console.error("[POST /api/v1/superadmin/orgs] createOrganizationWithDefaults", result.message);
+    log.error("[POST /api/v1/superadmin/orgs] createOrganizationWithDefaults", { detail: result.message });
     return apiServerError();
   }
 
@@ -175,4 +181,4 @@ export async function POST(request: Request): Promise<NextResponse> {
   const warnings = await computeOrgMismatchWarnings(result.org.id, formulaSetId);
 
   return NextResponse.json({ org: result.org, warnings }, { status: 201 });
-}
+});

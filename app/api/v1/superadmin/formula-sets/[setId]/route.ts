@@ -15,6 +15,8 @@ import {
   FormulaSetInUseError,
 } from "@/lib/data/superadmin/formula-sets";
 import { validateFormulaSetBody } from "@/lib/formula-set/validate";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -28,17 +30,19 @@ export const dynamic = "force-dynamic";
 // Returns 401 when not authenticated as SuperAdmin.
 // Returns 404 if not found.
 
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/superadmin/formula-sets/[setId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ setId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   try {
     await requireSuperAdminFromRequest(request);
   } catch (err) {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[GET /api/v1/superadmin/formula-sets/[setId]] auth error", err);
+    log.error("[GET /api/v1/superadmin/formula-sets/[setId]] auth error", { err });
     return apiServerError();
   }
 
@@ -49,10 +53,10 @@ export async function GET(
     if (!formulaSet) return apiNotFound("FormulaSet not found");
     return NextResponse.json({ formulaSet });
   } catch (err) {
-    console.error("[GET /api/v1/superadmin/formula-sets/[setId]] getFormulaSet", err);
+    log.error("[GET /api/v1/superadmin/formula-sets/[setId]] getFormulaSet", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── PATCH /api/v1/superadmin/formula-sets/[setId] ────────────────────────────
 //
@@ -68,10 +72,12 @@ export async function GET(
 // Returns 404 if the set is not found.
 // Returns 409 if the set is in use (locked) or if (name, version) already exists.
 
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/superadmin/formula-sets/[setId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ setId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -79,7 +85,7 @@ export async function PATCH(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[PATCH /api/v1/superadmin/formula-sets/[setId]] auth error", err);
+    log.error("[PATCH /api/v1/superadmin/formula-sets/[setId]] auth error", { err });
     return apiServerError();
   }
 
@@ -161,7 +167,7 @@ export async function PATCH(
     ) {
       return apiConflict("A formula set with this name and version already exists");
     }
-    console.error("[PATCH /api/v1/superadmin/formula-sets/[setId]] updateFormulaSet", err);
+    log.error("[PATCH /api/v1/superadmin/formula-sets/[setId]] updateFormulaSet", { err });
     return apiServerError();
   }
 
@@ -175,7 +181,7 @@ export async function PATCH(
   });
 
   return NextResponse.json({ formulaSet });
-}
+});
 
 // ─── DELETE /api/v1/superadmin/formula-sets/[setId] ───────────────────────────
 //
@@ -188,10 +194,12 @@ export async function PATCH(
 // Returns 404 if the set is not found.
 // Returns 409 with inUseBy counts if the set is in use (locked).
 
-export async function DELETE(
+export const DELETE = withRoute(
+  "DELETE /api/v1/superadmin/formula-sets/[setId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ setId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -199,7 +207,7 @@ export async function DELETE(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[DELETE /api/v1/superadmin/formula-sets/[setId]] auth error", err);
+    log.error("[DELETE /api/v1/superadmin/formula-sets/[setId]] auth error", { err });
     return apiServerError();
   }
 
@@ -230,7 +238,7 @@ export async function DELETE(
     ) {
       return apiConflict("Formula set is in use and cannot be deleted");
     }
-    console.error("[DELETE /api/v1/superadmin/formula-sets/[setId]] deleteFormulaSet", err);
+    log.error("[DELETE /api/v1/superadmin/formula-sets/[setId]] deleteFormulaSet", { err });
     return apiServerError();
   }
 
@@ -241,4 +249,4 @@ export async function DELETE(
   });
 
   return NextResponse.json({ id: setId });
-}
+});

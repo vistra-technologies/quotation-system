@@ -12,6 +12,8 @@ import {
   revokeRolePermissionForOrg,
   createRoleAuditLog,
 } from "@/lib/data/superadmin/roles";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -22,10 +24,12 @@ export const dynamic = "force-dynamic";
 // Auth: valid SuperAdmin session (qs-sa-token cookie).
 // Query: ?orgId=<organizationId>   — used to verify role belongs to that org.
 
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/superadmin/roles/[roleId]/permissions",
+  async (
   request: Request,
   { params }: { params: Promise<{ roleId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   const { roleId } = await params;
 
   try {
@@ -34,7 +38,7 @@ export async function GET(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[GET /api/v1/superadmin/roles/[roleId]/permissions] auth error", err);
+    log.error("[GET /api/v1/superadmin/roles/[roleId]/permissions] auth error", { err });
     return apiServerError();
   }
 
@@ -52,10 +56,10 @@ export async function GET(
     }
     return NextResponse.json({ rolePermissions });
   } catch (err) {
-    console.error("[GET /api/v1/superadmin/roles/[roleId]/permissions] listRolePermissionsForOrg", err);
+    log.error("[GET /api/v1/superadmin/roles/[roleId]/permissions] listRolePermissionsForOrg", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/superadmin/roles/[roleId]/permissions ─────────────────────
 //
@@ -69,10 +73,12 @@ export async function GET(
 // Returns 400 if orgId or permissionId is missing.
 // Returns 404 if role not found or belongs to a different org.
 
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/superadmin/roles/[roleId]/permissions",
+  async (
   request: Request,
   { params }: { params: Promise<{ roleId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   const { roleId } = await params;
 
   let sa;
@@ -82,7 +88,7 @@ export async function POST(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[POST /api/v1/superadmin/roles/[roleId]/permissions] auth error", err);
+    log.error("[POST /api/v1/superadmin/roles/[roleId]/permissions] auth error", { err });
     return apiServerError();
   }
 
@@ -112,7 +118,7 @@ export async function POST(
   try {
     ok = await grantRolePermissionForOrg(orgId, roleId, permissionId);
   } catch (err) {
-    console.error("[POST /api/v1/superadmin/roles/[roleId]/permissions] grantRolePermissionForOrg", err);
+    log.error("[POST /api/v1/superadmin/roles/[roleId]/permissions] grantRolePermissionForOrg", { err });
     return apiServerError();
   }
 
@@ -128,7 +134,7 @@ export async function POST(
   });
 
   return NextResponse.json({ success: true }, { status: 201 });
-}
+});
 
 // ─── DELETE /api/v1/superadmin/roles/[roleId]/permissions ────────────────────
 //
@@ -142,10 +148,12 @@ export async function POST(
 // Returns 400 if orgId or permissionId is missing.
 // Returns 404 if role not found or belongs to a different org.
 
-export async function DELETE(
+export const DELETE = withRoute(
+  "DELETE /api/v1/superadmin/roles/[roleId]/permissions",
+  async (
   request: Request,
   { params }: { params: Promise<{ roleId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   const { roleId } = await params;
 
   let sa;
@@ -155,7 +163,7 @@ export async function DELETE(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[DELETE /api/v1/superadmin/roles/[roleId]/permissions] auth error", err);
+    log.error("[DELETE /api/v1/superadmin/roles/[roleId]/permissions] auth error", { err });
     return apiServerError();
   }
 
@@ -185,7 +193,7 @@ export async function DELETE(
   try {
     ok = await revokeRolePermissionForOrg(orgId, roleId, permissionId);
   } catch (err) {
-    console.error("[DELETE /api/v1/superadmin/roles/[roleId]/permissions] revokeRolePermissionForOrg", err);
+    log.error("[DELETE /api/v1/superadmin/roles/[roleId]/permissions] revokeRolePermissionForOrg", { err });
     return apiServerError();
   }
 
@@ -201,4 +209,4 @@ export async function DELETE(
   });
 
   return NextResponse.json({ success: true });
-}
+});

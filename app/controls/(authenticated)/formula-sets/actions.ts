@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
+import { withAction } from "@/lib/with-route";
 
 // ─── State types ──────────────────────────────────────────────────────────────
 
@@ -28,10 +29,12 @@ export type FormulaSetFormState = {
  *
  * Stage 25 Batch 4 — Formula Sets SuperAdmin screens.
  */
-export async function createSuperAdminFormulaSet(
+export const createSuperAdminFormulaSet = withAction(
+  "app/controls/(authenticated)/formula-sets/actions#createSuperAdminFormulaSet",
+  async (
   prevState: FormulaSetFormState,
   formData: FormData,
-): Promise<FormulaSetFormState> {
+): Promise<FormulaSetFormState> => {
   const name = (formData.get("name") as string | null)?.trim();
   const bodyJson = (formData.get("bodyJson") as string | null)?.trim();
 
@@ -79,7 +82,7 @@ export async function createSuperAdminFormulaSet(
     redirect("/controls/formula-sets", RedirectType.replace);
   }
   redirect(`/controls/formula-sets/${encodeURIComponent(formulaSet.id)}`, RedirectType.replace);
-}
+});
 
 /**
  * Update an existing FormulaSet via the SuperAdmin API route.
@@ -90,10 +93,12 @@ export async function createSuperAdminFormulaSet(
  *
  * Stage 25 Batch 4 — Formula Sets SuperAdmin screens.
  */
-export async function updateSuperAdminFormulaSet(
+export const updateSuperAdminFormulaSet = withAction(
+  "app/controls/(authenticated)/formula-sets/actions#updateSuperAdminFormulaSet",
+  async (
   prevState: FormulaSetFormState,
   formData: FormData,
-): Promise<FormulaSetFormState> {
+): Promise<FormulaSetFormState> => {
   const setId = formData.get("setId") as string | null;
   const name = (formData.get("name") as string | null)?.trim();
   const bodyJson = (formData.get("bodyJson") as string | null)?.trim();
@@ -141,4 +146,4 @@ export async function updateSuperAdminFormulaSet(
   revalidatePath("/controls/formula-sets");
   revalidatePath(`/controls/formula-sets/${setId}`);
   redirect(`/controls/formula-sets/${encodeURIComponent(setId)}`, RedirectType.replace);
-}
+});
