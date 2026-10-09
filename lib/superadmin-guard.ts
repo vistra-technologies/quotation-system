@@ -122,7 +122,7 @@ async function _resolveSession(token: string): Promise<SuperAdminSessionData> {
     throw new SuperAdminUnauthorizedError("SuperAdmin session has expired");
   }
 
-  setContext({ saId: session.superAdmin.id }); // Stage 30 log identity
+  setContext({ saId: session.superAdmin.id, saUsername: session.superAdmin.username }); // Stage 30 log identity (S30-15)
   return {
     superAdminId: session.superAdmin.id,
     username: session.superAdmin.username,

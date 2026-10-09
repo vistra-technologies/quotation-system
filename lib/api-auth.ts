@@ -136,7 +136,7 @@ export async function getApiSession(
     select: { isInternalRole: true },
   });
 
-  setContext({ orgSlug, userId: u.id as string }); // Stage 30 log identity: ids only, no DB read
+  setContext({ orgSlug, userId: u.id as string, username: typeof u.username === "string" ? u.username : undefined }); // Stage 30 log identity (S30-15: username allowed, no email/IP); from the session, no DB read
   return {
     userId: u.id as string,
     organizationId: u.organizationId as string,

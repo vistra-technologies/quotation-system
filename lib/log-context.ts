@@ -15,7 +15,10 @@ export type LogContext = {
   method: string;
   orgSlug?: string;
   userId?: string;
+  /** S30-15: readable identity (not PII by human decision). Org user / SuperAdmin username. */
+  username?: string;
   saId?: string;
+  saUsername?: string;
   /** Lines written during this request (capped). Drained by the transport in a later batch. */
   buffer: unknown[];
 };
@@ -33,10 +36,12 @@ export function getContext(): LogContext | undefined {
 }
 
 /** Merges identity fields into the active context. No-op outside a wrapped request. */
-export function setContext(patch: Partial<Pick<LogContext, "orgSlug" | "userId" | "saId">>): void {
+export function setContext(patch: Partial<Pick<LogContext, "orgSlug" | "userId" | "username" | "saId" | "saUsername">>): void {
   const ctx = als.getStore();
   if (!ctx) return;
   if (patch.orgSlug !== undefined) ctx.orgSlug = patch.orgSlug;
   if (patch.userId !== undefined) ctx.userId = patch.userId;
+  if (patch.username !== undefined) ctx.username = patch.username;
   if (patch.saId !== undefined) ctx.saId = patch.saId;
+  if (patch.saUsername !== undefined) ctx.saUsername = patch.saUsername;
 }

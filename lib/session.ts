@@ -93,7 +93,7 @@ async function getSessionImpl(): Promise<SessionData | null> {
 
   // External is decided from the role, never from the company id. Missing role or a role
   // from another org => external (fail closed).
-  setContext({ orgSlug: requestHeaders.get("x-org-slug") ?? undefined, userId: u.id as string }); // Stage 30 log identity; x-org-slug is set/sanitised by proxy.ts alongside x-org-id
+  setContext({ orgSlug: requestHeaders.get("x-org-slug") ?? undefined, userId: u.id as string, username: typeof u.username === "string" ? u.username : undefined }); // Stage 30 log identity; x-org-slug is set/sanitised by proxy.ts alongside x-org-id
   return {
     userId: u.id as string,
     organizationId: u.organizationId as string,

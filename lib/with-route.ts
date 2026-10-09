@@ -98,6 +98,47 @@ function digestOf(err: unknown): string {
   return typeof d === "string" ? d : "";
 }
 
+/**
+ * Best-effort identity for an action's log context (S30-15 / bugs-1 finding 1). Thin-marshaler actions
+ * only call internalFetch and never getSession(), so nothing would set orgSlug/userId/saId on
+ * `action.end`. This starts the cached getSession() (and, if there is no org session, the SuperAdmin
+ * lookup) concurrently with the action body; both call setContext() on the active store. getSession()
+ * is React.cache()'d, so an action body that calls it too pays nothing extra. Never throws.
+ */
+async function defaultResolveIdentity(): Promise<void> {
+  try {
+    const { getSession } = await import("@/lib/session");
+    if (await getSession()) return;
+    const { requireSuperAdmin } = await import("@/lib/superadmin-guard");
+    await requireSuperAdmin();
+  } catch {
+    // no session / no request scope: the line simply carries no identity
+  }
+}
+
+let identityResolver: () => Promise<void> = defaultResolveIdentity;
+/** Test seam: replaces the identity lookup. Pass nothing to restore the default. */
+export function setActionIdentityResolver(fn?: () => Promise<void>): void {
+  identityResolver = fn ?? defaultResolveIdentity;
+}
+
+/** Max time `action.end` waits for the identity lookup; the action itself is never held up beyond this. */
+const IDENTITY_WAIT_MS = 1000;
+
+async function settleIdentity(pending: Promise<void>): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      pending.catch(() => undefined),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, IDENTITY_WAIT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export function withAction<A extends unknown[], R>(
   actionId: string,
   fn: (...args: A) => Promise<R>,
@@ -119,11 +160,19 @@ export function withAction<A extends unknown[], R>(
 
     return runWithContext(ctx, async () => {
       const started = Date.now();
+      let identity: Promise<void> = Promise.resolve();
+      try {
+        identity = identityResolver();
+      } catch {
+        // a throwing resolver must not affect the action
+      }
       try {
         const result = await fn(...args);
+        await settleIdentity(identity);
         log.info("action.end", { ok: true, durationMs: Date.now() - started });
         return result;
       } catch (err) {
+        await settleIdentity(identity);
         const digest = digestOf(err);
         if (digest.startsWith("NEXT_REDIRECT")) {
           log.info("action.end", { ok: true, outcome: "redirect", durationMs: Date.now() - started });
