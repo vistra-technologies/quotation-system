@@ -38,7 +38,7 @@ test("one POST per flush with the whole buffer as a JSON array; nothing for an e
   const { f, calls } = fakeFetch(async () => new Response("{}", { status: 200 }));
   await flushToAxiom(LINES, { fetchImpl: f, env });
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, "https://api.axiom.co/v1/datasets/easeetool-test/ingest");
+  assert.equal(calls[0].url, "https://api.axiom.co/v1/datasets/easeetool-test/ingest?timestamp-field=ts");
   assert.equal(calls[0].init.method, "POST");
   assert.deepEqual(JSON.parse(calls[0].init.body as string), [{ msg: "a" }, { msg: "b" }]);
   assert.deepEqual(out, []);

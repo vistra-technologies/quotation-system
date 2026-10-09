@@ -6,6 +6,7 @@ import { log } from "@/lib/logger";
  * "one HTTP call, 2 s timeout, no retry"; see spike-results.md S4).
  *
  *  - A silent no-op unless BOTH AXIOM_TOKEN and AXIOM_DATASET are set (read at call time).
+ *  - `timestamp-field=ts`: Axiom's _time is the logger's own ISO `ts` (when the line was written), not flush time.
  *  - One HTTP call per flush, 2 s timeout, no retry.
  *  - Never throws, never touches a response. On failure writes ONE stdout `axiom.flush_failed { status }`
  *    line (status 0 = network error or timeout). The token is never in any log line or error.
@@ -37,7 +38,7 @@ export async function flushToAxiom(buffer: readonly unknown[], opts: FlushOption
     let status = 0;
     try {
       const res = await doFetch(
-        `${AXIOM_ENDPOINT}/v1/datasets/${encodeURIComponent(env.AXIOM_DATASET as string)}/ingest`,
+        `${AXIOM_ENDPOINT}/v1/datasets/${encodeURIComponent(env.AXIOM_DATASET as string)}/ingest?timestamp-field=ts`,
         {
           method: "POST",
           headers: {
