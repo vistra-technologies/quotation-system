@@ -375,10 +375,11 @@ test.describe("controls: fix round 2", () => {
       await expect(box).toBeVisible();
       await expect(box).not.toBeChecked(); // default unchecked
       await expect.poll(() => isHydrated(box), { message: "audit filters never hydrated" }).toBe(true);
-      await box.check();
+      await box.click(); // controlled by the URL: click, not check() (the state flips only after navigation)
       await expect.poll(() => new URL(o.page.url()).searchParams.get("hideTest")).toBe("1");
       await expect(o.page.getByTestId("audit-count")).toBeVisible();
-      await expect(o.page.getByRole("table").getByText("testeraccount", { exact: true })).toHaveCount(0);
+      // the "By" column (3rd cell) only — a row ABOUT testeraccount by another admin legitimately stays
+      await expect(o.page.getByTestId("audit-row").locator("td:nth-child(3)").filter({ hasText: /^testeraccount$/ })).toHaveCount(0);
       // reload keeps it (URL is the state)
       await o.page.reload();
       await expect(o.page.getByLabel("Hide testeraccount activity")).toBeChecked();
@@ -386,7 +387,7 @@ test.describe("controls: fix round 2", () => {
       for (const name of ["Previous", "Next"]) {
         expect(await o.page.getByRole("link", { name, exact: true }).getAttribute("href")).toContain("hideTest=1");
       }
-      await o.page.getByLabel("Hide testeraccount activity").uncheck();
+      await o.page.getByLabel("Hide testeraccount activity").click();
       await expect.poll(() => new URL(o.page.url()).searchParams.has("hideTest")).toBe(false);
     });
   });
