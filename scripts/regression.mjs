@@ -92,7 +92,7 @@ if (r.cleanupFailed) {
   console.log(`\n=== CLEANUP FAILED — not retrying (${r.reason}) ===`);
 } else if (r.testsFailed) {
   const firstRunId = r.runId;
-  console.log("\n=== re-running failed tests once at --workers=1 (sign-in rate limit is a known flake source) ===");
+  console.log("\n=== pass 1 of 2 failed — automatic serial re-run (--workers=1) follows; do NOT start another run ===");
   // RGR_MERGE_FROM: the reporter folds this re-run's results into the first pass's, marking recovered tests flaky.
   r = pass("regression (failed only)", ["--last-failed", "--workers=1"], {
     ...process.env,

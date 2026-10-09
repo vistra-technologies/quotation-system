@@ -3,8 +3,15 @@
 Live API + UI regression of every route and page, run against `test.easeetool.com` or a branch preview. Spec: `quotation-system-docs/development-cycles/regression-suite/regression-suite.md`.
 
 ## Run
-- `npm run test:regression` — the official run: coverage map → unit tests → Playwright (failed tests re-run once at `--workers=1`; a cleanup failure is never retried) → report. Ends with `REGRESSION PASS`/`REGRESSION FAIL` and a matching exit code.
+- `npm run test:regression` — the official run: coverage map → unit tests → Playwright (failed tests re-run once at `--workers=1`; a cleanup failure is never retried) → report. When the first pass fails, the script prints **"pass 1 of 2 failed — automatic serial re-run (--workers=1) follows; do NOT start another run"** before the retry; the final `REGRESSION PASS`/`REGRESSION FAIL` banner is the only definitive verdict.
 - `npm run test:regression:coverage` — static check only: every API route/page has a `covers()`/`coversPage()` and no test points at one that no longer exists.
+- `npm run test:regression:affected` — run only the specs relevant to files changed since `origin/master` (default base). Maps changed `app/api/**/route.ts` and `app/**/page.tsx` to their spec files via the coverage map; also includes any changed spec files directly. Pages and journey specs are excluded by default (they need `test.easeetool.com`); pass `--include-ui` to add them. Use `--list` to print the matched specs without running. Pass a custom base as the first positional arg (e.g. `-- staging`). If a changed `lib/data/**` or `lib/session.ts` file has no direct map entry, a warning is printed recommending the full run. Same env requirements as the full run (`PLAYWRIGHT_BASE_URL`, etc.).
+  ```
+  npm run test:regression:affected                      # diff origin/master...HEAD
+  npm run test:regression:affected -- staging           # diff staging...HEAD
+  npm run test:regression:affected -- --list            # print specs only, no run
+  npm run test:regression:affected -- --include-ui      # include pages/ + journeys/
+  ```
 - `npm run test:regression:report` — rebuild the HTML report (`.engineering/regression/latest/report.html`; add `-- --open`).
 - One spec: `npx playwright test -c playwright.regression.config.ts tests/regression/api/orders.spec.ts` (setup/teardown and cleanup still run). `RGR_WORKERS` sets the worker count (integer 1–8, default 3).
 - The report also lists what the target could **not exercise** (`precondition` annotations, e.g. org-subdomain probes on a path-mode preview) — informational, not a failure.
