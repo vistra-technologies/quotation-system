@@ -46,6 +46,8 @@ export type CreateUserInOrgResult =
         | "user_limit_reached"
         | "unknown_error";
       message: string;
+      /** Original error of an "unknown_error": log via `{ err }`, never put in a response. */
+      cause?: unknown;
       /** Set when reason is "user_limit_reached" (the route's 409 body carries them). */
       limit?: number;
       current?: number;
@@ -262,6 +264,7 @@ export async function createUserInOrg(
       ok: false,
       reason: "unknown_error",
       message: err instanceof Error ? err.message : "Unknown error",
+      cause: err,
     };
   }
 }

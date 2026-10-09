@@ -79,7 +79,7 @@ export const POST = withRoute(
     if (result.reason === "not_found") {
       return apiNotFound(result.message);
     }
-    log.error("[POST /api/v1/superadmin/orgs/[orgId]/suspend] toggleOrgSuspension error", { detail: result.message });
+    log.error("[POST /api/v1/superadmin/orgs/[orgId]/suspend] toggleOrgSuspension error", { err: result.cause });
     return apiServerError();
   }
 

@@ -71,7 +71,7 @@ export const DELETE = withRoute(
     if (result.reason === "not_suspended") {
       return apiBadRequest(result.message);
     }
-    log.error("[DELETE /api/v1/superadmin/orgs/[orgId]] deleteOrganization error", { detail: result.message });
+    log.error("[DELETE /api/v1/superadmin/orgs/[orgId]] deleteOrganization error", { err: result.cause });
     return apiServerError();
   }
 
@@ -166,7 +166,7 @@ export const PATCH = withRoute(
     if (result.reason === "not_found") {
       return apiNotFound(result.message);
     }
-    log.error("[PATCH /api/v1/superadmin/orgs/[orgId]] updateOrgSettings error", { detail: result.message });
+    log.error("[PATCH /api/v1/superadmin/orgs/[orgId]] updateOrgSettings error", { err: result.cause });
     return apiServerError();
   }
 

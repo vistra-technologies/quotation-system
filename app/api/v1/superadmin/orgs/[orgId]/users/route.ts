@@ -175,7 +175,7 @@ export const POST = withRoute(
     ) {
       return apiBadRequest(result.message);
     }
-    log.error("[POST /api/v1/superadmin/orgs/[orgId]/users] createUserInOrg", { detail: result.message });
+    log.error("[POST /api/v1/superadmin/orgs/[orgId]/users] createUserInOrg", { err: result.cause });
     return apiServerError();
   }
 

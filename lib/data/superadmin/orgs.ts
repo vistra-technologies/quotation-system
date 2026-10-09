@@ -68,7 +68,7 @@ export interface OrgForEditDetail {
 /** Result type for updateOrgSettings */
 export type UpdateOrgResult =
   | { ok: true; /** userLimit before the update; set only when `patch.userLimit` was supplied */ previousUserLimit?: number }
-  | { ok: false; reason: "not_found" | "unknown_error"; message: string };
+  | { ok: false; reason: "not_found" | "unknown_error"; message: string; cause?: unknown };
 
 /**
  * Typed result for createOrganizationWithDefaults.
@@ -76,7 +76,7 @@ export type UpdateOrgResult =
  */
 export type CreateOrgResult =
   | { ok: true; org: { id: string; slug: string; name: string }; adminUserId: string }
-  | { ok: false; reason: "slug_conflict" | "unknown_error"; message: string };
+  | { ok: false; reason: "slug_conflict" | "unknown_error"; message: string; cause?: unknown };
 
 // ─── Private helpers ─────────────────────────────────────────────────────────
 
@@ -433,6 +433,7 @@ export async function createOrganizationWithDefaults(
       ok: false,
       reason: "unknown_error",
       message: err instanceof Error ? err.message : "Unknown error",
+      cause: err,
     };
   }
 }
@@ -443,7 +444,7 @@ export async function createOrganizationWithDefaults(
  */
 export type ToggleOrgSuspensionResult =
   | { ok: true }
-  | { ok: false; reason: "not_found" | "unknown_error"; message: string };
+  | { ok: false; reason: "not_found" | "unknown_error"; message: string; cause?: unknown };
 
 /**
  * Flip the isSuspended flag on an Organization row.
@@ -486,6 +487,7 @@ export async function toggleOrgSuspension(
       ok: false,
       reason: "unknown_error",
       message: err instanceof Error ? err.message : "Unknown error",
+      cause: err,
     };
   }
 }
@@ -544,6 +546,7 @@ export async function updateOrgSettings(
       ok: false,
       reason: "unknown_error",
       message: err instanceof Error ? err.message : "Unknown error",
+      cause: err,
     };
   }
 }
@@ -602,6 +605,7 @@ export type DeleteOrgResult =
       ok: false;
       reason: "not_found" | "not_suspended" | "unknown_error";
       message: string;
+      cause?: unknown;
     };
 
 /**
@@ -762,6 +766,7 @@ export async function deleteOrganization(
       ok: false,
       reason: "unknown_error",
       message: err instanceof Error ? err.message : "Unknown error",
+      cause: err,
     };
   }
 }

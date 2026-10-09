@@ -155,7 +155,7 @@ export const POST = withRoute(
     if (result.reason === "slug_conflict") {
       return apiConflict(result.message);
     }
-    log.error("[POST /api/v1/superadmin/orgs] createOrganizationWithDefaults", { detail: result.message });
+    log.error("[POST /api/v1/superadmin/orgs] createOrganizationWithDefaults", { err: result.cause });
     return apiServerError();
   }
 

@@ -8,6 +8,7 @@
  * action protocol, not a stable URL), so it is not asserted here.
  */
 import { test, expect, SA, GHOST } from "./sa-helpers";
+import { covers } from "../fixtures/covers";
 import { bypass, signIn } from "./sign-in";
 import type { APIResponse } from "@playwright/test";
 
@@ -76,5 +77,52 @@ test.describe("/api/health stays unwrapped", () => {
     expect(r.status()).toBe(200);
     expect(Object.keys((await r.json()) as object).sort()).toEqual(["database", "healthCheckRows", "status", "timestamp"]);
     expect(r.headers()["x-request-id"]).toBeUndefined();
+  });
+});
+
+// ── POST /api/v1/client-errors (S30-10). The 60/min cap is per instance, so it is unit-tested, not asserted here.
+covers("POST /api/v1/client-errors");
+
+const CE = "/api/v1/client-errors";
+const report = { boundary: "global", message: "rgr observability probe", path: "/rgr-probe" };
+
+test.describe("POST /api/v1/client-errors", () => {
+  test("a valid report is 204 with x-request-id, unauthenticated", async ({ anon }) => {
+    const r = await anon.post(CE, { data: report });
+    expect(r.status(), await r.text()).toBe(204);
+    expectRequestId(r);
+  });
+
+  test("an own-origin Origin is accepted (digest + admin boundary)", async ({ anon, baseURL }) => {
+    const r = await anon.post(CE, {
+      data: { boundary: "admin", message: "rgr probe", digest: "rgr-1", path: "/x/admin" },
+      headers: { origin: new URL(baseURL!).origin },
+    });
+    expect(r.status(), await r.text()).toBe(204);
+  });
+
+  test("3 KB body is 413", async ({ anon }) => {
+    const r = await anon.post(CE, { data: { ...report, path: "/" + "p".repeat(3000) } });
+    expect(r.status()).toBe(413);
+    expectRequestId(r);
+  });
+
+  test("an extra key, a bad boundary, or a non-object is 400", async ({ anon }) => {
+    for (const data of [
+      { ...report, extra: 1 },
+      { ...report, boundary: "nope" },
+      { ...report, message: "m".repeat(301) },
+      [1, 2],
+      "just a string",
+    ]) {
+      const r = await anon.post(CE, { data: JSON.stringify(data), headers: { "content-type": "application/json" } });
+      expect(r.status(), JSON.stringify(data).slice(0, 60)).toBe(400);
+    }
+  });
+
+  test("a foreign Origin is 403", async ({ anon }) => {
+    const r = await anon.post(CE, { data: report, headers: { origin: "https://evil.example" } });
+    expect(r.status()).toBe(403);
+    expectRequestId(r);
   });
 });
