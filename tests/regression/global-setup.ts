@@ -12,6 +12,7 @@ import { Cleaner } from "./fixtures/delete-entry";
 import { recoverOrphans } from "./fixtures/recovery";
 import { stuckTemporaryTypeNames } from "./fixtures/global-state";
 import { generateRunPassword, recoverMinAgeMs } from "./fixtures/cleanup-rules";
+import { raiseTestOrgLimit, restoreTestOrgLimit, ORG_B_USER_LIMIT } from "./fixtures/test-org-limit";
 import { regressionSnapshot, regressionSweep } from "../e2e/db-helpers";
 import { apiSignIn, apiUrl, getSeededFormulaSetId, isSubdomain } from "../e2e/helpers";
 
@@ -148,8 +149,14 @@ async function setup(env: ReturnType<typeof requireEnv>, runId: string) {
   // Everything created from here on is ledgered the moment it exists; a failure tears it down again.
   const created = new Cleaner(sa, { ...env, run: null });
   try {
+    // 3c. Stage 29: the Test Org's userLimit (default 3) cannot hold the run's role users. Raise it through the
+    // SuperAdmin API; the ORIGINAL is recorded first (crash-safe file) and put back by teardown. The suite never
+    // depends on the default or the migration backfill.
+    const originalLimit = await raiseTestOrgLimit(sa, testOrg.id);
+    console.log(`[regression] Test Org userLimit raised for the run (original ${originalLimit} is restored at teardown)`);
+
     // 4. Throwaway org B for cross-tenant probes (deleted at teardown).
-    const b = await sa.post("/api/v1/superadmin/orgs", { data: { name: `RGR ${runId} B`, slug: orgBSlug, adminPassword: password, formulaSetId: fsId } });
+    const b = await sa.post("/api/v1/superadmin/orgs", { data: { name: `RGR ${runId} B`, slug: orgBSlug, adminPassword: password, formulaSetId: fsId, userLimit: ORG_B_USER_LIMIT } });
     if (b.status() !== 201) throw new Error(`could not create throwaway org B: HTTP ${b.status()} ${await b.text()}`);
     const orgB = ((await b.json()) as { org: { id: string; slug: string } }).org;
     ledger.add({ kind: "org", id: orgB.id, orgSlug: orgB.slug, label: orgB.slug });
@@ -238,6 +245,8 @@ async function setup(env: ReturnType<typeof requireEnv>, runId: string) {
     console.log(`[regression] run ${runId}: Test Org ${TEST_ORG}, org B ${orgB.slug}, ${Object.keys(users).length} role users, ${ledger.all().filter((e) => e.label.startsWith(prefix)).length} ledgered rows`);
   } catch (err) {
     // Setup failed half-way: tear down what was created now rather than waiting for the next run.
+    const limitFailure = await restoreTestOrgLimit(sa, testOrg!.id); // no-op if the raise never happened
+    if (limitFailure) console.error(`[regression] ${limitFailure} (the next run's setup keeps the recorded original)`);
     const { errors } = await created.drainLedger(ledger, ledger.inDeleteOrder().filter((e) => e.label.startsWith(prefix)));
     await created.dispose();
     fs.rmSync(storageDir, { recursive: true, force: true }); // storage states hold session cookies

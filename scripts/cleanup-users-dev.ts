@@ -12,6 +12,7 @@ import "dotenv/config";
 import { PrismaClient } from "../app/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+// INTENTIONALLY DISARMED: deletes users/projects across ALL orgs; pinned to the retired endpoint on purpose. Do not repoint.
 const DEV_BRANCH_HOSTNAME = "ep-dark-term-ai0ufj4k";
 const PROD_BRANCH_HOSTNAME = "ep-little-paper-aipm0o0i";
 

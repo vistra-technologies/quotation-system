@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { SUSPENDED_ORG_HTML } from "@/lib/suspended-org-page";
 
 // Tenant-resolution proxy — runs in Node.js runtime (Next.js 16 default).
 // Do NOT set `export const runtime` here; it is not allowed in proxy files.
@@ -8,7 +9,7 @@ import { prisma } from "@/lib/prisma";
 // Slug extraction strategy (Stage 10 subdomain routing):
 //
 //   Test / staging environment (*.test.easeetool.com):
-//     test.easeetool.com                → apex passthrough (org selector on the test env).
+//     test.easeetool.com                → apex passthrough (the landing page, app/route.ts).
 //                                         Non-root paths (anything other than "/") are
 //                                         rejected with 404 immediately — no DB lookup, no
 //                                         path-segment extraction, no path-based org routing
@@ -21,7 +22,7 @@ import { prisma } from "@/lib/prisma";
 //     extracted as an org slug (no such org → 404). (Bug fix: bugs-1.md, 2026-07-23.)
 //
 //   Production (*.easeetool.com):
-//     easeetool.com / www.easeetool.com → apex passthrough (org selector).
+//     easeetool.com / www.easeetool.com → apex passthrough (the landing page, app/route.ts).
 //                                         Same non-root-path 404 guard as test.easeetool.com
 //                                         above — no path-based org routing on apex hosts.
 //     {orgSlug}.easeetool.com           → extract subdomain as orgSlug;
@@ -114,7 +115,7 @@ export async function proxy(request: NextRequest) {
   let fromSubdomain = false;
 
   if (hostname === "test.easeetool.com") {
-    // Test-env apex (test.easeetool.com itself) → passthrough (org selector).
+    // Test-env apex (test.easeetool.com itself) → passthrough (the landing page).
     // Must precede the bare .easeetool.com endsWith check below — "test" would
     // otherwise be extracted as an org slug and produce a 404.
     // /controls/** is carved out before the BUG-3 guard — it is served on the apex host.
@@ -138,7 +139,7 @@ export async function proxy(request: NextRequest) {
     orgSlug = hostname.slice(0, -".test.easeetool.com".length);
     fromSubdomain = true;
   } else if (hostname === "easeetool.com" || hostname === "www.easeetool.com") {
-    // Production apex domain → passthrough (org selector).
+    // Production apex domain → passthrough (the landing page).
     // /controls/** is carved out before the BUG-3 guard — it is served on the apex host.
     if (pathname.startsWith("/controls")) {
       // Stage 16: SuperAdmin console lives at /controls on the apex host.
@@ -209,26 +210,23 @@ export async function proxy(request: NextRequest) {
     org = dbOrg;
   }
 
-  // Stage 16 Batch E — suspended org check.
-  // If the org is suspended, block incoming page route requests with a clear 403.
-  // Active sessions are NOT forcibly invalidated on suspension (deferred per spec) —
-  // users are blocked here on their next request, which is sufficient.
+  // Suspended org (Stage 16 Batch E; Stage 29 S29-9 serves a static HTML page instead of JSON).
+  // This is the SHELL layer only: the page is static (no session, no JS, no org data) and may lag a
+  // suspension/reactivation by up to the 60 s cache TTL (invalidateOrgCache cannot reach other
+  // serverless instances, so it is not relied on).  Data is refused immediately by the two layers
+  // behind it: getApiSession() (403 ORG_SUSPENDED on every /api/v1/orgs/** call) and getSession()
+  // (null for a suspended org).  Sessions are never deleted, so reactivation restores everything.
   //
-  // NOTE: this check only covers page routes matched by the proxy config below.
-  // /api/** routes are excluded from the matcher entirely (see config.matcher comment)
-  // so a suspended org's API routes (including /api/health) are NOT blocked by this
-  // proxy. In practice, all org-scoped /api/v1/** handlers require the x-org-id header
-  // injected by this proxy, so they effectively fail without it — but informational-only
-  // routes like /api/health will still return 200 on a suspended org's subdomain.
-  // Broadening the matcher to cover /api/** is a larger change deferred to a future stage.
+  // /api/** is outside this proxy's matcher (see config.matcher), which is why the API enforces
+  // suspension itself rather than relying on this check.
   if (org.isSuspended) {
-    return NextResponse.json(
-      {
-        error:
-          "This organization has been suspended. Please contact your platform administrator.",
+    return new NextResponse(SUSPENDED_ORG_HTML, {
+      status: 403,
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
       },
-      { status: 403 },
-    );
+    });
   }
 
   // Attach org headers so Server Components downstream can read them.
@@ -269,10 +267,8 @@ export const config = {
     // avoids needless DB lookups on health checks, auth callbacks, etc.  The /organizations
     // dev page is similarly excluded so "organizations" is never treated as a slug.
     //
-    // CONSEQUENCE: the suspension check above does NOT run for /api/** paths.
-    // A suspended org's /api/health (and any other API route that doesn't strictly
-    // require x-org-id) will still return a normal response.  See the suspension
-    // check comment above for details.  Broadening this matcher is deferred.
+    // CONSEQUENCE: the suspension check above does NOT run for /api/** paths; org APIs
+    // enforce suspension themselves in getApiSession() (403 ORG_SUSPENDED).
     "/((?!_next/static|_next/image|favicon\\.ico|api|organizations).*)",
   ],
 };

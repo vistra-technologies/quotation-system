@@ -33,7 +33,7 @@ import {
 } from "./page-table";
 import { isHydrated } from "./collect";
 import {
-  apexPathOf, expectLands, openAs, orgPathOf, orgTarget, paramsFor, readyWall, settledProblems, type Opened, type ParamDeps,
+  apexPathOf, expectLands, openAs, orgPathOf, orgTarget, param, paramsFor, readyWall, settledProblems, type Opened, type ParamDeps,
 } from "./page-helpers";
 
 coversPage("/organizations");
@@ -67,6 +67,13 @@ coversPage("/controls/login");
 coversPage("/controls/orgs");
 coversPage("/controls/orgs/new");
 coversPage("/controls/orgs/[orgId]");
+coversPage("/controls/orgs/[orgId]/overview");
+coversPage("/controls/orgs/[orgId]/users");
+coversPage("/controls/orgs/[orgId]/roles");
+coversPage("/controls/orgs/[orgId]/components");
+coversPage("/controls/orgs/[orgId]/formula");
+coversPage("/controls/workspace");
+coversPage("/controls/admins");
 coversPage("/controls/roles");
 coversPage("/controls/users");
 coversPage("/controls/component-types");
@@ -237,10 +244,12 @@ for (const row of PAGES) {
       // pageerror + the global-error screen — that is what this test asserts; it does not look for the overlay.
       test("SuperAdmin: renders; no global-error screen; no console/page/network errors once settled", async ({ browser, run, f, as, url, sa }) => {
         const t = await target(row, deps({ f, as, url, run }));
+        // Redirect-only rows (Stage 29 S29-3) land elsewhere; the row's text/primary describe the landing page.
+        const lands = row.saLandsOn ? fillPath(row.saLandsOn, await paramsFor(row.path, deps({ f, as, url, run }))) : t.rel;
         await withPage({ browser, run }, "sa", sa.token, async (o) => {
           const res = await o.page.goto(t.url);
           expect(res?.status()).toBe(200);
-          await expectLands(() => apexPathOf(o.page.url()), t.rel);
+          await expectLands(() => apexPathOf(o.page.url()), lands);
           await expectRendered(o, row);
           const problems = await settledProblems(o);
           await expectNoGlobalError(o);
@@ -302,6 +311,52 @@ test("page table, this file's coversPage() lines and the app's page.tsx files ar
   const literal = [...src.matchAll(/^coversPage\("([^"]+)"\);\r?$/gm)].map((m) => m[1]).sort();
   expect(PAGES.map((r) => r.path).sort()).toEqual(literal);
   expect(new Set(literal).size).toBe(literal.length);
+});
+
+// ── /controls org workspace (Stage 29) ──────────────────────────────────────
+
+test.describe("controls: old flat URLs redirect into the org workspace; switching org keeps the tab", () => {
+  const depsOf = ({ f, as, url, run }: { f: ParamDeps["f"]; as: { admin: ParamDeps["admin"] }; url: ParamDeps["url"]; run: ParamDeps["run"] }): ParamDeps =>
+    ({ f, admin: as.admin, url, run });
+
+  test("old URLs WITH ?orgId= → the same org's workspace tab (roleId / typeId carried over)", async ({ browser, run, f, as, url, sa }) => {
+    const orgId = await param("orgId", depsOf({ f, as, url, run }));
+    const cases: Array<[string, string, string]> = [
+      [`/controls/users?orgId=${orgId}`, `/controls/orgs/${orgId}/users`, ""],
+      [`/controls/roles?orgId=${orgId}`, `/controls/orgs/${orgId}/roles`, ""],
+      [`/controls/roles?orgId=${orgId}&roleId=rgr-none`, `/controls/orgs/${orgId}/roles`, "?roleId=rgr-none"],
+      [`/controls/component-types?orgId=${orgId}`, `/controls/orgs/${orgId}/components`, ""],
+      [`/controls/component-types?orgId=${orgId}&typeId=rgr-none`, `/controls/orgs/${orgId}/components`, "?typeId=rgr-none"],
+    ];
+    await withPage({ browser, run }, "sa", sa.token, async (o) => {
+      for (const [from, path, search] of cases) {
+        const res = await o.page.goto(from);
+        expect(res?.status(), from).toBe(200);
+        await expectLands(() => apexPathOf(o.page.url()), path, from);
+        expect(new URL(o.page.url()).search, from).toBe(search);
+        expect(await o.page.getByText("Something went wrong").count(), from).toBe(0);
+      }
+    });
+  });
+
+  test("the org dropdown lists every org (search finds the Test Org) and switching keeps the tab, dropping ?typeId=", async ({ browser, run, f, as, url, sa }) => {
+    const orgId = await param("orgId", depsOf({ f, as, url, run }));
+    await withPage({ browser, run }, "sa", sa.token, async (o) => {
+      await o.page.goto(`/controls/orgs/${orgId}/components?typeId=rgr-none`);
+      await expectLands(() => apexPathOf(o.page.url()), `/controls/orgs/${orgId}/components`);
+      const trigger = o.page.getByRole("button", { name: "Organization", exact: true });
+      await expect(trigger).toBeVisible();
+      await expect.poll(() => isHydrated(trigger), { message: "org dropdown never hydrated" }).toBe(true);
+      await trigger.click();
+      await o.page.getByRole("textbox", { name: "Search organizations" }).fill(run.testOrg.slug);
+      const option = o.page.getByRole("option").filter({ hasText: run.testOrg.slug }).first();
+      await expect(option).toBeVisible();
+      await option.click();
+      await expectLands(() => apexPathOf(o.page.url()), `/controls/orgs/${run.testOrg.id}/components`);
+      expect(new URL(o.page.url()).search, "tab-local ?typeId= is dropped").toBe("");
+      await expect(o.page.getByText("Create new component type")).toBeVisible();
+    });
+  });
 });
 
 // ── routing ─────────────────────────────────────────────────────────────────

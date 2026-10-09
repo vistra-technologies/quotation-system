@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
-import { getApiSession, ApiAuthError } from "@/lib/api-auth";
+import { getApiSession, ApiAuthError, apiAuthErrorResponse } from "@/lib/api-auth";
 import {
-  apiUnauthorized,
   apiForbidden,
-  apiNotFound,
   apiBadRequest,
   apiConflict,
   apiServerError,
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { listUsers, createUser } from "@/lib/data/users";
+import { listUsers, createUser, getUserSeats } from "@/lib/data/users";
+import { UserLimitReachedError } from "@/lib/data/user-limit";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -35,9 +34,7 @@ export async function GET(
     session = await getApiSession(request, orgSlug);
   } catch (err) {
     if (err instanceof ApiAuthError) {
-      if (err.status === 401) return apiUnauthorized(err.message);
-      if (err.status === 403) return apiForbidden(err.message);
-      if (err.status === 404) return apiNotFound(err.message);
+      return apiAuthErrorResponse(err);
     }
     console.error("[GET /api/v1/orgs/[orgSlug]/users]", err);
     return apiServerError();
@@ -52,8 +49,8 @@ export async function GET(
   }
 
   try {
-    const users = await listUsers(session);
-    return NextResponse.json({ users });
+    const [users, seats] = await Promise.all([listUsers(session), getUserSeats(session)]);
+    return NextResponse.json({ users, seats });
   } catch (err) {
     console.error("[GET /api/v1/orgs/[orgSlug]/users] listUsers", err);
     return apiServerError();
@@ -71,6 +68,7 @@ export async function GET(
  * Returns 201 with { user: { id } } on success.
  * Returns 400 on missing/invalid fields or FK violations (role/company not found).
  * Returns 409 on duplicate username within the org.
+ * Returns 409 { error, code: "USER_LIMIT_REACHED", limit, current } when the org is at its userLimit.
  * Returns 403 if the session role lacks MANAGE_USERS.
  *
  * Tenancy: enforced by getApiSession() (403 on cross-org) and createUser()
@@ -87,9 +85,7 @@ export async function POST(
     session = await getApiSession(request, orgSlug);
   } catch (err) {
     if (err instanceof ApiAuthError) {
-      if (err.status === 401) return apiUnauthorized(err.message);
-      if (err.status === 403) return apiForbidden(err.message);
-      if (err.status === 404) return apiNotFound(err.message);
+      return apiAuthErrorResponse(err);
     }
     console.error("[POST /api/v1/orgs/[orgSlug]/users]", err);
     return apiServerError();
@@ -156,6 +152,13 @@ export async function POST(
     });
     return NextResponse.json({ user: { username } }, { status: 201 });
   } catch (err) {
+    if (err instanceof UserLimitReachedError) {
+      return apiConflict(err.message, {
+        code: err.code,
+        limit: err.limit,
+        current: err.current,
+      });
+    }
     if (err instanceof Error) {
       if (err.message.includes("already taken")) {
         return apiConflict(err.message);

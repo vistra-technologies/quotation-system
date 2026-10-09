@@ -23,10 +23,13 @@ export function AddUserButton({
   orgId,
   roles,
   externalCompanies,
+  disabledReason,
 }: {
   orgId: string;
   roles: RoleOption[];
   externalCompanies: { id: string; name: string }[];
+  /** Set when the org is at its userLimit (Stage 29): disables the button and becomes its tooltip. */
+  disabledReason?: string;
 }) {
   const [open, setOpen] = useState(false);
   const close = useCallback(() => setOpen(false), []);
@@ -36,7 +39,9 @@ export function AddUserButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center rounded-sm bg-primary px-4 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark"
+        disabled={disabledReason !== undefined}
+        title={disabledReason}
+        className="inline-flex items-center rounded-sm bg-primary px-4 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-primary"
       >
         Add user
       </button>

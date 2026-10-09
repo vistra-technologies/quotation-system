@@ -82,6 +82,7 @@ test("summarizeAction: plain-English line per action; never echoes password-ish 
   assert.equal(summarizeAction("org.delete", { usersDeleted: 1 }), "Deleted with 1 user");
   assert.equal(summarizeAction("org.update", { formulaSetId: "x" }), "Changed formula set");
   assert.equal(summarizeAction("org.update", { name: "N", formulaSetId: "x" }), "Changed name, formula set");
+  assert.equal(summarizeAction("org.update", { userLimit: { from: 3, to: 5 } }), "Changed user limit");
   assert.equal(summarizeAction("user.update", { changedFields: ["roleId", "mobile"] }), "Changed role, mobile");
   assert.equal(summarizeAction("user.update", { changedFields: ["newPassword"] }), "Changed password");
   assert.equal(summarizeAction("componentType.update", { changedFields: ["fieldsSchema"] }), "Changed field schema");

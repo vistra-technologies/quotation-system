@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { getApiSession, ApiAuthError } from "@/lib/api-auth";
+import { getApiSession, ApiAuthError, apiAuthErrorResponse } from "@/lib/api-auth";
 import {
-  apiUnauthorized,
-  apiForbidden,
   apiNotFound,
   apiBadRequest,
   apiServerError,
@@ -40,9 +38,7 @@ export async function PATCH(
     session = await getApiSession(request, orgSlug);
   } catch (err) {
     if (err instanceof ApiAuthError) {
-      if (err.status === 401) return apiUnauthorized(err.message);
-      if (err.status === 403) return apiForbidden(err.message);
-      if (err.status === 404) return apiNotFound(err.message);
+      return apiAuthErrorResponse(err);
     }
     console.error("[PATCH /api/v1/orgs/[orgSlug]/rooms/[id]]", err);
     return apiServerError();
@@ -105,9 +101,7 @@ export async function DELETE(
     session = await getApiSession(request, orgSlug);
   } catch (err) {
     if (err instanceof ApiAuthError) {
-      if (err.status === 401) return apiUnauthorized(err.message);
-      if (err.status === 403) return apiForbidden(err.message);
-      if (err.status === 404) return apiNotFound(err.message);
+      return apiAuthErrorResponse(err);
     }
     console.error("[DELETE /api/v1/orgs/[orgSlug]/rooms/[id]]", err);
     return apiServerError();

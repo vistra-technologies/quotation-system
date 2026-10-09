@@ -24,6 +24,7 @@ export type SessionData = {
  * Reads the better-auth session cookie via the auth API.  Returns null when:
  * - No session cookie is present (not logged in), or
  * - The user's `active` flag is false (instant deactivation — no session purge needed), or
+ * - The user's organization is suspended (Stage 29 S29-9), or
  * - The proxy's x-org-id header is absent or does not match the session's organizationId
  *   (cross-tenant session replay guard — fail-closed).
  *
@@ -73,13 +74,24 @@ async function getSessionImpl(): Promise<SessionData | null> {
     return null;
   }
 
+  // Stage 29 (S29-9): a suspended org's existing sessions yield no page data.  One extra read, folded
+  // with the role lookup below so it is still a single round of queries per render.
+  const [org, role] = await Promise.all([
+    prisma.organization.findUnique({
+      where: { id: u.organizationId as string },
+      select: { isSuspended: true },
+    }),
+    prisma.role.findFirst({
+      where: { id: u.roleId as string, organizationId: u.organizationId as string },
+      select: { isInternalRole: true },
+    }),
+  ]);
+  if (!org || org.isSuspended) {
+    return null;
+  }
+
   // External is decided from the role, never from the company id. Missing role or a role
   // from another org => external (fail closed).
-  const role = await prisma.role.findFirst({
-    where: { id: u.roleId as string, organizationId: u.organizationId as string },
-    select: { isInternalRole: true },
-  });
-
   return {
     userId: u.id as string,
     organizationId: u.organizationId as string,

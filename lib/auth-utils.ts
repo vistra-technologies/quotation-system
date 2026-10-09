@@ -35,6 +35,22 @@ export function toPlatformAuthEmail(username: string): string {
  * shape used for SuperAdmin accounts — allowing "platform" as an org slug would
  * create a collision in the synthetic-email namespace.
  *
- * Enforced at: org-create API (validate), seed (skip-guard).
+ * The rest (Stage 29, S29-10) are names that collide with infrastructure or product hosts
+ * (`www`, `api`, `test`, `staging`, `mail`, `app`), console/route names (`controls`, `organizations`,
+ * `admin`) or would be confusing as a tenant subdomain.
+ *
+ * Enforced at: org-create API (validate, 400, case-folded because the route lowercases the slug first),
+ * seed (skip-guard).
  */
-export const RESERVED_ORG_SLUGS: readonly string[] = ["platform"] as const;
+export const RESERVED_ORG_SLUGS: readonly string[] = [
+  "platform",
+  "controls",
+  "www",
+  "api",
+  "test",
+  "organizations",
+  "admin",
+  "app",
+  "staging",
+  "mail",
+] as const;

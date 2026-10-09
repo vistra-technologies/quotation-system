@@ -3,11 +3,15 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { OrgSwitcher, type ControlsOrg } from "./_org-switcher";
+import { TAB_SLUGS } from "./orgs/[orgId]/_tabs";
 
 interface ControlsShellProps {
   children: React.ReactNode;
   /** SuperAdmin username forwarded from the server layout (requireSuperAdmin()). */
   username: string;
+  /** Every org (suspended included) for the top-bar dropdown, fetched once by the server layout. */
+  orgs: ControlsOrg[];
 }
 
 /**
@@ -18,32 +22,51 @@ interface ControlsShellProps {
  * same Sage Ease tokens, same collapse behavior (252px expanded / 100px
  * collapsed), same active-link detection via usePathname().
  *
- * Nav items: Organizations (/controls/orgs) and Roles & Permissions
- * (/controls/roles). Logout: POSTs to /api/v1/superadmin/logout then
- * hard-navigates to /controls/login (same cookie-visible pattern as login).
+ * Nav items (Stage 29, S29-4 + O-1): Organizations, Org Workspace, Formula Sets, Audit Log,
+ * SuperAdmins. The searchable org dropdown sits in the top bar; the URL is the source of truth
+ * for which org (and tab) is chosen. On phones (< sm) the sidebar is a fixed 64px icon rail and
+ * can't be expanded (Deviation 2).
+ *
+ * Logout: POSTs to /api/v1/superadmin/logout then hard-navigates to /controls/login (same
+ * cookie-visible pattern as login).
  *
  * Stage 16 — nav shell added after implement-phase (human bug report during
  * formal test: no way to navigate between Orgs and Roles from the UI).
  */
-export function ControlsShell({ children, username }: ControlsShellProps) {
+export function ControlsShell({ children, username, orgs }: ControlsShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
+
+  // /controls/orgs/<orgId>[/<tab>] — "new" is the create-org page, not a workspace.
+  const wsMatch = /^\/controls\/orgs\/([^/]+)(?:\/([^/]+))?/.exec(pathname);
+  const wsOrgId = wsMatch && wsMatch[1] !== "new" ? decodeURIComponent(wsMatch[1]) : null;
+  const wsTab = wsOrgId && wsMatch?.[2] && TAB_SLUGS.includes(wsMatch[2]) ? wsMatch[2] : null;
 
   const isActive = (prefix: string): boolean =>
     pathname === prefix || pathname.startsWith(`${prefix}/`);
 
+  // Active state for the two items that share the /controls/orgs prefix.
+  const activeFor = (id: "orgs" | "workspace" | string): boolean => {
+    if (id === "orgs") return !wsOrgId && isActive("/controls/orgs");
+    if (id === "workspace") return wsOrgId !== null || isActive("/controls/workspace");
+    return isActive(id);
+  };
+
   // Shared nav-item class builder — mirrors sidebar.tsx exactly.
-  const navItemClass = (prefix: string): string => {
+  const navItemClass = (id: string): string => {
     const base =
       "flex items-center gap-3 rounded-sm text-sm font-bold transition-colors";
     const activeClass = "bg-primary text-text-on-primary";
     const inactiveClass =
       "text-text-body hover:bg-primary-softer hover:text-text-heading";
+    // Phones always get the centred icon-only layout.
     const padding = collapsed
       ? "justify-center px-[11px] py-[11px]"
-      : "px-[14px] py-[11px]";
-    return `${base} ${padding} ${isActive(prefix) ? activeClass : inactiveClass}`;
+      : "justify-center px-[11px] py-[11px] sm:justify-start sm:px-[14px]";
+    return `${base} ${padding} ${activeFor(id) ? activeClass : inactiveClass}`;
   };
+  // Label visibility: hidden when collapsed, and on phones.
+  const labelClass = collapsed ? "hidden" : "hidden sm:inline";
 
   async function handleLogout() {
     // Delete the SuperAdmin session server-side, then hard-navigate to login.
@@ -68,15 +91,16 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
     <div className="flex h-screen bg-bg-page">
       {/* ── Sidebar ── */}
       <aside
-        style={{ width: collapsed ? "100px" : "252px" }}
-        className="sticky top-0 flex h-screen shrink-0 flex-col border-r border-border bg-bg-card transition-all duration-200"
+        className={`sticky top-0 flex h-screen shrink-0 flex-col border-r border-border bg-bg-card transition-all duration-200 ${
+          collapsed ? "w-16 sm:w-[100px]" : "w-16 sm:w-[252px]"
+        }`}
       >
         {/* ── Sidebar top: logo mark + collapse button ── */}
         <div
           className={`flex items-center border-b border-border ${
             collapsed
               ? "justify-center gap-1 px-2 py-4"
-              : "justify-between gap-2 px-[18px] py-4"
+              : "justify-center gap-2 px-2 py-4 sm:justify-between sm:px-[18px]"
           }`}
         >
           {/* Logo mark + wordmark — clicks to org list */}
@@ -119,7 +143,7 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
 
             {/* Wordmark — hidden when collapsed */}
             {!collapsed && (
-              <span className="whitespace-nowrap text-base font-extrabold text-text-heading">
+              <span className="hidden whitespace-nowrap text-base font-extrabold text-text-heading sm:inline">
                 EaseeTool
               </span>
             )}
@@ -132,7 +156,7 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
               onClick={() => setCollapsed(true)}
               title="Collapse panel"
               aria-label="Collapse panel"
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-bg-white text-text-muted transition-colors hover:bg-primary-softer hover:text-primary-dark"
+              className="hidden h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border bg-bg-white text-text-muted transition-colors hover:bg-primary-softer hover:text-primary-dark sm:flex"
             >
               <svg
                 width="14"
@@ -158,7 +182,7 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
             onClick={() => setCollapsed(false)}
             title="Expand panel"
             aria-label="Expand panel"
-            className="mx-auto mt-3 flex h-7 w-7 items-center justify-center rounded-full border border-border bg-bg-white text-text-muted transition-colors hover:bg-primary-softer hover:text-primary-dark"
+            className="mx-auto mt-3 hidden h-7 w-7 items-center justify-center rounded-full sm:flex border border-border bg-bg-white text-text-muted transition-colors hover:bg-primary-softer hover:text-primary-dark"
           >
             <svg
               width="12"
@@ -178,14 +202,13 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
         )}
 
         {/* ── Nav items ── */}
-        <nav className="flex flex-1 flex-col gap-1 p-[14px]">
-          {/* Organizations */}
+        <nav className="flex flex-1 flex-col gap-1 p-2 sm:p-[14px]">
+          {/* Organizations: list / create (a single org is "Org Workspace") */}
           <Link
             href="/controls/orgs"
             title="Organizations"
-            className={navItemClass("/controls/orgs")}
+            className={navItemClass("orgs")}
           >
-            {/* Building / office icon */}
             <svg
               className="h-5 w-5 shrink-0"
               viewBox="0 0 24 24"
@@ -198,16 +221,14 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
             >
               <path d="M3 21h18M6 21V7l6-4 6 4v14M9 9h1M14 9h1M9 13h1M14 13h1M9 17h1M14 17h1" />
             </svg>
-            {!collapsed && <span>Organizations</span>}
+            <span className={labelClass}>Organizations</span>
           </Link>
-
-          {/* Roles & Permissions */}
+          {/* Org Workspace: the chosen org's current tab, or the empty state when none is chosen (M-3) */}
           <Link
-            href="/controls/roles"
-            title="Roles & Permissions"
-            className={navItemClass("/controls/roles")}
+            href={wsOrgId ? `/controls/orgs/${encodeURIComponent(wsOrgId)}/${wsTab ?? "overview"}` : "/controls/workspace"}
+            title="Org Workspace"
+            className={navItemClass("workspace")}
           >
-            {/* Shield icon */}
             <svg
               className="h-5 w-5 shrink-0"
               viewBox="0 0 24 24"
@@ -218,66 +239,19 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
               strokeLinejoin="round"
               aria-hidden="true"
             >
-              <path d="M12 2l7 4v5c0 5-3.5 9.7-7 11-3.5-1.3-7-6-7-11V6l7-4z" />
+              <rect x="3" y="3" width="7" height="9" rx="1" />
+              <rect x="14" y="3" width="7" height="5" rx="1" />
+              <rect x="14" y="12" width="7" height="9" rx="1" />
+              <rect x="3" y="16" width="7" height="5" rx="1" />
             </svg>
-            {!collapsed && <span>Roles &amp; Permissions</span>}
+            <span className={labelClass}>Org Workspace</span>
           </Link>
-
-          {/* Users */}
-          <Link
-            href="/controls/users"
-            title="Users"
-            className={navItemClass("/controls/users")}
-          >
-            {/* People / users icon */}
-            <svg
-              className="h-5 w-5 shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-            {!collapsed && <span>Users</span>}
-          </Link>
-
-          {/* Component Types */}
-          <Link
-            href="/controls/component-types"
-            title="Component Types"
-            className={navItemClass("/controls/component-types")}
-          >
-            {/* Tag / label icon */}
-            <svg
-              className="h-5 w-5 shrink-0"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
-              <line x1="7" y1="7" x2="7.01" y2="7" />
-            </svg>
-            {!collapsed && <span>Component Types</span>}
-          </Link>
-
           {/* Formula Sets */}
           <Link
             href="/controls/formula-sets"
             title="Formula Sets"
             className={navItemClass("/controls/formula-sets")}
           >
-            {/* Grid / table icon — mirrors the mockup's formula-sets icon */}
             <svg
               className="h-5 w-5 shrink-0"
               viewBox="0 0 24 24"
@@ -290,16 +264,14 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
             >
               <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" />
             </svg>
-            {!collapsed && <span>Formula Sets</span>}
+            <span className={labelClass}>Formula Sets</span>
           </Link>
-
           {/* Audit Log (hotfix 2026-10-02) */}
           <Link
             href="/controls/audit-log"
             title="Audit Log"
             className={navItemClass("/controls/audit-log")}
           >
-            {/* Clock icon */}
             <svg
               className="h-5 w-5 shrink-0"
               viewBox="0 0 24 24"
@@ -313,18 +285,41 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
               <circle cx="12" cy="12" r="9" />
               <path d="M12 8v4l3 2" />
             </svg>
-            {!collapsed && <span>Audit Log</span>}
+            <span className={labelClass}>Audit Log</span>
+          </Link>
+          {/* SuperAdmins (O-1): platform-level SuperAdmin accounts */}
+          <Link
+            href="/controls/admins"
+            title="SuperAdmins"
+            className={navItemClass("/controls/admins")}
+          >
+            <svg
+              className="h-5 w-5 shrink-0"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M12 2l7 4v5c0 5-3.5 9.7-7 11-3.5-1.3-7-6-7-11V6l7-4z" />
+              <path d="M9 12l2 2 4-4" />
+            </svg>
+            <span className={labelClass}>SuperAdmins</span>
           </Link>
         </nav>
 
         {/* ── Bottom: log out ── */}
-        <div className="border-t border-border p-[14px]">
+        <div className="border-t border-border p-2 sm:p-[14px]">
           <button
             type="button"
             onClick={handleLogout}
             title="Log Out"
             className={`flex w-full items-center gap-3 rounded-sm text-sm font-bold text-text-body transition-colors hover:bg-primary-softer hover:text-text-heading ${
-              collapsed ? "justify-center px-[11px] py-[11px]" : "px-[14px] py-[11px]"
+              collapsed
+                ? "justify-center px-[11px] py-[11px]"
+                : "justify-center px-[11px] py-[11px] sm:justify-start sm:px-[14px]"
             }`}
           >
             {/* Log-out arrow icon */}
@@ -342,7 +337,7 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
               <polyline points="16 17 21 12 16 7" />
               <line x1="21" y1="12" x2="9" y2="12" />
             </svg>
-            {!collapsed && <span>Log Out</span>}
+            <span className={labelClass}>Log Out</span>
           </button>
         </div>
       </aside>
@@ -350,19 +345,21 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
       {/* ── Right column: top bar + page content ── */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-between border-b border-border bg-bg-card px-10 shadow-header">
-          <span className="text-xs font-extrabold uppercase tracking-[.06em] text-text-muted">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2.5 border-b border-border bg-bg-card px-3 shadow-header sm:gap-5 sm:px-10">
+          <span className="hidden whitespace-nowrap text-xs font-extrabold uppercase tracking-[.06em] text-text-muted sm:inline">
             SuperAdmin Console
           </span>
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-text-muted">
+          <OrgSwitcher orgs={orgs} currentOrgId={wsOrgId} currentTab={wsTab} />
+          <span className="hidden flex-1 sm:block" />
+          <div className="flex shrink-0 items-center gap-3">
+            <span className="hidden whitespace-nowrap text-sm text-text-muted sm:inline">
               Signed in as{" "}
               <span className="font-bold text-text-heading">{username}</span>
             </span>
             <button
               type="button"
               onClick={handleLogout}
-              className="rounded-sm border border-border bg-bg-white px-3 py-1.5 text-sm font-semibold text-text-body transition-colors hover:bg-primary-softer"
+              className="whitespace-nowrap rounded-sm border border-border bg-bg-white px-3 py-1.5 text-sm font-semibold text-text-body transition-colors hover:bg-primary-softer"
             >
               Log Out
             </button>
@@ -371,7 +368,7 @@ export function ControlsShell({ children, username }: ControlsShellProps) {
 
         {/* Main content area — padded container for all /controls/** pages */}
         <main className="flex-1 overflow-auto">
-          <div className="mx-auto w-full max-w-5xl px-8 py-8">{children}</div>
+          <div className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-8 sm:py-8">{children}</div>
         </main>
       </div>
     </div>

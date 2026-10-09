@@ -30,6 +30,8 @@ export interface OrgRow {
   isSuspended: boolean;
   createdAt: Date;
   userCount: number;
+  /** Stage 29: max users (active or not) the org may hold */
+  userLimit: number;
   /** null when the org has no active formula set assigned */
   activeFormulaSetId: string | null;
   /** Human-readable label e.g. "glass-partition-standard v1", or null if none assigned */
@@ -52,6 +54,11 @@ export interface OrgForEditDetail {
   name: string;
   slug: string;
   isSuspended: boolean;
+  createdAt: Date;
+  /** Every user row in the org (Stage 29: Users tab count / header seat pill) */
+  userCount: number;
+  /** Stage 29: max users (active or not) the org may hold */
+  userLimit: number;
   activeFormulaSetId: string | null;
   activeFormulaSet: { id: string; name: string; version: number } | null;
   /** Current mismatch state, computed on read */
@@ -60,7 +67,7 @@ export interface OrgForEditDetail {
 
 /** Result type for updateOrgSettings */
 export type UpdateOrgResult =
-  | { ok: true }
+  | { ok: true; /** userLimit before the update; set only when `patch.userLimit` was supplied */ previousUserLimit?: number }
   | { ok: false; reason: "not_found" | "unknown_error"; message: string };
 
 /**
@@ -163,6 +170,9 @@ export async function getOrgForEdit(orgId: string): Promise<OrgForEditDetail | n
       name: true,
       slug: true,
       isSuspended: true,
+      createdAt: true,
+      userLimit: true,
+      _count: { select: { users: true } },
       activeFormulaSetId: true,
       activeFormulaSet: { select: { id: true, name: true, version: true, body: true } },
       componentTypes: { select: { code: true, active: true, fieldsSchema: true } },
@@ -191,6 +201,9 @@ export async function getOrgForEdit(orgId: string): Promise<OrgForEditDetail | n
     name: row.name,
     slug: row.slug,
     isSuspended: row.isSuspended,
+    createdAt: row.createdAt,
+    userCount: row._count.users,
+    userLimit: row.userLimit,
     activeFormulaSetId: row.activeFormulaSetId,
     activeFormulaSet: row.activeFormulaSet
       ? { id: row.activeFormulaSet.id, name: row.activeFormulaSet.name, version: row.activeFormulaSet.version }
@@ -215,6 +228,7 @@ export async function listAllOrganizations(): Promise<OrgRow[]> {
       name: true,
       isSuspended: true,
       createdAt: true,
+      userLimit: true,
       activeFormulaSetId: true,
       _count: { select: { users: true } },
       activeFormulaSet: { select: { id: true, name: true, version: true, body: true } },
@@ -234,6 +248,7 @@ export async function listAllOrganizations(): Promise<OrgRow[]> {
       isSuspended: r.isSuspended,
       createdAt: r.createdAt,
       userCount: r._count.users,
+      userLimit: r.userLimit,
       activeFormulaSetId: r.activeFormulaSetId,
       formulaSetLabel,
       hasMismatch,
@@ -260,6 +275,8 @@ export async function createOrganizationWithDefaults(
   slug: string,
   adminPassword: string,
   formulaSetId: string,
+  /** Validated 1-10000 by the route before this runs; omitted = the column default (3). */
+  userLimit?: number,
 ): Promise<CreateOrgResult> {
   // superadmin-only — intentionally cross-org
 
@@ -281,7 +298,12 @@ export async function createOrganizationWithDefaults(
     const { org, adminUserId } = await prisma.$transaction(async (tx) => {
       // 1. Create the organization row.
       const newOrg = await tx.organization.create({
-        data: { name, slug, activeFormulaSetId: formulaSetId },
+        data: {
+          name,
+          slug,
+          activeFormulaSetId: formulaSetId,
+          ...(userLimit !== undefined ? { userLimit } : {}),
+        },
         select: { id: true, slug: true, name: true },
       });
 
@@ -469,9 +491,10 @@ export async function toggleOrgSuspension(
 }
 
 /**
- * Update org name and/or formula set assignment.
+ * Update org name, formula set assignment and/or user limit.
  *
- * At least one of `name` or `formulaSetId` must be supplied (validated by caller).
+ * At least one of `name`, `formulaSetId` or `userLimit` must be supplied (validated by caller).
+ * `userLimit` may be lowered below current usage; it only blocks new adds (Stage 29, S29-7).
  * Slug is never editable (it is the subdomain — changing it would invalidate all existing
  * session cookies and subdomain routing). The formula set pin may be changed freely;
  * existing Projects keep their own pinned formulaSetId and are not affected.
@@ -482,19 +505,32 @@ export async function toggleOrgSuspension(
  */
 export async function updateOrgSettings(
   orgId: string,
-  patch: { name?: string; formulaSetId?: string },
+  patch: { name?: string; formulaSetId?: string; userLimit?: number },
 ): Promise<UpdateOrgResult> {
   // superadmin-only — intentionally cross-org
   try {
-    await prisma.organization.update({
-      where: { id: orgId },
-      data: {
-        ...(patch.name !== undefined ? { name: patch.name } : {}),
-        ...(patch.formulaSetId !== undefined ? { activeFormulaSetId: patch.formulaSetId } : {}),
-      },
-      select: { id: true },
+    // One transaction so the audit row's `userLimit.from` is the value this update replaced.
+    const previousUserLimit = await prisma.$transaction(async (tx) => {
+      let previous: number | undefined;
+      if (patch.userLimit !== undefined) {
+        const before = await tx.organization.findUniqueOrThrow({
+          where: { id: orgId },
+          select: { userLimit: true },
+        });
+        previous = before.userLimit;
+      }
+      await tx.organization.update({
+        where: { id: orgId },
+        data: {
+          ...(patch.name !== undefined ? { name: patch.name } : {}),
+          ...(patch.formulaSetId !== undefined ? { activeFormulaSetId: patch.formulaSetId } : {}),
+          ...(patch.userLimit !== undefined ? { userLimit: patch.userLimit } : {}),
+        },
+        select: { id: true },
+      });
+      return previous;
     });
-    return { ok: true };
+    return { ok: true, ...(previousUserLimit !== undefined ? { previousUserLimit } : {}) };
   } catch (err) {
     // Prisma P2025 = record not found
     if (

@@ -11,13 +11,16 @@
  *     cross-org probes address a Test-Org user the test itself created (factory, ledgered), so a broken
  *     tenancy check could only touch the suite's own row.
  */
+import type { APIRequestContext } from "@playwright/test";
 import { covers } from "../fixtures/covers";
 import { Guarded, createAllowance } from "../fixtures/clients";
 import type { RunState } from "../fixtures/run-state";
 import { orgUrl } from "../../e2e/helpers";
 import { countProjectCalculations, regressionSnapshot, rgrInsertCalculation } from "../../e2e/db-helpers";
 import { orgApi } from "./project-helpers";
-import { runPassword, signIn } from "./sign-in";
+import { ORG_B_USER_LIMIT } from "../fixtures/test-org-limit";
+import { RESERVED_ORG_SLUGS } from "@/lib/auth-utils";
+import { runPassword, sessionCookieLine, signIn } from "./sign-in";
 import {
   test, expect, SA, GHOST, SA_USER, tag, rawContext, expectStatus, json, auditLog, listOrgs, type OrgRow,
 } from "./sa-helpers";
@@ -41,13 +44,15 @@ test.describe("GET /api/v1/superadmin/orgs", () => {
     const b = orgs.find((o) => o.id === run.orgB.id)!;
     expect(b).toMatchObject({ slug: run.orgB.slug, name: `RGR ${run.runId} B`, isSuspended: false, activeFormulaSetId: run.formulaSetId, hasMismatch: false });
     expect(b.userCount).toBeGreaterThanOrEqual(1);
+    expect(b.userLimit).toBe(ORG_B_USER_LIMIT); // global-setup creates org B with an explicit limit
     expect(b.formulaSetLabel).toMatch(/ v\d+$/);
     const t = orgs.find((o) => o.id === run.testOrg.id)!;
     expect(t).toMatchObject({ slug: run.testOrg.slug, isSuspended: false });
     expect(t.userCount).toBeGreaterThanOrEqual(4); // the run's four role users at least
+    expect(t.userLimit).toBeGreaterThanOrEqual(t.userCount); // global-setup raised it for the run (restored at teardown)
     // oldest first
     for (let i = 1; i < orgs.length; i++) expect(orgs[i - 1].createdAt <= orgs[i].createdAt).toBe(true);
-    for (const o of orgs) expect(Object.keys(o).sort()).toEqual(["activeFormulaSetId", "createdAt", "formulaSetLabel", "hasMismatch", "id", "isSuspended", "name", "slug", "userCount"]);
+    for (const o of orgs) expect(Object.keys(o).sort()).toEqual(["activeFormulaSetId", "createdAt", "formulaSetLabel", "hasMismatch", "id", "isSuspended", "name", "slug", "userCount", "userLimit"]);
   });
 });
 
@@ -58,6 +63,12 @@ test.describe("POST /api/v1/superadmin/orgs — rules (nothing is created by any
     const cases: Array<[string, Record<string, unknown>, number, string | RegExp]> = [
       ["reserved slug 'platform'", { ...base, slug: "platform" }, 400, '"platform" is a reserved slug and cannot be used'],
       ["reserved slug, case-folded", { ...base, slug: "  PLATFORM " }, 400, '"platform" is a reserved slug and cannot be used'],
+      // Stage 29 (S29-10): every reserved slug is refused; 'controls' and 'www' also case-folded / padded
+      ...RESERVED_ORG_SLUGS.map((s): [string, Record<string, unknown>, number, string] => [`reserved slug '${s}'`, { ...base, slug: s }, 400, `"${s}" is a reserved slug and cannot be used`]),
+      ["reserved slug 'controls', upper-cased", { ...base, slug: " CONTROLS " }, 400, '"controls" is a reserved slug and cannot be used'],
+      ["reserved slug 'www', upper-cased", { ...base, slug: "WWW" }, 400, '"www" is a reserved slug and cannot be used'],
+      // Stage 29 (S29-7): userLimit is validated BEFORE anything is written (an unknown formula set would otherwise be 404)
+      ...[0, -1, 10001, 1.5, "3", true].map((v): [string, Record<string, unknown>, number, string] => [`userLimit ${JSON.stringify(v)}`, { ...base, slug: `${p}bad6`, userLimit: v }, 400, "userLimit must be a whole number between 1 and 10000"]),
       ["consecutive hyphens", { ...base, slug: `${p}bad--x` }, 400, "slug must not contain consecutive hyphens"],
       ["64 characters", { ...base, slug: `${p}bad`.padEnd(64, "a") }, 400, "slug must be 63 characters or fewer"],
       ["illegal characters", { ...base, slug: `${p}bad_slug!` }, 400, /^slug must contain only lowercase letters/],
@@ -95,6 +106,12 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
 
   let orgC: { id: string; slug: string; name: string };
   let projectId = "";
+  // The org admin's session, signed in BEFORE the suspension and held across it (S29-9: an existing session
+  // is refused on its next API call, and works again after reactivation). Only ever used against org C.
+  let heldCtx: APIRequestContext | undefined;
+  test.afterAll(async () => {
+    await heldCtx?.dispose();
+  });
 
   test("create: 201 { org, warnings: [] }, seeded admin + default roles, listed active; audit org.create + user.create", async ({ sa, run, ledger }) => {
     const slug = `${run.prefix}c${tag()}`;
@@ -111,7 +128,7 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     expect(body).toEqual({ org: { id: expect.any(String), slug, name: `RGR ${run.runId} C` }, warnings: [] }); // slug lower-cased + trimmed, name trimmed
 
     const listed = (await listOrgs(sa)).find((o) => o.id === orgC.id)!;
-    expect(listed).toMatchObject({ slug, isSuspended: false, userCount: 1, activeFormulaSetId: run.formulaSetId, hasMismatch: false });
+    expect(listed).toMatchObject({ slug, isSuspended: false, userCount: 1, userLimit: 3, activeFormulaSetId: run.formulaSetId, hasMismatch: false }); // userLimit: the default for a new org
 
     const u = await json<{ users: UserRow[]; externalCompanies: unknown[] }>(await sa.get(`${SA}/orgs/${orgC.id}/users`));
     expect(u.externalCompanies).toEqual([]);
@@ -129,13 +146,18 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     const url = `${SA}/orgs/${orgC.id}`;
     const ok = await json<{ org: Record<string, unknown>; warnings: unknown[] }>(await sa.patch(url, { data: { name: `  RGR ${run.runId} C renamed ` } }));
     expect(ok).toEqual({
-      org: { id: orgC.id, name: `RGR ${run.runId} C renamed`, slug: orgC.slug, isSuspended: false, activeFormulaSetId: run.formulaSetId, formulaSetLabel: expect.stringMatching(/ v\d+$/) },
+      org: { id: orgC.id, name: `RGR ${run.runId} C renamed`, slug: orgC.slug, isSuspended: false, userLimit: 3, activeFormulaSetId: run.formulaSetId, formulaSetLabel: expect.stringMatching(/ v\d+$/) },
       warnings: [],
     });
     expect((await json<{ org: { activeFormulaSetId: string } }>(await sa.patch(url, { data: { formulaSetId: run.formulaSetId } }))).org.activeFormulaSetId).toBe(run.formulaSetId);
 
     const cases: Array<[string, unknown, number, string]> = [
-      ["no updatable field", { slug: "x" }, 400, "At least one of name or formulaSetId must be provided"],
+      ["no updatable field", { slug: "x" }, 400, "At least one of name, formulaSetId or userLimit must be provided"],
+      ["userLimit 0", { userLimit: 0 }, 400, "userLimit must be a whole number between 1 and 10000"],
+      ["userLimit 10001", { userLimit: 10001 }, 400, "userLimit must be a whole number between 1 and 10000"],
+      ["userLimit 1.5", { userLimit: 1.5 }, 400, "userLimit must be a whole number between 1 and 10000"],
+      ["userLimit as a string", { userLimit: "3" }, 400, "userLimit must be a whole number between 1 and 10000"],
+      ["valid name + invalid userLimit writes nothing", { name: "rgr-should-not-apply", userLimit: 0 }, 400, "userLimit must be a whole number between 1 and 10000"],
       ["blank name", { name: "  " }, 400, "name must not be empty"],
       ["unknown formula set", { formulaSetId: GHOST }, 404, "Formula set not found"],
     ];
@@ -163,15 +185,11 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
 
   test("give org C data to cascade: its admin signs in and creates a project; a calculation row is attached", async ({ playwright, baseURL }) => {
     test.setTimeout(180_000); // sign-ins retry on 429 (rate limit 3 / 10 s / IP, shared by all workers)
-    const ctx = await rawContext(playwright, baseURL);
-    try {
-      expect((await signIn(ctx, orgC.slug, "admin", runPassword())).status()).toBe(200);
-      const admin = new Guarded(ctx, createAllowance([orgC.slug], [orgC.id]));
-      const p = await admin.post(orgApi(orgC.slug, "/projects"), { data: { name: `${orgC.slug}-proj`, currency: "AED", projectLocation: "Dubai, UAE" } });
-      projectId = (await json<{ project: { id: string } }>(p, 201)).project.id; // cascades with org C (not ledgered on its own)
-    } finally {
-      await ctx.dispose();
-    }
+    heldCtx = await rawContext(playwright, baseURL); // kept open on purpose (disposed in afterAll)
+    expect((await signIn(heldCtx, orgC.slug, "admin", runPassword())).status()).toBe(200);
+    const admin = new Guarded(heldCtx, createAllowance([orgC.slug], [orgC.id]));
+    const p = await admin.post(orgApi(orgC.slug, "/projects"), { data: { name: `${orgC.slug}-proj`, currency: "AED", projectLocation: "Dubai, UAE" } });
+    projectId = (await json<{ project: { id: string } }>(p, 201)).project.id; // cascades with org C (not ledgered on its own)
     await rgrInsertCalculation(projectId);
     expect(await countProjectCalculations(orgC.id)).toBe(1);
   });
@@ -183,7 +201,12 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     try {
       const page = await ctx.get(orgUrl(orgC.slug, "/dashboard"), { maxRedirects: 0 });
       expect(page.status()).toBe(403);
-      expect(((await page.json()) as { error: string }).error).toMatch(/suspended/i);
+      expect(page.headers()["content-type"]).toContain("text/html"); // S29-9: static HTML page, not JSON
+      const html = await page.text();
+      expect(html).toContain("Organization suspended");
+      expect(html).toContain("This organization has been suspended. Please contact your platform administrator.");
+      expect(html).not.toContain(orgC.slug); // no org data on the page
+      expect(html).not.toMatch(/<script/i); // no JS
     } finally {
       await ctx.dispose();
     }
@@ -191,20 +214,27 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     expect(log.entries.find((e) => e.action === "org.suspend")).toMatchObject({ summary: "Suspended", entity: orgC.slug });
   });
 
-  // DECISION NEEDED — proxy.ts blocks a suspended org's PAGES only; /api/** is outside its matcher and
-  // better-auth sign-in has no suspension hook (both documented as deferred in proxy.ts). The plan expected
-  // "its users get 401 / blocked sign-in". When suspension is enforced for the API and sign-in, change these
-  // expectations to 401 (sign-in) and 401/403 (/me).
-  test("DECISION NEEDED: a suspended org's users can still sign in and use the API (only pages are blocked)", async ({ playwright, baseURL }) => {
+  // S29-9: suspended means no org-user access at all. The API and sign-in refuse immediately (no cache),
+  // whatever the proxy's 60 s page cache says.
+  test("suspended org: sign-in refused 403 ORG_SUSPENDED (no session issued); the held session's API calls → 403 ORG_SUSPENDED", async ({ playwright, baseURL }) => {
     test.setTimeout(180_000); // sign-ins retry on 429 (rate limit 3 / 10 s / IP, shared by all workers)
-    const ctx = await rawContext(playwright, baseURL);
+    const body = { error: "This organization has been suspended. Please contact your platform administrator.", code: "ORG_SUSPENDED" };
+    const fresh = await rawContext(playwright, baseURL);
     try {
-      expect((await signIn(ctx, orgC.slug, "admin", runPassword())).status()).toBe(200);
-      const admin = new Guarded(ctx, createAllowance([orgC.slug], [orgC.id]));
-      expect((await admin.get(orgApi(orgC.slug, "/me"))).status()).toBe(200);
-      expect((await admin.get(orgApi(orgC.slug, `/projects/${projectId}`))).status()).toBe(200);
+      const r = await signIn(fresh, orgC.slug, "admin", runPassword());
+      expect(r.status(), await r.text()).toBe(403);
+      const text = await r.text();
+      expect(JSON.parse(text)).toMatchObject({ code: "ORG_SUSPENDED", message: body.error });
+      expect(sessionCookieLine(r), "no session cookie issued").toBeUndefined();
+      expect((await fresh.get(orgApi(orgC.slug, "/me"))).status(), "the refused sign-in left no usable session").toBe(401);
     } finally {
-      await ctx.dispose();
+      await fresh.dispose();
+    }
+    const admin = new Guarded(heldCtx!, createAllowance([orgC.slug], [orgC.id]));
+    for (const path of ["/me", `/projects/${projectId}`]) {
+      const r = await admin.get(orgApi(orgC.slug, path));
+      expect(r.status(), path).toBe(403);
+      expect(await r.json(), path).toEqual(body);
     }
   });
 
@@ -217,11 +247,24 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     expect((await listOrgs(sa)).find((o) => o.id === orgC.id)?.isSuspended).toBe(true); // unchanged by the rejects
   });
 
-  test("reactivate → 200, listed active, audit org.reactivate; suspend again → 200", async ({ sa }) => {
+  test("reactivate → 200, listed active, audit org.reactivate; the held session and a fresh sign-in work again; suspend again → 200", async ({ sa, playwright, baseURL }) => {
+    test.setTimeout(180_000);
     expect(await json(await sa.post(`${SA}/orgs/${orgC.id}/suspend`, { data: { suspend: false } }))).toEqual({ ok: true });
     expect((await listOrgs(sa)).find((o) => o.id === orgC.id)?.isSuspended).toBe(false);
     const log = await auditLog(sa, { scope: "org", orgId: orgC.id, verb: "UPDATE", pageSize: 100 });
     expect(log.entries.find((e) => e.action === "org.reactivate")).toMatchObject({ summary: "Reactivated" });
+    // Reactivation restores everything: the held session (never deleted) works again and a fresh sign-in succeeds.
+    // API only: proxy.ts may serve its cached 403 page for up to 60 s per instance.
+    const admin = new Guarded(heldCtx!, createAllowance([orgC.slug], [orgC.id]));
+    expect((await admin.get(orgApi(orgC.slug, "/me"))).status()).toBe(200);
+    expect((await admin.get(orgApi(orgC.slug, `/projects/${projectId}`))).status()).toBe(200);
+    const fresh = await rawContext(playwright, baseURL);
+    try {
+      expect((await signIn(fresh, orgC.slug, "admin", runPassword())).status()).toBe(200);
+      expect((await fresh.get(orgApi(orgC.slug, "/me"))).status()).toBe(200);
+    } finally {
+      await fresh.dispose();
+    }
     expect(await json(await sa.post(`${SA}/orgs/${orgC.id}/suspend`, { data: { suspend: true } }))).toEqual({ ok: true });
     expect((await listOrgs(sa)).find((o) => o.id === orgC.id)?.isSuspended).toBe(true);
   });
@@ -287,7 +330,9 @@ test.describe("SuperAdmin org users (org B)", () => {
     const r = await sa.get(`${SA}/orgs/${run.orgB.id}/users`);
     const raw = await expectStatus(r, 200);
     expect(raw).not.toMatch(/password|hash/i);
-    const body = JSON.parse(raw) as { users: UserRow[]; externalCompanies: { id: string; name: string }[] };
+    const body = JSON.parse(raw) as { users: UserRow[]; externalCompanies: { id: string; name: string }[]; seats: { limit: number; used: number } };
+    expect(body.seats.limit).toBe(ORG_B_USER_LIMIT); // Stage 29: seats alongside the list
+    expect(body.seats.used).toBe(body.users.length);
     expect(body.users.find((u) => u.username === "admin")).toMatchObject({ role: { name: "Admin" }, active: true });
     const names = body.users.map((u) => u.username);
     expect(names).toEqual([...names].sort());

@@ -26,6 +26,9 @@ model Organization {
   name              String
   // Stage 16: platform-level suspension flag. false by default; set by SuperAdmin only.
   isSuspended       Boolean           @default(false)
+  // Stage 29: max User rows (active or not) the org may hold. SuperAdmin-edited only; DB CHECK >= 1
+  // (added in the migration, which Prisma cannot express here). Enforced by lib/data/user-limit.ts.
+  userLimit         Int               @default(3)
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
   // Stage 2 relations

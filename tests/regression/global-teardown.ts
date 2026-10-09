@@ -9,6 +9,7 @@ import { diffSharedConfig, diffSnapshots } from "./fixtures/snapshot";
 import { removeOwnStrays, type Stray } from "./fixtures/cleanup-rules";
 import { releaseRunLock, lockHolderPid, teardownRefusal } from "./fixtures/run-lock";
 import { globalStateFailuresFile, readGlobalStateFailures, stuckTemporaryTypeNames } from "./fixtures/global-state";
+import { restoreTestOrgLimit } from "./fixtures/test-org-limit";
 import { regressionSnapshot, regressionSweep } from "../e2e/db-helpers";
 
 /** R16: the orchestrator reads this to decide whether a retry is allowed (never after a cleanup failure). */
@@ -71,6 +72,7 @@ async function teardown(run: RunState) {
   let deleted: string[];
   let errors: string[];
   const stuckNames: string[] = [];
+  let limitRestoreFailure: string | null = null;
   let strayRemoval: Awaited<ReturnType<typeof removeOwnStrays>> = { removed: [], errors: [], leftForOthers: [] };
   try {
     ({ deleted, errors } = await cleaner.drainLedger(ledger, mine));
@@ -111,6 +113,8 @@ async function teardown(run: RunState) {
       });
     }
   } finally {
+    // Stage 29: put the Test Org's userLimit back EXACTLY (rule 10) — even when the drain above failed.
+    limitRestoreFailure = await restoreTestOrgLimit(sa, run.testOrg.id);
     await cleaner.dispose();
     await sa.dispose();
   }
@@ -122,7 +126,7 @@ async function teardown(run: RunState) {
   const orgsCompared = Object.keys(run.baseline.orgs).filter((s) => !ignore(s)).length;
   // global-state revert failures are appended by withRecordedGlobalState via this file
   const stateFile = globalStateFailuresFile(run.storageDir);
-  const revertFailures: string[] = [...readGlobalStateFailures(stateFile), ...stuckNames];
+  const revertFailures: string[] = [...readGlobalStateFailures(stateFile), ...stuckNames, ...(limitRestoreFailure ? [limitRestoreFailure] : [])];
 
   const failed = errors.length > 0 || strays.length > 0 || delta.length > 0 || revertFailures.length > 0;
   const report = {

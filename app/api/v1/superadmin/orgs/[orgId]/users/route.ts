@@ -14,6 +14,7 @@ import { getOrgById, createOrgAuditLog } from "@/lib/data/superadmin/orgs";
 import {
   listUsersInOrg,
   listExternalCompaniesInOrg,
+  getSeatsForOrg,
   createUserInOrg,
 } from "@/lib/data/superadmin/users";
 
@@ -51,11 +52,12 @@ export async function GET(
   }
 
   try {
-    const [users, externalCompanies] = await Promise.all([
+    const [users, externalCompanies, seats] = await Promise.all([
       listUsersInOrg(orgId),
       listExternalCompaniesInOrg(orgId),
+      getSeatsForOrg(orgId),
     ]);
-    return NextResponse.json({ users, externalCompanies });
+    return NextResponse.json({ users, externalCompanies, seats });
   } catch (err) {
     console.error("[GET /api/v1/superadmin/orgs/[orgId]/users]", err);
     return apiServerError();
@@ -76,6 +78,7 @@ export async function GET(
 // Returns 400 on missing/invalid fields or tenancy violations.
 // Returns 404 if the org does not exist.
 // Returns 409 on duplicate username within the org.
+// Returns 409 { error, code: "USER_LIMIT_REACHED", limit, current } when the org is at its userLimit.
 // Returns 401 when not authenticated as SuperAdmin.
 
 export async function POST(
@@ -150,6 +153,13 @@ export async function POST(
     }
     if (result.reason === "duplicate_username") {
       return apiConflict(result.message);
+    }
+    if (result.reason === "user_limit_reached") {
+      return apiConflict(result.message, {
+        code: "USER_LIMIT_REACHED",
+        limit: result.limit,
+        current: result.current,
+      });
     }
     // role_not_in_org, company_not_in_org, company_required → 400
     if (
