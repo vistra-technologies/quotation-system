@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { toAuthEmail } from "@/lib/auth-utils";
+import { ORG_SUSPENDED_CODE, ORG_SUSPENDED_MESSAGE } from "@/lib/org-suspended";
 import { useOrgHref } from "@/lib/useOrgHref";
 import { deviceLabel, timeAgo } from "@/lib/session-display";
 // Import order matters for CSS modules: shared brand styles first, so the form's
@@ -198,6 +199,9 @@ export function LoginForm({
         if (signInError.status === 429) {
           setError(RATE_LIMIT_MESSAGE);
           setCooldown(RATE_LIMIT_COOLDOWN_SECONDS);
+        } else if (signInError.code === ORG_SUSPENDED_CODE) {
+          // Stage 29 (S29-9): reachable inside the proxy's 60 s cache window after a suspension.
+          setError(ORG_SUSPENDED_MESSAGE);
         } else {
           setError(signInError.message ?? "Sign in failed. Check your credentials.");
         }

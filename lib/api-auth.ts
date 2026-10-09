@@ -1,22 +1,39 @@
+import type { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { apiForbidden, apiNotFound, apiUnauthorized } from "@/lib/api-error";
+import { ORG_SUSPENDED_CODE, ORG_SUSPENDED_MESSAGE } from "@/lib/org-suspended";
 import type { SessionData } from "@/lib/session";
 
 /**
  * Thrown by getApiSession() on authentication or authorization failure.
  *
  * status 401 — no session, inactive account, or unsupported Bearer token
- * status 403 — session exists but the user belongs to a different org (cross-tenant guard)
+ * status 403 — session exists but the user belongs to a different org (cross-tenant guard),
+ *              or the org is suspended (code "ORG_SUSPENDED", Stage 29 S29-9)
  * status 404 — the orgSlug in the URL does not resolve to any organization
+ *
+ * `code` is an optional machine-readable discriminator that apiAuthErrorResponse() puts in the body.
  */
 export class ApiAuthError extends Error {
   constructor(
     public readonly status: 401 | 403 | 404,
     message: string,
+    public readonly code?: string,
   ) {
     super(message);
     this.name = "ApiAuthError";
   }
+}
+
+/**
+ * Maps an ApiAuthError to its JSON response (401/403/404, plus `code` when set).
+ * Shared by every org route handler's catch block (Stage 29 replaced the copy-pasted mapping).
+ */
+export function apiAuthErrorResponse(err: ApiAuthError): NextResponse {
+  if (err.status === 401) return apiUnauthorized(err.message, err.code);
+  if (err.status === 403) return apiForbidden(err.message, err.code);
+  return apiNotFound(err.message, err.code);
 }
 
 /**
@@ -30,13 +47,15 @@ export class ApiAuthError extends Error {
  * 1. Reject Bearer token (placeholder seam for future external-consumer auth — not implemented yet).
  * 2. Read the better-auth session from the forwarded cookie.
  * 3. Reject inactive accounts (instant deactivation, same rule as getSession()).
- * 4. Resolve the org by orgSlug from the DB.
+ * 4. Resolve the org by orgSlug from the DB (its own uncached read) and refuse a suspended org with
+ *    403 ORG_SUSPENDED.  Immediate: an existing session is refused on its very next request.
  * 5. Cross-tenant guard: user.organizationId must match org.id.  This is the same invariant that
  *    proxy.ts + getSession() enforce for UI routes — the single highest-risk check in this file.
  * 6. Return SessionData (same shape as lib/session.ts).
  *
  * @throws ApiAuthError(401) — no session, inactive user, or unsupported Bearer token
- * @throws ApiAuthError(403) — session belongs to a different org (cross-tenant replay attempt)
+ * @throws ApiAuthError(403) — session belongs to a different org (cross-tenant replay attempt),
+ *                             or the org is suspended (code "ORG_SUSPENDED")
  * @throws ApiAuthError(404) — orgSlug not found in the database
  */
 export async function getApiSession(
@@ -67,14 +86,19 @@ export async function getApiSession(
     throw new ApiAuthError(401, "Account is deactivated");
   }
 
-  // ── Step 4: Resolve org from slug ───────────────────────────────────────────
+  // ── Step 4: Resolve org from slug (+ suspension check) ──────────────────────
   const org = await prisma.organization.findUnique({
     where: { slug: orgSlug },
-    select: { id: true },
+    select: { id: true, isSuspended: true },
   });
 
   if (!org) {
     throw new ApiAuthError(404, "Organization not found");
+  }
+
+  // Suspended means no org-user access at all (S29-9). Uncached on purpose so it bites immediately.
+  if (org.isSuspended) {
+    throw new ApiAuthError(403, ORG_SUSPENDED_MESSAGE, ORG_SUSPENDED_CODE);
   }
 
   // ── Step 5: Cross-tenant guard (highest-risk line) ──────────────────────────
