@@ -12,7 +12,7 @@ export interface ControlsOrg {
   name: string;
   isSuspended: boolean;
   userCount: number;
-  /** Absent until Stage 29 Batch 2 adds `userLimit` to the org list. */
+  /** Organization.userLimit (Stage 29 Batch 2). */
   userLimit?: number | null;
 }
 

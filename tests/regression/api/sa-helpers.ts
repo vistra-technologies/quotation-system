@@ -112,7 +112,7 @@ export async function auditLog(sa: SaClient | { get(url: string, o?: { headers?:
 // ── Orgs ──────────────────────────────────────────────────────────────────────
 
 export type OrgRow = {
-  id: string; slug: string; name: string; isSuspended: boolean; createdAt: string; userCount: number;
+  id: string; slug: string; name: string; isSuspended: boolean; createdAt: string; userCount: number; userLimit: number;
   activeFormulaSetId: string | null; formulaSetLabel: string | null; hasMismatch: boolean;
 };
 
@@ -129,10 +129,14 @@ export async function createThrowawayOrg(
   deps: { run: RunState; ledger: Ledger },
   letter: string,
   formulaSetId = deps.run.formulaSetId,
+  /** Stage 29: explicit Organization.userLimit; omitted = the API default (3). */
+  userLimit?: number,
 ): Promise<{ id: string; slug: string; name: string }> {
   const slug = `${deps.run.prefix}${letter}${tag()}`;
   const name = `RGR ${deps.run.runId} ${letter.toUpperCase()}`;
-  const r = await sa.post(`${SA}/orgs`, { data: { name, slug, adminPassword: runPassword(), formulaSetId } });
+  const r = await sa.post(`${SA}/orgs`, {
+    data: { name, slug, adminPassword: runPassword(), formulaSetId, ...(userLimit !== undefined ? { userLimit } : {}) },
+  });
   const text = await r.text();
   if (r.status() !== 201) throw new Error(`setup: create org ${slug} → HTTP ${r.status()} ${text}`);
   const org = (JSON.parse(text) as { org: { id: string; slug: string; name: string } }).org;

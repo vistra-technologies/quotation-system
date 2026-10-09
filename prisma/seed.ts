@@ -242,6 +242,8 @@ async function main() {
       // user row with no credential).  The sign-up route is disabled
       // (disableSignUp: true), so we provision server-side instead.
       // providerId "credential" matches what better-auth's sign-in route looks up.
+      // Stage 29: deliberately EXEMPT from Organization.userLimit (assertUserSeatAvailable) — this is a
+      // maintenance script, not a product path (S29-8).
       await prisma.$transaction(async (tx) => {
         const newUser = await tx.user.create({
           data: {

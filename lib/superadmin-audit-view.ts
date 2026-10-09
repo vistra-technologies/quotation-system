@@ -109,7 +109,11 @@ export function summarizeAction(action: string, metadata: Meta): string {
       return typeof n === "number" ? `Deleted with ${n} user${n === 1 ? "" : "s"}` : "Organization deleted";
     }
     case "org.update": {
-      const parts = [str(m.name) ? "name" : null, m.formulaSetId !== undefined ? "formula set" : null].filter(Boolean);
+      const parts = [
+        str(m.name) ? "name" : null,
+        m.formulaSetId !== undefined ? "formula set" : null,
+        m.userLimit !== undefined ? "user limit" : null,
+      ].filter(Boolean);
       return parts.length ? `Changed ${parts.join(", ")}` : "Updated";
     }
     case "user.create": return "New user";

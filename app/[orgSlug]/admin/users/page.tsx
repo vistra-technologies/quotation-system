@@ -60,9 +60,13 @@ export default async function UsersPage({
     redirect(await orgHref(orgSlug, "/login"));
   }
 
-  const users: UserRow[] = usersRes.ok
-    ? ((await usersRes.json()) as { users: UserRow[] }).users
-    : [];
+  // Stage 29: the list response carries seats { limit, used } (every user row counts).
+  const usersBody = usersRes.ok
+    ? ((await usersRes.json()) as { users: UserRow[]; seats?: { limit: number; used: number } })
+    : null;
+  const users: UserRow[] = usersBody?.users ?? [];
+  const seats = usersBody?.seats ?? null;
+  const atCap = seats !== null && seats.used >= seats.limit;
 
   const roles: RoleOption[] = rolesRes.ok
     ? ((await rolesRes.json()) as { roles: RoleOption[] }).roles
@@ -83,13 +87,38 @@ export default async function UsersPage({
             {t("pageSubtitle")}
           </p>
         </div>
-        {/* H-8: replaced Link to /admin/users/new with AddUserButton modal */}
-        <AddUserButton
-          orgSlug={orgSlug}
-          roles={roles}
-          externalCompanies={externalCompanies}
-        />
+        <div className="flex items-center gap-2.5">
+          {seats && (
+            <span
+              title={t("seatsTitle", { used: seats.used, limit: seats.limit })}
+              className={`inline-flex items-center whitespace-nowrap rounded-pill px-2.5 py-0.5 text-xs font-bold tabular-nums ${
+                atCap
+                  ? "bg-status-pending-bg text-status-pending-text"
+                  : "bg-primary-softer text-primary-dark"
+              }`}
+            >
+              {seats.used}/{seats.limit}
+            </span>
+          )}
+          {/* H-8: replaced Link to /admin/users/new with AddUserButton modal. Stays enabled at the
+              cap (Stage 29 Deviation 3): the org admin cannot raise the limit and the server is the
+              single enforcer, so submitting shows the USER_LIMIT_REACHED form error. */}
+          <AddUserButton
+            orgSlug={orgSlug}
+            roles={roles}
+            externalCompanies={externalCompanies}
+          />
+        </div>
       </div>
+
+      {atCap && seats && (
+        <div
+          role="status"
+          className="mt-4 rounded-md border border-status-pending-border bg-status-pending-bg px-4 py-3 text-sm font-semibold text-status-pending-text"
+        >
+          {t("limitBanner", { used: seats.used, limit: seats.limit })}
+        </div>
+      )}
 
       <div className="mt-6 rounded-md border border-border bg-bg-card shadow-card">
         <div className="overflow-x-auto">

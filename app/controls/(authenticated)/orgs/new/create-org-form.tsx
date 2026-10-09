@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { createOrg, type CreateOrgState } from "../actions";
+import { RESERVED_ORG_SLUGS } from "@/lib/auth-utils";
 import { FormulaSetPicker, type FormulaSetPickerItem } from "../_formula-set-picker";
 
 const initialState: CreateOrgState = { error: null };
@@ -101,7 +102,7 @@ export function CreateOrgForm({ formulaSets, slugHint, adminPasswordHint }: Crea
           <p className="text-xs text-text-muted">
             {slugHint}
             <br />
-            Reserved: <code className="font-mono">platform</code>.
+            Reserved: <code className="font-mono">{RESERVED_ORG_SLUGS.join(", ")}</code>.
           </p>
         </div>
 
@@ -122,6 +123,27 @@ export function CreateOrgForm({ formulaSets, slugHint, adminPasswordHint }: Crea
           />
           <p className="text-xs text-text-muted">
             {adminPasswordHint}
+          </p>
+        </div>
+
+        {/* User limit (optional; blank = default 3) */}
+        <div className="flex flex-col gap-1">
+          <label htmlFor="orgUserLimit" className={labelCls}>
+            User limit
+          </label>
+          <input
+            id="orgUserLimit"
+            name="userLimit"
+            type="number"
+            min={1}
+            max={10000}
+            step={1}
+            defaultValue={3}
+            className={`${inputCls} max-w-[160px]`}
+          />
+          <p className="text-xs text-text-muted">
+            Default 3 (1–10000). Every user counts toward the limit, active or deactivated. You can change it later on
+            the org&apos;s Overview tab.
           </p>
         </div>
 

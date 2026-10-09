@@ -29,9 +29,10 @@ export function apiNotFound(message = "Not found"): NextResponse {
   return NextResponse.json({ error: message }, { status: 404 });
 }
 
-/** 409 Conflict — e.g. project number race collision. */
-export function apiConflict(message: string): NextResponse {
-  return NextResponse.json({ error: message }, { status: 409 });
+/** 409 Conflict — e.g. project number race collision. `extra` adds machine-readable fields
+ * (Stage 29: `{ code: "USER_LIMIT_REACHED", limit, current }`) after `error`. */
+export function apiConflict(message: string, extra?: Record<string, unknown>): NextResponse {
+  return NextResponse.json({ error: message, ...extra }, { status: 409 });
 }
 
 /** 422 Unprocessable Entity — well-formed request, but the data it targets fails a business-rule check

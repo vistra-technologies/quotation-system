@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSuperAdminFromRequest, SuperAdminUnauthorizedError } from "@/lib/superadmin-guard";
 import { RESERVED_ORG_SLUGS } from "@/lib/auth-utils";
+import { isValidUserLimit, USER_LIMIT_RANGE_MESSAGE } from "@/lib/data/user-limit";
 import {
   apiBadRequest,
   apiUnauthorized,
@@ -50,7 +51,8 @@ export async function GET(request: Request): Promise<NextResponse> {
 // Writes one SuperAdminAuditLog row with action "org.create" on success.
 //
 // Auth: valid SuperAdmin session (qs-sa-token cookie).
-// Body: { name: string; slug: string }
+// Body: { name: string; slug: string; adminPassword: string; formulaSetId: string; userLimit?: number }
+//   userLimit is optional (integer 1-10000, default 3); anything else is a 400.
 //
 // Returns 201 with { org: { id, slug, name } } on success.
 // Returns 400 on missing/invalid fields or reserved slug.
@@ -94,6 +96,11 @@ export async function POST(request: Request): Promise<NextResponse> {
   const slug = (b.slug as string).trim().toLowerCase();
   const adminPassword = b.adminPassword as string;
   const formulaSetId = typeof b.formulaSetId === "string" ? b.formulaSetId.trim() : null;
+  // Stage 29 (S29-7): validated before anything is written, so the new org's limit is always >= 1.
+  const userLimit = b.userLimit === undefined || b.userLimit === null ? undefined : b.userLimit;
+  if (userLimit !== undefined && !isValidUserLimit(userLimit)) {
+    return apiBadRequest(USER_LIMIT_RANGE_MESSAGE);
+  }
 
   if (!name) {
     return apiBadRequest("name is required");
@@ -130,7 +137,13 @@ export async function POST(request: Request): Promise<NextResponse> {
     return apiNotFound("Formula set not found");
   }
 
-  const result = await createOrganizationWithDefaults(name, slug, adminPassword, formulaSetId);
+  const result = await createOrganizationWithDefaults(
+    name,
+    slug,
+    adminPassword,
+    formulaSetId,
+    userLimit,
+  );
 
   if (!result.ok) {
     if (result.reason === "slug_conflict") {
@@ -148,6 +161,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     name: result.org.name,
     slug: result.org.slug,
     formulaSetId,
+    ...(userLimit !== undefined ? { userLimit } : {}),
   });
   await createOrgAuditLog(
     sa.superAdminId,

@@ -1,8 +1,8 @@
 /**
  * Seat pill: `used/limit`, amber at the cap (Stage 29 mockup).
  *
- * Pure markup, usable from Server and Client Components. `limit` is omitted until Batch 2 puts
- * `Organization.userLimit` on the wire; the pill then shows an em dash and is never amber.
+ * Pure markup, usable from Server and Client Components. `limit` is `Organization.userLimit`;
+ * if it is ever missing the pill shows an em dash and is never amber.
  */
 export function SeatPill({
   used,
