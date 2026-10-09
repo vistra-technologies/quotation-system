@@ -159,9 +159,14 @@ export interface AuditFilters {
   item: string | null;
   from: string | null; // YYYY-MM-DD, inclusive
   to: string | null; // YYYY-MM-DD, inclusive
+  /** Exclude rows whose actor snapshot is TEST_ACCOUNT_USERNAME (query: hideTest=1). */
+  hideTest: boolean;
   page: number;
   pageSize: number;
 }
+
+/** Fix round 2: the SuperAdmin whose activity the "Hide testeraccount activity" filter excludes. */
+export const TEST_ACCOUNT_USERNAME = "testeraccount";
 
 export const DEFAULT_PAGE_SIZE = 50;
 export const MAX_PAGE_SIZE = 100;
@@ -203,6 +208,11 @@ export function parseAuditFilters(
   if (to && !validDate(to)) return { ok: false, error: "to must be a valid date (YYYY-MM-DD)" };
   if (from && to && from > to) return { ok: false, error: "from must not be after to" };
 
+  const hideTestRaw = val("hideTest");
+  if (hideTestRaw !== null && hideTestRaw !== "1" && hideTestRaw !== "0") {
+    return { ok: false, error: "hideTest must be 1 or 0" };
+  }
+
   const pageRaw = val("page");
   const page = pageRaw === null ? 1 : Number(pageRaw);
   if (!Number.isInteger(page) || page < 1) return { ok: false, error: "page must be a positive integer" };
@@ -214,6 +224,6 @@ export function parseAuditFilters(
 
   return {
     ok: true,
-    filters: { scope: scope as AuditScope, orgId, by: val("by"), verb: verb as AuditVerb | null, item, from, to, page, pageSize },
+    filters: { scope: scope as AuditScope, orgId, by: val("by"), verb: verb as AuditVerb | null, item, from, to, hideTest: hideTestRaw === "1", page, pageSize },
   };
 }

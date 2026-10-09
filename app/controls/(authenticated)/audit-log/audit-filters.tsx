@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { SelectField } from "@/components/select-field";
-import { AUDIT_VERBS, type AuditScope } from "@/lib/superadmin-audit-view";
+import { AUDIT_VERBS, TEST_ACCOUNT_USERNAME, type AuditScope } from "@/lib/superadmin-audit-view";
 
 // Filter bar for /controls/audit-log (hotfix 2026-10-02). All state lives in the URL query string, so a
 // filtered view is linkable and the server page stays the single source of truth. No i18n and no shared
@@ -17,6 +17,7 @@ export interface FilterValues {
   item: string;
   from: string;
   to: string;
+  hideTest: boolean;
 }
 
 interface Facets {
@@ -49,12 +50,13 @@ export function AuditFilters({ current, facets }: { current: FilterValues; facet
     for (const k of ["orgId", "by", "verb", "item", "from", "to"] as const) {
       if (merged[k]) params.set(k, merged[k]);
     }
+    if (merged.hideTest) params.set("hideTest", "1");
     const qs = params.toString();
     startTransition(() => router.push(qs ? `${pathname}?${qs}` : pathname)); // any filter change resets to page 1
   }
 
   const hasAny =
-    current.scope !== "all" || !!(current.orgId || current.by || current.verb || current.item || current.from || current.to);
+    current.scope !== "all" || !!(current.orgId || current.by || current.verb || current.item || current.from || current.to) || current.hideTest;
 
   return (
     <section
@@ -141,6 +143,16 @@ export function AuditFilters({ current, facets }: { current: FilterValues; facet
           <input id="audit-to" type="date" className={inputCls} value={current.to} min={current.from || undefined}
             onChange={(e) => apply({ to: e.target.value })} />
         </div>
+        <label htmlFor="audit-hide-test" className="flex cursor-pointer items-center gap-2 py-2 text-sm text-text-body">
+          <input
+            id="audit-hide-test"
+            type="checkbox"
+            checked={current.hideTest}
+            onChange={(e) => apply({ hideTest: e.target.checked })}
+            className="h-4 w-4 accent-[var(--color-primary)]"
+          />
+          Hide {TEST_ACCOUNT_USERNAME} activity
+        </label>
         <button
           type="button"
           disabled={!hasAny}

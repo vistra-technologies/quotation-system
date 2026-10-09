@@ -101,7 +101,7 @@ test("parseAuditFilters: defaults when nothing is set", () => {
   assert.ok(r.ok);
   if (r.ok) {
     assert.deepEqual(r.filters, {
-      scope: "all", orgId: null, by: null, verb: null, item: null, from: null, to: null, page: 1, pageSize: 50,
+      scope: "all", orgId: null, by: null, verb: null, item: null, from: null, to: null, hideTest: false, page: 1, pageSize: 50,
     });
   }
 });
@@ -114,7 +114,7 @@ test("parseAuditFilters: accepts a full valid combination; blank values count as
   assert.ok(r.ok);
   if (r.ok) assert.deepEqual(r.filters, {
     scope: "org", orgId: "org1", by: "devadmin", verb: "UPDATE", item: "Formula set",
-    from: "2026-10-01", to: "2026-10-02", page: 3, pageSize: 100,
+    from: "2026-10-01", to: "2026-10-02", hideTest: false, page: 3, pageSize: 100,
   });
   const blank = parse({ scope: "", verb: "  ", by: "", page: "" });
   assert.ok(blank.ok);
@@ -140,11 +140,21 @@ test("parseAuditFilters: rejects bad values with a message", () => {
     [{ pageSize: "0" }, /pageSize/],
     [{ pageSize: "101" }, /pageSize/],
     [{ pageSize: "x" }, /pageSize/],
+    [{ hideTest: "yes" }, /hideTest/],
+    [{ hideTest: "true" }, /hideTest/],
   ];
   for (const [q, re] of bad) {
     const r = parse(q);
     assert.equal(r.ok, false, JSON.stringify(q));
     if (!r.ok) assert.match(r.error, re, JSON.stringify(q));
+  }
+});
+
+test("parseAuditFilters: hideTest=1 is on, 0 / blank / absent are off", () => {
+  for (const [v, want] of [["1", true], ["0", false], ["", false]] as const) {
+    const r = parse({ hideTest: v });
+    assert.ok(r.ok);
+    if (r.ok) assert.equal(r.filters.hideTest, want, v);
   }
 });
 

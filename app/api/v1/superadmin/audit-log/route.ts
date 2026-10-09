@@ -20,6 +20,7 @@ export const dynamic = "force-dynamic";
 //   verb     INSERT | UPDATE | DELETE
 //   item     Organization | User | Role | Formula set | Component type | SuperAdmin
 //   from/to  YYYY-MM-DD, inclusive (UTC)
+//   hideTest 1 — exclude entries by the `testeraccount` SuperAdmin (total/paging follow the filtered set)
 //   page     1-based; pageSize 1–100 (default 50)
 // Returns 200 { entries, total, page, pageSize, facets: { orgs, admins, items } }; 400 bad filter; 401.
 

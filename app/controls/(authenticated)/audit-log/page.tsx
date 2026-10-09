@@ -24,7 +24,7 @@ export default async function AuditLogPage({
   // A hand-edited bad query string shows a message instead of crashing.
   const parsed = parseAuditFilters(get);
   const qs = new URLSearchParams();
-  for (const k of ["scope", "orgId", "by", "verb", "item", "from", "to", "page"]) {
+  for (const k of ["scope", "orgId", "by", "verb", "item", "from", "to", "hideTest", "page"]) {
     const v = get(k);
     if (v) qs.set(k, v);
   }
@@ -49,6 +49,7 @@ export default async function AuditLogPage({
     item: f?.item ?? "",
     from: f?.from ?? "",
     to: f?.to ?? "",
+    hideTest: f?.hideTest ?? false,
   };
   const facets = data?.facets ?? { orgs: [], admins: [], items: [] };
 
