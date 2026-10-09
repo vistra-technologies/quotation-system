@@ -3,6 +3,7 @@ import { internalFetch } from "@/lib/internal-fetch";
 import { SuspendOrgButton } from "./_suspend-button";
 import { DeleteOrgButton } from "./_delete-button";
 import { MismatchChip } from "./_mismatch-chip";
+import { SeatPill } from "../_seat-pill";
 
 // Always render live — reads the SuperAdminSession table (via guard layout) and live DB.
 export const dynamic = "force-dynamic";
@@ -16,6 +17,7 @@ interface OrgRow {
   isSuspended: boolean;
   createdAt: string; // ISO string from JSON
   userCount: number;
+  userLimit: number;
   activeFormulaSetId: string | null;
   formulaSetLabel: string | null;
   hasMismatch: boolean;
@@ -181,7 +183,9 @@ function OrgsTable({
                       </span>
                     )}
                   </td>
-                  <td className="px-5 py-4 text-text-body">{org.userCount}</td>
+                  <td className="px-5 py-4">
+                    <SeatPill used={org.userCount} limit={org.userLimit} />
+                  </td>
                   <td className="px-5 py-4 text-text-muted">
                     {new Date(org.createdAt).toLocaleDateString("en-GB", {
                       day: "2-digit",

@@ -37,7 +37,7 @@ export function FormulaForm({
   const hasMismatch = activeWarnings.length > 0;
 
   return (
-    <div className="flex max-w-[640px] flex-col gap-8">
+    <div className="flex max-w-3xl flex-col gap-8">
       {/* ── Persistent mismatch banner (shown when mismatch is present) ── */}
       {hasMismatch && !state.saved && (
         <MismatchBanner message="Formula set mismatch — the assigned set references ComponentType codes that are missing or inactive in this org. New projects cannot be created under this org until this is resolved." />

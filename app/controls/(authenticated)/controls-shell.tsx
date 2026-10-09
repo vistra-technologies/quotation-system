@@ -345,7 +345,7 @@ export function ControlsShell({ children, username, orgs }: ControlsShellProps) 
       {/* ── Right column: top bar + page content ── */}
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2.5 border-b border-border bg-bg-card px-3 shadow-header sm:gap-5 sm:px-10">
+        <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center gap-2.5 border-b border-border bg-bg-card px-4 shadow-header sm:gap-5 sm:px-6 lg:px-8">
           <span className="hidden whitespace-nowrap text-xs font-extrabold uppercase tracking-[.06em] text-text-muted sm:inline">
             SuperAdmin Console
           </span>
@@ -366,9 +366,11 @@ export function ControlsShell({ children, username, orgs }: ControlsShellProps) 
           </div>
         </header>
 
-        {/* Main content area — padded container for all /controls/** pages */}
+        {/* Main content area — padded container for all /controls/** pages. Fix round 1: was max-w-5xl
+            (1024px), which left huge empty margins on wide screens; now a 1600px cap with the same
+            responsive gutter as the top bar (16 / 24 / 32px). Forms inside cards keep their own max-w. */}
         <main className="flex-1 overflow-auto">
-          <div className="mx-auto w-full max-w-5xl px-4 py-4 sm:px-8 sm:py-8">{children}</div>
+          <div className="mx-auto w-full max-w-[1600px] px-4 py-4 sm:px-6 sm:py-8 lg:px-8">{children}</div>
         </main>
       </div>
     </div>

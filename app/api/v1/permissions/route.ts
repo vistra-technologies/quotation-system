@@ -8,6 +8,7 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
+import { ApiAuthError, apiAuthErrorResponse, assertSessionOrgNotSuspended } from "@/lib/api-auth";
 import { listPermissions, createPermission } from "@/lib/data/admin";
 import type { SessionData } from "@/lib/session";
 
@@ -24,7 +25,8 @@ export const dynamic = "force-dynamic";
  * guard in getApiSession() does not apply.  Instead we read the session cookie
  * directly (same call getApiSession() makes internally) and check active + MANAGE_FEATURES.
  *
- * This does NOT modify lib/api-auth.ts (frozen).  The session's own org is used
+ * Suspension (Stage 29 fix round 1): refused via assertSessionOrgNotSuspended() in lib/api-auth.ts.
+ * The session's own org is used
  * implicitly: the user's MANAGE_FEATURES permission comes from their org's role, and
  * the data returned is global (not org-scoped), so no additional tenant check is needed.
  */
@@ -48,6 +50,14 @@ async function getPermissionsSession(
 
   if (!u.active) {
     return apiUnauthorized("Account is deactivated");
+  }
+
+  // Suspended means no org-user access at all (Stage 29 S29-9), same as getApiSession() step 4.
+  try {
+    await assertSessionOrgNotSuspended(u.organizationId as string);
+  } catch (err) {
+    if (err instanceof ApiAuthError) return apiAuthErrorResponse(err);
+    throw err;
   }
 
   const session: SessionData = {

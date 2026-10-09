@@ -15,7 +15,7 @@ import type { APIRequestContext } from "@playwright/test";
 import { covers } from "../fixtures/covers";
 import { Guarded, createAllowance } from "../fixtures/clients";
 import type { RunState } from "../fixtures/run-state";
-import { orgUrl } from "../../e2e/helpers";
+import { apiUrl, orgUrl } from "../../e2e/helpers";
 import { countProjectCalculations, regressionSnapshot, rgrInsertCalculation } from "../../e2e/db-helpers";
 import { orgApi } from "./project-helpers";
 import { ORG_B_USER_LIMIT } from "../fixtures/test-org-limit";
@@ -236,6 +236,10 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
       expect(r.status(), path).toBe(403);
       expect(await r.json(), path).toEqual(body);
     }
+    // The global permission catalog route has no orgSlug, so it checks suspension itself (Stage 29 fix round 1, was review-5 M-1; POST shares the helper, but the guard forbids global writes in tests).
+    const perms = await admin.get(apiUrl(orgC.slug, "/api/v1/permissions"));
+    expect(perms.status(), "GET /api/v1/permissions").toBe(403);
+    expect(await perms.json()).toEqual(body);
   });
 
   test("bad suspend bodies → 400; unknown org → 404", async ({ sa }) => {
@@ -258,6 +262,7 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     const admin = new Guarded(heldCtx!, createAllowance([orgC.slug], [orgC.id]));
     expect((await admin.get(orgApi(orgC.slug, "/me"))).status()).toBe(200);
     expect((await admin.get(orgApi(orgC.slug, `/projects/${projectId}`))).status()).toBe(200);
+    expect((await admin.get(apiUrl(orgC.slug, "/api/v1/permissions"))).status()).toBe(200);
     const fresh = await rawContext(playwright, baseURL);
     try {
       expect((await signIn(fresh, orgC.slug, "admin", runPassword())).status()).toBe(200);
