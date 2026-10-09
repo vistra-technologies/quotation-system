@@ -85,6 +85,7 @@ export function assertMutationAllowed(
     refuse(method, pathname, "not an allowed SuperAdmin mutation shape");
   }
 
+  if (pathname === "/api/v1/client-errors") return; // Stage 30: log-only ingest, no DB write, no org data
   if (pathname.startsWith("/api/auth/")) return; // sign-in/out
   refuse(method, pathname, "unknown mutation target");
 }

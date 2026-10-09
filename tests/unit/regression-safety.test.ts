@@ -133,6 +133,9 @@ test("guard: login/logout/admin-create/org-create/auth always allowed", () => {
   assertMutationAllowed("POST", `${SA}/admins`, ALLOWED);
   assertMutationAllowed("POST", `${SA}/orgs`, ALLOWED);
   assertMutationAllowed("POST", "/api/auth/sign-in/username", ALLOWED);
+  // Stage 30: the log-only client-errors ingest is allowed, but only that exact path
+  assertMutationAllowed("POST", "/api/v1/client-errors", ALLOWED);
+  assert.throws(() => assertMutationAllowed("POST", "/api/v1/client-errors/x", ALLOWED), GuardError);
 });
 
 test("guard: /admins/:id needs the id in allowedIds", () => {
