@@ -15,6 +15,7 @@ import {
   verbForAction,
   type AuditFilters,
   type AuditVerb,
+  TEST_ACCOUNT_USERNAME,
 } from "@/lib/superadmin-audit-view";
 
 export interface AuditEntry {
@@ -66,6 +67,8 @@ export function buildAuditWhere(f: AuditFilters): Prisma.SuperAdminAuditLogWhere
   if (f.scope === "platform") and.push({ organizationId: null });
   if (f.scope === "org") and.push(f.orgId ? { organizationId: f.orgId } : { organizationId: { not: null } });
   if (f.by) and.push({ superAdminUsername: f.by });
+  // Rows with no actor snapshot (null) are kept: a bare `not` would drop them (SQL NULL semantics).
+  if (f.hideTest) and.push({ OR: [{ superAdminUsername: null }, { superAdminUsername: { not: TEST_ACCOUNT_USERNAME } }] });
   if (f.verb) and.push(verbWhere(f.verb));
   if (f.item) and.push({ targetType: { in: targetTypesForItem(f.item) } });
   if (f.from || f.to) {

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { compatResultToWarnings } from "@/lib/data/superadmin/orgs";
 import { MismatchChip } from "../_mismatch-chip";
@@ -38,14 +37,7 @@ export default async function OrgWorkspaceLayout({
 
   return (
     <div>
-      <Link
-        href="/controls/orgs"
-        className="inline-flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text-heading"
-      >
-        ← Back to organizations
-      </Link>
-
-      <div className="mt-3 flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <h1 className="text-2xl font-bold text-text-heading">{org.name}</h1>
         {hasMismatch && <MismatchChip show />}
         <span

@@ -240,6 +240,25 @@ test.describe("GET /api/v1/superadmin/audit-log", () => {
     expect(none).toMatchObject({ total: 0, entries: [] });
   });
 
+  test("hideTest=1 drops every entry by the testeraccount SuperAdmin; totals follow; 0 / absent change nothing; junk → 400", async ({ sa }) => {
+    // the literal is deliberate: the UI checkbox is labelled for this exact account
+    const of = (q: Record<string, string | number>) => auditLog(sa, { pageSize: 100, ...q });
+    for (const q of ["hideTest=yes", "hideTest=true", "hideTest=2"]) {
+      expect((await json<{ error: string }>(await sa.get(`${SA}/audit-log?${q}`), 400, q)).error).toMatch(/hideTest/);
+    }
+    // other workers write audit rows concurrently — read the counts in one quiet window
+    await expect(async () => {
+      const [all, hidden, off, theirs, hiddenTheirs] = await Promise.all([
+        of({ pageSize: 1 }), of({ hideTest: 1 }), of({ hideTest: 0, pageSize: 1 }),
+        of({ by: "testeraccount", pageSize: 1 }), of({ by: "testeraccount", hideTest: 1, pageSize: 1 }),
+      ]);
+      for (const e of hidden.entries) expect(e.by.username).not.toBe("testeraccount");
+      expect(hiddenTheirs).toMatchObject({ total: 0, entries: [] });
+      expect(off.total).toBe(all.total);
+      expect(hidden.total + theirs.total).toBe(all.total); // the filtered set is exactly "all minus testeraccount"
+    }).toPass({ timeout: 30_000 });
+  });
+
   test("verb filter: INSERT / UPDATE / DELETE partition the log (no overlap, nothing missing)", async ({ sa }) => {
     // other workers write audit rows concurrently — retry until the four counts are read in one quiet window
     await expect(async () => {

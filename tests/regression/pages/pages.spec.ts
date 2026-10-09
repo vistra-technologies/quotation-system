@@ -359,6 +359,40 @@ test.describe("controls: old flat URLs redirect into the org workspace; switchin
   });
 });
 
+test.describe("controls: fix round 2", () => {
+  test("org workspace header has no 'Back to organizations' link and starts with the org name", async ({ browser, run, sa }) => {
+    await withPage({ browser, run }, "sa", sa.token, async (o) => {
+      await o.page.goto(`/controls/orgs/${run.testOrg.id}/overview`);
+      await expect(o.page.getByRole("heading", { level: 1 })).toBeVisible();
+      expect(await o.page.getByText("Back to organizations").count()).toBe(0);
+    });
+  });
+
+  test("audit log: 'Hide testeraccount activity' toggles ?hideTest=1, keeps it across paging, hides that account's rows", async ({ browser, run, sa }) => {
+    await withPage({ browser, run }, "sa", sa.token, async (o) => {
+      await o.page.goto("/controls/audit-log");
+      const box = o.page.getByLabel("Hide testeraccount activity");
+      await expect(box).toBeVisible();
+      await expect(box).not.toBeChecked(); // default unchecked
+      await expect.poll(() => isHydrated(box), { message: "audit filters never hydrated" }).toBe(true);
+      await box.click(); // controlled by the URL: click, not check() (the state flips only after navigation)
+      await expect.poll(() => new URL(o.page.url()).searchParams.get("hideTest")).toBe("1");
+      await expect(o.page.getByTestId("audit-count")).toBeVisible();
+      // the "By" column (3rd cell) only — a row ABOUT testeraccount by another admin legitimately stays
+      await expect(o.page.getByTestId("audit-row").locator("td:nth-child(3)").filter({ hasText: /^testeraccount$/ })).toHaveCount(0);
+      // reload keeps it (URL is the state)
+      await o.page.reload();
+      await expect(o.page.getByLabel("Hide testeraccount activity")).toBeChecked();
+      // the pager links carry the param
+      for (const name of ["Previous", "Next"]) {
+        expect(await o.page.getByRole("link", { name, exact: true }).getAttribute("href")).toContain("hideTest=1");
+      }
+      await o.page.getByLabel("Hide testeraccount activity").click();
+      await expect.poll(() => new URL(o.page.url()).searchParams.has("hideTest")).toBe(false);
+    });
+  });
+});
+
 // ── routing ─────────────────────────────────────────────────────────────────
 
 test.describe("routing", () => {
