@@ -61,3 +61,7 @@ Host header (via better-auth's dynamic-baseURL support, or an equivalent per-req
 build-time env var, so a single deployment can correctly serve both `*.easeetool.com` hosts and ad-hoc
 `*.vercel.app` preview hosts at once.
 <!-- END:nextjs-agent-rules -->
+
+## Logging: `log.*` never `console.*`, wrap new routes and actions (Stage 30)
+
+Use `log.info|warn|error` from `@/lib/logger`, never `console.*` (ESLint `no-console` fails the build in `app/api/**`, `lib/**`, `instrumentation.ts` and every `"use server"` file; client components are exempt). Wrap every new route handler as `export const VERB = withRoute("VERB /path", async (request, ctx) => { ... })` with the exact `covers()` id from `tests/regression/`, and every new server action as `export const act = withAction("<file>#<name>", async (...) => { ... })` (`/api/health` stays unwrapped). Never log bodies, headers, usernames, emails or IPs; pass `{ err }` and let the logger redact. To read logs, query Axiom on `_time` (the `ts` field is consumed as `_time`, so there is no `ts` column), filter by `requestId` (the `x-request-id` response header and the `requestId` in every 500 body), datasets `easeetool-prod` / `easeetool-preview` / `vercel`. Design: `quotation-system-docs/design-docs/05-architecture.md` (Observability).
