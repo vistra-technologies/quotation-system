@@ -102,8 +102,10 @@ function digestOf(err: unknown): string {
  * Best-effort identity for an action's log context (S30-15 / bugs-1 finding 1). Thin-marshaler actions
  * only call internalFetch and never getSession(), so nothing would set orgSlug/userId/saId on
  * `action.end`. This starts the cached getSession() (and, if there is no org session, the SuperAdmin
- * lookup) concurrently with the action body; both call setContext() on the active store. getSession()
- * is React.cache()'d, so an action body that calls it too pays nothing extra. Never throws.
+ * lookup) concurrently with the action body; both call setContext() on the active store. Cost: every
+ * wrapped action pays ~3 indexed single-row reads (auth session, org, role; 1 for SuperAdmin), run in
+ * parallel with the body, so added latency is ~0. The per-request cache does NOT dedupe inside server
+ * actions: a getSession() the body makes itself is a separate read. Never throws.
  */
 async function defaultResolveIdentity(): Promise<void> {
   try {
@@ -129,7 +131,7 @@ async function settleIdentity(pending: Promise<void>): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     await Promise.race([
-      pending.catch(() => undefined),
+      pending,
       new Promise<void>((resolve) => {
         timer = setTimeout(resolve, IDENTITY_WAIT_MS);
       }),
@@ -162,26 +164,28 @@ export function withAction<A extends unknown[], R>(
       const started = Date.now();
       let identity: Promise<void> = Promise.resolve();
       try {
-        identity = identityResolver();
+        identity = identityResolver().catch(() => undefined);
       } catch {
         // a throwing resolver must not affect the action
       }
       try {
         const result = await fn(...args);
+        const durationMs = Date.now() - started;
         await settleIdentity(identity);
-        log.info("action.end", { ok: true, durationMs: Date.now() - started });
+        log.info("action.end", { ok: true, durationMs });
         return result;
       } catch (err) {
+        const durationMs = Date.now() - started;
         await settleIdentity(identity);
         const digest = digestOf(err);
         if (digest.startsWith("NEXT_REDIRECT")) {
-          log.info("action.end", { ok: true, outcome: "redirect", durationMs: Date.now() - started });
+          log.info("action.end", { ok: true, outcome: "redirect", durationMs });
         } else if (digest.startsWith("NEXT_HTTP_ERROR_FALLBACK")) {
-          log.info("action.end", { ok: false, outcome: "not_found", durationMs: Date.now() - started });
+          log.info("action.end", { ok: false, outcome: "not_found", durationMs });
         } else {
           log.error("action.end", {
             ok: false,
-            durationMs: Date.now() - started,
+            durationMs,
             err: serializeError(err),
           });
         }

@@ -160,6 +160,7 @@ test("withAction: success logs ok:true; throw logs ok:false and rethrows; redire
 
 test("withAction: identity is filled on action.end for an action that never reads the session (S30-15)", async () => {
   setActionIdentityResolver(async () => {
+    await new Promise((r) => setTimeout(r, 30)); // longer than the (instant) action body: only the wait lets it land
     setContext({ orgSlug: "acme", userId: "u1", username: "alice" });
   });
   await withAction("a#thin", async () => 1)();
