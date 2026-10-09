@@ -11,6 +11,7 @@
  */
 
 import { cookies } from "next/headers";
+import { setContext } from "@/lib/log-context";
 import { prisma } from "@/lib/prisma";
 
 /** Name of the apex-only SuperAdmin session cookie. */
@@ -121,6 +122,7 @@ async function _resolveSession(token: string): Promise<SuperAdminSessionData> {
     throw new SuperAdminUnauthorizedError("SuperAdmin session has expired");
   }
 
+  setContext({ saId: session.superAdmin.id }); // Stage 30 log identity
   return {
     superAdminId: session.superAdmin.id,
     username: session.superAdmin.username,

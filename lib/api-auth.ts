@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { apiForbidden, apiNotFound, apiUnauthorized } from "@/lib/api-error";
 import { ORG_SUSPENDED_CODE, ORG_SUSPENDED_MESSAGE } from "@/lib/org-suspended";
+import { setContext } from "@/lib/log-context";
 import type { SessionData } from "@/lib/session";
 
 /**
@@ -135,6 +136,7 @@ export async function getApiSession(
     select: { isInternalRole: true },
   });
 
+  setContext({ orgSlug, userId: u.id as string }); // Stage 30 log identity: ids only, no DB read
   return {
     userId: u.id as string,
     organizationId: u.organizationId as string,

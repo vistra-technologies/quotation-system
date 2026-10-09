@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import { getContext } from "@/lib/log-context";
 
 /**
  * Cookie-forwarding fetch helper for Server Components and Server Actions.
@@ -50,6 +51,12 @@ export async function internalFetch(
   // handler's auth.api.getSession() sees the session.
   if (cookie) {
     mergedHeaders["cookie"] = cookie;
+  }
+
+  // Stage 30 (S30-3): lets the API route log the action/page request that caused it.
+  const parentRequestId = getContext()?.requestId;
+  if (parentRequestId) {
+    mergedHeaders["x-parent-request-id"] = parentRequestId;
   }
 
   return fetch(url, {

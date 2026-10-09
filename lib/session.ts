@@ -1,6 +1,7 @@
 import { cache } from "react";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { setContext } from "@/lib/log-context";
 import { prisma } from "@/lib/prisma";
 
 /**
@@ -92,6 +93,7 @@ async function getSessionImpl(): Promise<SessionData | null> {
 
   // External is decided from the role, never from the company id. Missing role or a role
   // from another org => external (fail closed).
+  setContext({ userId: u.id as string }); // Stage 30 log identity (orgSlug is not in hand here: no new read)
   return {
     userId: u.id as string,
     organizationId: u.organizationId as string,
