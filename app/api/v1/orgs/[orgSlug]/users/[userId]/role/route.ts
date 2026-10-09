@@ -7,6 +7,8 @@ import {
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import { changeUserRole } from "@/lib/data/users";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -27,10 +29,12 @@ export const dynamic = "force-dynamic";
  *          calling assertUserInOrg() + verifying the new role belongs to
  *          session.organizationId before writing.
  */
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/orgs/[orgSlug]/users/[userId]/role",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; userId: string }> },
-) {
+) => {
   const { orgSlug, userId } = await params;
 
   let session;
@@ -40,10 +44,7 @@ export async function PATCH(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/users/[userId]/role]",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/users/[userId]/role]", { err });
     return apiServerError();
   }
 
@@ -51,10 +52,7 @@ export async function PATCH(
     await requirePermission(session, PERMISSIONS.MANAGE_USERS);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/users/[userId]/role] requirePermission",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/users/[userId]/role] requirePermission", { err });
     return apiServerError();
   }
 
@@ -80,10 +78,7 @@ export async function PATCH(
         return apiBadRequest(err.message);
       }
     }
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/users/[userId]/role] changeUserRole",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/users/[userId]/role] changeUserRole", { err });
     return apiServerError();
   }
-}
+});

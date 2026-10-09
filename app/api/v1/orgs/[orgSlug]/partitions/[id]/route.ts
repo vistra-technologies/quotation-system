@@ -11,6 +11,8 @@ import {
   InvalidDesignError,
 } from "@/lib/data/partitions";
 import { parseDesignPatch, PartitionDesignError, MAX_DESIGN_MM } from "@/lib/partition-design";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -29,10 +31,12 @@ export const dynamic = "force-dynamic";
  *          getPartitionById() which verifies the partition belongs to the
  *          session's org.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/partitions/[id]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; id: string }> },
-) {
+) => {
   const { orgSlug, id } = await params;
 
   let session;
@@ -42,7 +46,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/partitions/[id]]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/partitions/[id]]", { err });
     return apiServerError();
   }
 
@@ -53,13 +57,10 @@ export async function GET(
     }
     return NextResponse.json({ partition });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/partitions/[id]] getPartitionById",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/partitions/[id]] getPartitionById", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── PATCH /api/v1/orgs/[orgSlug]/partitions/[id] ─────────────────────────────
 
@@ -83,10 +84,12 @@ export async function GET(
  * Returns 404 when the partition is not found in the session's org.
  * Returns 400 on invalid body shape or a cross-tenant selectionId reference.
  */
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/orgs/[orgSlug]/partitions/[id]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; id: string }> },
-) {
+) => {
   const { orgSlug, id } = await params;
 
   let session;
@@ -96,7 +99,7 @@ export async function PATCH(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[PATCH /api/v1/orgs/[orgSlug]/partitions/[id]]", err);
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/partitions/[id]]", { err });
     return apiServerError();
   }
 
@@ -143,10 +146,7 @@ export async function PATCH(
     if (err instanceof InvalidDesignError) {
       return apiBadRequest(err.message);
     }
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/partitions/[id]] updatePartition",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/partitions/[id]] updatePartition", { err });
     return apiServerError();
   }
-}
+});

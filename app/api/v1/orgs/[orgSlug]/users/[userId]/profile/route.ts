@@ -8,6 +8,8 @@ import {
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import { updateUserProfile } from "@/lib/data/users";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -31,10 +33,12 @@ export const dynamic = "force-dynamic";
  *
  * Stage 15 Batch G (U4).
  */
-export async function PUT(
+export const PUT = withRoute(
+  "PUT /api/v1/orgs/[orgSlug]/users/[userId]/profile",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; userId: string }> },
-) {
+) => {
   const { orgSlug, userId } = await params;
 
   let session;
@@ -44,7 +48,7 @@ export async function PUT(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[PUT /api/v1/orgs/[orgSlug]/users/[userId]/profile]", err);
+    log.error("[PUT /api/v1/orgs/[orgSlug]/users/[userId]/profile]", { err });
     return apiServerError();
   }
 
@@ -52,10 +56,7 @@ export async function PUT(
     await requirePermission(session, PERMISSIONS.MANAGE_USERS);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[PUT /api/v1/orgs/[orgSlug]/users/[userId]/profile] requirePermission",
-      err,
-    );
+    log.error("[PUT /api/v1/orgs/[orgSlug]/users/[userId]/profile] requirePermission", { err });
     return apiServerError();
   }
 
@@ -120,10 +121,7 @@ export async function PUT(
         return apiBadRequest(err.message);
       }
     }
-    console.error(
-      "[PUT /api/v1/orgs/[orgSlug]/users/[userId]/profile] updateUserProfile",
-      err,
-    );
+    log.error("[PUT /api/v1/orgs/[orgSlug]/users/[userId]/profile] updateUserProfile", { err });
     return apiServerError();
   }
-}
+});

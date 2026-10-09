@@ -7,6 +7,8 @@ import {
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import { getRoleById } from "@/lib/data/admin";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -23,10 +25,12 @@ export const dynamic = "force-dynamic";
  *
  * Returns: { role } with the full role row (id, organizationId, name, description, ...).
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/roles/[roleId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; roleId: string }> },
-) {
+) => {
   const { orgSlug, roleId } = await params;
 
   let session;
@@ -36,7 +40,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/roles/[roleId]]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/roles/[roleId]]", { err });
     return apiServerError();
   }
 
@@ -44,10 +48,7 @@ export async function GET(
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/roles/[roleId]] requirePermission",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/roles/[roleId]] requirePermission", { err });
     return apiServerError();
   }
 
@@ -56,10 +57,7 @@ export async function GET(
     if (!role) return apiNotFound("Role not found");
     return NextResponse.json({ role });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/roles/[roleId]] getRoleById",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/roles/[roleId]] getRoleById", { err });
     return apiServerError();
   }
-}
+});

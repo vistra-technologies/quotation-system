@@ -6,6 +6,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { renameFloor, deleteFloor } from "@/lib/data/floors";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -24,10 +26,12 @@ export const dynamic = "force-dynamic";
  * Returns 404 when the floor is not found in the session's org.
  * Returns 400 on invalid body or a duplicate label in the project.
  */
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/orgs/[orgSlug]/floors/[id]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; id: string }> },
-) {
+) => {
   const { orgSlug, id } = await params;
 
   let session;
@@ -37,7 +41,7 @@ export async function PATCH(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[PATCH /api/v1/orgs/[orgSlug]/floors/[id]]", err);
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/floors/[id]]", { err });
     return apiServerError();
   }
 
@@ -68,10 +72,10 @@ export async function PATCH(
     ) {
       return apiBadRequest(err instanceof Error ? err.message : "Invalid request");
     }
-    console.error("[PATCH /api/v1/orgs/[orgSlug]/floors/[id]] renameFloor", err);
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/floors/[id]] renameFloor", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── DELETE /api/v1/orgs/[orgSlug]/floors/[id] ────────────────────────────────
 
@@ -87,10 +91,12 @@ export async function PATCH(
  * Returns 200 on success. Returns 404 when the floor is not found in the
  * session's org.
  */
-export async function DELETE(
+export const DELETE = withRoute(
+  "DELETE /api/v1/orgs/[orgSlug]/floors/[id]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; id: string }> },
-) {
+) => {
   const { orgSlug, id } = await params;
 
   let session;
@@ -100,7 +106,7 @@ export async function DELETE(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[DELETE /api/v1/orgs/[orgSlug]/floors/[id]]", err);
+    log.error("[DELETE /api/v1/orgs/[orgSlug]/floors/[id]]", { err });
     return apiServerError();
   }
 
@@ -111,7 +117,7 @@ export async function DELETE(
     }
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("[DELETE /api/v1/orgs/[orgSlug]/floors/[id]] deleteFloor", err);
+    log.error("[DELETE /api/v1/orgs/[orgSlug]/floors/[id]] deleteFloor", { err });
     return apiServerError();
   }
-}
+});

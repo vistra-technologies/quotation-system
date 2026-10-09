@@ -15,6 +15,8 @@ import {
   DuplicateInventoryCodeError,
   InvalidComponentTypeError,
 } from "@/lib/data/catalog";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -45,10 +47,12 @@ export const dynamic = "force-dynamic";
  * listAllInventoryItems so the management page shows inactive items for editing.
  * Old path /api/v1/orgs/[orgSlug]/catalog returns 404 (no redirect, S25-5).
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/inventory",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -58,7 +62,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/inventory]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/inventory]", { err });
     return apiServerError();
   }
 
@@ -66,7 +70,7 @@ export async function GET(
     await requirePermission(session, PERMISSIONS.MANAGE_PRICING);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error("[GET /api/v1/orgs/[orgSlug]/inventory] requirePermission", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/inventory] requirePermission", { err });
     return apiServerError();
   }
 
@@ -74,10 +78,10 @@ export async function GET(
     const items = await listAllInventoryItems(session);
     return NextResponse.json({ items });
   } catch (err) {
-    console.error("[GET /api/v1/orgs/[orgSlug]/inventory] listAllInventoryItems", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/inventory] listAllInventoryItems", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/orgs/[orgSlug]/inventory ───────────────────────────────────
 
@@ -95,10 +99,12 @@ export async function GET(
  *
  * Stage 25 Batch 7.
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/inventory",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -108,7 +114,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/inventory]", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/inventory]", { err });
     return apiServerError();
   }
 
@@ -116,7 +122,7 @@ export async function POST(
     await requirePermission(session, PERMISSIONS.MANAGE_PRICING);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error("[POST /api/v1/orgs/[orgSlug]/inventory] requirePermission", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/inventory] requirePermission", { err });
     return apiServerError();
   }
 
@@ -185,7 +191,7 @@ export async function POST(
     if (err instanceof InvalidComponentTypeError) {
       return apiUnprocessable(err.message);
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/inventory] createInventoryItem", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/inventory] createInventoryItem", { err });
     return apiServerError();
   }
-}
+});

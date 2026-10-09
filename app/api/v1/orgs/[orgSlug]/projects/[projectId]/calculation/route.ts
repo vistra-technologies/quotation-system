@@ -5,6 +5,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { getProjectCalculationForRead } from "@/lib/data/calculations";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -27,10 +29,12 @@ export const dynamic = "force-dynamic";
  * Response body never includes `materialByRoom` (can reach ~90 KB, never needed by any read path —
  * see lib/prisma.ts's client-level omit).
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/projects/[projectId]/calculation",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; projectId: string }> },
-) {
+) => {
   const { orgSlug, projectId } = await params;
 
   let session;
@@ -40,10 +44,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/projects/[projectId]/calculation]",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/projects/[projectId]/calculation]", { err });
     return apiServerError();
   }
 
@@ -66,10 +67,7 @@ export async function GET(
       formulaSet: result.formulaSet,
     });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/projects/[projectId]/calculation] getProjectCalculationForRead",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/projects/[projectId]/calculation] getProjectCalculationForRead", { err });
     return apiServerError();
   }
-}
+});

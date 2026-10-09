@@ -6,6 +6,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { replaceSides, InvalidSidesError, type IncomingSide } from "@/lib/data/rooms";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -37,10 +39,12 @@ export const dynamic = "force-dynamic";
  * invariants (duplicate partitionId, lengthMm on a PARTITION element,
  * below-3-sides while isClosed).
  */
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/orgs/[orgSlug]/rooms/[id]/sides",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; id: string }> },
-) {
+) => {
   const { orgSlug, id } = await params;
 
   let session;
@@ -50,7 +54,7 @@ export async function PATCH(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[PATCH /api/v1/orgs/[orgSlug]/rooms/[id]/sides]", err);
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/rooms/[id]/sides]", { err });
     return apiServerError();
   }
 
@@ -116,10 +120,7 @@ export async function PATCH(
     if (err instanceof InvalidSidesError) {
       return apiBadRequest(err.message);
     }
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/rooms/[id]/sides] replaceSides",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/rooms/[id]/sides] replaceSides", { err });
     return apiServerError();
   }
-}
+});

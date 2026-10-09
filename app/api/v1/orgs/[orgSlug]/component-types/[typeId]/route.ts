@@ -14,6 +14,8 @@ import {
 } from "@/lib/data/components";
 import type { FieldEntry } from "@/lib/data/components";
 import { ComponentTypeGuardError } from "@/lib/formula-compat";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -31,10 +33,12 @@ export const dynamic = "force-dynamic";
  *          filtering on session.organizationId — returns null for types that
  *          belong to a different org, surfaced as 404.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/component-types/[typeId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; typeId: string }> },
-) {
+) => {
   const { orgSlug, typeId } = await params;
 
   let session;
@@ -44,10 +48,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]]",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]]", { err });
     return apiServerError();
   }
 
@@ -55,10 +56,7 @@ export async function GET(
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]] requirePermission",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]] requirePermission", { err });
     return apiServerError();
   }
 
@@ -69,13 +67,10 @@ export async function GET(
     }
     return NextResponse.json({ componentType });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]] getComponentTypeById",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]] getComponentTypeById", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── PATCH /api/v1/orgs/[orgSlug]/component-types/[typeId] ───────────────────
 
@@ -90,10 +85,12 @@ export async function GET(
  * Returns 403 if the session role lacks MANAGE_FEATURES.
  * Returns 404 if the component type does not exist in the org.
  */
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/orgs/[orgSlug]/component-types/[typeId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; typeId: string }> },
-) {
+) => {
   const { orgSlug, typeId } = await params;
 
   let session;
@@ -103,10 +100,7 @@ export async function PATCH(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/component-types/[typeId]]",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/component-types/[typeId]]", { err });
     return apiServerError();
   }
 
@@ -114,10 +108,7 @@ export async function PATCH(
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/component-types/[typeId]] requirePermission",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/component-types/[typeId]] requirePermission", { err });
     return apiServerError();
   }
 
@@ -175,10 +166,7 @@ export async function PATCH(
     ) {
       return apiConflict("code already in use in this org");
     }
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/component-types/[typeId]] updateComponentType",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/component-types/[typeId]] updateComponentType", { err });
     return apiServerError();
   }
-}
+});

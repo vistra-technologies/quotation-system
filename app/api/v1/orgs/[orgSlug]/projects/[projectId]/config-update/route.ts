@@ -7,6 +7,8 @@ import {
 } from "@/lib/api-error";
 import { applyConfigUpdate, getConfigUpdatePreview } from "@/lib/data/config-update";
 import { isFormulaPinError } from "@/lib/data/formula-pin";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +21,15 @@ async function authed(request: Request, orgSlug: string) {
     if (err instanceof ApiAuthError) {
       return { res: apiAuthErrorResponse(err) };
     }
-    console.error("[config-update] auth", err);
+    log.error("[config-update] auth", { err });
     return { res: apiServerError() };
   }
 }
 
 /** GET — preview what changed and what needs fixing (Hotfix 2026-10-01, H-6). Any org member; DRAFT only. */
-export async function GET(request: Request, { params }: Ctx) {
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/projects/[projectId]/config-update",
+  async (request: Request, { params }: Ctx) => {
   const { orgSlug, projectId } = await params;
   const a = await authed(request, orgSlug);
   if (a.res) return a.res;
@@ -35,13 +39,15 @@ export async function GET(request: Request, { params }: Ctx) {
     if ("notDraft" in result) return apiConflict("Configuration can only be updated while the project is DRAFT");
     return NextResponse.json(result);
   } catch (err) {
-    console.error("[GET config-update]", err);
+    log.error("[GET config-update]", { err });
     return apiServerError();
   }
-}
+});
 
 /** POST { fixes } — apply in one transaction. 409 not DRAFT / formula-set problem; 422 selections still invalid. */
-export async function POST(request: Request, { params }: Ctx) {
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/projects/[projectId]/config-update",
+  async (request: Request, { params }: Ctx) => {
   const { orgSlug, projectId } = await params;
   const a = await authed(request, orgSlug);
   if (a.res) return a.res;
@@ -66,7 +72,7 @@ export async function POST(request: Request, { params }: Ctx) {
     return NextResponse.json(result);
   } catch (err) {
     if (isFormulaPinError(err)) return apiConflict(err.message);
-    console.error("[POST config-update]", err);
+    log.error("[POST config-update]", { err });
     return apiServerError();
   }
-}
+});

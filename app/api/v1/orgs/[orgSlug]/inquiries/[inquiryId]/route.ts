@@ -11,6 +11,8 @@ import {
   dismissInquiry,
   updateInquiry,
 } from "@/lib/data/inquiries";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -25,10 +27,12 @@ export const dynamic = "force-dynamic";
  *          filtering on session.organizationId — returns null for inquiries that
  *          belong to a different org, surfaced as 404.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; inquiryId: string }> },
-) {
+) => {
   const { orgSlug, inquiryId } = await params;
 
   let session;
@@ -38,10 +42,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]]",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]]", { err });
     return apiServerError();
   }
 
@@ -52,13 +53,10 @@ export async function GET(
     }
     return NextResponse.json({ inquiry });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]] getInquiryById",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]] getInquiryById", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── PATCH /api/v1/orgs/[orgSlug]/inquiries/[inquiryId] ──────────────────────
 
@@ -80,10 +78,12 @@ export async function GET(
  * Tenancy: enforced by getApiSession() (403 on cross-org) and DAL findFirst on
  *          (id, organizationId).
  */
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; inquiryId: string }> },
-) {
+) => {
   const { orgSlug, inquiryId } = await params;
 
   let session;
@@ -93,10 +93,7 @@ export async function PATCH(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]]",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]]", { err });
     return apiServerError();
   }
 
@@ -197,10 +194,7 @@ export async function PATCH(
         if (code === "NOT_EDITABLE")
           return apiConflict("Only NEW inquiries can be edited.");
       }
-      console.error(
-        "[PATCH /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]] updateInquiry",
-        err,
-      );
+      log.error("[PATCH /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]] updateInquiry", { err });
       return apiServerError();
     }
   }
@@ -223,10 +217,7 @@ export async function PATCH(
         return apiConflict("Inquiry is already closed.");
       }
     }
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]] dismissInquiry",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]] dismissInquiry", { err });
     return apiServerError();
   }
-}
+});

@@ -13,6 +13,8 @@ import {
   addRolePermission,
   removeRolePermission,
 } from "@/lib/data/admin";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -30,10 +32,12 @@ export const dynamic = "force-dynamic";
  *
  * Returns: { rolePermissions: Array<{ permissionId, permission: { id, code, description } }> }
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; roleId: string }> },
-) {
+) => {
   const { orgSlug, roleId } = await params;
 
   let session;
@@ -43,10 +47,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions]",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions]", { err });
     return apiServerError();
   }
 
@@ -54,10 +55,7 @@ export async function GET(
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions] requirePermission",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions] requirePermission", { err });
     return apiServerError();
   }
 
@@ -69,13 +67,10 @@ export async function GET(
     const rolePermissions = await listRolePermissions(roleId);
     return NextResponse.json({ rolePermissions });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions] listRolePermissions",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions] listRolePermissions", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions ──────────────────
 
@@ -91,10 +86,12 @@ export async function GET(
  * Returns 400 if permissionId is missing.
  * Returns 403 if MANAGE_FEATURES is not held.
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; roleId: string }> },
-) {
+) => {
   const { orgSlug, roleId } = await params;
 
   let session;
@@ -104,10 +101,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions]",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions]", { err });
     return apiServerError();
   }
 
@@ -115,10 +109,7 @@ export async function POST(
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions] requirePermission",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions] requirePermission", { err });
     return apiServerError();
   }
 
@@ -140,13 +131,10 @@ export async function POST(
     if (err instanceof Error && err.message.includes("not found")) {
       return apiNotFound(err.message);
     }
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions] addRolePermission",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions] addRolePermission", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── DELETE /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions ────────────────
 
@@ -162,10 +150,12 @@ export async function POST(
  * Returns 400 if permissionId is missing.
  * Returns 403 if MANAGE_FEATURES is not held.
  */
-export async function DELETE(
+export const DELETE = withRoute(
+  "DELETE /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; roleId: string }> },
-) {
+) => {
   const { orgSlug, roleId } = await params;
 
   let session;
@@ -175,10 +165,7 @@ export async function DELETE(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[DELETE /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions]",
-      err,
-    );
+    log.error("[DELETE /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions]", { err });
     return apiServerError();
   }
 
@@ -186,10 +173,7 @@ export async function DELETE(
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[DELETE /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions] requirePermission",
-      err,
-    );
+    log.error("[DELETE /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions] requirePermission", { err });
     return apiServerError();
   }
 
@@ -211,10 +195,7 @@ export async function DELETE(
     if (err instanceof Error && err.message.includes("not found")) {
       return apiNotFound(err.message);
     }
-    console.error(
-      "[DELETE /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions] removeRolePermission",
-      err,
-    );
+    log.error("[DELETE /api/v1/orgs/[orgSlug]/roles/[roleId]/permissions] removeRolePermission", { err });
     return apiServerError();
   }
-}
+});

@@ -12,6 +12,8 @@ import {
   setComponentTypeOrgConfig,
 } from "@/lib/data/components";
 import { validateFieldOptionsConfig } from "@/lib/validate-field-options-config";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -28,10 +30,12 @@ export const dynamic = "force-dynamic";
  *          getComponentTypeById() filtering on session.organizationId — cross-org
  *          typeId returns null here, surfaced as 404.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; typeId: string }> },
-) {
+) => {
   const { orgSlug, typeId } = await params;
 
   let session;
@@ -41,10 +45,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values]",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values]", { err });
     return apiServerError();
   }
 
@@ -52,10 +53,7 @@ export async function GET(
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values] requirePermission",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values] requirePermission", { err });
     return apiServerError();
   }
 
@@ -66,13 +64,10 @@ export async function GET(
     }
     return NextResponse.json({ componentType });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values] getComponentTypeById",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values] getComponentTypeById", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── PUT /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values ────────
 
@@ -92,10 +87,12 @@ export async function GET(
  * Returns 403 if the session role lacks MANAGE_FEATURES.
  * Returns 404 if the component type does not exist in the org.
  */
-export async function PUT(
+export const PUT = withRoute(
+  "PUT /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; typeId: string }> },
-) {
+) => {
   const { orgSlug, typeId } = await params;
 
   let session;
@@ -105,10 +102,7 @@ export async function PUT(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[PUT /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values]",
-      err,
-    );
+    log.error("[PUT /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values]", { err });
     return apiServerError();
   }
 
@@ -116,10 +110,7 @@ export async function PUT(
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[PUT /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values] requirePermission",
-      err,
-    );
+    log.error("[PUT /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values] requirePermission", { err });
     return apiServerError();
   }
 
@@ -161,10 +152,7 @@ export async function PUT(
     if (err instanceof Error && err.message.includes("access denied")) {
       return apiNotFound(err.message);
     }
-    console.error(
-      "[PUT /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values] setComponentTypeOrgConfig",
-      err,
-    );
+    log.error("[PUT /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values] setComponentTypeOrgConfig", { err });
     return apiServerError();
   }
-}
+});
