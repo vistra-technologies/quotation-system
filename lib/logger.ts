@@ -14,6 +14,12 @@ const RANK: Record<Level, number> = { debug: 0, info: 1, warn: 2, error: 3 };
 
 export const MAX_LINE_BYTES = 8 * 1024;
 
+/** Identity/base keys the logger owns (status/durationMs/err are legitimate caller fields); caller fields with these names are renamed to field_<key>. */
+const RESERVED = new Set([
+  "ts", "level", "msg", "requestId", "parentRequestId", "route", "method", "orgSlug", "userId",
+  "saId", "env", "commit",
+]);
+
 function configuredLevel(): Level {
   const raw = (process.env.LOG_LEVEL ?? "").toLowerCase();
   let level: Level = raw in RANK ? (raw as Level) : "info";
@@ -48,7 +54,10 @@ function write(level: Level, msg: string, fields?: Record<string, unknown>): voi
     base.env = process.env.VERCEL_ENV ?? "development";
     base.commit = (process.env.VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7);
 
-    const extra = (fields ? redactValue(fields) : {}) as Record<string, unknown>;
+    const redacted = (fields ? redactValue(fields) : {}) as Record<string, unknown>;
+    // Caller fields may not overwrite reserved keys: rename colliding ones to field_<key>.
+    const extra: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(redacted)) extra[RESERVED.has(k) ? `field_${k}` : k] = v;
     let line = JSON.stringify({ ...base, ...extra });
 
     if (byteLength(line) > MAX_LINE_BYTES) {
@@ -57,7 +66,25 @@ function write(level: Level, msg: string, fields?: Record<string, unknown>): voi
       for (const k of ["status", "durationMs", "ok", "outcome"]) {
         if (k in extra) kept[k] = extra[k];
       }
+      // Shrink the error before dropping it: name + 1 KB message + ~2 KB stack, no cause.
+      const err = extra.err as { name?: unknown; message?: unknown; stack?: unknown; prismaCode?: unknown; model?: unknown } | undefined;
+      if (err && typeof err === "object") {
+        const small: Record<string, unknown> = { name: err.name };
+        if (err.prismaCode !== undefined) small.prismaCode = err.prismaCode;
+        if (err.model !== undefined) small.model = err.model;
+        if (typeof err.message === "string") small.message = err.message.slice(0, 1024);
+        if (typeof err.stack === "string") small.stack = err.stack.slice(0, 2048);
+        kept.err = small;
+      }
       line = JSON.stringify(kept);
+      if (byteLength(line) > MAX_LINE_BYTES && kept.err) {
+        delete (kept.err as Record<string, unknown>).stack;
+        line = JSON.stringify(kept);
+      }
+      if (byteLength(line) > MAX_LINE_BYTES) {
+        delete kept.err;
+        line = JSON.stringify(kept);
+      }
       if (byteLength(line) > MAX_LINE_BYTES) {
         kept.msg = String(kept.msg).slice(0, 1000);
         line = JSON.stringify(kept);

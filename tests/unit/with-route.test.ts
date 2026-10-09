@@ -20,9 +20,15 @@ const terminal = (msg: string) => lines.filter((l) => l.line.msg === msg);
 test("x-request-id is the inbound x-vercel-id, else a UUID", async () => {
   const h = withRoute("GET /x", async () => NextResponse.json({ ok: true }));
   const a = await h(req({ "x-vercel-id": "iad1::abc-123" }));
-  assert.equal(a.headers.get("x-request-id"), "iad1::abc-123");
+  assert.equal(a.headers.get("x-request-id"), "abc-123");
   const b = await h(req());
   assert.match(b.headers.get("x-request-id")!, /^[0-9a-f-]{36}$/);
+  // only the segment after the last `::` is used; malformed ids fall back to a UUID
+  const d = await h(req({ "x-vercel-id": "bom1:iad1::iad1::xyz-9" }));
+  assert.equal(d.headers.get("x-request-id"), "xyz-9");
+  for (const bad of ["bom1::", "bom1::a b", "bom1::" + "a".repeat(129)]) {
+    assert.match((await h(req({ "x-vercel-id": bad }))).headers.get("x-request-id")!, /^[0-9a-f-]{36}$/);
+  }
   // a client-supplied x-request-id is never used
   const c = await h(req({ "x-request-id": "evil" }));
   assert.notEqual(c.headers.get("x-request-id"), "evil");

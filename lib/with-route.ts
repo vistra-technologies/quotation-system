@@ -20,6 +20,17 @@ import { serializeError } from "@/lib/log-redact";
 
 const PARENT_ID_RE = /^[A-Za-z0-9:_-]{1,128}$/;
 
+const REQUEST_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+/**
+ * requestId = the segment after the last `::` of x-vercel-id (equals Vercel's runtime-log id);
+ * randomUUID() when the header is missing, empty, or the segment fails REQUEST_ID_RE (Stage 30 S2 ruling).
+ */
+export function requestIdFrom(vercelId: string | null | undefined): string {
+  const seg = (vercelId ?? "").split("::").pop() ?? "";
+  return REQUEST_ID_RE.test(seg) ? seg : randomUUID();
+}
+
 /** Placeholder for the Axiom transport (Batch 3). Kept here so `after()` is already registered. */
 function flushBuffer(buffer: unknown[]): number {
   return buffer.length;
@@ -59,7 +70,7 @@ export function withRoute<A extends unknown[], R extends Response>(
   handler: (request: Request, ...rest: A) => Promise<R> | R,
 ): (request: Request, ...rest: A) => Promise<R | NextResponse> {
   return async (request: Request, ...rest: A): Promise<R | NextResponse> => {
-    const requestId = request.headers.get("x-vercel-id") || randomUUID();
+    const requestId = requestIdFrom(request.headers.get("x-vercel-id"));
     const parent = request.headers.get("x-parent-request-id");
     const ctx: LogContext = {
       requestId,
@@ -111,7 +122,7 @@ export function withAction<A extends unknown[], R>(
       // no request scope
     }
     const ctx: LogContext = {
-      requestId: requestId || randomUUID(),
+      requestId: requestIdFrom(requestId),
       route: actionId,
       method: "ACTION",
       buffer: [],

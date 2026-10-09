@@ -94,6 +94,7 @@ export function redactValue(value: unknown, depth = 0): unknown {
 }
 
 const STACK_MAX = 6 * 1024;
+const MESSAGE_MAX = 1024;
 const PRISMA_CODE_RE = /^P\d{4}$/;
 
 export type SerializedError = {
@@ -116,21 +117,29 @@ function serializeOne(err: unknown, withCause: boolean): SerializedError {
     return { name: "NonError", message: scrubString(s).slice(0, 1024) };
   }
   const code = (err as { code?: unknown }).code;
-  if (typeof code === "string" && PRISMA_CODE_RE.test(code)) {
-    // Never the message or meta: they carry query values.
+  const isPrisma =
+    (typeof code === "string" && PRISMA_CODE_RE.test(code)) || String(err.name).startsWith("PrismaClient");
+  if (isPrisma) {
+    // Never the message or meta: they carry query values (validation errors echo the whole payload).
     const meta = (err as { meta?: { modelName?: unknown } }).meta;
     const model = typeof meta?.modelName === "string" ? meta.modelName : undefined;
-    const out: SerializedError = { name: err.name, prismaCode: code };
+    const out: SerializedError = { name: err.name };
+    if (typeof code === "string" && PRISMA_CODE_RE.test(code)) out.prismaCode = code;
     if (model) out.model = model;
+    // Location only: stack frame lines, never the message line.
+    if (err.stack) {
+      const frames = err.stack.split("\n").filter((l) => /^\s+at /.test(l)).join("\n");
+      if (frames) out.stack = scrubString(frames).slice(0, STACK_MAX);
+    }
     return out;
   }
-  const out: SerializedError = { name: err.name, message: scrubString(err.message) };
+  const out: SerializedError = { name: err.name, message: scrubString(err.message).slice(0, MESSAGE_MAX) };
   if (err.stack) out.stack = scrubString(err.stack).slice(0, STACK_MAX);
   if (withCause && err.cause !== undefined) out.cause = serializeOne(err.cause, false);
   return out;
 }
 
-/** `{ name, message, stack (<= 6 KB), cause (one level) }`; Prisma errors reduce to `{ name, prismaCode, model }`. */
+/** `{ name, message, stack (<= 6 KB), cause (one level) }`; Prisma errors (code P####, or any name starting `PrismaClient`) reduce to `{ name, prismaCode?, model?, stack frames }`. */
 export function serializeError(err: unknown): SerializedError {
   try {
     return serializeOne(err, true);

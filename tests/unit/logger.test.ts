@@ -96,9 +96,55 @@ test("Prisma-shaped errors log only name, prismaCode and model", () => {
     code: "P2002",
     meta: { target: ["SECRET-USER-VALUE"], modelName: "Project" },
   });
-  assert.deepEqual(serializeError(e), { name: "PrismaClientKnownRequestError", prismaCode: "P2002", model: "Project" });
+  const { stack, ...rest } = serializeError(e);
+  assert.deepEqual(rest, { name: "PrismaClientKnownRequestError", prismaCode: "P2002", model: "Project" });
+  assert.ok(!String(stack).includes("SECRET-USER-VALUE") && !String(stack).includes("Unique constraint"));
   log.error("db", { err: e });
   assert.ok(!errOut[0].includes("SECRET-USER-VALUE"));
+});
+
+test("any PrismaClient* error (no P#### code) logs no message and no payload values", () => {
+  const e = Object.assign(new Error("Invalid `prisma.project.update()` data: { email: 'bob@example.com' }"), {
+    name: "PrismaClientValidationError",
+  });
+  e.stack = `${e.name}: ${e.message}
+    at update (file.ts:1:1)
+    at run (file.ts:2:2)`;
+  const s = serializeError(e);
+  assert.equal(s.name, "PrismaClientValidationError");
+  assert.equal(s.message, undefined);
+  assert.equal(s.prismaCode, undefined);
+  assert.match(s.stack!, /at update/);
+  log.error("db", { err: e });
+  assert.ok(!errOut[0].includes("bob@example.com"));
+  assert.ok(!errOut[0].includes("Invalid `prisma"));
+});
+
+test("a long-message error keeps its name and a truncated message under the 8 KB cap", () => {
+  const e = new Error("M".repeat(5000));
+  assert.equal(serializeError(e).message!.length, 1024);
+  // Several KB of stack + message: the overflow branch must shrink err, not drop it.
+  e.stack = `Error: ${"M".repeat(5000)}\n` + "    at f (x.ts:1:1)\n".repeat(400);
+  log.error("request.unhandled", { status: 500, err: serializeError(e), big: "z".repeat(9000) });
+  const raw = errOut[0];
+  assert.ok(Buffer.byteLength(raw) <= MAX_LINE_BYTES);
+  const p = JSON.parse(raw);
+  assert.equal(p.truncated, true);
+  assert.equal(p.err.name, "Error");
+  assert.ok(p.err.message.startsWith("MMMM") && p.err.message.length <= 1024);
+  assert.equal(p.status, 500);
+});
+
+test("caller fields cannot overwrite reserved keys; they are renamed field_<key>", () => {
+  log.info("real", { level: "debug", msg: "overwritten", requestId: "spoof", userId: "target", route: "r", extra: 1 });
+  const p = JSON.parse(out[0]);
+  assert.equal(p.level, "info");
+  assert.equal(p.msg, "real");
+  assert.equal(p.requestId, undefined);
+  assert.equal(p.field_requestId, "spoof");
+  assert.equal(p.field_userId, "target");
+  assert.equal(p.field_level, "debug");
+  assert.equal(p.extra, 1);
 });
 
 test("plain errors: stack capped at 6 KB, cause one level only, non-Error throws survive", () => {
