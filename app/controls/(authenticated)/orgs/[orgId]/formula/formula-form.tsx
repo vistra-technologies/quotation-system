@@ -1,18 +1,14 @@
 "use client";
 
 import { useActionState } from "react";
-import { editOrg, type EditOrgState } from "../actions";
-import { FormulaSetPicker, type FormulaSetPickerItem } from "../_formula-set-picker";
+import { editOrg, type EditOrgState } from "../../actions";
+import { FormulaSetPicker, type FormulaSetPickerItem } from "../../_formula-set-picker";
 import type { OrgFormulaWarning } from "@/lib/data/superadmin/orgs";
-import { SuspendOrgButton } from "../_suspend-button";
 
 const initialState: EditOrgState = { error: null, saved: false, warnings: [] };
 
-interface EditOrgFormProps {
+interface FormulaFormProps {
   orgId: string;
-  initialName: string;
-  slug: string;
-  isSuspended: boolean;
   activeFormulaSetId: string | null;
   formulaSets: FormulaSetPickerItem[];
   /** Mismatch warnings computed on page load (server-side). */
@@ -20,35 +16,28 @@ interface EditOrgFormProps {
 }
 
 /**
- * Client Component for editing an organization's name and formula-set assignment.
+ * Client Component for the workspace Formula & Pricing tab: the formula-set picker and the
+ * mismatch banner / detail panel. Moved unchanged from the old edit-org form (Stage 25 Batch 5)
+ * in Stage 29 Batch 1; it now saves the formula set alone (the name lives on Overview).
  *
  * Uses useActionState (React 19) so the server action returns { saved, warnings, error }
- * without navigating away. A "Saved" indicator appears on success. Mismatch warnings
- * are shown both on initial render (from server-computed data) and after every save.
- *
- * Stage 25 Batch 5.
+ * without navigating away. Mismatch warnings are shown both on initial render (from
+ * server-computed data) and after every save.
  */
-export function EditOrgForm({
+export function FormulaForm({
   orgId,
-  initialName,
-  slug,
-  isSuspended,
   activeFormulaSetId,
   formulaSets,
   initialMismatches,
-}: EditOrgFormProps) {
+}: FormulaFormProps) {
   const [state, formAction, isPending] = useActionState(editOrg, initialState);
-
-  const inputCls =
-    "rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:border-primary focus:[box-shadow:0_0_0_4px_var(--color-primary-softer)]";
-  const labelCls = "text-xs font-bold uppercase tracking-wide text-text-muted";
 
   // After a save, use the warnings from the action state; otherwise show initial server data.
   const activeWarnings: OrgFormulaWarning[] = state.saved ? state.warnings : initialMismatches;
   const hasMismatch = activeWarnings.length > 0;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex max-w-[640px] flex-col gap-8">
       {/* ── Persistent mismatch banner (shown when mismatch is present) ── */}
       {hasMismatch && !state.saved && (
         <MismatchBanner message="Formula set mismatch — the assigned set references ComponentType codes that are missing or inactive in this org. New projects cannot be created under this org until this is resolved." />
@@ -57,7 +46,6 @@ export function EditOrgForm({
         <MismatchBanner message="Formula set saved — but the assigned set references ComponentType codes that are missing or inactive in this org. New projects cannot be created under this org until this is resolved. See details below." />
       )}
 
-      {/* ── Main form card ── */}
       <div className="rounded-md border border-border bg-bg-card p-7 shadow-card">
         {/* Error banner */}
         {state.error && (
@@ -69,40 +57,6 @@ export function EditOrgForm({
         <form action={formAction} className="flex flex-col gap-5">
           {/* Hidden org ID — server action reads it */}
           <input type="hidden" name="orgId" value={orgId} />
-
-          {/* Name */}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="editOrgName" className={labelCls}>
-              Organization name
-            </label>
-            <input
-              id="editOrgName"
-              name="name"
-              type="text"
-              required
-              autoComplete="off"
-              defaultValue={initialName}
-              className={inputCls}
-            />
-          </div>
-
-          {/* Slug — read-only */}
-          <div className="flex flex-col gap-1">
-            <span className={labelCls}>Slug</span>
-            <input
-              type="text"
-              readOnly
-              value={slug}
-              className={`${inputCls} cursor-default bg-[rgba(27,40,30,0.04)] font-mono text-text-muted`}
-            />
-            <p className="text-xs text-text-muted">
-              The slug is fixed — it is the org&apos;s subdomain (
-              <code className="font-mono">{slug}.easeetool.com</code>) and cannot be changed after creation.
-            </p>
-          </div>
-
-          {/* Divider */}
-          <hr className="border-border" />
 
           {/* Formula set picker */}
           <div className="flex flex-col gap-2">
@@ -167,8 +121,8 @@ export function EditOrgForm({
                   ))}
                 </ul>
                 <p className="mt-3 border-t border-status-pending-border pt-2.5 text-xs font-semibold text-status-pending-text opacity-85">
-                  This is advisory only — the formula set assignment is saved. Fix these ComponentTypes in
-                  this org&apos;s component type configuration to resolve the mismatch.
+                  This is advisory only — the formula set assignment is saved. Fix these ComponentTypes on
+                  the Components tab to resolve the mismatch.
                 </p>
               </div>
             )}
@@ -202,26 +156,6 @@ export function EditOrgForm({
             )}
           </div>
         </form>
-      </div>
-
-      {/* ── Org status section — suspend / reactivate ── */}
-      <div>
-        <h2 className="mb-3 text-base font-bold text-text-heading">Org status</h2>
-        <div className="rounded-md border border-border bg-bg-white p-4">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-bold text-text-heading">
-                {isSuspended ? "Suspended" : "Active"}
-              </p>
-              <p className="mt-0.5 text-sm text-text-muted">
-                {isSuspended
-                  ? "This org is suspended. Users cannot sign in. Reactivate to restore access."
-                  : "This org is active. Users can sign in and create projects."}
-              </p>
-            </div>
-            <SuspendOrgButton orgId={orgId} orgName={initialName} isSuspended={isSuspended} />
-          </div>
-        </div>
       </div>
     </div>
   );

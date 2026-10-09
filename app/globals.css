@@ -41,7 +41,9 @@
 
   /* Design-page tokens — added S21-0.1 to match the mockup's :root vars that
      had no prior equivalent in this theme block. */
+  --color-bg-subtle:      #F4F6EE;   /* Stage 29 S29-11: between bg-card #FBFAF5 and bg-hover #EFF2E8 (neutral pills, chips) */
   --color-bg-hover:       #EFF2E8;   /* --hover-bg: subtle row-hover/highlight tint */
+  --color-status-pending-border: #DEC48A; /* Stage 29 M-1: border of amber/pending notices (mockup --pend-border) */
   --color-danger-bg:      #FDECEA;   /* --danger-bg: destructive-action well background */
   --color-danger-border:  #E3B3AE;   /* --danger-border: destructive-action well border */
   --color-border-strong:  #C7CCB6;   /* --border-strong: canvas frame, panel context menu border */

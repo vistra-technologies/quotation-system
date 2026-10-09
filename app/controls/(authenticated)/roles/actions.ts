@@ -50,9 +50,9 @@ export async function createSuperAdminRole(
 
   const { role } = (await res.json()) as { role: { id: string } };
 
-  revalidatePath("/controls/roles");
+  revalidatePath("/controls", "layout");
   // Redirect to the role detail view.
-  redirect(`/controls/roles?orgId=${encodeURIComponent(orgId)}&roleId=${encodeURIComponent(role.id)}`);
+  redirect(`/controls/orgs/${encodeURIComponent(orgId)}/roles?roleId=${encodeURIComponent(role.id)}`);
 }
 
 // ─── renameSuperAdminRole ─────────────────────────────────────────────────────
@@ -94,7 +94,7 @@ export async function renameSuperAdminRole(
     return { error: errorMessage };
   }
 
-  revalidatePath("/controls/roles");
+  revalidatePath("/controls", "layout");
   return { error: null };
 }
 
@@ -133,7 +133,7 @@ export async function grantSuperAdminRolePermission(formData: FormData): Promise
     throw new Error(body.error ?? "Failed to grant permission");
   }
 
-  revalidatePath("/controls/roles");
+  revalidatePath("/controls", "layout");
 }
 
 // ─── revokeSuperAdminRolePermission ──────────────────────────────────────────
@@ -169,5 +169,5 @@ export async function revokeSuperAdminRolePermission(formData: FormData): Promis
     throw new Error(body.error ?? "Failed to revoke permission");
   }
 
-  revalidatePath("/controls/roles");
+  revalidatePath("/controls", "layout");
 }
