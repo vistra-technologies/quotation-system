@@ -52,7 +52,7 @@ export function stripComments(src: string): string {
 }
 
 /** "app/a/(grp)/[x]/route.ts" -> "/a/[x]" — route groups don't appear in URLs. */
-const urlOf = (appDir: string, file: string) =>
+export const urlOf = (appDir: string, file: string) =>
   "/" + path.relative(appDir, path.dirname(file)).split(path.sep).filter((s) => s && !/^\(.*\)$/.test(s)).join("/");
 
 /** Every name a module exports (comments stripped): declarations, destructuring, and export lists. */
