@@ -22,6 +22,10 @@ const PARENT_ID_RE = /^[A-Za-z0-9:_-]{1,128}$/;
 
 /** Placeholder for the Axiom transport (Batch 3). Kept here so `after()` is already registered. */
 function flushBuffer(buffer: unknown[]): number {
+  // spike-diag: prove after() runs post-response and sees the buffer by reference
+  let rid: unknown;
+  try { rid = JSON.parse(String(buffer[0])).requestId; } catch {}
+  log.info("spike.after", { lines: buffer.length, rid, at: Date.now() });
   return buffer.length;
 }
 
