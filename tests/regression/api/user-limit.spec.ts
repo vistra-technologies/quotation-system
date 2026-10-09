@@ -124,7 +124,7 @@ test.describe("organization user limit", () => {
     const upd = log.entries.filter((e) => e.action === "org.update");
     expect(upd).toHaveLength(1);
     expect(upd[0].summary).toBe("Changed user limit");
-    expect(JSON.stringify(upd[0].details)).toContain('"userLimit":{"from":3,"to":1}');
+    expect((upd[0].details as { userLimit?: unknown }).userLimit).toEqual({ from: 3, to: 1 });
   });
 
   test("PATCH userLimit alone is a valid update (no name / formula set needed) and an unchanged-field PATCH still needs at least one field", async ({ sa }) => {
