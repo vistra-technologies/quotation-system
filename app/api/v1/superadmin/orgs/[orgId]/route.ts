@@ -171,7 +171,8 @@ export async function PATCH(
   await createOrgAuditLog(sa.superAdminId, orgId, "org.update", {
     ...(name !== undefined ? { name } : {}),
     ...(formulaSetId !== undefined ? { formulaSetId } : {}),
-    ...(userLimit !== undefined
+    // Only when it actually changed: the Overview form always posts the current value alongside the name.
+    ...(userLimit !== undefined && result.previousUserLimit !== userLimit
       ? { userLimit: { from: result.previousUserLimit ?? null, to: userLimit } }
       : {}),
   });

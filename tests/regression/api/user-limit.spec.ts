@@ -130,6 +130,12 @@ test.describe("organization user limit", () => {
   test("PATCH userLimit alone is a valid update (no name / formula set needed) and an unchanged-field PATCH still needs at least one field", async ({ sa }) => {
     expect((await json<{ org: { userLimit: number } }>(await sa.patch(`${SA}/orgs/${org.id}`, { data: { userLimit: 4 } }))).org.userLimit).toBe(4);
     await expectStatus(await sa.patch(`${SA}/orgs/${org.id}`, { data: {} }), 400, "empty body");
+    // an UNCHANGED limit (the Overview form always posts it) is not audited as a change
+    await expectStatus(await sa.patch(`${SA}/orgs/${org.id}`, { data: { name: `RGR ${tag()} same-limit`, userLimit: 4 } }), 200, "same limit");
+    const log = await auditLog(sa, { scope: "org", orgId: org.id, verb: "UPDATE", pageSize: 100 });
+    const withLimit = log.entries.filter((e) => e.action === "org.update" && (e.details as { userLimit?: unknown })?.userLimit !== undefined);
+    expect(withLimit).toHaveLength(2); // 3->1 and 1->4 only
+    expect(log.entries.filter((e) => e.action === "org.update").some((e) => e.summary === "Changed name")).toBe(true);
     expect((await saUsers(sa)).seats).toEqual({ limit: 4, used: 3 });
   });
 

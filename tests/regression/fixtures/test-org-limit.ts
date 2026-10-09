@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { RUN_DIR } from "../env";
+import os from "node:os";
 import type { SaClient } from "./clients";
 
 /**
@@ -12,7 +12,11 @@ import type { SaClient } from "./clients";
  *   - the file is deleted only after the restore was read back.
  * Nothing here depends on the migration's default or backfill: it works whatever the limit currently is.
  */
-export const TEST_ORG_LIMIT_FILE = path.join(RUN_DIR, "test-org-user-limit.json");
+/**
+ * Stored OUTSIDE the checkout (home dir), so removing a `.worktrees/` checkout after a crashed run cannot lose
+ * the original. Stable name, shared by every checkout of this machine.
+ */
+export const TEST_ORG_LIMIT_FILE = path.join(os.homedir(), ".vistra-regression", "test-org-user-limit.json");
 
 /** How many users beyond the ones already in the Test Org the suite may need (role users + spec users). */
 export const TEST_ORG_LIMIT_HEADROOM = 50;
@@ -62,7 +66,7 @@ async function setLimit(sa: SaClient, orgId: string, userLimit: number): Promise
 export async function raiseTestOrgLimit(sa: SaClient, orgId: string): Promise<number> {
   const org = await readOrg(sa, orgId);
   const original = originalToRecord(org.userLimit, readPending(), orgId);
-  fs.mkdirSync(RUN_DIR, { recursive: true });
+  fs.mkdirSync(path.dirname(TEST_ORG_LIMIT_FILE), { recursive: true });
   fs.writeFileSync(TEST_ORG_LIMIT_FILE, JSON.stringify({ orgId, original } satisfies Pending));
   const needed = neededTestOrgLimit(org.userLimit, org.userCount);
   if (needed !== org.userLimit) await setLimit(sa, orgId, needed);
