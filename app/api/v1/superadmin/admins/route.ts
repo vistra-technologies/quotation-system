@@ -7,6 +7,8 @@ import {
 } from "@/lib/superadmin-accounts";
 import { listSuperAdmins, createSuperAdmin } from "@/lib/data/superadmin/admins";
 import { writeSuperAdminAudit } from "@/lib/data/superadmin/audit";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -17,7 +19,9 @@ export const dynamic = "force-dynamic";
 // Auth: valid SuperAdmin session (qs-sa-token cookie).
 // Returns 200 { admins: [{ id, username, createdAt, protected, isSelf }] }.
 
-export async function GET(request: Request): Promise<NextResponse> {
+export const GET = withRoute(
+  "GET /api/v1/superadmin/admins",
+  async (request: Request): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -25,17 +29,17 @@ export async function GET(request: Request): Promise<NextResponse> {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[GET /api/v1/superadmin/admins] auth error", err);
+    log.error("[GET /api/v1/superadmin/admins] auth error", { err });
     return apiServerError();
   }
 
   try {
     return NextResponse.json({ admins: await listSuperAdmins(sa.superAdminId) });
   } catch (err) {
-    console.error("[GET /api/v1/superadmin/admins] listSuperAdmins", err);
+    log.error("[GET /api/v1/superadmin/admins] listSuperAdmins", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/superadmin/admins ──────────────────────────────────────────
 //
@@ -44,7 +48,9 @@ export async function GET(request: Request): Promise<NextResponse> {
 //
 // Returns 201 { admin: { id, username } }; 400 invalid fields; 409 duplicate username; 401.
 
-export async function POST(request: Request): Promise<NextResponse> {
+export const POST = withRoute(
+  "POST /api/v1/superadmin/admins",
+  async (request: Request): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -52,7 +58,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[POST /api/v1/superadmin/admins] auth error", err);
+    log.error("[POST /api/v1/superadmin/admins] auth error", { err });
     return apiServerError();
   }
 
@@ -80,7 +86,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     result = await createSuperAdmin(username, b.password);
   } catch (err) {
-    console.error("[POST /api/v1/superadmin/admins] createSuperAdmin", err);
+    log.error("[POST /api/v1/superadmin/admins] createSuperAdmin", { err });
     return apiServerError();
   }
   if (!result.ok) return apiConflict(result.message);
@@ -95,4 +101,4 @@ export async function POST(request: Request): Promise<NextResponse> {
   });
 
   return NextResponse.json({ admin: result.admin }, { status: 201 });
-}
+});

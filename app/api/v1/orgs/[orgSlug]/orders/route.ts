@@ -3,6 +3,8 @@ import { getApiSession, ApiAuthError, apiAuthErrorResponse } from "@/lib/api-aut
 import {
   apiServerError,
 } from "@/lib/api-error";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie.
 export const dynamic = "force-dynamic";
@@ -26,10 +28,12 @@ export const dynamic = "force-dynamic";
  * Response shape:
  *   { orders: [], total: 0, page: number, pageSize: number }
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/orders",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   try {
@@ -38,7 +42,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/orders]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/orders]", { err });
     return apiServerError();
   }
 
@@ -50,4 +54,4 @@ export async function GET(
   const pageSize = 20;
 
   return NextResponse.json({ orders: [], total: 0, page, pageSize });
-}
+});

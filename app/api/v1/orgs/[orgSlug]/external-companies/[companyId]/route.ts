@@ -12,6 +12,8 @@ import {
   updateExternalCompany,
   deleteExternalCompany,
 } from "@/lib/data/external-companies";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -27,10 +29,12 @@ export const dynamic = "force-dynamic";
  *          filtering on session.organizationId — returns null for companies
  *          that belong to a different org, surfaced as 404.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/external-companies/[companyId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; companyId: string }> },
-) {
+) => {
   const { orgSlug, companyId } = await params;
 
   let session;
@@ -40,10 +44,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/external-companies/[companyId]]",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/external-companies/[companyId]]", { err });
     return apiServerError();
   }
 
@@ -54,13 +55,10 @@ export async function GET(
     }
     return NextResponse.json({ company });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/external-companies/[companyId]] getExternalCompanyById",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/external-companies/[companyId]] getExternalCompanyById", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── PATCH /api/v1/orgs/[orgSlug]/external-companies/[companyId] ─────────────
 
@@ -73,10 +71,12 @@ export async function GET(
  *
  * Stage 13 Batch 2.
  */
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/orgs/[orgSlug]/external-companies/[companyId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; companyId: string }> },
-) {
+) => {
   const { orgSlug, companyId } = await params;
 
   let session;
@@ -86,10 +86,7 @@ export async function PATCH(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/external-companies/[companyId]]",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/external-companies/[companyId]]", { err });
     return apiServerError();
   }
 
@@ -97,10 +94,7 @@ export async function PATCH(
     await requirePermission(session, PERMISSIONS.MANAGE_USERS);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/external-companies/[companyId]] requirePermission",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/external-companies/[companyId]] requirePermission", { err });
     return apiServerError();
   }
 
@@ -149,13 +143,10 @@ export async function PATCH(
     if (!updated) return apiNotFound("External company not found");
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/external-companies/[companyId]] updateExternalCompany",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/external-companies/[companyId]] updateExternalCompany", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── DELETE /api/v1/orgs/[orgSlug]/external-companies/[companyId] ────────────
 
@@ -169,10 +160,12 @@ export async function PATCH(
  *
  * Stage 13 Batch 2.
  */
-export async function DELETE(
+export const DELETE = withRoute(
+  "DELETE /api/v1/orgs/[orgSlug]/external-companies/[companyId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; companyId: string }> },
-) {
+) => {
   const { orgSlug, companyId } = await params;
 
   let session;
@@ -182,10 +175,7 @@ export async function DELETE(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[DELETE /api/v1/orgs/[orgSlug]/external-companies/[companyId]]",
-      err,
-    );
+    log.error("[DELETE /api/v1/orgs/[orgSlug]/external-companies/[companyId]]", { err });
     return apiServerError();
   }
 
@@ -193,10 +183,7 @@ export async function DELETE(
     await requirePermission(session, PERMISSIONS.MANAGE_USERS);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[DELETE /api/v1/orgs/[orgSlug]/external-companies/[companyId]] requirePermission",
-      err,
-    );
+    log.error("[DELETE /api/v1/orgs/[orgSlug]/external-companies/[companyId]] requirePermission", { err });
     return apiServerError();
   }
 
@@ -205,10 +192,7 @@ export async function DELETE(
     if (!deleted) return apiNotFound("External company not found");
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error(
-      "[DELETE /api/v1/orgs/[orgSlug]/external-companies/[companyId]] deleteExternalCompany",
-      err,
-    );
+    log.error("[DELETE /api/v1/orgs/[orgSlug]/external-companies/[companyId]] deleteExternalCompany", { err });
     return apiServerError();
   }
-}
+});

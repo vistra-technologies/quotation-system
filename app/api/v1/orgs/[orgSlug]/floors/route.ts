@@ -6,6 +6,8 @@ import {
 } from "@/lib/api-error";
 import { listFloorsByProject, createFloorIfNotExists } from "@/lib/data/floors";
 import { getProjectById } from "@/lib/data/projects";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -27,10 +29,12 @@ export const dynamic = "force-dynamic";
  * Query params:
  *   projectId (required) — ID of the project to list floors for.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/floors",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -40,7 +44,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/floors]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/floors]", { err });
     return apiServerError();
   }
 
@@ -54,10 +58,10 @@ export async function GET(
     const floors = await listFloorsByProject(session, projectId);
     return NextResponse.json({ floors });
   } catch (err) {
-    console.error("[GET /api/v1/orgs/[orgSlug]/floors] listFloorsByProject", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/floors] listFloorsByProject", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/orgs/[orgSlug]/floors ───────────────────────────────────────
 
@@ -73,10 +77,12 @@ export async function GET(
  * { floor } — callers don't need to distinguish create vs. reuse).
  * Returns 400 on missing required fields or a concurrent-race label conflict.
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/floors",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -86,7 +92,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/floors]", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/floors]", { err });
     return apiServerError();
   }
 
@@ -126,7 +132,7 @@ export async function POST(
     ) {
       return apiBadRequest(err instanceof Error ? err.message : "Invalid request");
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/floors] createFloorIfNotExists", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/floors] createFloorIfNotExists", { err });
     return apiServerError();
   }
-}
+});

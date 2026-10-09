@@ -17,6 +17,8 @@ import { getOrgById } from "@/lib/data/superadmin/orgs";
 import { validateFieldsSchema } from "@/lib/validate-fields-schema";
 import { ComponentTypeGuardError } from "@/lib/formula-compat";
 import type { FieldEntry } from "@/lib/types/field-entry";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -27,17 +29,19 @@ export const dynamic = "force-dynamic";
 // Auth: valid SuperAdmin session (qs-sa-token cookie).
 // Query: ?orgId=<organizationId>
 
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/superadmin/component-types/[typeId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ typeId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   try {
     await requireSuperAdminFromRequest(request);
   } catch (err) {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[GET /api/v1/superadmin/component-types/[typeId]] auth error", err);
+    log.error("[GET /api/v1/superadmin/component-types/[typeId]] auth error", { err });
     return apiServerError();
   }
 
@@ -60,10 +64,10 @@ export async function GET(
     if (!componentType) return apiNotFound("ComponentType not found");
     return NextResponse.json({ componentType });
   } catch (err) {
-    console.error("[GET /api/v1/superadmin/component-types/[typeId]] getComponentTypeForOrg", err);
+    log.error("[GET /api/v1/superadmin/component-types/[typeId]] getComponentTypeForOrg", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── PATCH /api/v1/superadmin/component-types/[typeId] ───────────────────────
 //
@@ -78,10 +82,12 @@ export async function GET(
 // Returns 401 when not authenticated as SuperAdmin.
 // Returns 404 if the org or componentType does not exist.
 
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/superadmin/component-types/[typeId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ typeId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -89,7 +95,7 @@ export async function PATCH(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[PATCH /api/v1/superadmin/component-types/[typeId]] auth error", err);
+    log.error("[PATCH /api/v1/superadmin/component-types/[typeId]] auth error", { err });
     return apiServerError();
   }
 
@@ -156,7 +162,7 @@ export async function PATCH(
     ) {
       return apiConflict("code already in use in this org");
     }
-    console.error("[PATCH /api/v1/superadmin/component-types/[typeId]] updateComponentTypeForOrg", err);
+    log.error("[PATCH /api/v1/superadmin/component-types/[typeId]] updateComponentTypeForOrg", { err });
     return apiServerError();
   }
 
@@ -172,7 +178,7 @@ export async function PATCH(
   });
 
   return NextResponse.json({ componentType });
-}
+});
 
 // ─── DELETE /api/v1/superadmin/component-types/[typeId] ──────────────────────
 //
@@ -188,10 +194,12 @@ export async function PATCH(
 // Returns 404 if the org or componentType does not exist.
 // Returns 409 if the componentType is referenced by existing Selections (cannot delete).
 
-export async function DELETE(
+export const DELETE = withRoute(
+  "DELETE /api/v1/superadmin/component-types/[typeId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ typeId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -199,7 +207,7 @@ export async function DELETE(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[DELETE /api/v1/superadmin/component-types/[typeId]] auth error", err);
+    log.error("[DELETE /api/v1/superadmin/component-types/[typeId]] auth error", { err });
     return apiServerError();
   }
 
@@ -233,7 +241,7 @@ export async function DELETE(
     if (err instanceof ComponentTypeGuardError) {
       return apiConflict(err.message);
     }
-    console.error("[DELETE /api/v1/superadmin/component-types/[typeId]] deleteComponentTypeForOrg", err);
+    log.error("[DELETE /api/v1/superadmin/component-types/[typeId]] deleteComponentTypeForOrg", { err });
     return apiServerError();
   }
 
@@ -252,4 +260,4 @@ export async function DELETE(
   });
 
   return NextResponse.json({ ok: true });
-}
+});

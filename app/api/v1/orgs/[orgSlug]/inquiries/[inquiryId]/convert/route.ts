@@ -7,6 +7,8 @@ import {
 } from "@/lib/api-error";
 import { convertInquiryToProject } from "@/lib/data/inquiries";
 import { isFormulaPinError } from "@/lib/data/formula-pin";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -31,10 +33,12 @@ export const dynamic = "force-dynamic";
  * Returns 409 if the inquiry is already DISMISSED or CONVERTED, or on a
  *         concurrent projectNumber race collision.
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]/convert",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; inquiryId: string }> },
-) {
+) => {
   const { orgSlug, inquiryId } = await params;
 
   let session;
@@ -44,10 +48,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]/convert]",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]/convert]", { err });
     return apiServerError();
   }
 
@@ -77,10 +78,7 @@ export async function POST(
         );
       }
     }
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]/convert] convertInquiryToProject",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]/convert] convertInquiryToProject", { err });
     return apiServerError();
   }
-}
+});

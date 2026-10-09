@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import { withAction } from "@/lib/with-route";
 
 // ---------------------------------------------------------------------------
 // createUser
@@ -21,10 +22,12 @@ export type CreateUserState = { error: string | null };
  * Uses the useActionState signature so the client form can surface errors
  * (e.g. duplicate username) rather than crashing to an error boundary.
  */
-export async function createUser(
+export const createUser = withAction(
+  "app/[orgSlug]/admin/users/actions#createUser",
+  async (
   prevState: CreateUserState,
   formData: FormData,
-): Promise<CreateUserState> {
+): Promise<CreateUserState> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const firstName = (formData.get("firstName") as string | null)?.trim();
   const lastName = (formData.get("lastName") as string | null)?.trim();
@@ -88,7 +91,7 @@ export async function createUser(
 
   revalidatePath(`/${orgSlug}/admin/users`);
   redirect(await orgHref(orgSlug, "/admin/users"), RedirectType.replace);
-}
+});
 
 // ---------------------------------------------------------------------------
 // activateUser / deactivateUser
@@ -101,7 +104,9 @@ export async function createUser(
  * POST /api/v1/orgs/[orgSlug]/users/[userId]/activate via internalFetch.
  * All tenancy enforcement and RBAC live in the route handler.
  */
-export async function activateUser(formData: FormData): Promise<void> {
+export const activateUser = withAction(
+  "app/[orgSlug]/admin/users/actions#activateUser",
+  async (formData: FormData): Promise<void> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const userId = formData.get("userId") as string | null;
 
@@ -129,7 +134,7 @@ export async function activateUser(formData: FormData): Promise<void> {
 
   revalidatePath(`/${orgSlug}/admin/users`);
   revalidatePath(`/${orgSlug}/admin/users/${userId}`);
-}
+});
 
 /**
  * Deactivate a user (sets active = false).
@@ -144,7 +149,9 @@ export async function activateUser(formData: FormData): Promise<void> {
  * the deactivate button for isSelf === true — this is a defense-in-depth
  * fallback scenario only.
  */
-export async function deactivateUser(formData: FormData): Promise<void> {
+export const deactivateUser = withAction(
+  "app/[orgSlug]/admin/users/actions#deactivateUser",
+  async (formData: FormData): Promise<void> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const userId = formData.get("userId") as string | null;
 
@@ -172,7 +179,7 @@ export async function deactivateUser(formData: FormData): Promise<void> {
 
   revalidatePath(`/${orgSlug}/admin/users`);
   revalidatePath(`/${orgSlug}/admin/users/${userId}`);
-}
+});
 
 // ---------------------------------------------------------------------------
 // changeUserRole
@@ -185,7 +192,9 @@ export async function deactivateUser(formData: FormData): Promise<void> {
  * PATCH /api/v1/orgs/[orgSlug]/users/[userId]/role via internalFetch.
  * All tenancy enforcement and RBAC live in the route handler.
  */
-export async function changeUserRole(formData: FormData): Promise<void> {
+export const changeUserRole = withAction(
+  "app/[orgSlug]/admin/users/actions#changeUserRole",
+  async (formData: FormData): Promise<void> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const userId = formData.get("userId") as string | null;
   const newRoleId = formData.get("roleId") as string | null;
@@ -217,7 +226,7 @@ export async function changeUserRole(formData: FormData): Promise<void> {
 
   revalidatePath(`/${orgSlug}/admin/users`);
   revalidatePath(`/${orgSlug}/admin/users/${userId}`);
-}
+});
 
 // ---------------------------------------------------------------------------
 // setUserPasswordModal (H-18)
@@ -234,10 +243,12 @@ export type SetPasswordModalState = { error: string | null; success: boolean };
  *
  * Hotfix 2026-09-28 H-18.
  */
-export async function setUserPasswordModal(
+export const setUserPasswordModal = withAction(
+  "app/[orgSlug]/admin/users/actions#setUserPasswordModal",
+  async (
   prevState: SetPasswordModalState,
   formData: FormData,
-): Promise<SetPasswordModalState> {
+): Promise<SetPasswordModalState> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const userId = (formData.get("userId") as string | null) ?? "";
   const password = (formData.get("password") as string | null) ?? "";
@@ -275,7 +286,7 @@ export async function setUserPasswordModal(
 
   revalidatePath(`/${orgSlug}/admin/users`);
   return { error: null, success: true };
-}
+});
 
 // ---------------------------------------------------------------------------
 // setUserPassword
@@ -288,7 +299,9 @@ export async function setUserPasswordModal(
  * POST /api/v1/orgs/[orgSlug]/users/[userId]/password via internalFetch.
  * All tenancy enforcement and RBAC live in the route handler.
  */
-export async function setUserPassword(formData: FormData): Promise<void> {
+export const setUserPassword = withAction(
+  "app/[orgSlug]/admin/users/actions#setUserPassword",
+  async (formData: FormData): Promise<void> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const userId = formData.get("userId") as string | null;
   const newPassword = formData.get("password") as string | null;
@@ -323,7 +336,7 @@ export async function setUserPassword(formData: FormData): Promise<void> {
     await orgHref(orgSlug, `/admin/users/${userId}`),
     RedirectType.replace,
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // updateUserProfile
@@ -341,10 +354,12 @@ export type UpdateUserProfileState = { error: string | null; success: boolean };
  * Uses the useActionState signature so the client form can surface errors
  * without crashing to an error boundary.
  */
-export async function updateUserProfile(
+export const updateUserProfile = withAction(
+  "app/[orgSlug]/admin/users/actions#updateUserProfile",
+  async (
   prevState: UpdateUserProfileState,
   formData: FormData,
-): Promise<UpdateUserProfileState> {
+): Promise<UpdateUserProfileState> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const userId = (formData.get("userId") as string | null) ?? "";
 
@@ -392,7 +407,7 @@ export async function updateUserProfile(
   revalidatePath(`/${orgSlug}/admin/users/${userId}`);
   revalidatePath(`/${orgSlug}/admin/users`);
   return { error: null, success: true };
-}
+});
 
 // ---------------------------------------------------------------------------
 // deleteUser
@@ -409,7 +424,9 @@ export async function updateUserProfile(
  * The route handler returns 400 for expected rejection cases (self-delete,
  * FK constraint) — these throw with the server's descriptive message.
  */
-export async function deleteUser(formData: FormData): Promise<void> {
+export const deleteUser = withAction(
+  "app/[orgSlug]/admin/users/actions#deleteUser",
+  async (formData: FormData): Promise<void> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const userId = formData.get("userId") as string | null;
 
@@ -436,4 +453,4 @@ export async function deleteUser(formData: FormData): Promise<void> {
   }
 
   revalidatePath(`/${orgSlug}/admin/users`);
-}
+});

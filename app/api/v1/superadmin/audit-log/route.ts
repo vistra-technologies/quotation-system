@@ -3,6 +3,8 @@ import { requireSuperAdminFromRequest, SuperAdminUnauthorizedError } from "@/lib
 import { apiBadRequest, apiUnauthorized, apiServerError } from "@/lib/api-error";
 import { parseAuditFilters } from "@/lib/superadmin-audit-view";
 import { listAuditLog } from "@/lib/data/superadmin/audit-log";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -24,14 +26,16 @@ export const dynamic = "force-dynamic";
 //   page     1-based; pageSize 1–100 (default 50)
 // Returns 200 { entries, total, page, pageSize, facets: { orgs, admins, items } }; 400 bad filter; 401.
 
-export async function GET(request: Request): Promise<NextResponse> {
+export const GET = withRoute(
+  "GET /api/v1/superadmin/audit-log",
+  async (request: Request): Promise<NextResponse> => {
   try {
     await requireSuperAdminFromRequest(request);
   } catch (err) {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[GET /api/v1/superadmin/audit-log] auth error", err);
+    log.error("[GET /api/v1/superadmin/audit-log] auth error", { err });
     return apiServerError();
   }
 
@@ -42,7 +46,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   try {
     return NextResponse.json(await listAuditLog(parsed.filters));
   } catch (err) {
-    console.error("[GET /api/v1/superadmin/audit-log] listAuditLog", err);
+    log.error("[GET /api/v1/superadmin/audit-log] listAuditLog", { err });
     return apiServerError();
   }
-}
+});

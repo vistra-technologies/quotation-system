@@ -5,6 +5,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { listSelections, createSelection } from "@/lib/data/selections";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -22,10 +24,12 @@ export const dynamic = "force-dynamic";
  * Query params:
  *   projectId (required) — ID of the project to list selections for.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/selections",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -35,7 +39,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/selections]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/selections]", { err });
     return apiServerError();
   }
 
@@ -49,10 +53,10 @@ export async function GET(
     const selections = await listSelections(session, projectId);
     return NextResponse.json({ selections });
   } catch (err) {
-    console.error("[GET /api/v1/orgs/[orgSlug]/selections] listSelections", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/selections] listSelections", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/orgs/[orgSlug]/selections ──────────────────────────────────
 
@@ -65,10 +69,12 @@ export async function GET(
  * Returns 201 with the created selection on success.
  * Returns 400 on missing required fields or tenancy violations (project/type not in org).
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/selections",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -78,7 +84,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/selections]", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/selections]", { err });
     return apiServerError();
   }
 
@@ -137,10 +143,7 @@ export async function POST(
         return apiBadRequest(err.message);
       }
     }
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/selections] createSelection",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/selections] createSelection", { err });
     return apiServerError();
   }
-}
+});

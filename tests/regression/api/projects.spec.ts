@@ -352,7 +352,10 @@ test.describe("projects: create / read / patch / list", () => {
     // KNOWN BUG — parseDate yields an Invalid Date that Prisma rejects; when fixed, change this to 400.
     const r = await as.admin.patch(url(`/projects/${p.id}`), { data: { name: `${p.name}-x`, submissionDate: "not-a-date" } });
     expect(r.status()).toBe(500);
-    expect(await r.json()).toEqual({ error: "Internal server error" });
+    // Stage 30: the 500 body carries the request id, mirrored in the x-request-id header.
+    const errBody = (await r.json()) as { requestId?: string };
+    expect(errBody).toEqual({ error: "Internal server error", requestId: expect.any(String) });
+    expect(r.headers()["x-request-id"]).toBe(errBody.requestId);
     expect((await json<{ project: Project }>(await as.admin.get(url(`/projects/${p.id}`)))).project.name).toBe(p.name);
   });
 

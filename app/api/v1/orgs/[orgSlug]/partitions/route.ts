@@ -5,6 +5,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { listPartitionsByRoom } from "@/lib/data/partitions";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -29,10 +31,12 @@ export const dynamic = "force-dynamic";
  * Query params:
  *   roomId (required) — ID of the room to list partitions for.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/partitions",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -42,7 +46,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/partitions]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/partitions]", { err });
     return apiServerError();
   }
 
@@ -56,10 +60,7 @@ export async function GET(
     const partitions = await listPartitionsByRoom(session, roomId);
     return NextResponse.json({ partitions });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/partitions] listPartitionsByRoom",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/partitions] listPartitionsByRoom", { err });
     return apiServerError();
   }
-}
+});

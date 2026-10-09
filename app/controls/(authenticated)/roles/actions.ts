@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
+import { withAction } from "@/lib/with-route";
 
 // ─── createSuperAdminRole ─────────────────────────────────────────────────────
 
@@ -17,10 +18,12 @@ export type RoleActionState = { error: string | null };
  *
  * Uses the useActionState signature so the client form can surface errors.
  */
-export async function createSuperAdminRole(
+export const createSuperAdminRole = withAction(
+  "app/controls/(authenticated)/roles/actions#createSuperAdminRole",
+  async (
   prevState: RoleActionState,
   formData: FormData,
-): Promise<RoleActionState> {
+): Promise<RoleActionState> => {
   const orgId = (formData.get("orgId") as string | null)?.trim();
   const name = (formData.get("name") as string | null)?.trim();
   const description = (formData.get("description") as string | null)?.trim() || undefined;
@@ -53,7 +56,7 @@ export async function createSuperAdminRole(
   revalidatePath("/controls", "layout");
   // Redirect to the role detail view.
   redirect(`/controls/orgs/${encodeURIComponent(orgId)}/roles?roleId=${encodeURIComponent(role.id)}`);
-}
+});
 
 // ─── renameSuperAdminRole ─────────────────────────────────────────────────────
 
@@ -62,10 +65,12 @@ export async function createSuperAdminRole(
  *
  * Uses the useActionState signature so the client form can surface errors.
  */
-export async function renameSuperAdminRole(
+export const renameSuperAdminRole = withAction(
+  "app/controls/(authenticated)/roles/actions#renameSuperAdminRole",
+  async (
   prevState: RoleActionState,
   formData: FormData,
-): Promise<RoleActionState> {
+): Promise<RoleActionState> => {
   const orgId = (formData.get("orgId") as string | null)?.trim();
   const roleId = (formData.get("roleId") as string | null)?.trim();
   const name = (formData.get("name") as string | null)?.trim();
@@ -96,7 +101,7 @@ export async function renameSuperAdminRole(
 
   revalidatePath("/controls", "layout");
   return { error: null };
-}
+});
 
 // ─── grantSuperAdminRolePermission ───────────────────────────────────────────
 
@@ -107,7 +112,9 @@ export async function renameSuperAdminRole(
  * same pattern as app/[orgSlug]/admin/roles/actions.ts addRolePermission:
  * throw on error so the error boundary catches it; revalidate on success.
  */
-export async function grantSuperAdminRolePermission(formData: FormData): Promise<void> {
+export const grantSuperAdminRolePermission = withAction(
+  "app/controls/(authenticated)/roles/actions#grantSuperAdminRolePermission",
+  async (formData: FormData): Promise<void> => {
   const orgId = (formData.get("orgId") as string | null)?.trim();
   const roleId = (formData.get("roleId") as string | null)?.trim();
   const permissionId = (formData.get("permissionId") as string | null)?.trim();
@@ -134,7 +141,7 @@ export async function grantSuperAdminRolePermission(formData: FormData): Promise
   }
 
   revalidatePath("/controls", "layout");
-}
+});
 
 // ─── revokeSuperAdminRolePermission ──────────────────────────────────────────
 
@@ -143,7 +150,9 @@ export async function grantSuperAdminRolePermission(formData: FormData): Promise
  *
  * Same pattern as grantSuperAdminRolePermission.
  */
-export async function revokeSuperAdminRolePermission(formData: FormData): Promise<void> {
+export const revokeSuperAdminRolePermission = withAction(
+  "app/controls/(authenticated)/roles/actions#revokeSuperAdminRolePermission",
+  async (formData: FormData): Promise<void> => {
   const orgId = (formData.get("orgId") as string | null)?.trim();
   const roleId = (formData.get("roleId") as string | null)?.trim();
   const permissionId = (formData.get("permissionId") as string | null)?.trim();
@@ -170,4 +179,4 @@ export async function revokeSuperAdminRolePermission(formData: FormData): Promis
   }
 
   revalidatePath("/controls", "layout");
-}
+});

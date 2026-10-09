@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
+import { withAction } from "@/lib/with-route";
 
 // Server actions for SuperAdmin account management (hotfix 2026-10-02). Thin marshalers over
 // /api/v1/superadmin/admins — validation, hashing, guards and audit rows live in the route + DAL.
@@ -28,10 +29,12 @@ function readPasswords(formData: FormData): { password: string; error: string | 
   return { password, error: null };
 }
 
-export async function addSuperAdmin(
+export const addSuperAdmin = withAction(
+  "app/controls/(authenticated)/users/admin-actions#addSuperAdmin",
+  async (
   _prev: AdminFormState,
   formData: FormData,
-): Promise<AdminFormState> {
+): Promise<AdminFormState> => {
   const username = ((formData.get("username") as string | null) ?? "").trim().toLowerCase();
   if (!username) return { error: "Username is required" };
   const { password, error } = readPasswords(formData);
@@ -46,12 +49,14 @@ export async function addSuperAdmin(
 
   revalidatePath("/controls/admins");
   return { error: null, ok: true };
-}
+});
 
-export async function changeSuperAdminPassword(
+export const changeSuperAdminPassword = withAction(
+  "app/controls/(authenticated)/users/admin-actions#changeSuperAdminPassword",
+  async (
   _prev: AdminFormState,
   formData: FormData,
-): Promise<AdminFormState> {
+): Promise<AdminFormState> => {
   const adminId = (formData.get("adminId") as string | null)?.trim();
   if (!adminId) return { error: "SuperAdmin ID is missing" };
   const { password, error } = readPasswords(formData);
@@ -66,10 +71,12 @@ export async function changeSuperAdminPassword(
 
   revalidatePath("/controls/admins");
   return { error: null, ok: true };
-}
+});
 
 /** Throws on error so the caller (DeleteSuperAdminButton) can surface it in its ConfirmDialog. */
-export async function deleteSuperAdmin(formData: FormData): Promise<void> {
+export const deleteSuperAdmin = withAction(
+  "app/controls/(authenticated)/users/admin-actions#deleteSuperAdmin",
+  async (formData: FormData): Promise<void> => {
   const adminId = (formData.get("adminId") as string | null)?.trim();
   if (!adminId) throw new Error("SuperAdmin ID is missing");
 
@@ -80,4 +87,4 @@ export async function deleteSuperAdmin(formData: FormData): Promise<void> {
   if (!res.ok) throw new Error(await errorFrom(res));
 
   revalidatePath("/controls/admins");
-}
+});

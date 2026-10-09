@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import type { FieldEntry } from "@/lib/types/field-entry";
+import { withAction } from "@/lib/with-route";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -63,7 +64,9 @@ function parseFieldsSchema(raw: string | null): FieldEntry[] {
  *
  * Stage 19 Batch 5 — SuperAdmin ComponentType management relocated to /controls.
  */
-export async function createSuperAdminComponentType(formData: FormData): Promise<void> {
+export const createSuperAdminComponentType = withAction(
+  "app/controls/(authenticated)/component-types/actions#createSuperAdminComponentType",
+  async (formData: FormData): Promise<void> => {
   const orgId = (formData.get("orgId") as string | null)?.trim();
   const code = (formData.get("code") as string | null)?.trim().toUpperCase();
   const name = (formData.get("name") as string | null)?.trim();
@@ -94,7 +97,7 @@ export async function createSuperAdminComponentType(formData: FormData): Promise
     `/controls/orgs/${encodeURIComponent(orgId)}/components?typeId=${encodeURIComponent(componentType.id)}`,
     RedirectType.replace,
   );
-}
+});
 
 // ─── State type for updateSuperAdminComponentType (useActionState) ─────────────
 
@@ -115,10 +118,12 @@ export type UpdateComponentTypeState = { error: string | null };
  * Stage 19 Batch 5 — SuperAdmin ComponentType management relocated to /controls.
  * Stage 25 Batch 1 — switched to useActionState signature to fix crash on 409.
  */
-export async function updateSuperAdminComponentType(
+export const updateSuperAdminComponentType = withAction(
+  "app/controls/(authenticated)/component-types/actions#updateSuperAdminComponentType",
+  async (
   prevState: UpdateComponentTypeState,
   formData: FormData,
-): Promise<UpdateComponentTypeState> {
+): Promise<UpdateComponentTypeState> => {
   const orgId = (formData.get("orgId") as string | null)?.trim();
   const typeId = formData.get("typeId") as string | null;
 
@@ -156,7 +161,7 @@ export async function updateSuperAdminComponentType(
     `/controls/orgs/${encodeURIComponent(orgId)}/components`,
     RedirectType.replace,
   );
-}
+});
 
 /**
  * Delete a ComponentType via the SuperAdmin API route.
@@ -167,7 +172,9 @@ export async function updateSuperAdminComponentType(
  *
  * Stage 19 bugs-3 M1 — delete affordance for SuperAdmin Component Types.
  */
-export async function deleteSuperAdminComponentType(formData: FormData): Promise<void> {
+export const deleteSuperAdminComponentType = withAction(
+  "app/controls/(authenticated)/component-types/actions#deleteSuperAdminComponentType",
+  async (formData: FormData): Promise<void> => {
   const orgId = (formData.get("orgId") as string | null)?.trim();
   const typeId = formData.get("typeId") as string | null;
 
@@ -191,4 +198,4 @@ export async function deleteSuperAdminComponentType(formData: FormData): Promise
     `/controls/orgs/${encodeURIComponent(orgId)}/components`,
     RedirectType.replace,
   );
-}
+});

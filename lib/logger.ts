@@ -1,4 +1,4 @@
-// This file is the one sanctioned console writer (Stage 30, S30-1); Batch 2 adds the no-console lint rule with an override for it.
+/* eslint-disable no-console -- the one sanctioned console writer (Stage 30, S30-1 / S30-13) */
 import { BUFFER_CAP, getContext } from "@/lib/log-context";
 import { redactValue, scrubString } from "@/lib/log-redact";
 
@@ -63,6 +63,8 @@ function write(level: Level, msg: string, fields?: Record<string, unknown>): voi
     if (byteLength(line) > MAX_LINE_BYTES) {
       // Keep the identity/core keys and the small scalars the dashboards filter on; drop the rest.
       const kept: Record<string, unknown> = { ...base, truncated: true };
+      // Cap the message first: a huge dynamic msg must not cost us the err below.
+      kept.msg = String(kept.msg).slice(0, 1000);
       for (const k of ["status", "durationMs", "ok", "outcome"]) {
         if (k in extra) kept[k] = extra[k];
       }
@@ -83,10 +85,6 @@ function write(level: Level, msg: string, fields?: Record<string, unknown>): voi
       }
       if (byteLength(line) > MAX_LINE_BYTES) {
         delete kept.err;
-        line = JSON.stringify(kept);
-      }
-      if (byteLength(line) > MAX_LINE_BYTES) {
-        kept.msg = String(kept.msg).slice(0, 1000);
         line = JSON.stringify(kept);
       }
     }

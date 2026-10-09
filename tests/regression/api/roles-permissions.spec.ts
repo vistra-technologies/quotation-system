@@ -205,7 +205,10 @@ test.describe("roles: mutations (org B only)", () => {
     // change this expectation to 409.
     const r = await orgB.post(orgApi(run.orgB.slug, "/roles"), { data: { name: role.name } });
     expect(r.status(), await r.text()).toBe(500);
-    expect(await r.json()).toEqual({ error: "Internal server error" });
+    // Stage 30: the 500 body carries the request id, mirrored in the x-request-id header.
+    const body = (await r.json()) as { requestId?: string };
+    expect(body).toEqual({ error: "Internal server error", requestId: expect.any(String) });
+    expect(r.headers()["x-request-id"]).toBe(body.requestId);
     // safe part: still exactly one role with that name
     expect((await rolesOf(orgB, run.orgB.slug)).filter((x) => x.name === role.name)).toHaveLength(1);
   });
@@ -280,7 +283,10 @@ test.describe("roles: mutations (org B only)", () => {
     // surfaces as a 500; when fixed, change this expectation to 404 (or 400).
     const r = await orgB.post(orgApi(slug, `/roles/${role.id}/permissions`), { data: { permissionId: GHOST } });
     expect(r.status(), await r.text()).toBe(500);
-    expect(await r.json()).toEqual({ error: "Internal server error" });
+    // Stage 30: the 500 body carries the request id, mirrored in the x-request-id header.
+    const body = (await r.json()) as { requestId?: string };
+    expect(body).toEqual({ error: "Internal server error", requestId: expect.any(String) });
+    expect(r.headers()["x-request-id"]).toBe(body.requestId);
     expect(await rolePerms(orgB, slug, role.id)).toEqual([]); // safe part: nothing granted
   });
 

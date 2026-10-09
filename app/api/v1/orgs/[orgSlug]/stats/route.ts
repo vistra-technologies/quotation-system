@@ -4,6 +4,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { getDashboardStats } from "@/lib/data/stats";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -29,10 +31,12 @@ export const dynamic = "force-dynamic";
  * ordersTotal is hardcoded to 0 because the Orders pipeline (BOQ/Quotation/Order)
  * has not been built yet — see development-cycles/README.md stage tracker.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/stats",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -42,7 +46,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/stats]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/stats]", { err });
     return apiServerError();
   }
 
@@ -53,7 +57,7 @@ export async function GET(
       ordersTotal: 0,
     });
   } catch (err) {
-    console.error("[GET /api/v1/orgs/[orgSlug]/stats] getDashboardStats", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/stats] getDashboardStats", { err });
     return apiServerError();
   }
-}
+});

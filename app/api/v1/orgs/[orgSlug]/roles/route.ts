@@ -7,6 +7,8 @@ import {
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import { listRoles, createRole } from "@/lib/data/admin";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -32,10 +34,12 @@ export const dynamic = "force-dynamic";
  * Tenancy: enforced by getApiSession() (403 on cross-org) and listRoles()
  *          filtering on session.organizationId.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/roles",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -45,7 +49,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/roles]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/roles]", { err });
     return apiServerError();
   }
 
@@ -56,7 +60,7 @@ export async function GET(
     hasPermission = true;
   } catch (err) {
     if (!(err instanceof ForbiddenError)) {
-      console.error("[GET /api/v1/orgs/[orgSlug]/roles] requirePermission(MANAGE_USERS)", err);
+      log.error("[GET /api/v1/orgs/[orgSlug]/roles] requirePermission(MANAGE_USERS)", { err });
       return apiServerError();
     }
   }
@@ -66,7 +70,7 @@ export async function GET(
       hasPermission = true;
     } catch (err) {
       if (err instanceof ForbiddenError) return apiForbidden(err.message);
-      console.error("[GET /api/v1/orgs/[orgSlug]/roles] requirePermission(MANAGE_FEATURES)", err);
+      log.error("[GET /api/v1/orgs/[orgSlug]/roles] requirePermission(MANAGE_FEATURES)", { err });
       return apiServerError();
     }
   }
@@ -75,10 +79,10 @@ export async function GET(
     const roles = await listRoles(session);
     return NextResponse.json({ roles });
   } catch (err) {
-    console.error("[GET /api/v1/orgs/[orgSlug]/roles] listRoles", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/roles] listRoles", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/orgs/[orgSlug]/roles ───────────────────────────────────────
 
@@ -95,10 +99,12 @@ export async function GET(
  * Tenancy: enforced by getApiSession() (403 on cross-org); createRole() scopes
  *          the new role to session.organizationId.
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/roles",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -108,7 +114,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/roles]", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/roles]", { err });
     return apiServerError();
   }
 
@@ -116,7 +122,7 @@ export async function POST(
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error("[POST /api/v1/orgs/[orgSlug]/roles] requirePermission", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/roles] requirePermission", { err });
     return apiServerError();
   }
 
@@ -140,7 +146,7 @@ export async function POST(
     const role = await createRole(session, { name, description });
     return NextResponse.json({ role }, { status: 201 });
   } catch (err) {
-    console.error("[POST /api/v1/orgs/[orgSlug]/roles] createRole", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/roles] createRole", { err });
     return apiServerError();
   }
-}
+});

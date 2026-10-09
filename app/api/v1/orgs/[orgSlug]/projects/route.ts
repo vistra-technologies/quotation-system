@@ -8,6 +8,8 @@ import {
 } from "@/lib/api-error";
 import { listProjectsPaginated, createProject } from "@/lib/data/projects";
 import { isFormulaPinError } from "@/lib/data/formula-pin";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -73,10 +75,12 @@ function resolveDateRange(
  *
  * Returns: { projects, total, page, pageSize }
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/projects",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -86,7 +90,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/projects]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/projects]", { err });
     return apiServerError();
   }
 
@@ -121,13 +125,10 @@ export async function GET(
     });
     return NextResponse.json({ projects, total, page, pageSize });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/projects] listProjectsPaginated",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/projects] listProjectsPaginated", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/orgs/[orgSlug]/projects ────────────────────────────────────
 
@@ -143,10 +144,12 @@ export async function GET(
  * Returns 400 on missing required fields.
  * Returns 409 on concurrent projectNumber collision.
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/projects",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -156,7 +159,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/projects]", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/projects]", { err });
     return apiServerError();
   }
 
@@ -250,7 +253,7 @@ export async function POST(
     ) {
       return apiBadRequest("Selected company is invalid.");
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/projects] createProject", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/projects] createProject", { err });
     return apiServerError();
   }
-}
+});

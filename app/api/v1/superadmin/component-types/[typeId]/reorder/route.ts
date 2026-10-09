@@ -14,6 +14,8 @@ import {
   createComponentTypeAuditLog,
 } from "@/lib/data/superadmin/component-types";
 import { getOrgById } from "@/lib/data/superadmin/orgs";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -36,10 +38,12 @@ export const dynamic = "force-dynamic";
 //
 // Stage 20 Batch 7.
 
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/superadmin/component-types/[typeId]/reorder",
+  async (
   request: Request,
   { params }: { params: Promise<{ typeId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -47,7 +51,7 @@ export async function POST(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[POST /api/v1/superadmin/component-types/[typeId]/reorder] auth error", err);
+    log.error("[POST /api/v1/superadmin/component-types/[typeId]/reorder] auth error", { err });
     return apiServerError();
   }
 
@@ -87,10 +91,7 @@ export async function POST(
   try {
     result = await moveComponentTypeForOrg(orgId, typeId, direction);
   } catch (err) {
-    console.error(
-      "[POST /api/v1/superadmin/component-types/[typeId]/reorder] moveComponentTypeForOrg",
-      err,
-    );
+    log.error("[POST /api/v1/superadmin/component-types/[typeId]/reorder] moveComponentTypeForOrg", { err });
     return apiServerError();
   }
 
@@ -106,4 +107,4 @@ export async function POST(
   }
 
   return NextResponse.json({ ok: true, moved: "swapped" in result });
-}
+});

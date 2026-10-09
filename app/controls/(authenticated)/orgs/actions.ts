@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import type { OrgFormulaWarning } from "@/lib/data/superadmin/orgs";
+import { withAction } from "@/lib/with-route";
 
 // ─── createOrg ───────────────────────────────────────────────────────────────
 
@@ -24,10 +25,12 @@ export type CreateOrgState = { error: string | null };
  * On success, redirects to the new org's workspace Overview tab (the mismatch chip in the header
  * flags a structural mismatch between the formula set and the org's component types).
  */
-export async function createOrg(
+export const createOrg = withAction(
+  "app/controls/(authenticated)/orgs/actions#createOrg",
+  async (
   prevState: CreateOrgState,
   formData: FormData,
-): Promise<CreateOrgState> {
+): Promise<CreateOrgState> => {
   const name = (formData.get("name") as string | null)?.trim();
   const slug = (formData.get("slug") as string | null)?.trim().toLowerCase();
   const adminPassword = (formData.get("adminPassword") as string | null) ?? "";
@@ -70,7 +73,7 @@ export async function createOrg(
   // Redirect to the new org's workspace — a formula mismatch (if any) shows as a chip in its header
   // and in detail on the Formula & Pricing tab.
   redirect(`/controls/orgs/${data.org.id}/overview`, RedirectType.replace);
-}
+});
 
 // ─── editOrg ─────────────────────────────────────────────────────────────────
 
@@ -91,10 +94,12 @@ export type EditOrgState = {
  *
  * Stage 25 Batch 5; split per tab in Stage 29 Batch 1.
  */
-export async function editOrg(
+export const editOrg = withAction(
+  "app/controls/(authenticated)/orgs/actions#editOrg",
+  async (
   prevState: EditOrgState,
   formData: FormData,
-): Promise<EditOrgState> {
+): Promise<EditOrgState> => {
   const orgId = (formData.get("orgId") as string | null)?.trim();
   const name = (formData.get("name") as string | null)?.trim();
   const formulaSetId = (formData.get("formulaSetId") as string | null)?.trim();
@@ -139,4 +144,4 @@ export async function editOrg(
   // Layout scope: the workspace header and the shell's org dropdown both show this org.
   revalidatePath("/controls", "layout");
   return { error: null, saved: true, warnings: data.warnings ?? [] };
-}
+});

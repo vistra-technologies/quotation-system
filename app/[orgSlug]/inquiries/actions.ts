@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import { withAction } from "@/lib/with-route";
 
 // ---------------------------------------------------------------------------
 // createInquiry
@@ -21,10 +22,12 @@ export type CreateInquiryState = { error: string | null };
  * Stage 14 Batch B: destinationCountry removed (derived server-side, D19);
  * 15 new extended intake fields added; projectLocation now required (D22).
  */
-export async function createInquiry(
+export const createInquiry = withAction(
+  "app/[orgSlug]/inquiries/actions#createInquiry",
+  async (
   prevState: CreateInquiryState,
   formData: FormData,
-): Promise<CreateInquiryState> {
+): Promise<CreateInquiryState> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
 
   const name = (formData.get("name") as string | null)?.trim();
@@ -115,7 +118,7 @@ export async function createInquiry(
 
   revalidatePath(`/${orgSlug}/inquiries`);
   redirect(await orgHref(orgSlug, "/inquiries"), RedirectType.replace);
-}
+});
 
 // ---------------------------------------------------------------------------
 // updateInquiry
@@ -133,10 +136,12 @@ export type UpdateInquiryState = { error: string | null };
  * Stage 14 Batch B: destinationCountry removed (locked at create time, D19);
  * 15 new extended intake fields added.
  */
-export async function updateInquiry(
+export const updateInquiry = withAction(
+  "app/[orgSlug]/inquiries/actions#updateInquiry",
+  async (
   prevState: UpdateInquiryState,
   formData: FormData,
-): Promise<UpdateInquiryState> {
+): Promise<UpdateInquiryState> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const inquiryId = formData.get("inquiryId") as string | null;
 
@@ -238,7 +243,7 @@ export async function updateInquiry(
     await orgHref(orgSlug, `/inquiries/${inquiryId}`),
     RedirectType.replace,
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // dismissInquiry
@@ -257,7 +262,9 @@ export async function updateInquiry(
  * the API is treated as success (idempotency) — the button being disabled is
  * the real guard.
  */
-export async function dismissInquiry(formData: FormData): Promise<void> {
+export const dismissInquiry = withAction(
+  "app/[orgSlug]/inquiries/actions#dismissInquiry",
+  async (formData: FormData): Promise<void> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const inquiryId = formData.get("inquiryId") as string | null;
 
@@ -281,7 +288,7 @@ export async function dismissInquiry(formData: FormData): Promise<void> {
     await orgHref(orgSlug, `/inquiries/${inquiryId}`),
     RedirectType.replace,
   );
-}
+});
 
 // ---------------------------------------------------------------------------
 // convertInquiryToProject
@@ -300,10 +307,12 @@ export type ConvertInquiryState = { error: string | null };
  * Surfaces SEQUENCE_CONFLICT (concurrent projectNumber race) and ALREADY_CLOSED
  * (inquiry already dismissed or converted) as inline form errors.
  */
-export async function convertInquiryToProject(
+export const convertInquiryToProject = withAction(
+  "app/[orgSlug]/inquiries/actions#convertInquiryToProject",
+  async (
   prevState: ConvertInquiryState,
   formData: FormData,
-): Promise<ConvertInquiryState> {
+): Promise<ConvertInquiryState> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const inquiryId = formData.get("inquiryId") as string | null;
 
@@ -338,4 +347,4 @@ export async function convertInquiryToProject(
   revalidatePath(`/${orgSlug}/inquiries/${inquiryId}`);
   revalidatePath(`/${orgSlug}/projects`);
   redirect(await orgHref(orgSlug, `/projects/${projectId}`));
-}
+});

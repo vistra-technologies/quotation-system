@@ -12,6 +12,8 @@ import {
   createFormulaSetAuditLog,
 } from "@/lib/data/superadmin/formula-sets";
 import { validateFormulaSetBody } from "@/lib/formula-set/validate";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -25,14 +27,16 @@ export const dynamic = "force-dynamic";
 // Returns 200 with { formulaSets: FormulaSetListItem[] }.
 // Returns 401 when not authenticated as SuperAdmin.
 
-export async function GET(request: Request): Promise<NextResponse> {
+export const GET = withRoute(
+  "GET /api/v1/superadmin/formula-sets",
+  async (request: Request): Promise<NextResponse> => {
   try {
     await requireSuperAdminFromRequest(request);
   } catch (err) {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[GET /api/v1/superadmin/formula-sets] auth error", err);
+    log.error("[GET /api/v1/superadmin/formula-sets] auth error", { err });
     return apiServerError();
   }
 
@@ -40,10 +44,10 @@ export async function GET(request: Request): Promise<NextResponse> {
     const formulaSets = await listFormulaSets();
     return NextResponse.json({ formulaSets });
   } catch (err) {
-    console.error("[GET /api/v1/superadmin/formula-sets] listFormulaSets", err);
+    log.error("[GET /api/v1/superadmin/formula-sets] listFormulaSets", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/superadmin/formula-sets ─────────────────────────────────────
 //
@@ -60,7 +64,9 @@ export async function GET(request: Request): Promise<NextResponse> {
 // Returns 401 when not authenticated as SuperAdmin.
 // Returns 409 in the extremely unlikely event of a concurrent-write race on (name, version).
 
-export async function POST(request: Request): Promise<NextResponse> {
+export const POST = withRoute(
+  "POST /api/v1/superadmin/formula-sets",
+  async (request: Request): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -68,7 +74,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[POST /api/v1/superadmin/formula-sets] auth error", err);
+    log.error("[POST /api/v1/superadmin/formula-sets] auth error", { err });
     return apiServerError();
   }
 
@@ -124,7 +130,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     ) {
       return apiConflict("A formula set with this name and version already exists");
     }
-    console.error("[POST /api/v1/superadmin/formula-sets] createFormulaSet", err);
+    log.error("[POST /api/v1/superadmin/formula-sets] createFormulaSet", { err });
     return apiServerError();
   }
 
@@ -137,4 +143,4 @@ export async function POST(request: Request): Promise<NextResponse> {
   });
 
   return NextResponse.json({ formulaSet }, { status: 201 });
-}
+});

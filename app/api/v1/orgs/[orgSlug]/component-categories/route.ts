@@ -4,6 +4,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { listComponentCategories } from "@/lib/data/components";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -21,10 +23,12 @@ export const dynamic = "force-dynamic";
  * Tenancy: enforced by getApiSession() (403 on cross-org) and listComponentCategories()
  *          filtering on session.organizationId.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/component-categories",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -34,7 +38,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/component-categories]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/component-categories]", { err });
     return apiServerError();
   }
 
@@ -42,10 +46,7 @@ export async function GET(
     const categories = await listComponentCategories(session);
     return NextResponse.json({ categories });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/component-categories] listComponentCategories",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/component-categories] listComponentCategories", { err });
     return apiServerError();
   }
-}
+});

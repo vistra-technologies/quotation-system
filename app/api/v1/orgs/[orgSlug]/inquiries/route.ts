@@ -7,6 +7,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { listInquiriesPaginated, createInquiry } from "@/lib/data/inquiries";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -72,10 +74,12 @@ function resolveDateRange(
  *
  * Returns: { inquiries, total, page, pageSize }
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/inquiries",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -85,7 +89,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/inquiries]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/inquiries]", { err });
     return apiServerError();
   }
 
@@ -120,13 +124,10 @@ export async function GET(
     });
     return NextResponse.json({ inquiries, total, page, pageSize });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/inquiries] listInquiriesPaginated",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/inquiries] listInquiriesPaginated", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/orgs/[orgSlug]/inquiries ───────────────────────────────────
 
@@ -142,10 +143,12 @@ export async function GET(
  * Returns 400 on missing required fields or invalid external company.
  * Returns 409 on concurrent inquiryNumber collision.
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/inquiries",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -155,7 +158,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/inquiries]", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/inquiries]", { err });
     return apiServerError();
   }
 
@@ -259,7 +262,7 @@ export async function POST(
     ) {
       return apiBadRequest("Selected company is invalid.");
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/inquiries] createInquiry", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/inquiries] createInquiry", { err });
     return apiServerError();
   }
-}
+});

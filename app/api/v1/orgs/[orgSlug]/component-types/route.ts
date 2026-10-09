@@ -11,6 +11,8 @@ import {
   createComponentType,
 } from "@/lib/data/components";
 import type { FieldEntry } from "@/lib/data/components";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -31,10 +33,12 @@ export const dynamic = "force-dynamic";
  * Tenancy: enforced by getApiSession() (403 on cross-org) and listComponentTypes()
  *          filtering on session.organizationId.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/component-types",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -44,7 +48,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/component-types]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/component-types]", { err });
     return apiServerError();
   }
 
@@ -52,13 +56,10 @@ export async function GET(
     const componentTypes = await listComponentTypes(session);
     return NextResponse.json({ componentTypes });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/component-types] listComponentTypes",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/component-types] listComponentTypes", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/orgs/[orgSlug]/component-types ─────────────────────────────
 
@@ -72,10 +73,12 @@ export async function GET(
  * Returns 400 on missing or invalid fields, or if categoryId is not in the org.
  * Returns 403 if the session role lacks MANAGE_FEATURES.
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/component-types",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -85,7 +88,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/component-types]", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/component-types]", { err });
     return apiServerError();
   }
 
@@ -93,10 +96,7 @@ export async function POST(
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/component-types] requirePermission",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/component-types] requirePermission", { err });
     return apiServerError();
   }
 
@@ -140,10 +140,7 @@ export async function POST(
         return apiBadRequest(err.message);
       }
     }
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/component-types] createComponentType",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/component-types] createComponentType", { err });
     return apiServerError();
   }
-}
+});

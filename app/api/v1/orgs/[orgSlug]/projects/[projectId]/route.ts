@@ -7,6 +7,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { getProjectById, updateProject, deleteProject } from "@/lib/data/projects";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -21,10 +23,12 @@ export const dynamic = "force-dynamic";
  *          filtering on session.organizationId — returns null for projects that
  *          belong to a different org, surfaced as 404.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/projects/[projectId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; projectId: string }> },
-) {
+) => {
   const { orgSlug, projectId } = await params;
 
   let session;
@@ -34,10 +38,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/projects/[projectId]]",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/projects/[projectId]]", { err });
     return apiServerError();
   }
 
@@ -56,13 +57,10 @@ export async function GET(
     }
     return NextResponse.json({ project });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/projects/[projectId]] getProjectById",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/projects/[projectId]] getProjectById", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── PATCH /api/v1/orgs/[orgSlug]/projects/[projectId] ──────────────────────
 
@@ -81,10 +79,12 @@ export async function GET(
  * Returns 409 if the project exists but is not in DRAFT status.
  * Returns 404 if the project does not exist or belongs to a different org.
  */
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/orgs/[orgSlug]/projects/[projectId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; projectId: string }> },
-) {
+) => {
   const { orgSlug, projectId } = await params;
 
   let session;
@@ -94,10 +94,7 @@ export async function PATCH(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/projects/[projectId]]",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/projects/[projectId]]", { err });
     return apiServerError();
   }
 
@@ -169,13 +166,10 @@ export async function PATCH(
 
     return NextResponse.json({ project: result.project });
   } catch (err) {
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/projects/[projectId]] updateProject",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/projects/[projectId]] updateProject", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── DELETE /api/v1/orgs/[orgSlug]/projects/[projectId] ─────────────────────
 
@@ -191,10 +185,12 @@ export async function PATCH(
  * Returns 409 if the project exists but is not in DRAFT status.
  * Returns 404 if the project does not exist or belongs to a different org.
  */
-export async function DELETE(
+export const DELETE = withRoute(
+  "DELETE /api/v1/orgs/[orgSlug]/projects/[projectId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; projectId: string }> },
-) {
+) => {
   const { orgSlug, projectId } = await params;
 
   let session;
@@ -204,10 +200,7 @@ export async function DELETE(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[DELETE /api/v1/orgs/[orgSlug]/projects/[projectId]]",
-      err,
-    );
+    log.error("[DELETE /api/v1/orgs/[orgSlug]/projects/[projectId]]", { err });
     return apiServerError();
   }
 
@@ -226,10 +219,7 @@ export async function DELETE(
 
     return NextResponse.json({ id: result.id });
   } catch (err) {
-    console.error(
-      "[DELETE /api/v1/orgs/[orgSlug]/projects/[projectId]] deleteProject",
-      err,
-    );
+    log.error("[DELETE /api/v1/orgs/[orgSlug]/projects/[projectId]] deleteProject", { err });
     return apiServerError();
   }
-}
+});

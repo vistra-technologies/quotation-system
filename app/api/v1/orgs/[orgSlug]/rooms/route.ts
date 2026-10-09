@@ -5,6 +5,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { listRoomsByFloor, createRoom, reorderRooms } from "@/lib/data/rooms";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -22,10 +24,12 @@ export const dynamic = "force-dynamic";
  * Query params:
  *   floorId (required) — ID of the floor to list rooms for.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/rooms",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -35,7 +39,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/rooms]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/rooms]", { err });
     return apiServerError();
   }
 
@@ -49,10 +53,10 @@ export async function GET(
     const rooms = await listRoomsByFloor(session, floorId);
     return NextResponse.json({ rooms });
   } catch (err) {
-    console.error("[GET /api/v1/orgs/[orgSlug]/rooms] listRoomsByFloor", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/rooms] listRoomsByFloor", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/orgs/[orgSlug]/rooms ────────────────────────────────────────
 
@@ -67,10 +71,12 @@ export async function GET(
  * Returns 400 on missing required fields, tenancy violations (floor not in
  * org), or a duplicate room label within the floor.
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/rooms",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -80,7 +86,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/rooms]", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/rooms]", { err });
     return apiServerError();
   }
 
@@ -111,10 +117,10 @@ export async function POST(
     ) {
       return apiBadRequest(err instanceof Error ? err.message : "Invalid request");
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/rooms] createRoom", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/rooms] createRoom", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── PATCH /api/v1/orgs/[orgSlug]/rooms ───────────────────────────────────────
 
@@ -130,10 +136,12 @@ export async function POST(
  * Returns 400 on missing fields, tenancy violation (floor not in org), or an
  * orderedRoomIds set that doesn't exactly match the floor's current rooms.
  */
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/orgs/[orgSlug]/rooms",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -143,7 +151,7 @@ export async function PATCH(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[PATCH /api/v1/orgs/[orgSlug]/rooms]", err);
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/rooms]", { err });
     return apiServerError();
   }
 
@@ -176,7 +184,7 @@ export async function PATCH(
     ) {
       return apiBadRequest(err instanceof Error ? err.message : "Invalid request");
     }
-    console.error("[PATCH /api/v1/orgs/[orgSlug]/rooms] reorderRooms", err);
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/rooms] reorderRooms", { err });
     return apiServerError();
   }
-}
+});

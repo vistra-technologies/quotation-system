@@ -10,6 +10,8 @@ import {
   updateRoleNameForOrg,
   createRoleAuditLog,
 } from "@/lib/data/superadmin/roles";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -27,10 +29,12 @@ export const dynamic = "force-dynamic";
 // Returns 401 when not authenticated as SuperAdmin.
 // Returns 404 if the role does not exist or belongs to a different org.
 
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/superadmin/roles/[roleId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ roleId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   const { roleId } = await params;
 
   let sa;
@@ -40,7 +44,7 @@ export async function PATCH(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[PATCH /api/v1/superadmin/roles/[roleId]] auth error", err);
+    log.error("[PATCH /api/v1/superadmin/roles/[roleId]] auth error", { err });
     return apiServerError();
   }
 
@@ -70,7 +74,7 @@ export async function PATCH(
   try {
     role = await updateRoleNameForOrg(orgId, roleId, name);
   } catch (err) {
-    console.error("[PATCH /api/v1/superadmin/roles/[roleId]] updateRoleNameForOrg", err);
+    log.error("[PATCH /api/v1/superadmin/roles/[roleId]] updateRoleNameForOrg", { err });
     return apiServerError();
   }
 
@@ -86,4 +90,4 @@ export async function PATCH(
   });
 
   return NextResponse.json({ role });
-}
+});

@@ -9,6 +9,8 @@ import {
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import { listUsers, createUser, getUserSeats } from "@/lib/data/users";
 import { UserLimitReachedError } from "@/lib/data/user-limit";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -23,10 +25,12 @@ export const dynamic = "force-dynamic";
  * Tenancy: enforced by getApiSession() (403 on cross-org) and listUsers()
  *          filtering on session.organizationId.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/users",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -36,7 +40,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/users]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/users]", { err });
     return apiServerError();
   }
 
@@ -44,7 +48,7 @@ export async function GET(
     await requirePermission(session, PERMISSIONS.MANAGE_USERS);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error("[GET /api/v1/orgs/[orgSlug]/users] requirePermission", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/users] requirePermission", { err });
     return apiServerError();
   }
 
@@ -52,10 +56,10 @@ export async function GET(
     const [users, seats] = await Promise.all([listUsers(session), getUserSeats(session)]);
     return NextResponse.json({ users, seats });
   } catch (err) {
-    console.error("[GET /api/v1/orgs/[orgSlug]/users] listUsers", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/users] listUsers", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/orgs/[orgSlug]/users ───────────────────────────────────────
 
@@ -74,10 +78,12 @@ export async function GET(
  * Tenancy: enforced by getApiSession() (403 on cross-org) and createUser()
  *          verifying role + externalCompany belong to session org.
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/users",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -87,7 +93,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/users]", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/users]", { err });
     return apiServerError();
   }
 
@@ -95,10 +101,7 @@ export async function POST(
     await requirePermission(session, PERMISSIONS.MANAGE_USERS);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/users] requirePermission",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/users] requirePermission", { err });
     return apiServerError();
   }
 
@@ -172,7 +175,7 @@ export async function POST(
         return apiBadRequest(err.message);
       }
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/users] createUser", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/users] createUser", { err });
     return apiServerError();
   }
-}
+});

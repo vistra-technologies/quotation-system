@@ -10,6 +10,8 @@ import {
   listExternalCompanies,
   createExternalCompany,
 } from "@/lib/data/external-companies";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -26,10 +28,12 @@ export const dynamic = "force-dynamic";
  * Tenancy: enforced by getApiSession() (403 on cross-org) and listExternalCompanies()
  *          filtering on session.organizationId.
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/external-companies",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -39,7 +43,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/external-companies]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/external-companies]", { err });
     return apiServerError();
   }
 
@@ -47,13 +51,10 @@ export async function GET(
     const companies = await listExternalCompanies(session);
     return NextResponse.json({ companies });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/external-companies] listExternalCompanies",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/external-companies] listExternalCompanies", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/orgs/[orgSlug]/external-companies ──────────────────────────
 
@@ -72,10 +73,12 @@ export async function GET(
  *
  * Stage 13 Batch 2: added country + defaultCurrency (both required).
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/external-companies",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -85,7 +88,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/external-companies]", err);
+    log.error("[POST /api/v1/orgs/[orgSlug]/external-companies]", { err });
     return apiServerError();
   }
 
@@ -93,10 +96,7 @@ export async function POST(
     await requirePermission(session, PERMISSIONS.MANAGE_USERS);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/external-companies] requirePermission",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/external-companies] requirePermission", { err });
     return apiServerError();
   }
 
@@ -139,10 +139,7 @@ export async function POST(
     await createExternalCompany(session, { name, type, country, defaultCurrency });
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (err) {
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/external-companies] createExternalCompany",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/external-companies] createExternalCompany", { err });
     return apiServerError();
   }
-}
+});

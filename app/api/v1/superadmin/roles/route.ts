@@ -12,6 +12,8 @@ import {
   createRoleAuditLog,
 } from "@/lib/data/superadmin/roles";
 import { getOrgById } from "@/lib/data/superadmin/orgs";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -22,14 +24,16 @@ export const dynamic = "force-dynamic";
 // Auth: valid SuperAdmin session (qs-sa-token cookie).
 // Query: ?orgId=<organizationId>
 
-export async function GET(request: Request): Promise<NextResponse> {
+export const GET = withRoute(
+  "GET /api/v1/superadmin/roles",
+  async (request: Request): Promise<NextResponse> => {
   try {
     await requireSuperAdminFromRequest(request);
   } catch (err) {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[GET /api/v1/superadmin/roles] auth error", err);
+    log.error("[GET /api/v1/superadmin/roles] auth error", { err });
     return apiServerError();
   }
 
@@ -50,10 +54,10 @@ export async function GET(request: Request): Promise<NextResponse> {
     const roles = await listRolesForOrg(orgId);
     return NextResponse.json({ roles });
   } catch (err) {
-    console.error("[GET /api/v1/superadmin/roles] listRolesForOrg", err);
+    log.error("[GET /api/v1/superadmin/roles] listRolesForOrg", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/superadmin/roles ───────────────────────────────────────────
 //
@@ -68,7 +72,9 @@ export async function GET(request: Request): Promise<NextResponse> {
 // Returns 401 when not authenticated as SuperAdmin.
 // Returns 404 if the org does not exist.
 
-export async function POST(request: Request): Promise<NextResponse> {
+export const POST = withRoute(
+  "POST /api/v1/superadmin/roles",
+  async (request: Request): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -76,7 +82,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[POST /api/v1/superadmin/roles] auth error", err);
+    log.error("[POST /api/v1/superadmin/roles] auth error", { err });
     return apiServerError();
   }
 
@@ -115,7 +121,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     role = await createRoleForOrg(orgId, name, description);
   } catch (err) {
-    console.error("[POST /api/v1/superadmin/roles] createRoleForOrg", err);
+    log.error("[POST /api/v1/superadmin/roles] createRoleForOrg", { err });
     return apiServerError();
   }
 
@@ -130,4 +136,4 @@ export async function POST(request: Request): Promise<NextResponse> {
   });
 
   return NextResponse.json({ role }, { status: 201 });
-}
+});

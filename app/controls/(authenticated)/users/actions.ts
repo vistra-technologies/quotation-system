@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { internalFetch } from "@/lib/internal-fetch";
 import { redirect } from "next/navigation";
+import { withAction } from "@/lib/with-route";
 
 // ─── addUser ─────────────────────────────────────────────────────────────────
 
@@ -20,10 +21,12 @@ export type AddUserState = { error: string | null; ok?: boolean };
  * Uses the useActionState signature so the client form can surface errors
  * (e.g. duplicate username) rather than crashing to an error boundary.
  */
-export async function addUser(
+export const addUser = withAction(
+  "app/controls/(authenticated)/users/actions#addUser",
+  async (
   prevState: AddUserState,
   formData: FormData,
-): Promise<AddUserState> {
+): Promise<AddUserState> => {
   const orgId = (formData.get("orgId") as string | null)?.trim();
   const firstName = (formData.get("firstName") as string | null)?.trim();
   const lastName = (formData.get("lastName") as string | null)?.trim();
@@ -80,7 +83,7 @@ export async function addUser(
 
   revalidatePath("/controls", "layout");
   return { error: null, ok: true };
-}
+});
 
 // ─── editUser (hotfix 2026-09-25, H-5) ───────────────────────────────────────
 
@@ -94,10 +97,12 @@ export type EditUserState = { error: string | null; ok?: boolean };
  * session revocation and the audit log live in the route + DAL. An empty
  * newPassword means "keep the current password".
  */
-export async function editUser(
+export const editUser = withAction(
+  "app/controls/(authenticated)/users/actions#editUser",
+  async (
   prevState: EditUserState,
   formData: FormData,
-): Promise<EditUserState> {
+): Promise<EditUserState> => {
   const orgId = (formData.get("orgId") as string | null)?.trim();
   const userId = (formData.get("userId") as string | null)?.trim();
   const firstName = (formData.get("firstName") as string | null)?.trim();
@@ -149,7 +154,7 @@ export async function editUser(
 
   revalidatePath("/controls", "layout");
   return { error: null, ok: true };
-}
+});
 
 // ─── deleteSAUser (hotfix 2026-09-27, H-9) ───────────────────────────────────
 
@@ -162,7 +167,9 @@ export async function editUser(
  *
  * Throws on error so the caller (DeleteSAUserButton) can surface it.
  */
-export async function deleteSAUser(formData: FormData): Promise<void> {
+export const deleteSAUser = withAction(
+  "app/controls/(authenticated)/users/actions#deleteSAUser",
+  async (formData: FormData): Promise<void> => {
   const orgId = (formData.get("orgId") as string | null)?.trim();
   const userId = (formData.get("userId") as string | null)?.trim();
 
@@ -189,4 +196,4 @@ export async function deleteSAUser(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/controls", "layout");
-}
+});

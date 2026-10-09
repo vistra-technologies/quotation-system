@@ -7,6 +7,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { submitDesign } from "@/lib/data/projects";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -29,10 +31,12 @@ export const dynamic = "force-dynamic";
  *   The stored calculation is NOT written on a 422 — the stored row remains unchanged.
  * Returns 200 { project } on success.
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/projects/[projectId]/submit-design",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; projectId: string }> },
-) {
+) => {
   const { orgSlug, projectId } = await params;
 
   let session;
@@ -42,10 +46,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/projects/[projectId]/submit-design]",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/projects/[projectId]/submit-design]", { err });
     return apiServerError();
   }
 
@@ -75,10 +76,7 @@ export async function POST(
 
     return NextResponse.json({ project: result.project });
   } catch (err) {
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/projects/[projectId]/submit-design] submitDesign",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/projects/[projectId]/submit-design] submitDesign", { err });
     return apiServerError();
   }
-}
+});

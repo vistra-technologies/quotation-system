@@ -10,6 +10,8 @@ import {
   newVersionOfFormulaSet,
   createFormulaSetAuditLog,
 } from "@/lib/data/superadmin/formula-sets";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -27,10 +29,12 @@ export const dynamic = "force-dynamic";
 // Returns 404 if the source set is not found.
 // Returns 409 if the resulting (name, version) already exists (guarded, not expected in practice).
 
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/superadmin/formula-sets/[setId]/version",
+  async (
   request: Request,
   { params }: { params: Promise<{ setId: string }> },
-): Promise<NextResponse> {
+): Promise<NextResponse> => {
   let sa;
   try {
     sa = await requireSuperAdminFromRequest(request);
@@ -38,7 +42,7 @@ export async function POST(
     if (err instanceof SuperAdminUnauthorizedError) {
       return apiUnauthorized("SuperAdmin authentication required");
     }
-    console.error("[POST /api/v1/superadmin/formula-sets/[setId]/version] auth error", err);
+    log.error("[POST /api/v1/superadmin/formula-sets/[setId]/version] auth error", { err });
     return apiServerError();
   }
 
@@ -76,10 +80,7 @@ export async function POST(
     ) {
       return apiConflict("A formula set with this name and version already exists");
     }
-    console.error(
-      "[POST /api/v1/superadmin/formula-sets/[setId]/version] newVersionOfFormulaSet",
-      err,
-    );
+    log.error("[POST /api/v1/superadmin/formula-sets/[setId]/version] newVersionOfFormulaSet", { err });
     return apiServerError();
   }
 
@@ -93,4 +94,4 @@ export async function POST(
   });
 
   return NextResponse.json({ formulaSet }, { status: 201 });
-}
+});

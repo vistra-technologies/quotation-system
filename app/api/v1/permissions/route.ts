@@ -11,6 +11,8 @@ import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import { ApiAuthError, apiAuthErrorResponse, assertSessionOrgNotSuspended } from "@/lib/api-auth";
 import { listPermissions, createPermission } from "@/lib/data/admin";
 import type { SessionData } from "@/lib/session";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -86,7 +88,9 @@ async function getPermissionsSession(
  *
  * Returns: { permissions: Array<{ id, code, description }> }
  */
-export async function GET(request: Request): Promise<NextResponse> {
+export const GET = withRoute(
+  "GET /api/v1/permissions",
+  async (request: Request): Promise<NextResponse> => {
   const authResult = await getPermissionsSession(request);
   if (authResult instanceof NextResponse) return authResult;
   const { session } = authResult;
@@ -95,7 +99,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error("[GET /api/v1/permissions] requirePermission", err);
+    log.error("[GET /api/v1/permissions] requirePermission", { err });
     return apiServerError();
   }
 
@@ -103,10 +107,10 @@ export async function GET(request: Request): Promise<NextResponse> {
     const permissions = await listPermissions();
     return NextResponse.json({ permissions });
   } catch (err) {
-    console.error("[GET /api/v1/permissions] listPermissions", err);
+    log.error("[GET /api/v1/permissions] listPermissions", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── POST /api/v1/permissions ─────────────────────────────────────────────────
 
@@ -124,7 +128,9 @@ export async function GET(request: Request): Promise<NextResponse> {
  * ⚠ Creating a Permission row grants NO capability until a developer wires it
  *   in code via requirePermission(session, "<code>").
  */
-export async function POST(request: Request): Promise<NextResponse> {
+export const POST = withRoute(
+  "POST /api/v1/permissions",
+  async (request: Request): Promise<NextResponse> => {
   const authResult = await getPermissionsSession(request);
   if (authResult instanceof NextResponse) return authResult;
   const { session } = authResult;
@@ -133,7 +139,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error("[POST /api/v1/permissions] requirePermission", err);
+    log.error("[POST /api/v1/permissions] requirePermission", { err });
     return apiServerError();
   }
 
@@ -165,7 +171,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     ) {
       return apiConflict(`Permission code "${code}" already exists`);
     }
-    console.error("[POST /api/v1/permissions] createPermission", err);
+    log.error("[POST /api/v1/permissions] createPermission", { err });
     return apiServerError();
   }
-}
+});

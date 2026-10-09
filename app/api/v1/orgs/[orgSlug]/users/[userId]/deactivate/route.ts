@@ -8,6 +8,8 @@ import {
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import { deactivateUser } from "@/lib/data/users";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -37,10 +39,12 @@ export const dynamic = "force-dynamic";
  * Tenancy: enforced by getApiSession() (403 on cross-org) and deactivateUser()
  *          calling assertUserInOrg() before any state change.
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/users/[userId]/deactivate",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; userId: string }> },
-) {
+) => {
   const { orgSlug, userId } = await params;
 
   let session;
@@ -50,10 +54,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/users/[userId]/deactivate]",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/users/[userId]/deactivate]", { err });
     return apiServerError();
   }
 
@@ -61,10 +62,7 @@ export async function POST(
     await requirePermission(session, PERMISSIONS.MANAGE_USERS);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/users/[userId]/deactivate] requirePermission",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/users/[userId]/deactivate] requirePermission", { err });
     return apiServerError();
   }
 
@@ -81,10 +79,7 @@ export async function POST(
         return apiNotFound(err.message);
       }
     }
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/users/[userId]/deactivate] deactivateUser",
-      err,
-    );
+    log.error("[POST /api/v1/orgs/[orgSlug]/users/[userId]/deactivate] deactivateUser", { err });
     return apiServerError();
   }
-}
+});

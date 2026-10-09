@@ -17,6 +17,8 @@ import {
   DuplicateInventoryCodeError,
   InvalidComponentTypeError,
 } from "@/lib/data/catalog";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -38,10 +40,12 @@ export const dynamic = "force-dynamic";
  * Stage 25 Batch 6 (S25-4): route moved from /catalog/[itemId] to /inventory/[itemId].
  * Old path /api/v1/orgs/[orgSlug]/catalog/[itemId] returns 404 (no redirect, S25-5).
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/inventory/[itemId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; itemId: string }> },
-) {
+) => {
   const { orgSlug, itemId } = await params;
 
   let session;
@@ -51,7 +55,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/inventory/[itemId]]", err);
+    log.error("[GET /api/v1/orgs/[orgSlug]/inventory/[itemId]]", { err });
     return apiServerError();
   }
 
@@ -59,10 +63,7 @@ export async function GET(
     await requirePermission(session, PERMISSIONS.MANAGE_PRICING);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/inventory/[itemId]] requirePermission",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/inventory/[itemId]] requirePermission", { err });
     return apiServerError();
   }
 
@@ -73,13 +74,10 @@ export async function GET(
     }
     return NextResponse.json({ item });
   } catch (err) {
-    console.error(
-      "[GET /api/v1/orgs/[orgSlug]/inventory/[itemId]] getInventoryItemById",
-      err,
-    );
+    log.error("[GET /api/v1/orgs/[orgSlug]/inventory/[itemId]] getInventoryItemById", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── PATCH /api/v1/orgs/[orgSlug]/inventory/[itemId] ─────────────────────────
 
@@ -99,10 +97,12 @@ export async function GET(
  *
  * Stage 25 Batch 7.
  */
-export async function PATCH(
+export const PATCH = withRoute(
+  "PATCH /api/v1/orgs/[orgSlug]/inventory/[itemId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; itemId: string }> },
-) {
+) => {
   const { orgSlug, itemId } = await params;
 
   let session;
@@ -112,7 +112,7 @@ export async function PATCH(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[PATCH /api/v1/orgs/[orgSlug]/inventory/[itemId]]", err);
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/inventory/[itemId]]", { err });
     return apiServerError();
   }
 
@@ -120,10 +120,7 @@ export async function PATCH(
     await requirePermission(session, PERMISSIONS.MANAGE_PRICING);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/inventory/[itemId]] requirePermission",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/inventory/[itemId]] requirePermission", { err });
     return apiServerError();
   }
 
@@ -188,13 +185,10 @@ export async function PATCH(
     if (err instanceof InvalidComponentTypeError) {
       return apiUnprocessable(err.message);
     }
-    console.error(
-      "[PATCH /api/v1/orgs/[orgSlug]/inventory/[itemId]] updateInventoryItem",
-      err,
-    );
+    log.error("[PATCH /api/v1/orgs/[orgSlug]/inventory/[itemId]] updateInventoryItem", { err });
     return apiServerError();
   }
-}
+});
 
 // ─── DELETE /api/v1/orgs/[orgSlug]/inventory/[itemId] ────────────────────────
 
@@ -211,10 +205,12 @@ export async function PATCH(
  *
  * Hotfix 2026-09-27 H-6.
  */
-export async function DELETE(
+export const DELETE = withRoute(
+  "DELETE /api/v1/orgs/[orgSlug]/inventory/[itemId]",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; itemId: string }> },
-) {
+) => {
   const { orgSlug, itemId } = await params;
 
   let session;
@@ -224,7 +220,7 @@ export async function DELETE(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[DELETE /api/v1/orgs/[orgSlug]/inventory/[itemId]]", err);
+    log.error("[DELETE /api/v1/orgs/[orgSlug]/inventory/[itemId]]", { err });
     return apiServerError();
   }
 
@@ -232,10 +228,7 @@ export async function DELETE(
     await requirePermission(session, PERMISSIONS.MANAGE_PRICING);
   } catch (err) {
     if (err instanceof ForbiddenError) return apiForbidden(err.message);
-    console.error(
-      "[DELETE /api/v1/orgs/[orgSlug]/inventory/[itemId]] requirePermission",
-      err,
-    );
+    log.error("[DELETE /api/v1/orgs/[orgSlug]/inventory/[itemId]] requirePermission", { err });
     return apiServerError();
   }
 
@@ -246,10 +239,7 @@ export async function DELETE(
     }
     return new NextResponse(null, { status: 204 });
   } catch (err) {
-    console.error(
-      "[DELETE /api/v1/orgs/[orgSlug]/inventory/[itemId]] deleteInventoryItem",
-      err,
-    );
+    log.error("[DELETE /api/v1/orgs/[orgSlug]/inventory/[itemId]] deleteInventoryItem", { err });
     return apiServerError();
   }
-}
+});
