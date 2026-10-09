@@ -3,6 +3,8 @@ import {
   requireSuperAdminFromRequest,
   SuperAdminUnauthorizedError,
 } from "@/lib/superadmin-guard";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached.
 export const dynamic = "force-dynamic";
@@ -15,7 +17,7 @@ export const dynamic = "force-dynamic";
 // that requireSuperAdmin() correctly rejects org User sessions without needing
 // the full login UI (which ships in Batch B).
 
-export async function GET(request: Request): Promise<NextResponse> {
+export const GET = withRoute("GET /api/v1/superadmin/ping", async (request: Request): Promise<NextResponse> => {
   try {
     const sa = await requireSuperAdminFromRequest(request);
     return NextResponse.json({ ok: true, username: sa.username });
@@ -23,7 +25,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     if (err instanceof SuperAdminUnauthorizedError) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    console.error("[GET /api/v1/superadmin/ping]", err);
+    log.error("ping", { err });
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-}
+});

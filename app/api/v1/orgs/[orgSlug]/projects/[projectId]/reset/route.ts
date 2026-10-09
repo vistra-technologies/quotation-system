@@ -7,6 +7,8 @@ import {
 } from "@/lib/api-error";
 import { resetProject } from "@/lib/data/projects";
 import { isFormulaPinError } from "@/lib/data/formula-pin";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -27,10 +29,12 @@ export const dynamic = "force-dynamic";
  * Returns 409 if the project is not DRAFT, or the org's active formula set is
  * missing / incompatible with its current config (nothing is changed).
  */
-export async function POST(
+export const POST = withRoute(
+  "POST /api/v1/orgs/[orgSlug]/projects/[projectId]/reset",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string; projectId: string }> },
-) {
+) => {
   const { orgSlug, projectId } = await params;
 
   let session;
@@ -40,7 +44,7 @@ export async function POST(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[POST /api/v1/orgs/[orgSlug]/projects/[projectId]/reset]", err);
+    log.error("reset: session", { err });
     return apiServerError();
   }
 
@@ -58,10 +62,7 @@ export async function POST(
     if (isFormulaPinError(err)) {
       return apiConflict(err.message);
     }
-    console.error(
-      "[POST /api/v1/orgs/[orgSlug]/projects/[projectId]/reset] resetProject",
-      err,
-    );
+    log.error("reset: resetProject", { err });
     return apiServerError();
   }
-}
+});

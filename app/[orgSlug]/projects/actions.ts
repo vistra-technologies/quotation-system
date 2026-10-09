@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import { withAction } from "@/lib/with-route";
 
 // ---------------------------------------------------------------------------
 // createProject
@@ -25,10 +26,12 @@ export type CreateProjectState = { error: string | null };
  * Stage 14 Batch C: removed destinationCountry (derived server-side, D19);
  * added 15 extended intake fields.
  */
-export async function createProject(
+export const createProject = withAction(
+  "app/[orgSlug]/projects/actions#createProject",
+  async (
   prevState: CreateProjectState,
   formData: FormData,
-): Promise<CreateProjectState> {
+): Promise<CreateProjectState> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
 
   const name = (formData.get("name") as string | null)?.trim();
@@ -97,7 +100,7 @@ export async function createProject(
 
   revalidatePath(`/${orgSlug}/projects`);
   redirect(await orgHref(orgSlug, `/projects/${projectId}`), RedirectType.replace);
-}
+});
 
 // ---------------------------------------------------------------------------
 // updateProject
@@ -115,10 +118,12 @@ export type UpdateProjectState = { error: string | null };
  * Stage 14 Batch C: removed destinationCountry (derived at create, never updated, D19);
  * added 15 extended intake fields.
  */
-export async function updateProject(
+export const updateProject = withAction(
+  "app/[orgSlug]/projects/actions#updateProject",
+  async (
   prevState: UpdateProjectState,
   formData: FormData,
-): Promise<UpdateProjectState> {
+): Promise<UpdateProjectState> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const projectId = (formData.get("projectId") as string | null) ?? "";
 
@@ -191,4 +196,4 @@ export async function updateProject(
 
   revalidatePath(`/${orgSlug}/projects/${projectId}`);
   redirect(await orgHref(orgSlug, `/projects/${projectId}`), RedirectType.replace);
-}
+});

@@ -10,6 +10,8 @@ import {
 } from "@/lib/data/admin";
 import { getExternalCompanyById } from "@/lib/data/external-companies";
 import { PERMISSIONS } from "@/lib/rbac";
+import { log } from "@/lib/logger";
+import { withRoute } from "@/lib/with-route";
 
 // Never cached — reads session cookie and live DB data.
 export const dynamic = "force-dynamic";
@@ -53,10 +55,12 @@ export const dynamic = "force-dynamic";
  * check adminPermissions.includes(...) explicitly; users/* and inventory/* rely on their
  * backing API routes' own requirePermission() gate — see inventory-gate-fix.md).
  */
-export async function GET(
+export const GET = withRoute(
+  "GET /api/v1/orgs/[orgSlug]/me",
+  async (
   request: Request,
   { params }: { params: Promise<{ orgSlug: string }> },
-) {
+) => {
   const { orgSlug } = await params;
 
   let session;
@@ -66,7 +70,7 @@ export async function GET(
     if (err instanceof ApiAuthError) {
       return apiAuthErrorResponse(err);
     }
-    console.error("[GET /api/v1/orgs/[orgSlug]/me]", err);
+    log.error("me: session", { err });
     return apiServerError();
   }
 
@@ -101,7 +105,7 @@ export async function GET(
       adminPermissions,
     });
   } catch (err) {
-    console.error("[GET /api/v1/orgs/[orgSlug]/me] data fetch", err);
+    log.error("me: data fetch", { err });
     return apiServerError();
   }
-}
+});

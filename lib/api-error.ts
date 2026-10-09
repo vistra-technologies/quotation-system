@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getContext } from "@/lib/log-context";
 
 /**
  * Canonical error-response factories for API route handlers.
@@ -48,7 +49,12 @@ export function apiUnprocessable(message: string, code?: string): NextResponse {
   return NextResponse.json(body(message, code), { status: 422 });
 }
 
-/** 500 Internal Server Error — unhandled exception in a route handler. */
+/** 500 Internal Server Error — unhandled exception in a route handler.
+ * Stage 30: inside a withRoute() request the body also carries `requestId` (last key); outside one it is
+ * byte-identical to before. */
 export function apiServerError(message = "Internal server error", code?: string): NextResponse {
-  return NextResponse.json(body(message, code), { status: 500 });
+  const requestId = getContext()?.requestId;
+  return NextResponse.json(requestId ? { ...body(message, code), requestId } : body(message, code), {
+    status: 500,
+  });
 }
