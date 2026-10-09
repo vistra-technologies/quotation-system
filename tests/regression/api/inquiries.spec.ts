@@ -362,7 +362,9 @@ test.describe("inquiries: rules", () => {
     // as a generic 500; when fixed, change this expectation to 400.
     const { res, body } = await createLedgered(as.admin, { run, ledger }, "inquiry", { name, currency: "AED", submissionDate: "not-a-date" });
     expect(res.status()).toBe(500);
-    expect(body).toEqual({ error: "Internal server error" });
+    // Stage 30: the 500 body carries the request id, mirrored in the x-request-id header.
+    expect(body).toEqual({ error: "Internal server error", requestId: expect.any(String) });
+    expect(res.headers()["x-request-id"]).toBe((body as { requestId?: string }).requestId);
     expect(await listIds(as.admin, url(`/inquiries?search=${encodeURIComponent(name)}`), "inquiries")).toEqual([]);
   });
 
