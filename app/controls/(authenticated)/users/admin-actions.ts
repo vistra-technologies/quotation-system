@@ -44,7 +44,7 @@ export async function addSuperAdmin(
   if (res.status === 401) redirect("/controls/login");
   if (!res.ok) return { error: await errorFrom(res) };
 
-  revalidatePath("/controls/users");
+  revalidatePath("/controls/admins");
   return { error: null, ok: true };
 }
 
@@ -64,7 +64,7 @@ export async function changeSuperAdminPassword(
   if (res.status === 401) redirect("/controls/login");
   if (!res.ok) return { error: await errorFrom(res) };
 
-  revalidatePath("/controls/users");
+  revalidatePath("/controls/admins");
   return { error: null, ok: true };
 }
 
@@ -79,5 +79,5 @@ export async function deleteSuperAdmin(formData: FormData): Promise<void> {
   if (res.status === 401) redirect("/controls/login");
   if (!res.ok) throw new Error(await errorFrom(res));
 
-  revalidatePath("/controls/users");
+  revalidatePath("/controls/admins");
 }

@@ -192,7 +192,7 @@ function OrgsTable({
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-3">
                       <Link
-                        href={`/controls/orgs/${org.id}`}
+                        href={`/controls/orgs/${org.id}/overview`}
                         className="text-xs font-bold text-primary hover:text-primary-dark"
                       >
                         Edit

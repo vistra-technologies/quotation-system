@@ -58,7 +58,7 @@ function parseFieldsSchema(raw: string | null): FieldEntry[] {
 /**
  * Create a new ComponentType via the SuperAdmin API route.
  * Reads orgId, code, name, categoryId, fieldsSchema from FormData.
- * On success: revalidates the controls page and redirects to ?orgId=xxx&typeId=newId.
+ * On success: revalidates the controls page and redirects to the org workspace Components tab with ?typeId=newId.
  * On 401: redirects to /controls/login.
  *
  * Stage 19 Batch 5 — SuperAdmin ComponentType management relocated to /controls.
@@ -89,9 +89,9 @@ export async function createSuperAdminComponentType(formData: FormData): Promise
 
   const { componentType } = (await res.json()) as { componentType: { id: string } };
 
-  revalidatePath("/controls/component-types");
+  revalidatePath("/controls", "layout");
   redirect(
-    `/controls/component-types?orgId=${encodeURIComponent(orgId)}&typeId=${encodeURIComponent(componentType.id)}`,
+    `/controls/orgs/${encodeURIComponent(orgId)}/components?typeId=${encodeURIComponent(componentType.id)}`,
     RedirectType.replace,
   );
 }
@@ -107,7 +107,7 @@ export type UpdateComponentTypeState = { error: string | null };
 /**
  * Update an existing ComponentType via the SuperAdmin API route.
  * Reads orgId, typeId, name, categoryId, fieldsSchema, active from FormData.
- * On success: revalidates the controls page and redirects back to ?orgId=xxx.
+ * On success: revalidates the controls page and redirects back to the org workspace Components tab.
  * On 401: redirects to /controls/login.
  * On any other error (including 409 from the formula-guard): returns { error }
  * so the client form can display it inline without crashing to an error boundary.
@@ -151,9 +151,9 @@ export async function updateSuperAdminComponentType(
     return { error: body.error ?? "Failed to update component type" };
   }
 
-  revalidatePath("/controls/component-types");
+  revalidatePath("/controls", "layout");
   redirect(
-    `/controls/component-types?orgId=${encodeURIComponent(orgId)}`,
+    `/controls/orgs/${encodeURIComponent(orgId)}/components`,
     RedirectType.replace,
   );
 }
@@ -161,7 +161,7 @@ export async function updateSuperAdminComponentType(
 /**
  * Delete a ComponentType via the SuperAdmin API route.
  * Reads orgId and typeId from FormData.
- * On success: revalidates the controls page and redirects back to ?orgId=xxx.
+ * On success: revalidates the controls page and redirects back to the org workspace Components tab.
  * On 401: redirects to /controls/login.
  * On 409 (type is in use): throws an error with a human-readable message.
  *
@@ -186,9 +186,9 @@ export async function deleteSuperAdminComponentType(formData: FormData): Promise
     throw new Error(body.error ?? "Failed to delete component type");
   }
 
-  revalidatePath("/controls/component-types");
+  revalidatePath("/controls", "layout");
   redirect(
-    `/controls/component-types?orgId=${encodeURIComponent(orgId)}`,
+    `/controls/orgs/${encodeURIComponent(orgId)}/components`,
     RedirectType.replace,
   );
 }

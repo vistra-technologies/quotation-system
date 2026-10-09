@@ -78,7 +78,7 @@ export async function addUser(
     return { error: errorMessage };
   }
 
-  revalidatePath(`/controls/users`);
+  revalidatePath("/controls", "layout");
   return { error: null, ok: true };
 }
 
@@ -147,7 +147,7 @@ export async function editUser(
     return { error: errorMessage };
   }
 
-  revalidatePath(`/controls/users`);
+  revalidatePath("/controls", "layout");
   return { error: null, ok: true };
 }
 
@@ -188,5 +188,5 @@ export async function deleteSAUser(formData: FormData): Promise<void> {
     throw new Error(errorMessage);
   }
 
-  revalidatePath(`/controls/users`);
+  revalidatePath("/controls", "layout");
 }

@@ -52,6 +52,9 @@ export interface OrgForEditDetail {
   name: string;
   slug: string;
   isSuspended: boolean;
+  createdAt: Date;
+  /** Every user row in the org (Stage 29: Users tab count / header seat pill) */
+  userCount: number;
   activeFormulaSetId: string | null;
   activeFormulaSet: { id: string; name: string; version: number } | null;
   /** Current mismatch state, computed on read */
@@ -163,6 +166,8 @@ export async function getOrgForEdit(orgId: string): Promise<OrgForEditDetail | n
       name: true,
       slug: true,
       isSuspended: true,
+      createdAt: true,
+      _count: { select: { users: true } },
       activeFormulaSetId: true,
       activeFormulaSet: { select: { id: true, name: true, version: true, body: true } },
       componentTypes: { select: { code: true, active: true, fieldsSchema: true } },
@@ -191,6 +196,8 @@ export async function getOrgForEdit(orgId: string): Promise<OrgForEditDetail | n
     name: row.name,
     slug: row.slug,
     isSuspended: row.isSuspended,
+    createdAt: row.createdAt,
+    userCount: row._count.users,
     activeFormulaSetId: row.activeFormulaSetId,
     activeFormulaSet: row.activeFormulaSet
       ? { id: row.activeFormulaSet.id, name: row.activeFormulaSet.name, version: row.activeFormulaSet.version }

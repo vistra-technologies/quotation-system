@@ -33,6 +33,11 @@ export interface PageRow {
   landsOn?: { anon?: string; signedIn?: string; signedInText?: RegExp };
   /** The page's primary control: must be visible, enabled and React-hydrated (next-intl failure class). */
   primary?: { role: "button" | "link"; name: RegExp };
+  /**
+   * SuperAdmin redirect-only pages: where an SA visit lands (`[param]` filled like `path`). The row's
+   * expectsText/primary then describe the landing page.
+   */
+  saLandsOn?: string;
   /** The project the page is rendered for: a submitted wall (design → summary → quotation all open). */
   project?: true;
 }
@@ -86,10 +91,19 @@ export const PAGES: PageRow[] = [
   { path: "/controls/login", access: "public", expectsText: SA_LOGIN_TEXT, landsOn: { signedIn: "/controls/orgs", signedInText: /Organizations/ } },
   { path: "/controls/orgs", access: "sa", expectsText: /Organizations/ },
   { path: "/controls/orgs/new", access: "sa", expectsText: /Create organization/ },
-  { path: "/controls/orgs/[orgId]", access: "sa", expectsText: /Edit — RGR / },
-  { path: "/controls/roles", access: "sa", expectsText: /Roles & Permissions/ },
-  { path: "/controls/users", access: "sa", expectsText: /Users/ },
-  { path: "/controls/component-types", access: "sa", expectsText: /Component Types/ },
+  // Stage 29: the org workspace. /controls/orgs/[orgId] only redirects to its Overview tab; the old flat
+  // users / roles / component-types pages are thin redirects (S29-3) — with no ?orgId= they land on the empty state.
+  { path: "/controls/orgs/[orgId]", access: "sa", expectsText: /Org status/, saLandsOn: "/controls/orgs/[orgId]/overview" },
+  { path: "/controls/orgs/[orgId]/overview", access: "sa", expectsText: /Org status/, primary: { role: "button", name: /^Save changes$/ } },
+  { path: "/controls/orgs/[orgId]/users", access: "sa", expectsText: /Username|No users found for this organization/ },
+  { path: "/controls/orgs/[orgId]/roles", access: "sa", expectsText: /Create new role/ },
+  { path: "/controls/orgs/[orgId]/components", access: "sa", expectsText: /Create new component type/ },
+  { path: "/controls/orgs/[orgId]/formula", access: "sa", expectsText: /Formula set/, primary: { role: "button", name: /^Save changes$/ } },
+  { path: "/controls/workspace", access: "sa", expectsText: /No organization selected/, primary: { role: "button", name: /^Choose organization$/ } },
+  { path: "/controls/admins", access: "sa", expectsText: /Platform accounts that can sign in/ },
+  { path: "/controls/roles", access: "sa", expectsText: /No organization selected/, saLandsOn: "/controls/workspace" },
+  { path: "/controls/users", access: "sa", expectsText: /No organization selected/, saLandsOn: "/controls/workspace" },
+  { path: "/controls/component-types", access: "sa", expectsText: /No organization selected/, saLandsOn: "/controls/workspace" },
   { path: "/controls/formula-sets", access: "sa", expectsText: /All Formula Sets/ },
   { path: "/controls/formula-sets/[setId]", access: "sa", expectsText: /glass-partition-standard/ },
   { path: "/controls/formula-sets/[setId]/new-version", access: "sa", expectsText: /glass-partition-standard/ },
