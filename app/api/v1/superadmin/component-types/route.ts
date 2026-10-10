@@ -12,7 +12,7 @@ import {
   createComponentTypeAuditLog,
 } from "@/lib/data/superadmin/component-types";
 import { getOrgById } from "@/lib/data/superadmin/orgs";
-import { validateFieldsSchema } from "@/lib/validate-fields-schema";
+import { checkFieldsSchemaForWrite } from "@/lib/validate-fields-schema";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
@@ -123,7 +123,7 @@ export const POST = withRoute(
   // ComponentTypeOrgConfig, org-authored) and enforce the earlier-field +
   // dropdown/radio-only rule on `dependsOn` — this is the server-side backstop
   // for a caller bypassing the SuperAdmin form/JSON-mode validators directly.
-  const schemaCheck = validateFieldsSchema(fieldsSchema);
+  const schemaCheck = checkFieldsSchemaForWrite(fieldsSchema);
   if (!schemaCheck.valid) return apiBadRequest(schemaCheck.error);
 
   // Verify the org exists.

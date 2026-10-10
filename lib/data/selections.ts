@@ -5,6 +5,9 @@ import { ownedProjectWhere } from "@/lib/data/ownership";
 import { getComponentTypeById } from "@/lib/data/components";
 import { isComponentTypeFullyConfigured } from "@/lib/configurator-gating";
 import { parseFieldsSchema, parseFieldOptionsConfig } from "@/lib/parse-field-config";
+import { validateSelectionConfig } from "@/lib/validate-selection-config";
+import type { FieldEntry } from "@/lib/types/field-entry";
+import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -56,6 +59,23 @@ export async function listSelections(session: SessionData, projectId: string) {
 }
 
 // ─── Mutations ──────────────────────────────────────────────────────────────
+
+/** Stage 31 S31-7: a config value the type's configured fields do not allow. Routes map it to 400. */
+export class SelectionConfigError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SelectionConfigError";
+  }
+}
+
+function assertValidConfig(
+  fieldsSchema: FieldEntry[],
+  fieldOptionsConfig: FieldOptionsConfig | null,
+  config: Record<string, string | boolean | number | null>,
+) {
+  const res = validateSelectionConfig(fieldsSchema, fieldOptionsConfig, config);
+  if (!res.ok) throw new SelectionConfigError(`Invalid configuration: ${res.error}`);
+}
 
 interface SnapshotTypeLite {
   id: string;
@@ -135,6 +155,12 @@ export async function createSelection(
     ) {
       throw new Error("Component type is not fully configured — contact your admin.");
     }
+    // Stage 31 S31-7: validate the VALUES against the same frozen snapshot type.
+    assertValidConfig(
+      parseFieldsSchema(snapType.fieldsSchema),
+      parseFieldOptionsConfig(snapType.fieldOptionsConfig),
+      input.config,
+    );
   } else {
     // null-guard: no snapshot (should not occur post-backfill) — validate against live config.
     // Tenancy guard — verify componentType belongs to session's org. Reuses the DAL's
@@ -144,6 +170,7 @@ export async function createSelection(
     if (!isComponentTypeFullyConfigured(componentType.fieldsSchema, componentType.fieldOptionsConfig)) {
       throw new Error("Component type is not fully configured — contact your admin.");
     }
+    assertValidConfig(componentType.fieldsSchema, componentType.fieldOptionsConfig, input.config);
   }
 
   return prisma.selection.create({
@@ -178,9 +205,35 @@ export async function updateSelection(
       organizationId: session.organizationId,
       project: ownedProjectWhere(session),
     },
-    select: { id: true, projectId: true },
+    select: {
+      id: true,
+      projectId: true,
+      componentTypeId: true,
+      project: { select: { configSnapshot: true } },
+    },
   });
+  // Ownership first: a foreign/unknown id is a 404 before any validation can answer differently.
   if (!existing) return null;
+
+  // Stage 31 S31-7: validate the new config values against the project's frozen snapshot type (the same
+  // source create used), falling back to the live type only when there is no snapshot (or the type is
+  // not in it).
+  if (input.config !== undefined) {
+    const snapType = readSnapshotTypes(existing.project.configSnapshot)?.find(
+      (t) => t.id === existing.componentTypeId,
+    );
+    if (snapType) {
+      assertValidConfig(
+        parseFieldsSchema(snapType.fieldsSchema),
+        parseFieldOptionsConfig(snapType.fieldOptionsConfig),
+        input.config,
+      );
+    } else {
+      const live = await getComponentTypeById(session, existing.componentTypeId);
+      if (!live) throw new SelectionConfigError("Component type not found or access denied.");
+      assertValidConfig(live.fieldsSchema, live.fieldOptionsConfig, input.config);
+    }
+  }
 
   const data = {
     ...(input.label !== undefined ? { label: input.label } : {}),

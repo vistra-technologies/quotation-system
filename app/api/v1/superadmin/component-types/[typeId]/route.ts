@@ -14,7 +14,7 @@ import {
   createComponentTypeAuditLog,
 } from "@/lib/data/superadmin/component-types";
 import { getOrgById } from "@/lib/data/superadmin/orgs";
-import { validateFieldsSchema } from "@/lib/validate-fields-schema";
+import { checkFieldsSchemaForWrite } from "@/lib/validate-fields-schema";
 import { ComponentTypeGuardError } from "@/lib/formula-compat";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import { log } from "@/lib/logger";
@@ -138,7 +138,7 @@ export const PATCH = withRoute(
   // Stage 20 Batch 2: same server-side backstop as the POST route — only runs
   // when fieldsSchema is actually part of this patch.
   if (patch.fieldsSchema !== undefined) {
-    const schemaCheck = validateFieldsSchema(patch.fieldsSchema);
+    const schemaCheck = checkFieldsSchemaForWrite(patch.fieldsSchema);
     if (!schemaCheck.valid) return apiBadRequest(schemaCheck.error);
   }
 

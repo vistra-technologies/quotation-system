@@ -112,6 +112,17 @@ export function validateFieldsSchema(fields: FieldEntry[]): ValidateFieldsSchema
 }
 
 /**
+ * Stage 31 S31-8: the single server-side write gate for a ComponentType `fieldsSchema`, used by all four
+ * component-type write routes (SuperAdmin POST/PATCH and org POST/PATCH). Rejects any `options` key
+ * (Stage 20: option values live in ComponentTypeOrgConfig, never in fieldsSchema) and enforces the
+ * structural rules above. `validateFieldsSchema` already rejects `options`, so this is that validator
+ * under one name; it exists so the routes share one call and the rule has one definition.
+ */
+export function checkFieldsSchemaForWrite(raw: FieldEntry[]): ValidateFieldsSchemaResult {
+  return validateFieldsSchema(raw);
+}
+
+/**
  * Clears `dependsOn` on every field that currently points at `key` — used by
  * the create/edit forms whenever an authoring action invalidates that
  * reference (review-B2 IMPORTANT #1): removing the parent's row, changing the

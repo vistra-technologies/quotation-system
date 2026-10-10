@@ -6,7 +6,7 @@ import {
   apiConflict,
   apiServerError,
 } from "@/lib/api-error";
-import { updateSelection, deleteSelection } from "@/lib/data/selections";
+import { updateSelection, deleteSelection, SelectionConfigError } from "@/lib/data/selections";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -64,6 +64,11 @@ export const PATCH = withRoute(
       ? (body.config as Record<string, string | boolean | number | null>)
       : undefined;
 
+  // Stage 31 S31-7: a blank label is rejected on update as it is on create.
+  if (label === "") {
+    return apiBadRequest("label must not be blank");
+  }
+
   // At least one patchable field must be present.
   if (label === undefined && config === undefined) {
     return apiBadRequest("At least one of label or config must be provided");
@@ -76,6 +81,7 @@ export const PATCH = withRoute(
     }
     return NextResponse.json({ selection });
   } catch (err) {
+    if (err instanceof SelectionConfigError) return apiBadRequest(err.message);
     log.error("[PATCH /api/v1/orgs/[orgSlug]/selections/[id]] updateSelection", { err });
     return apiServerError();
   }

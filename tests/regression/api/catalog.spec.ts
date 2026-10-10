@@ -87,9 +87,9 @@ async function firstCategoryId(g: Guarded, slug: string): Promise<string> {
 
 /** A field set with a 3-level cascade (frame → finish → edge) plus two non-choice fields. */
 const CASCADE: Field[] = [
-  { key: "frame", label: "Frame", type: "dropdown", required: true, basic: true, options: [] },
-  { key: "finish", label: "Finish", type: "dropdown", required: true, basic: true, options: [], dependsOn: "frame" },
-  { key: "edge", label: "Edge", type: "radio", required: false, basic: false, options: [], dependsOn: "finish" },
+  { key: "frame", label: "Frame", type: "dropdown", required: true, basic: true },
+  { key: "finish", label: "Finish", type: "dropdown", required: true, basic: true, dependsOn: "frame" },
+  { key: "edge", label: "Edge", type: "radio", required: false, basic: false, dependsOn: "finish" },
   { key: "note", label: "Note", type: "field", required: false, basic: false },
   { key: "flag", label: "Flag", type: "checkbox", required: false, basic: false },
 ];
@@ -500,19 +500,28 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     expect({ ...after, name: "", updatedAt: "" }).toEqual({ ...before, name: "", updatedAt: "" });
   });
 
-  // KNOWN BUG (pinned, R24): the ORG-side create/PATCH store `fieldsSchema` without any validation — junk
-  // entries and arbitrary `dependsOn` rewiring are accepted (200/201). Stage 20 made field SHAPE / wiring
-  // SuperAdmin-owned (the SA routes run validate-fields-schema; field-values refuses `dependsOn`), so an
-  // org admin can bypass that through this route. When fixed: expect 400 (or the field to be ignored).
-  test("KNOWN BUG: org POST / PATCH accept an unvalidated fieldsSchema (junk entries, dependsOn rewired to a missing key)", async ({ run, orgB }) => {
+  // Stage 31 S31-8: the ORG-side create/PATCH run the same fieldsSchema gate as the SuperAdmin routes
+  // (checkFieldsSchemaForWrite): junk entries, `options` keys and a dangling `dependsOn` are 400, nothing stored.
+  test("org POST / PATCH validate fieldsSchema (junk entries, options keys, dependsOn to a missing key → 400; nothing stored)", async ({ run, orgB }) => {
     const B = (p: string) => orgApi(run.orgB.slug, p);
-    const junk = [{ bogus: 1 }];
-    const ct = await mkBType({ run, orgB }, junk);
-    expect(ct.fieldsSchema).toEqual(junk);
+    const categoryId = await firstCategoryId(orgB, run.orgB.slug);
+    const post = (fieldsSchema: unknown) =>
+      orgB.post(B("/component-types"), { data: { code: newCode(), name: `${run.prefix}ct-${tag()}`, categoryId, fieldsSchema } });
+    const before = (await listTypes(orgB, run.orgB.slug)).length;
+    await rejected(await post([{ bogus: 1 }]), 400, 'Field "#1": unknown type "undefined".');
+    await rejected(await post([{ key: "a", label: "A", type: "dropdown", required: false, basic: true, options: ["x"] }]), 400, /"options" is no longer accepted here/);
+    await rejected(await post([{ key: "a", label: "A", type: "dropdown", required: false, basic: true, dependsOn: "nope" }]), 400, 'Field "A": dependsOn references unknown field key "nope".');
+    expect((await listTypes(orgB, run.orgB.slug)).length).toBe(before);
+
+    const ct = await mkBType({ run, orgB });
     const rewired = CASCADE.map((f) => (f.key === "finish" ? { ...f, dependsOn: "doesNotExist" } : f));
-    const p = await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: rewired } });
-    const row = (await ok<{ componentType: CT }>(p)).componentType;
-    expect(row.fieldsSchema.find((f) => f.key === "finish")!.dependsOn).toBe("doesNotExist");
+    await rejected(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: rewired } }), 400, 'Field "Finish": dependsOn references unknown field key "doesNotExist".');
+    await rejected(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: [{ ...CASCADE[0], options: ["Alu"] }] } }), 400, /"options" is no longer accepted here/);
+    const stored = (await listTypes(orgB, run.orgB.slug)).find((t) => t.id === ct.id)!;
+    expect(stored.fieldsSchema.find((f) => f.key === "finish")!.dependsOn).toBe("frame");
+    // a valid schema (and a PATCH without fieldsSchema) still works
+    await ok(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: CASCADE } }));
+    await ok(await orgB.patch(B(`/component-types/${ct.id}`), { data: { active: true } }));
   });
 
   // KNOWN BUG (pinned, R24): POST with a code the org already has is not mapped to 409 (PATCH maps P2002 to

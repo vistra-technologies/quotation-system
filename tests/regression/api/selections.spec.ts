@@ -124,26 +124,25 @@ test.describe("selections: create / list / patch", () => {
     const glass = await typeId(as.admin, run, "GLASS");
     const door = await typeId(as.admin, run, "DOOR");
     const mk = async (orderIndex: number) =>
-      (await ok<{ selection: Selection }>(await as.admin.post(url("/selections"), { data: { projectId: p.id, componentTypeId: glass, label: nm({ run }, "S"), config: { a: "1", b: "2" }, orderIndex } }), 201)).selection;
+      (await ok<{ selection: Selection }>(await as.admin.post(url("/selections"), { data: { projectId: p.id, componentTypeId: glass, label: nm({ run }, "S"), config: { category: "Single", thickness: "12" }, orderIndex } }), 201)).selection;
     const [s0, s1] = [await mk(0), await mk(1)];
     const L = nm({ run }, "S-renamed");
-    const u = (await ok<{ selection: Selection }>(await as.member.patch(url(`/selections/${s0.id}`), { data: { label: ` ${L} `, config: { b: "3" }, orderIndex: 9, componentTypeId: door } }))).selection;
-    expect(u).toMatchObject({ id: s0.id, label: L, config: { b: "3" }, orderIndex: 0, componentTypeId: glass });
+    const u = (await ok<{ selection: Selection }>(await as.member.patch(url(`/selections/${s0.id}`), { data: { label: ` ${L} `, config: { category: "Double" }, orderIndex: 9, componentTypeId: door } }))).selection;
+    expect(u).toMatchObject({ id: s0.id, label: L, config: { category: "Double" }, orderIndex: 0, componentTypeId: glass });
     const lbl = (await ok<{ selection: Selection }>(await as.admin.patch(url(`/selections/${s0.id}`), { data: { label: `${L}-2` } }))).selection;
-    expect(lbl.config).toEqual({ b: "3" }); // label-only PATCH leaves config alone
+    expect(lbl.config).toEqual({ category: "Double" }); // label-only PATCH leaves config alone
     const list = (await ok<{ selections: Selection[] }>(await as.admin.get(url(`/selections?projectId=${p.id}`)))).selections;
     expect(list.map((s) => [s.id, s.orderIndex])).toEqual([[s0.id, 0], [s1.id, 1]]);
     await rejected(await as.admin.patch(url(`/selections/${s1.id}`), { data: { orderIndex: 0 } }), 400, "At least one of label or config must be provided");
   });
 
-  test("KNOWN BUG: PATCH accepts a blank label (stored as \"\") although create rejects one", async ({ as, f, url }) => {
+  test("PATCH rejects a blank label (400), as create does; the stored label is unchanged", async ({ as, f, url }) => {
     const p = await f.project();
     const s = await f.selection(p.id, "GLASS", {});
-    // KNOWN BUG — the PATCH route only requires label/config to be PRESENT; "   " trims to "" and is
-    // written. When fixed, change this to 400 and assert the label is unchanged.
-    const r = await as.admin.patch(url(`/selections/${s.id}`), { data: { label: "   " } });
-    expect(r.status(), await r.text()).toBe(200);
-    expect(((await r.json()) as { selection: Selection }).selection.label).toBe("");
+    const labelOf = async () => (await ok<{ selections: Selection[] }>(await as.admin.get(url(`/selections?projectId=${p.id}`)))).selections.find((x) => x.id === s.id)!.label;
+    const before = await labelOf();
+    await rejected(await as.admin.patch(url(`/selections/${s.id}`), { data: { label: "   " } }), 400, "label must not be blank");
+    expect(await labelOf()).toBe(before);
   });
 
   test("invalidation: create, label PATCH and DELETE keep designSubmittedAt + calculation; a config PATCH clears both", async ({ as, f, run, url }) => {
@@ -159,14 +158,13 @@ test.describe("selections: create / list / patch", () => {
     expect(await readProjectState(p.id)).toMatchObject({ designSubmittedAt: null, calcCount: 0 });
   });
 
-  test("KNOWN BUG: config VALUES are not validated — an option outside the snapshot's options / dependsOn valueMap is stored", async ({ as, f, run, url }) => {
-    const p = await f.project();
+  /** Finds, in the project's frozen snapshot, a dependent choice field and a config whose child value is not allowed under its parent's value. */
+  async function badCombo(as: Ctx["as"], run: Ctx["run"], url: (p: string) => string, projectId: string) {
     type F = { key: string; type: string; dependsOn?: string };
     type T = { id: string; code: string; fieldsSchema: F[]; fieldOptionsConfig: Record<string, { options?: string[]; valueMap?: Record<string, string[]> }> | null };
-    const snap = (await ok<{ project: { configSnapshot: { componentTypes: T[] } } }>(await as.admin.get(url(`/projects/${p.id}`)))).project.configSnapshot;
+    const snap = (await ok<{ project: { configSnapshot: { componentTypes: T[] } } }>(await as.admin.get(url(`/projects/${projectId}`)))).project.configSnapshot;
     // find a dependent choice field whose parent value P has a valueMap branch; pick a child value that
     // another branch allows but P does not (falls back to a value no branch has)
-    let pick: { type: T; config: Record<string, string> } | undefined;
     for (const t of snap.componentTypes) {
       for (const fd of t.fieldsSchema ?? []) {
         const vm = t.fieldOptionsConfig?.[fd.key]?.valueMap;
@@ -175,19 +173,41 @@ test.describe("selections: create / list / patch", () => {
         if (!parents.length) continue;
         const P = parents[0];
         const elsewhere = parents.flatMap((k) => vm[k]).find((v) => !vm[P].includes(v));
-        pick = { type: t, config: { [fd.dependsOn]: P, [fd.key]: elsewhere ?? `${run.prefix}not-an-option` } };
-        break;
+        return { type: t, childKey: fd.key, config: { [fd.dependsOn]: P, [fd.key]: elsewhere ?? `${run.prefix}not-an-option` } as Record<string, string> };
       }
-      if (pick) break;
     }
-    if (!pick) throw new Error("the Test Org's configSnapshot has no dependent (dependsOn) choice field with a valueMap — the probe needs one");
-    // KNOWN BUG — createSelection checks only that the TYPE is active + fully configured
-    // (isComponentTypeFullyConfigured); it never checks each config value against resolveOptions() for
-    // its parent's value, so a client bypassing the form can store a combination the cascading dropdowns
-    // forbid. When fixed, change this to 400 and assert nothing was created.
+    throw new Error("the Test Org's configSnapshot has no dependent (dependsOn) choice field with a valueMap — the probe needs one");
+  }
+
+  test("create: config VALUES are validated — an option outside the snapshot's options / dependsOn valueMap → 400, nothing created", async ({ as, f, run, url }) => {
+    const p = await f.project();
+    const pick = await badCombo(as, run, url, p.id);
     const r = await as.admin.post(url("/selections"), { data: { projectId: p.id, componentTypeId: pick.type.id, label: nm({ run }, "S-badopt"), config: pick.config } });
-    expect(r.status(), await r.text()).toBe(201);
-    expect(((await r.json()) as { selection: Selection }).selection.config).toEqual(pick.config);
+    expect(r.status(), await r.text()).toBe(400);
+    expect(((await r.json()) as { error: string }).error).toBe(`Invalid configuration: "${pick.childKey}" has a value that is not one of its configured options.`);
+    // an unknown key is rejected too
+    await rejected(
+      await as.admin.post(url("/selections"), { data: { projectId: p.id, componentTypeId: pick.type.id, label: nm({ run }, "S-badkey"), config: { rgrNoSuchField: "x" } } }),
+      400,
+      'Invalid configuration: Unknown configuration field "rgrNoSuchField".',
+    );
+    expect((await ok<{ selections: Selection[] }>(await as.admin.get(url(`/selections?projectId=${p.id}`)))).selections).toEqual([]);
+  });
+
+  test("update: PATCH config is validated against the project's snapshot — out-of-option value / unknown key → 400, stored config unchanged; label-only is unaffected", async ({ as, f, run, url, orgB }) => {
+    const p = await f.project();
+    const pick = await badCombo(as, run, url, p.id);
+    const s = (await ok<{ selection: Selection }>(await as.admin.post(url("/selections"), { data: { projectId: p.id, componentTypeId: pick.type.id, label: nm({ run }, "S-upd"), config: {} } }), 201)).selection;
+    const stored = async () => (await ok<{ selections: Selection[] }>(await as.admin.get(url(`/selections?projectId=${p.id}`)))).selections.find((x) => x.id === s.id)!;
+    const r = await as.admin.patch(url(`/selections/${s.id}`), { data: { config: pick.config } });
+    expect(r.status(), await r.text()).toBe(400);
+    expect(((await r.json()) as { error: string }).error).toBe(`Invalid configuration: "${pick.childKey}" has a value that is not one of its configured options.`);
+    await rejected(await as.admin.patch(url(`/selections/${s.id}`), { data: { config: { rgrNoSuchField: "x" } } }), 400, 'Invalid configuration: Unknown configuration field "rgrNoSuchField".');
+    expect((await stored()).config).toEqual({});
+    // a label-only PATCH does not touch config validation
+    await ok(await as.admin.patch(url(`/selections/${s.id}`), { data: { label: nm({ run }, "S-renamed") } }));
+    // a foreign/unknown id is a 404 even with an invalid config (ownership runs first)
+    await rejected(await as.admin.patch(url(`/selections/${(await foreignTree({ run, orgB })).selectionId}`), { data: { config: { rgrNoSuchField: "x" } } }), 404, "Selection not found or access denied");
   });
 });
 

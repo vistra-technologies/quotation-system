@@ -4,7 +4,7 @@ import {
   apiBadRequest,
   apiServerError,
 } from "@/lib/api-error";
-import { listSelections, createSelection } from "@/lib/data/selections";
+import { listSelections, createSelection, SelectionConfigError } from "@/lib/data/selections";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -132,6 +132,8 @@ export const POST = withRoute(
     });
     return NextResponse.json({ selection }, { status: 201 });
   } catch (err) {
+    // Stage 31 S31-7: a config value outside the type's configured options / unknown key.
+    if (err instanceof SelectionConfigError) return apiBadRequest(err.message);
     if (err instanceof Error) {
       // DAL throws descriptive messages for tenancy violations and the Stage 20 Batch 4
       // configuredness guard (a ComponentType with an unconfigured dropdown/radio field).

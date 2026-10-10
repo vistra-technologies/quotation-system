@@ -214,7 +214,7 @@ test("API: Selection config PATCH invalidates", async () => {
   await arm(projectId);
 
   const res = await page.request.patch(A(`/selections/${selId}`), {
-    data: { config: { glassType: "x" } },
+    data: { config: { category: "Single" } },
   });
   expect(res.status(), await res.text()).toBe(200);
   expect(await readProjectState(projectId)).toMatchObject(NO_CALC);

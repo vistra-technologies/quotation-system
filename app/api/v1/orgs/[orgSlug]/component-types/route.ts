@@ -11,6 +11,7 @@ import {
   createComponentType,
 } from "@/lib/data/components";
 import type { FieldEntry } from "@/lib/data/components";
+import { checkFieldsSchemaForWrite } from "@/lib/validate-fields-schema";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -121,6 +122,10 @@ export const POST = withRoute(
   if (!code || !name || !categoryId) {
     return apiBadRequest("code, name, and categoryId are required");
   }
+
+  // Stage 31 S31-8: same server-side fieldsSchema gate as the SuperAdmin routes.
+  const schemaCheck = checkFieldsSchemaForWrite(fieldsSchema);
+  if (!schemaCheck.valid) return apiBadRequest(schemaCheck.error);
 
   try {
     const componentType = await createComponentType(session, {

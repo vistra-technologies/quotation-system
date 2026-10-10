@@ -323,16 +323,17 @@ test.describe("rooms", () => {
     expect((await ok<{ rooms: Room[] }>(await as.admin.get(url(`/rooms?floorId=${other.id}`)))).rooms.map((r) => [r.id, r.orderIndex])).toEqual([[elsewhere.id, 0]]);
   });
 
-  test("KNOWN BUG: a reorder with a duplicated room id is accepted (set equality ignores multiplicity)", async ({ as, f, run, url }) => {
+  test("a reorder with a duplicated room id → 400 and the order is unchanged", async ({ as, f, run, url }) => {
     const p = await f.project();
     const t = wallAt(as.admin, url);
     const fl = await t.floor(p.id, nm({ run }, "F"));
     const [r1, r2] = [await t.room(fl.id, nm({ run }, "R1")), await t.room(fl.id, nm({ run }, "R2"))];
-    // KNOWN BUG — reorderRooms compares Sets, so [r1, r1, r2] passes the "exact set" check and writes
-    // orderIndex 0 and 1 to r1; when fixed, change this to 400 with the "must contain exactly" message.
-    const r = await as.admin.patch(url("/rooms"), { data: { floorId: fl.id, orderedRoomIds: [r1.id, r1.id, r2.id] } });
-    expect(r.status(), await r.text()).toBe(200);
-    expect(((await r.json()) as { rooms: Room[] }).rooms.map((x) => x.id).sort()).toEqual([r1.id, r2.id].sort());
+    await rejected(
+      await as.admin.patch(url("/rooms"), { data: { floorId: fl.id, orderedRoomIds: [r1.id, r1.id, r2.id] } }),
+      400,
+      "orderedRoomIds must contain exactly the rooms currently on this floor.",
+    );
+    expect((await ok<{ rooms: Room[] }>(await as.admin.get(url(`/rooms?floorId=${fl.id}`)))).rooms.map((x) => [x.id, x.orderIndex])).toEqual([[r1.id, 0], [r2.id, 1]]);
   });
 
   test("DELETE cascades its partitions, clears designSubmittedAt + calculation, leaves sibling rooms; then 404", async ({ as, f, run, url }) => {
@@ -439,24 +440,28 @@ test.describe("rooms/:id/sides topology", () => {
     expect((await t.partition(other.partitionId)).roomId).toBe(other.roomId);
   });
 
-  test("KNOWN BUG: a new PARTITION side's heightMm/widthMm are not range-checked (negative stored; fractional width → inconsistent row)", async ({ as, f, run, url }) => {
+  test("a new PARTITION side's heightMm/widthMm must be integers in 1..100000 → 400, nothing stored", async ({ as, f, run, url }) => {
     const w = await f.wall();
-    // KNOWN BUG — the sides route only checks `typeof === "number"` and replaceSides only truthiness, so
-    // a negative height creates a partition with heightMm -5; when fixed, change this to 400.
-    const neg = await as.admin.patch(url(`/rooms/${w.roomId}/sides`), { data: { sides: [newSide(nm({ run }, "Wneg"), -5, 2000), ...PLAIN3] } });
-    expect(neg.status(), await neg.text()).toBe(200);
-    const pid = ((await neg.json()) as { room: Room }).room.sides[0].partitionId!;
-    expect((await ok<{ partition: Partition }>(await as.admin.get(url(`/partitions/${pid}`)))).partition.heightMm).toBe(-5);
-    // KNOWN BUG — a fractional widthMm is truncated on the Int column (1500) while the seeded design keeps
-    // the fraction (500 + 500 + 500.5 = 1500.5): the stored row breaks the "section widths sum to widthMm"
-    // invariant that parseStoredDesign enforces on read. When fixed, change this to 400.
-    const frac = await as.admin.patch(url(`/rooms/${w.roomId}/sides`), { data: { sides: [newSide(nm({ run }, "Wfrac"), 2400, 1500.5), ...PLAIN3] } });
-    expect(frac.status(), await frac.text()).toBe(200);
-    const fp = ((await frac.json()) as { room: Room }).room.sides[0].partitionId!;
-    const row = await readPartitionRow(fp);
-    expect(row.widthMm).toBe(1500);
-    const widths = (row.design as { sections: { widthMm: number }[] }).sections.map((s) => s.widthMm);
-    expect(widths).toEqual([500, 500, 500.5]);
+    const partitionIds = async () => (await ok<{ partitions: Partition[] }>(await as.admin.get(url(`/partitions?roomId=${w.roomId}`)))).partitions.map((x) => x.id);
+    const before = await partitionIds();
+    const cases: [string, ReturnType<typeof newSide>, RegExp][] = [
+      ["negative height", newSide(nm({ run }, "Wneg"), -5, 2000), /heightMm must be an integer between 1 and 100000/],
+      ["zero width", newSide(nm({ run }, "Wzero"), 2400, 0), /widthMm must be an integer between 1 and 100000/],
+      ["fractional width", newSide(nm({ run }, "Wfrac"), 2400, 1500.5), /widthMm must be an integer between 1 and 100000/],
+      ["100001 mm width", newSide(nm({ run }, "Wbig"), 2400, 100001), /widthMm must be an integer between 1 and 100000/],
+    ];
+    for (const [what, side, msg] of cases) {
+      const r = await as.admin.patch(url(`/rooms/${w.roomId}/sides`), { data: { sides: [side, ...PLAIN3] } });
+      expect(r.status(), `${what}: ${await r.text()}`).toBe(400);
+      expect(((await r.json()) as { error: string }).error, what).toMatch(msg);
+    }
+    // PLAIN lengthMm and turnDegrees ranges
+    await rejected(await as.admin.patch(url(`/rooms/${w.roomId}/sides`), { data: { sides: [{ kind: "PLAIN", turnDegrees: 90, lengthMm: 100001 }, ...PLAIN3] } }), 400, "lengthMm must be an integer between 1 and 100000 (mm)");
+    await rejected(await as.admin.patch(url(`/rooms/${w.roomId}/sides`), { data: { sides: [{ kind: "PLAIN", turnDegrees: 90, lengthMm: -1 }, ...PLAIN3] } }), 400, "lengthMm must be an integer between 1 and 100000 (mm)");
+    await rejected(await as.admin.patch(url(`/rooms/${w.roomId}/sides`), { data: { sides: [{ kind: "PLAIN", turnDegrees: 360 }, ...PLAIN3] } }), 400, "turnDegrees must be a number between -360 and 360 (exclusive)");
+    await rejected(await as.admin.patch(url(`/rooms/${w.roomId}/sides`), { data: { sides: [{ kind: "PLAIN", turnDegrees: -360 }, ...PLAIN3] } }), 400, "turnDegrees must be a number between -360 and 360 (exclusive)");
+    // nothing was stored by any rejected request
+    expect(await partitionIds()).toEqual(before);
   });
 });
 

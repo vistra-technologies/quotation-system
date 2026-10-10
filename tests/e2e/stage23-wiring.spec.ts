@@ -276,7 +276,7 @@ test("Selection PATCH: config invalidates; label-only does not", async () => {
   expect(s.calcCount).toBe(1);
   expect(s.designSubmittedAt).not.toBeNull();
 
-  const cfg = await acme.request.patch(A(`/selections/${selId}`), { data: { config: { glassType: "x" } } });
+  const cfg = await acme.request.patch(A(`/selections/${selId}`), { data: { config: { category: "Single" } } });
   expect(cfg.status(), await cfg.text()).toBe(200);
   expect(await readProjectState(projectId)).toMatchObject(NO_CALC);
 });

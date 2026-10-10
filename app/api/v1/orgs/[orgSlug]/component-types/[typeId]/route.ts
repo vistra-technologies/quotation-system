@@ -13,6 +13,7 @@ import {
   updateComponentType,
 } from "@/lib/data/components";
 import type { FieldEntry } from "@/lib/data/components";
+import { checkFieldsSchemaForWrite } from "@/lib/validate-fields-schema";
 import { ComponentTypeGuardError } from "@/lib/formula-compat";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
@@ -139,6 +140,12 @@ export const PATCH = withRoute(
 
   if (Object.keys(patch).length === 0) {
     return apiBadRequest("No updatable fields provided");
+  }
+
+  // Stage 31 S31-8: same server-side fieldsSchema gate as the SuperAdmin routes (only when it is in the patch).
+  if (patch.fieldsSchema !== undefined) {
+    const schemaCheck = checkFieldsSchemaForWrite(patch.fieldsSchema);
+    if (!schemaCheck.valid) return apiBadRequest(schemaCheck.error);
   }
 
   try {

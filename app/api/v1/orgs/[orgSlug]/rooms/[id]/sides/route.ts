@@ -6,6 +6,7 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { replaceSides, InvalidSidesError, type IncomingSide } from "@/lib/data/rooms";
+import { isDesignMm, MAX_DESIGN_MM } from "@/lib/partition-design";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -81,6 +82,21 @@ export const PATCH = withRoute(
     }
     const el = raw as Record<string, unknown>;
     const turnDegrees = typeof el.turnDegrees === "number" ? el.turnDegrees : 90;
+
+    // Stage 31 S31-9: range checks so absurd/negative/fractional values are a 400, not a stored row or a
+    // DB-range 500. Dimensions: integers in 1..MAX_DESIGN_MM; turn: finite, within (-360, 360).
+    if (!Number.isFinite(turnDegrees) || turnDegrees <= -360 || turnDegrees >= 360) {
+      return apiBadRequest("turnDegrees must be a number between -360 and 360 (exclusive)");
+    }
+    const dimError = `must be an integer between 1 and ${MAX_DESIGN_MM} (mm)`;
+    for (const k of ["heightMm", "widthMm"] as const) {
+      if (el.kind === "PARTITION" && typeof el[k] === "number" && !isDesignMm(el[k])) {
+        return apiBadRequest(`${k} ${dimError}`);
+      }
+    }
+    if (el.kind === "PLAIN" && typeof el.lengthMm === "number" && !isDesignMm(el.lengthMm)) {
+      return apiBadRequest(`lengthMm ${dimError}`);
+    }
 
     if (el.kind === "PARTITION") {
       // Invariant 3 (lengthMm only on PLAIN) — reject rather than silently

@@ -288,3 +288,11 @@ describe("pickTransomGlass (H-7)", () => {
     assert.equal(pickTransomGlass([{ id: "a", selectionId: null }], "a"), null);
   });
 });
+
+test("isDesignMm: integers in 1..MAX_DESIGN_MM only", async () => {
+  const { isDesignMm, MAX_DESIGN_MM } = await import("../../lib/partition-design");
+  for (const ok of [1, 2400, MAX_DESIGN_MM]) assert.equal(isDesignMm(ok), true, String(ok));
+  for (const bad of [0, -1, 1.5, MAX_DESIGN_MM + 1, NaN, Infinity, "5", null, undefined]) {
+    assert.equal(isDesignMm(bad), false, String(bad));
+  }
+});

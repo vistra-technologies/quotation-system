@@ -120,8 +120,13 @@ function isObject(v: unknown): v is Record<string, unknown> {
  * `Partition.widthMm` well inside Int4 so absurd input is a 400, not a DB-range 500. */
 export const MAX_DESIGN_MM = 100000;
 
+/** True for an integer mm value in `1..MAX_DESIGN_MM` — the one definition of the cap (Stage 31 S31-9). */
+export function isDesignMm(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v > 0 && v <= MAX_DESIGN_MM;
+}
+
 function positiveInt(v: unknown, label: string): number {
-  if (typeof v !== "number" || !Number.isInteger(v) || v <= 0 || v > MAX_DESIGN_MM) {
+  if (!isDesignMm(v)) {
     fail(`${label} must be a positive integer (mm) of at most ${MAX_DESIGN_MM}`);
   }
   return v;

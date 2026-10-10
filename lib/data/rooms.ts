@@ -272,7 +272,9 @@ export async function reorderRooms(
     });
     const currentIds = new Set(rooms.map((r) => r.id));
     const incomingIds = new Set(orderedRoomIds);
+    // Stage 31 S31-9: a duplicated id ([r1, r1, r2]) collapses in the Set, so compare the raw length too.
     if (
+      orderedRoomIds.length !== incomingIds.size ||
       currentIds.size !== incomingIds.size ||
       [...currentIds].some((id) => !incomingIds.has(id))
     ) {
