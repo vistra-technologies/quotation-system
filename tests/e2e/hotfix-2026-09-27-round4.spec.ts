@@ -153,7 +153,7 @@ test("H-13-SA-UI: Component Types edit form — Code field enabled, no locked hi
 
   // Check Code input field is present and NOT disabled
   // The edit form renders an input with the code value
-  const codeInput = page.locator("input").filter({ hasValue: "GLASS" });
+  const codeInput = page.locator('input[value="GLASS"]');
   const codeInputCount = await codeInput.count();
   if (codeInputCount > 0) {
     const isDisabled = await codeInput.first().isDisabled();

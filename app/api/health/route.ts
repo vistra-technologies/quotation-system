@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { pingHealthCheck } from "@/lib/data/admin";
+import { log } from "@/lib/logger";
 
 // Never cached — this route exists to prove live DB connectivity on each hit.
 export const dynamic = "force-dynamic";
@@ -17,11 +18,13 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
+    // Fixed public body (no driver/connection detail leaks); the cause goes to the log only.
+    log.error("health.db_unreachable", { err: error });
     return NextResponse.json(
       {
         status: "error",
         database: "unreachable",
-        message: error instanceof Error ? error.message : String(error),
+        message: "Database unreachable",
       },
       { status: 503 },
     );

@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { PrismaClient } from "../app/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { enforceDbTarget, describeTarget } from "./db-target-guard";
 import { auth } from "@/lib/auth";
 import { toAuthEmail, toPlatformAuthEmail } from "@/lib/auth-utils";
 import { DEFAULT_ROLE_DEFS } from "@/lib/org-role-defaults";
@@ -61,6 +62,10 @@ const permissionCatalog = [
 const roleDefs = DEFAULT_ROLE_DEFS;
 
 async function main() {
+  // ── 0. DB target guard (S31-14) — must run before ANY query (including the purge below).
+  // Exits non-zero on a non-dev endpoint unless EXPECT_ENDPOINT opts in.
+  console.log(describeTarget(enforceDbTarget()));
+
   // ── 0a. One-time cleanup: purge E2E test artifacts ─────────────────────────
   // E2E specs previously created timestamped permission codes (E2E_PERM_*)
   // that were never cleaned up, causing them to appear in the admin UI.
@@ -427,7 +432,8 @@ async function main() {
   // Reads SUPERADMIN_DEVADMIN_PASSWORD, SUPERADMIN_ISHAN_PASSWORD,
   // SUPERADMIN_SHAJI_PASSWORD from env. If ANY are missing, skips the entire
   // SuperAdmin seed step with a warning — the rest of the seed still completes.
-  // Never logs plaintext passwords.
+  // Never logs plaintext passwords. Create-only (S31-14): an existing SuperAdmin is never
+  // touched, so re-seeding cannot reset a rotated password.
   //
   // The three env vars must be set in Vercel (Production + Preview + Development)
   // before this seed step can run on any deployed environment.
@@ -445,24 +451,33 @@ async function main() {
     );
     console.warn("Set those env vars in Vercel (Production + Preview + Development) and re-seed.");
   } else {
-    let superAdminCount = 0;
+    let created = 0;
+    let kept = 0;
     for (const def of superAdminDefs) {
+      const existing = await prisma.superAdmin.findUnique({
+        where: { username: def.username },
+        select: { id: true },
+      });
+      if (existing) {
+        kept++;
+        continue;
+      }
       const plaintext = process.env[def.envVar]!; // asserted non-null above
       const hash = await authCtx.password.hash(plaintext);
       const email = toPlatformAuthEmail(def.username);
 
       await prisma.superAdmin.upsert({
         where: { username: def.username },
-        update: { passwordHash: hash, email },
+        update: {}, // create-only: never overwrite an existing password
         create: {
           username: def.username,
           email,
           passwordHash: hash,
         },
       });
-      superAdminCount++;
+      created++;
     }
-    console.log(`SuperAdmins: ${superAdminCount} (3 expected)`);
+    console.log(`SuperAdmins: created ${created}, kept ${kept} existing (passwords untouched)`);
   }
 
   // ── 7. Summary ──────────────────────────────────────────────────────────────

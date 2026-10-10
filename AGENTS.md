@@ -30,36 +30,28 @@ no `useTranslations()` call) — grep `app/controls/**` for `PendingOverlay` for
 new `/controls/**` client component needing a loading spinner must use that local pattern, never the shared
 component.**
 
-## `BETTER_AUTH_URL`-driven cross-subdomain cookies are structurally incompatible with ad-hoc branch previews
+## Cross-subdomain session cookies are driven by `CROSS_SUBDOMAIN_COOKIES_ENABLED`, not `BETTER_AUTH_URL`
 
-`lib/auth.ts`'s `crossSubDomainCookies.enabled`/`.domain` are computed **once**, at `betterAuth()`
-construction, from `process.env.BETTER_AUTH_URL` — a single static value per Vercel environment (Production /
-Preview / Development), not something resolved per-request from the actual inbound Host header (better-auth
-does support a "dynamic baseURL" config for this — see `isDynamicBaseURLConfig`/`resolveBaseURL` in
-`node_modules/better-auth/dist/utils/url.mjs` — but `lib/auth.ts` does not currently use it).
+`lib/auth.ts` sets `advanced.crossSubDomainCookies` to
+`{ enabled: process.env.CROSS_SUBDOMAIN_COOKIES_ENABLED === "true", domain: ".easeetool.com" }`, evaluated once
+at `betterAuth()` construction. It is a plain per-environment flag: `BETTER_AUTH_URL` has no part in it (an
+earlier `BETTER_AUTH_URL.includes("easeetool.com")` heuristic was replaced because Vercel's Preview tier shares
+one `BETTER_AUTH_URL` between the `staging` branch and every ad-hoc `*.vercel.app` branch preview).
 
-Consequence, confirmed empirically 2026-09-03 by curling `/api/auth/sign-in/email` directly on a
-release-branch ad-hoc preview: the response set
-`Set-Cookie: __Secure-qs.session_token=...; Domain=.easeetool.com; ...` even though the deployment's own
-host was `quotation-system-<hash>-vistra-indias-projects.vercel.app`. A browser silently drops a cookie whose
-`Domain` doesn't match the serving host (RFC 6265 §5.3) — sign-in returns 200 with a valid user payload, but
-no session survives the redirect, so the next page load bounces back to `/login`. This reproduces on
-**every** ad-hoc `feature/*`/`release/*` branch preview whenever the shared Preview-environment
-`BETTER_AUTH_URL` value contains `easeetool.com` (e.g. `https://test.easeetool.com`, set for exactly this
-reason in Stage 15) — which is required to make `test.easeetool.com` itself share cookies across org
-subdomains. **The two requirements cannot both be satisfied by one static env value**, so whichever was fixed
-last is currently broken: this has been logged and "fixed" as a one-off devops env-var tweak at least four
-times already (Stage 2 review round, Stage 10 Batch 2, Stage 13 H1, Stage 15 Round 2) and will keep
-recurring on every ad-hoc preview until `crossSubDomainCookies` is driven per-request instead of per-environment.
+Why it matters: with the flag on, the session cookie is `Domain=.easeetool.com`, so one sign-in is shared
+across org subdomains (`{orgSlug}.easeetool.com`, `test.easeetool.com`). A browser rejects a cookie whose
+`Domain` does not match the serving host (RFC 6265 section 5.3), so on a `*.vercel.app` preview the flag must
+be off. Where it is set (checked with `vercel env ls`, names and targets only, 2026-10-10):
+`CROSS_SUBDOMAIN_COOKIES_ENABLED=true` on **Production** and on **Preview scoped to the `staging` branch**.
+Every other Preview build (feature/hotfix/release branches) has no value, so it is `false` and cookies are
+host-only. Local dev also has no value.
 
-**Do not re-diagnose this from scratch.** If browser sign-in on a feature/release branch's own preview
-"succeeds" (200, user JSON) but the next request is unauthenticated: curl the sign-in endpoint directly and
-check the `Set-Cookie` header's `Domain` attribute against the actual request host — if they don't match,
-this is that bug, not a new one. **The real fix** (not yet built — needs a proper implement pass, since it
-touches production auth-cookie behavior): make `crossSubDomainCookies` resolve per-request from the inbound
-Host header (via better-auth's dynamic-baseURL support, or an equivalent per-request override) instead of a
-build-time env var, so a single deployment can correctly serve both `*.easeetool.com` hosts and ad-hoc
-`*.vercel.app` preview hosts at once.
+**Do not re-diagnose a "sign-in returns 200 but the next page bounces to `/login`" report from scratch.** Curl
+`/api/auth/sign-in/email` on the affected host and compare the `Set-Cookie` `Domain` attribute with the request
+host. A `Domain=.easeetool.com` cookie on a `*.vercel.app` host means the flag is `true` for that deployment's
+environment/branch (it should not be); a missing `Domain` on an `easeetool.com` host means the flag is unset
+there. Fix the env var for that target in the Vercel dashboard (it is read at build/start, so redeploy).
+
 <!-- END:nextjs-agent-rules -->
 
 ## Logging: `log.*` never `console.*`, wrap new routes and actions (Stage 30)
