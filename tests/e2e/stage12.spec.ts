@@ -5,7 +5,7 @@
  *
  * A. Dashboard redesign (Batch 7b):
  *    - Heading is "Welcome, {firstName}", not "Dashboard"
- *    - Three KPI tiles present (Orders, Projects, Inquiries)
+ *    - Two KPI tiles present (Projects, Inquiries); no Orders tile (hidden, Stage 31)
  *    - Home icon in top-bar links to dashboard
  *
  * B. Inquiries list redesign (Batch 7c):
@@ -55,16 +55,17 @@ test("Dashboard: heading is 'Welcome, {firstName}', not 'Dashboard'", async ({ p
   await expect(h1).not.toContainText(/^Dashboard$/);
 });
 
-test("Dashboard: three KPI tiles (Orders, Projects, Inquiries) are present", async ({ page }) => {
+test("Dashboard: two KPI tiles (Projects, Inquiries) are present and there is no Orders tile", async ({ page }) => {
   await signIn(page, "admin");
   await page.goto(orgUrl("acme-glass", "/dashboard"));
 
   await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
 
-  // The three KPI tiles each have a label in muted small text below the count.
-  await expect(page.getByRole("main").getByText("Orders", { exact: true })).toBeVisible({ timeout: 15_000 });
+  // The KPI tiles each have a label in muted small text below the count.
   await expect(page.getByRole("main").getByText("Projects", { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("main").getByText("Inquiries", { exact: true })).toBeVisible({ timeout: 15_000 });
+  // Asserted after the tiles have loaded so it cannot pass vacuously.
+  await expect(page.getByRole("main").getByText("Orders", { exact: true })).toHaveCount(0);
 });
 
 test("Dashboard: Home icon in top-bar links to dashboard", async ({ page }) => {

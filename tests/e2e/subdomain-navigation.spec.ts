@@ -137,11 +137,12 @@ test("sidebar: Inquiries link → inquiries list (clean URL)", async () => {
   await page.close();
 });
 
-test("sidebar: Orders link → orders placeholder (clean URL)", async () => {
+test("sidebar: no Orders link (hidden until the Order stage); /orders still renders (clean URL)", async () => {
   const page = await ctx.newPage();
   await page.goto(DASHBOARD);
-  await page.getByRole("link", { name: "Orders" }).click();
-  await page.waitForURL(`${BASE}/orders`, { timeout: 15_000 });
+  await expect(page.getByRole("link", { name: "Inquiries" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("link", { name: "Orders" })).toHaveCount(0);
+  await page.goto(`${BASE}/orders`);
   assertCleanSubdomainUrl(page.url(), "/orders");
   // Orders is a placeholder; just assert the page rendered without crashing.
   await expect(page.locator("h1")).toBeVisible({ timeout: 10_000 });

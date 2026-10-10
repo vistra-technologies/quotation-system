@@ -225,27 +225,7 @@ export function Sidebar({
           {!collapsed && <span>Inquiries</span>}
         </Link>
 
-        {/* Orders — new in Stage 10, no permission gate */}
-        <Link
-          href={href("/orders")}
-          title="Orders"
-          className={navItemClass("/orders")}
-        >
-          <svg
-            className="h-5 w-5 shrink-0"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01" />
-          </svg>
-          {!collapsed && <span>Orders</span>}
-        </Link>
-
+        {/* Orders link hidden until the Order stage ships (Stage 31 item 19) */}
         {/* Projects */}
         <Link
           href={href("/projects")}
