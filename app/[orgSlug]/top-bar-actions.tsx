@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
@@ -58,7 +58,11 @@ export function TopBarActions({
   const t = useTranslations("account");
   const [menuOpen, setMenuOpen] = useState(false);
   const [popupTab, setPopupTab] = useState<AccountTab | null>(null);
-  const closePopup = useCallback(() => setPopupTab(null), []);
+  const profileBtnRef = useRef<HTMLButtonElement>(null);
+  const closePopup = useCallback(() => {
+    setPopupTab(null);
+    profileBtnRef.current?.focus();
+  }, []);
   function openPopup(tab: AccountTab) {
     setMenuOpen(false);
     setPopupTab(tab);
@@ -137,6 +141,7 @@ export function TopBarActions({
 
       <div className="relative">
         <button
+          ref={profileBtnRef}
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
           title={t("profileButtonTitle")}
@@ -221,7 +226,6 @@ export function TopBarActions({
           username={username}
           roleName={roleName}
           orgName={orgName}
-          externalCompanyName={externalCompanyName}
           firstName={firstName}
           lastName={lastName}
           mobile={mobile}

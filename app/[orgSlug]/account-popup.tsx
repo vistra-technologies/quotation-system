@@ -18,7 +18,6 @@ interface AccountPopupProps {
   username: string;
   roleName: string;
   orgName: string;
-  externalCompanyName: string | null;
   firstName: string;
   lastName: string;
   mobile: string | null;
@@ -59,7 +58,6 @@ export function AccountPopup({
   username,
   roleName,
   orgName,
-  externalCompanyName,
   firstName,
   lastName,
   mobile,
@@ -91,6 +89,12 @@ export function AccountPopup({
 
   const busy = saving || pwBusy;
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  // Move focus into the dialog on open (the opener is unmounted with the menu; TopBarActions restores focus on close).
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
 
   // Escape closes (unless a request is in flight).
   useEffect(() => {
@@ -257,10 +261,12 @@ export function AccountPopup({
       }}
     >
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="acct-title"
-        className="flex max-h-[88vh] w-full max-w-[520px] flex-col rounded-md bg-bg-white shadow-[0_24px_60px_-16px_rgba(27,40,30,0.35)]"
+        className="flex max-h-[88vh] w-full max-w-[520px] flex-col rounded-md bg-bg-white outline-none shadow-[0_24px_60px_-16px_rgba(27,40,30,0.35)]"
       >
         <div className="flex shrink-0 items-start justify-between gap-3 px-[22px] pt-[18px]">
           <h2 id="acct-title" className="m-0 text-[17px] font-extrabold text-text-heading">
@@ -317,15 +323,6 @@ export function AccountPopup({
                   </svg>
                   {orgName}
                 </span>
-                {externalCompanyName && (
-                  <span className={chipCls}>
-                    <svg className={chipIcon} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <rect x="2" y="7" width="20" height="14" rx="2" />
-                      <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
-                    </svg>
-                    {externalCompanyName}
-                  </span>
-                )}
               </div>
             </div>
           </div>
