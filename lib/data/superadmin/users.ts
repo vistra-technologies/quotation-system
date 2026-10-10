@@ -8,6 +8,8 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@/lib/auth";
 import { toAuthEmail } from "@/lib/auth-utils";
 import { assertUserSeatAvailable, UserLimitReachedError } from "@/lib/data/user-limit";
+import { deleteUserKeepingRecords } from "@/lib/data/users";
+import { shouldRevokeSessions } from "@/lib/session-revocation";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -322,7 +324,7 @@ export async function updateUserInOrg(
   const outcome = await prisma.$transaction(async (tx): Promise<Failure | Record<string, unknown>> => {
     const user = await tx.user.findFirst({
       where: { id: userId, organizationId: orgId },
-      select: { firstName: true, lastName: true, externalCompanyId: true },
+      select: { firstName: true, lastName: true, externalCompanyId: true, active: true },
     });
     if (!user) {
       return { ok: false, reason: "user_not_found", message: "User not found in this organization" };
@@ -370,7 +372,16 @@ export async function updateUserInOrg(
         data: { password: passwordHash },
       });
     }
-    if (passwordHash !== null || input.active === false) {
+    // Revoke on deactivate, on a password reset, and (Stage 31 S31-2 P5) on a real reactivation
+    // (stored false -> true) so a pre-existing session cannot revive. A re-sent active:true on an
+    // already-active user is a no-op edit and revokes nothing.
+    if (
+      shouldRevokeSessions({
+        passwordChanged: passwordHash !== null,
+        nextActive: input.active,
+        storedActive: user.active,
+      })
+    ) {
       await tx.session.deleteMany({ where: { userId } });
     }
     return data;
@@ -418,8 +429,9 @@ export async function deleteUserFromOrg(
     };
   }
 
-  // Account and Session rows cascade automatically (onDelete: Cascade in schema).
-  await prisma.user.delete({ where: { id: userId } });
+  // Stage 31 S31-4: never blocked by the user's records; one shared helper snapshots the name onto
+  // their projects/inquiries, then deletes. Account and Session rows cascade (onDelete: Cascade).
+  await prisma.$transaction((tx) => deleteUserKeepingRecords(tx, userId));
 
   return { ok: true, username: user.username };
 }

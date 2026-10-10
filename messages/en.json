@@ -69,7 +69,16 @@
     "fieldExternalCompanyRequired": "External Company (required for this role)",
     "dangerZoneLabel": "Danger Zone",
     "editDeactivateHint": "Deactivating signs the user out everywhere.",
-    "editPasswordHint": "Setting a password signs the user out everywhere. Username can't be changed."
+    "editPasswordHint": "Setting a password signs the user out everywhere. Username can't be changed.",
+    "deleteRecords": "Owns {projects, plural, one {# project} other {# projects}} and {inquiries, plural, one {# inquiry} other {# inquiries}}. They stay, and will show as created by {name} (removed).",
+    "deleteReassignLabel": "Reassign their work to",
+    "deleteReassignNone": "Leave it attributed to {name}",
+    "reassignWorkLabel": "Reassign work",
+    "reassignWorkTo": "Reassign all projects and inquiries to",
+    "reassignWorkChoose": "Choose a user",
+    "reassignWorkSubmit": "Reassign",
+    "reassignWorkNone": "No other active users",
+    "reassignWorkDone": "Moved {projects, plural, one {# project} other {# projects}} and {inquiries, plural, one {# inquiry} other {# inquiries}}."
   },
   "roles": {
     "pageTitle": "Roles",
@@ -155,6 +164,8 @@
     "pageSubtitle": "Manage your organization's projects.",
     "createProject": "New Project",
     "noProjects": "No projects yet. Create your first project.",
+    "createdByRemoved": "{name} (removed)",
+    "createdByUnknown": "Unknown user",
     "colNumber": "Project Number",
     "colName": "Name",
     "colStatus": "Status",
@@ -203,6 +214,8 @@
     "pageSubtitle": "Manage your organization's inquiries.",
     "createInquiry": "New Inquiry",
     "noInquiries": "No inquiries yet. Create your first inquiry.",
+    "createdByRemoved": "{name} (removed)",
+    "createdByUnknown": "Unknown user",
     "colNumber": "#",
     "colName": "Name",
     "colStatus": "Status",
@@ -282,7 +295,7 @@
     "submitCreate": "Create Company",
     "submitEdit": "Save Changes",
     "backToList": "← Back to External Companies",
-    "deleteConfirm": "Delete company \"{name}\"? This will unlink any users, projects, and inquiries. This cannot be undone."
+    "deleteConfirm": "Delete company \"{name}\"? This cannot be undone."
   },
   "selections": {
     "sectionTitle": "Components",

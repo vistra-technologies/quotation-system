@@ -152,19 +152,22 @@ export const updateExternalCompany = withAction(
  * Delete an external company from the org.
  *
  * Gate: MANAGE_USERS (enforced by DELETE /api/v1/orgs/[orgSlug]/external-companies/[companyId]).
- * FK cascade: User/Project/Inquiry.externalCompanyId use ON DELETE SET NULL — no blocker.
- *
- * Throws on error so the caller (DeleteCompanyButton) can surface it.
+ * Stage 31 S31-5: the route refuses (409 COMPANY_HAS_RECORDS) while the company still has users,
+ * projects or inquiries. Returns state, never throws, so the message ("This company still has 2
+ * user(s)... Reassign or remove them first.") reaches DeleteCompanyButton instead of a generic 500
+ * (a thrown server-action error loses its message in production).
  *
  * Stage 13 Batch 2.
  */
+export type DeleteCompanyState = { error: string | null; success: boolean };
+
 export const deleteExternalCompany = withAction(
   "app/[orgSlug]/admin/external-companies/actions#deleteExternalCompany",
-  async (formData: FormData): Promise<void> => {
+  async (formData: FormData): Promise<DeleteCompanyState> => {
   const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
   const companyId = formData.get("companyId") as string | null;
 
-  if (!companyId) throw new Error("companyId is required");
+  if (!companyId) return { error: "companyId is required", success: false };
 
   const res = await internalFetch(
     `/api/v1/orgs/${orgSlug}/external-companies/${companyId}`,
@@ -182,8 +185,9 @@ export const deleteExternalCompany = withAction(
     } catch {
       // ignore JSON parse failure
     }
-    throw new Error(errorMessage);
+    return { error: errorMessage, success: false };
   }
 
   revalidatePath(`/${orgSlug}/admin/external-companies`);
+  return { error: null, success: true };
 });

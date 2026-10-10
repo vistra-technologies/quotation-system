@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
+import { MIN_PASSWORD_LENGTH, isValidProfileEmail } from "@/lib/user-validation";
 
 export type AccountTab = "details" | "password";
 
@@ -24,8 +25,6 @@ interface AccountPopupProps {
 
 type Fields = { first: string; last: string; mobile: string; email: string };
 
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
-const MIN_PASSWORD = 8;
 
 const labelCls = "mb-1 block text-[11px] font-bold uppercase tracking-[0.06em] text-text-muted";
 const inputCls =
@@ -139,7 +138,7 @@ export function AccountPopup({
       setDtError(t("nameRequired"));
       return;
     }
-    if (email && !EMAIL_RE.test(email)) {
+    if (email && !isValidProfileEmail(email)) {
       setEmailInvalid(true);
       setDtError(t("checkField"));
       return;
@@ -192,7 +191,7 @@ export function AccountPopup({
       setPwError(t("fillAll"));
       return;
     }
-    if (pwNew.length < MIN_PASSWORD) {
+    if (pwNew.length < MIN_PASSWORD_LENGTH) {
       setPwError(t("tooShort"));
       return;
     }

@@ -10,15 +10,20 @@ export async function pingHealthCheck(): Promise<number> {
 
 // ─── Organizations ──────────────────────────────────────────────────────────
 
-/** List all organizations, oldest-first (for /organizations diagnostic page). */
-export async function listOrganizations() {
-  return prisma.organization.findMany({ orderBy: { createdAt: "asc" } });
+/**
+ * Public single-org lookups for GET /api/v1/orgs (Stage 31 S31-6). Unauthenticated, so they select
+ * { id, slug, name } only. There is deliberately no "list all organizations" function.
+ */
+export async function getPublicOrgBySlug(slug: string) {
+  return prisma.organization.findUnique({
+    where: { slug },
+    select: { id: true, slug: true, name: true },
+  });
 }
 
-/** List organizations as minimal selector items (for apex / page). */
-export async function listOrganizationsForSelector() {
-  return prisma.organization.findMany({
-    orderBy: { name: "asc" },
+export async function getPublicOrgById(id: string) {
+  return prisma.organization.findUnique({
+    where: { id },
     select: { id: true, slug: true, name: true },
   });
 }

@@ -6,8 +6,10 @@
  *   create (UI form; U3: an external role without a company is refused by the form) → the user signs in
  *   through the real login page → role change (UI) takes effect on that live session → deactivate (UI):
  *   the live session is refused at once, a new sign-in is refused → activate (UI) → password reset (UI):
- *   old password refused, new accepted → the user owns a project: delete is refused → the project goes →
- *   delete (UI) → the session is dead and sign-in is refused.
+ *   old password refused, new accepted → the user owns a project: delete (UI) still succeeds (Stage 31) and
+ *   the project stays, attributed to the deleted user's name → the session is dead and sign-in is refused.
+ *   Deactivate and the password reset both revoke the user's sessions (Stage 31 S31-2), so the journey
+ *   signs the user in again after each.
  *
  * Users are rgr-<runId>-… and ledgered the moment they exist. Sign-ins are few (rate limit 3 / 10 s / IP)
  * and retry on 429.
@@ -19,7 +21,7 @@ import type { RunState } from "../fixtures/run-state";
 import { expectLands, orgPathOf, orgTarget, settledProblems } from "../pages/page-helpers";
 import { isHydrated } from "../pages/collect";
 import { runPassword, signIn } from "../api/sign-in";
-import { T, getJson, withPage } from "./journey-helpers";
+import { T, getJson, getProject, withPage } from "./journey-helpers";
 
 test.use({ trace: "off" });
 
@@ -140,16 +142,16 @@ test("J4: user lifecycle — create → sign in → role change → deactivate �
         expect(await freshSignIn(pw1)).toBe(401);
       });
 
-      await test.step("activate (UI): sign-in works again — and the session held before deactivation is valid again", async () => {
+      await test.step("activate (UI): sign-in works again — the session held before deactivation stays dead", async () => {
         const btn = ap.getByRole("button", { name: "Activate" });
         await expect.poll(() => isHydrated(btn)).toBe(true);
         await btn.click();
         await expect.poll(async () => (await users()).find((u) => u.id === userId)?.active, { timeout: 20_000 }).toBe(true);
-        // DECISION NEEDED — the page copy says "Deactivating signs the user out everywhere", but deactivation
-        // only blocks requests while the flag is off (lib/session.ts: "no session purge needed"): reactivating
-        // revives every session that existed before. If deactivation should end sessions, change this to 401.
-        expect(await meStatus()).toBe(200);
+        // Confirmed (Stage 31 S31-2 P1/P4): deactivation revoked the session, so reactivating cannot revive it.
+        expect(await meStatus()).toBe(401);
         expect(await freshSignIn(pw1)).toBe(200);
+        await uiLogin(up, run, username, pw1); // the steps below need a live session again
+        expect(await meStatus()).toBe(200);
       });
 
       await test.step("password reset (UI): old password refused, new accepted", async () => {
@@ -160,15 +162,16 @@ test("J4: user lifecycle — create → sign in → role change → deactivate �
         await set.click();
         await expect.poll(() => freshSignIn(pw1), { timeout: 30_000, intervals: [2_000, 5_000] }).toBe(401);
         expect(await freshSignIn(pw2)).toBe(200);
-        // KNOWN BUG — same root cause as users.spec.ts "an admin password reset leaves the user's existing
-        // sessions valid": setUserPassword only rewrites the hash (and the page copy says "Setting a password
-        // signs the user out everywhere"). When fixed, change this expectation to 401.
+        // Stage 31 S31-2 P2: the reset revokes the user's sessions ("Setting a password signs the user out everywhere").
+        expect(await meStatus()).toBe(401);
+        await uiLogin(up, run, username, pw2); // the steps below need a live session again
         expect(await meStatus()).toBe(200);
       });
 
       let projectId = "";
-      await test.step("a user who owns a project cannot be deleted (UI shows the refusal); once the project is gone, delete (UI) works", async () => {
-        const name = `${run.prefix}j4p-${randomBytes(2).toString("hex")}`;
+      let name = "";
+      await test.step("a user who owns a project can be deleted (UI): the dialog says the project stays, and it keeps the name as a snapshot", async () => {
+        name = `${run.prefix}j4p-${randomBytes(2).toString("hex")}`;
         const p = await up.request.post(T(c, "/projects"), { data: { name, currency: "AED", projectLocation: "Dubai UAE" } });
         expect(p.status(), await p.text()).toBe(201);
         projectId = ((await p.json()) as { project: { id: string } }).project.id;
@@ -178,26 +181,19 @@ test("J4: user lifecycle — create → sign in → role change → deactivate �
         const del = ap.getByRole("button", { name: `Delete user ${username}` });
         await expect.poll(() => isHydrated(del)).toBe(true);
         await del.click();
-        await ap.getByRole("button", { name: "Delete", exact: true }).click();
-        // KNOWN BUG — the deleteUser server action THROWS the API's 400 message ("…associated projects or
-        // inquiries…"), and a production build replaces a server-action error with Next's generic text (and
-        // answers the action POST with HTTP 500). The admin never learns WHY the delete was refused. When fixed
-        // (return the error as state instead of throwing), change this to the API's message and drop the
-        // 500 allowance at the end of this test.
-        const err = ap.locator("span.text-red-600");
-        await expect(err).toHaveText(/^An error occurred in the Server Components render\. The specific message is omitted in production builds/);
-        expect((await users()).find((u) => u.id === userId)?.active, "refused delete leaves the user as is").toBe(true);
-
-        const dp = await as.admin.delete(T(c, `/projects/${projectId}`));
-        expect(dp.status(), await dp.text()).toBe(200);
-        ledger.remove(projectId);
-
-        await ap.goto(orgTarget(run, "/admin/users"));
-        await expect.poll(() => isHydrated(del)).toBe(true);
-        await del.click();
-        await ap.getByRole("button", { name: "Delete", exact: true }).click();
+        // Stage 31 S31-4: the dialog says what happens to the records instead of refusing the delete.
+        const dialog = ap.getByRole("dialog");
+        await expect(dialog).toContainText("Owns 1 project and 0 inquiries");
+        await expect(dialog).toContainText("RGR Journey (removed)");
+        await dialog.getByRole("button", { name: "Delete", exact: true }).click();
         await expect.poll(async () => (await users()).some((u) => u.id === userId), { timeout: 20_000 }).toBe(false);
-        ledger.remove(userId);
+        ledger.remove(userId); // the project stays in the ledger: teardown deletes it
+
+        // the project survived the delete: no creator any more, the name snapshot instead, and "(removed)" in the list
+        const kept = await getProject(as.admin, c, projectId);
+        expect(kept).toMatchObject({ createdByUserId: null, createdBy: null, createdByName: "RGR Journey" });
+        await ap.goto(orgTarget(run, `/projects?search=${encodeURIComponent(name)}`));
+        await expect(ap.getByText("RGR Journey (removed)")).toBeVisible({ timeout: 20_000 });
         // the list re-renders after the server action's refresh, which under parallel load can take longer than the
         // default 5 s (seen once in the final-review proof run: API already 404, row still listed at 5 s)
         await expect(ap.getByText(username)).toHaveCount(0, { timeout: 20_000 });
@@ -214,14 +210,12 @@ test("J4: user lifecycle — create → sign in → role change → deactivate �
       expect(await settledProblems(user)).toEqual([]);
     });
 
-    // Tolerated, and nothing else: (1) server-action POSTs on these User Management pages that Chromium reports
+    // Tolerated, and nothing else: server-action POSTs on these User Management pages that Chromium reports
     // as ERR_ABORTED (Next's client drops the action fetch once it has the redirect / refreshed tree — timing
-    // dependent; their effects are asserted via the API above); (2) the KNOWN BUG above: exactly one HTTP 500
-    // (+ its console line) for the refused delete's action POST.
+    // dependent; their effects are asserted via the API above). No HTTP 500 is tolerated any more (Stage 31:
+    // the delete no longer throws).
     const problems = await settledProblems(admin);
     const actionAbort = new RegExp(`^request failed \\[fetch/POST\\] \\S+/admin/users(/new|/${userId})? net::ERR_ABORTED$`);
-    const knownBug500 = (p: string) => /^HTTP 500 \S+\/admin\/users$/.test(p) || p === "console.error: Failed to load resource: the server responded with a status of 500 ()";
-    expect(problems.filter(knownBug500)).toHaveLength(2);
-    expect(problems.filter((p) => !actionAbort.test(p) && !knownBug500(p))).toEqual([]);
+    expect(problems.filter((p) => !actionAbort.test(p))).toEqual([]);
   });
 });

@@ -368,8 +368,10 @@ model Project {
   organization       Organization     @relation(fields: [organizationId], references: [id])
   externalCompanyId  String?
   externalCompany    ExternalCompany? @relation(fields: [externalCompanyId], references: [id])
-  createdByUserId    String
-  createdBy          User             @relation(fields: [createdByUserId], references: [id])
+  createdByUserId    String?
+  createdBy          User?            @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  // Stage 31 S31-4: name snapshot written when the creator is deleted (createdByUserId then goes NULL).
+  createdByName      String?
   projectNumber      Int              // per-org sequence; @@unique enforces collision safety
   name               String
   destinationCountry String
@@ -439,8 +441,10 @@ model Inquiry {
   organization       Organization     @relation(fields: [organizationId], references: [id])
   externalCompanyId  String?
   externalCompany    ExternalCompany? @relation(fields: [externalCompanyId], references: [id])
-  createdByUserId    String
-  createdBy          User             @relation(fields: [createdByUserId], references: [id])
+  createdByUserId    String?
+  createdBy          User?            @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  // Stage 31 S31-4: name snapshot written when the creator is deleted (createdByUserId then goes NULL).
+  createdByName      String?
   inquiryNumber      Int              // per-org sequence; @@unique enforces collision safety
   name               String
   destinationCountry String

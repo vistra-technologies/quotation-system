@@ -7,13 +7,14 @@
  * route so it is unit-testable.
  */
 
+import { isValidProfileEmail } from "@/lib/user-validation";
+
 export const OWN_PROFILE_KEYS = ["firstName", "lastName", "mobile", "profileEmail"] as const;
 
 export const MAX_NAME_LENGTH = 100;
 export const MAX_MOBILE_LENGTH = 30;
 export const MAX_EMAIL_LENGTH = 254;
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type OwnProfileInput = {
   firstName?: string;
@@ -67,7 +68,7 @@ export function parseOwnProfileInput(body: unknown): OwnProfileParse {
       return { ok: false, error: "profileEmail must be a string" };
     }
     const v = typeof o.profileEmail === "string" ? o.profileEmail.trim() : "";
-    if (v && (v.length > MAX_EMAIL_LENGTH || !EMAIL_RE.test(v))) {
+    if (v && (v.length > MAX_EMAIL_LENGTH || !isValidProfileEmail(v))) {
       return { ok: false, error: "profileEmail must be a valid email address" };
     }
     input.profileEmail = v || null;

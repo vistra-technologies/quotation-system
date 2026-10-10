@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
+import { getTranslations } from "next-intl/server";
 import { orgHref } from "@/lib/orgHref";
+import { creatorCell } from "@/lib/creator-display";
 import {
   ListPageControls,
   ListPagePagination,
@@ -25,7 +27,9 @@ interface ProjectListItem {
   /** Submission date in ISO string form. Shown in Submission Date column. */
   submissionDate: string | null;
   externalCompany: { id: string; name: string } | null;
-  createdBy: { id: string; name: string; username: string };
+  // null once the creator was deleted (Stage 31 S31-4); createdByName is then the name snapshot.
+  createdBy: { id: string; name: string; username: string } | null;
+  createdByName: string | null;
 }
 
 interface ExternalCompanyOption {
@@ -100,6 +104,9 @@ export default async function ProjectsPage({
   const { orgSlug } = await params;
   const sp = await searchParams;
   const base = await orgHref(orgSlug, "");
+  const t = await getTranslations("projects");
+  const creatorOf = (p: { createdBy: { username: string; name: string } | null; createdByName: string | null }) =>
+    creatorCell(p.createdBy, p.createdByName, (name) => t("createdByRemoved", { name }), t("createdByUnknown"));
 
   // Parse and validate URL params — defaults match API route defaults.
   const scope = sp.scope === "mine" ? "mine" : "all";
@@ -302,9 +309,9 @@ export default async function ProjectsPage({
                     {/* Created By — PL1/L2: username shown, full name on hover via title */}
                     <td
                       className="px-3 py-[11px] text-[13px] text-text-muted"
-                      title={project.createdBy.name}
+                      title={creatorOf(project).title}
                     >
-                      {project.createdBy.username}
+                      {creatorOf(project).text}
                     </td>
                   </tr>
                 ))}

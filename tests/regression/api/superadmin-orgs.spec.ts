@@ -454,6 +454,55 @@ test.describe("SuperAdmin org users (org B)", () => {
     expect((await listUsers(sa, run.orgB.id)).find((x) => x.id === u.id)).toMatchObject({ firstName: "Rgr", lastName: "User", role: { name: "Company Member" }, active: true });
   });
 
+  // Stage 31 S31-2 P5. A session left over from a deactivation done BEFORE sessions were revoked cannot be created
+  // through the API any more (deactivating revokes), so the positive reactivation case (stored false -> true revokes)
+  // is pinned by tests/unit/session-revocation.test.ts; here: an edit that does not deactivate/reactivate keeps sessions.
+  test("PATCH that is not a deactivation, a reactivation or a password reset leaves the user's sessions alone", async ({ sa, run, ledger, playwright, baseURL }) => {
+    test.setTimeout(120_000);
+    const u = await createOrgBUser(sa, run, ledger);
+    const url = `${SA}/orgs/${run.orgB.id}/users/${u.id}`;
+    const ctx = await rawContext(playwright, baseURL);
+    try {
+      expect((await signIn(ctx, run.orgB.slug, u.username, runPassword())).status()).toBe(200);
+      const me = () => ctx.get(orgApi(run.orgB.slug, "/me"));
+      expect((await me()).status()).toBe(200);
+      await json(await sa.patch(url, { data: { firstName: "Plain" } }));
+      expect((await me()).status(), "a plain field edit").toBe(200);
+      await json(await sa.patch(url, { data: { active: true } })); // re-sent on an already-active user
+      expect((await me()).status(), "a re-sent active:true").toBe(200);
+      await json(await sa.patch(url, { data: { active: false } }));
+      expect((await me()).status(), "deactivation revokes").toBe(401);
+      await json(await sa.patch(url, { data: { active: true } }));
+      expect((await me()).status(), "reactivation does not revive it").toBe(401);
+    } finally {
+      await ctx.dispose();
+    }
+  });
+
+  test("DELETE of a user who created records succeeds and the records stay (createdBy null, name snapshot)", async ({ sa, run, ledger, orgB, playwright, baseURL }) => {
+    test.setTimeout(120_000);
+    const u = await createOrgBUser(sa, run, ledger);
+    const ctx = await rawContext(playwright, baseURL);
+    let projectId = "";
+    try {
+      expect((await signIn(ctx, run.orgB.slug, u.username, runPassword())).status()).toBe(200);
+      const name = `${run.prefix}sau-owned-${tag()}`;
+      const p = await ctx.post(orgApi(run.orgB.slug, "/projects"), { data: { name, currency: "AED", projectLocation: "Dubai, UAE" } });
+      expect(p.status(), await p.text()).toBe(201);
+      projectId = ((await p.json()) as { project: { id: string } }).project.id;
+      ledger.add({ kind: "project", id: projectId, orgSlug: run.orgB.slug, label: name });
+    } finally {
+      await ctx.dispose();
+    }
+    expect(await json(await sa.delete(`${SA}/orgs/${run.orgB.id}/users/${u.id}`))).toEqual({ deleted: true });
+    ledger.remove(u.id);
+    const kept = await orgB.get(orgApi(run.orgB.slug, `/projects/${projectId}`));
+    expect(kept.status(), await kept.text()).toBe(200);
+    const project = ((await kept.json()) as { project: { createdByUserId: string | null; createdBy: unknown; createdByName: string | null } }).project;
+    expect(project).toMatchObject({ createdByUserId: null, createdBy: null });
+    expect(project.createdByName).toMatch(/^s*Rgrs+Users*$/);
+  });
+
   test("DELETE removes the user (200 { deleted: true }), then 404; another org's user is out of reach; audit user.delete", async ({ sa, run, ledger, f, as, url }) => {
     const u = await createOrgBUser(sa, run, ledger);
     const del = `${SA}/orgs/${run.orgB.id}/users/${u.id}`;

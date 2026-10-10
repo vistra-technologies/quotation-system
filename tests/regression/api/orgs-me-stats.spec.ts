@@ -279,24 +279,47 @@ test.describe("GET /api/v1/orgs/[orgSlug]/stats", () => {
   });
 });
 
-test.describe("GET /api/v1/orgs (public org selector)", () => {
-  test("anonymous 200: every org as exactly {id, slug, name} — no other fields", async ({ anon, run }) => {
-    // Intentionally public (route doc: the apex org-selector and login page fetch it without a session).
-    const r = await anon.get(apiUrl(run.testOrg.slug, "/api/v1/orgs"));
+test.describe("GET /api/v1/orgs (public single-org lookup, Stage 31 S31-6)", () => {
+  // Intentionally public (the org login page resolves its own org without a session) but it never lists tenants.
+  const base = (run: { testOrg: { slug: string } }) => apiUrl(run.testOrg.slug, "/api/v1/orgs");
+
+  test("?slug= anonymous 200: exactly { org: { id, slug, name } }", async ({ anon, run }) => {
+    const r = await anon.get(`${base(run)}?slug=${encodeURIComponent(run.testOrg.slug)}`);
     expect(r.status(), await r.text()).toBe(200);
-    const { orgs } = (await r.json()) as { orgs: Record<string, unknown>[] };
-    expect(Array.isArray(orgs)).toBe(true);
-    for (const o of orgs) expect(Object.keys(o).sort()).toEqual(["id", "name", "slug"]);
-    expect(orgs.map((o) => o.slug)).toEqual(expect.arrayContaining([run.testOrg.slug, run.orgB.slug]));
+    const body = (await r.json()) as { org: Record<string, unknown> };
+    expect(Object.keys(body)).toEqual(["org"]);
+    expect(Object.keys(body.org).sort()).toEqual(["id", "name", "slug"]);
+    expect(body.org.slug).toBe(run.testOrg.slug);
   });
 
-  test("an org session sees the same public list (the session grants nothing extra)", async ({ anon, as, run }) => {
-    const u = apiUrl(run.testOrg.slug, "/api/v1/orgs");
+  test("?id= returns the same org; an org session sees the same thing (it grants nothing extra)", async ({ anon, as, run }) => {
+    const bySlug = (await (await anon.get(`${base(run)}?slug=${encodeURIComponent(run.testOrg.slug)}`)).json()) as { org: { id: string } };
+    const u = `${base(run)}?id=${encodeURIComponent(bySlug.org.id)}`;
     const [a, s] = await Promise.all([anon.get(u), as.admin.get(u)]);
+    expect(a.status(), await a.text()).toBe(200);
     expect(s.status()).toBe(200);
-    const keys = (b: { orgs: Record<string, unknown>[] }) => b.orgs.map((o) => Object.keys(o).sort().join(",")).filter((k) => k !== "id,name,slug");
-    expect(keys((await s.json()) as { orgs: Record<string, unknown>[] })).toEqual([]);
-    expect(a.status()).toBe(200);
+    const [ab, sb] = [(await a.json()) as { org: Record<string, unknown> }, (await s.json()) as { org: Record<string, unknown> }];
+    expect(Object.keys(ab.org).sort()).toEqual(["id", "name", "slug"]);
+    expect(ab).toEqual(sb);
+    expect(ab.org.slug).toBe(run.testOrg.slug);
+  });
+
+  test("unknown slug / unknown id -> 404 { error: 'Organization not found' }", async ({ anon, run }) => {
+    for (const q of ["?slug=rgr-no-such-org-slug", "?id=00000000-0000-0000-0000-000000000000"]) {
+      const r = await anon.get(`${base(run)}${q}`);
+      expect(r.status(), q).toBe(404);
+      expect(await r.json()).toEqual({ error: "Organization not found" });
+    }
+  });
+
+  test("no parameter, an empty one, or both -> 400, and the route never returns a list", async ({ anon, run }) => {
+    for (const q of ["", "?slug=", "?id=", `?slug=${run.testOrg.slug}&id=x`]) {
+      const r = await anon.get(`${base(run)}${q}`);
+      expect(r.status(), q).toBe(400);
+      const body = (await r.json()) as Record<string, unknown>;
+      expect(body).not.toHaveProperty("orgs");
+      expect(body).not.toHaveProperty("org");
+    }
   });
 });
 

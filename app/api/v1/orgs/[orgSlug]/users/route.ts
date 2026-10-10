@@ -7,8 +7,14 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { listUsers, createUser, getUserSeats } from "@/lib/data/users";
+import { listUsers, createUser, getUserSeats, getUserRecordCounts } from "@/lib/data/users";
 import { UserLimitReachedError } from "@/lib/data/user-limit";
+import {
+  isValidPassword,
+  isValidProfileEmail,
+  PASSWORD_TOO_SHORT_MESSAGE,
+  PROFILE_EMAIL_INVALID_MESSAGE,
+} from "@/lib/user-validation";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -53,8 +59,13 @@ export const GET = withRoute(
   }
 
   try {
-    const [users, seats] = await Promise.all([listUsers(session), getUserSeats(session)]);
-    return NextResponse.json({ users, seats });
+    const [users, seats, recordCounts] = await Promise.all([
+      listUsers(session),
+      getUserSeats(session),
+      getUserRecordCounts(session),
+    ]);
+    // recordCounts (Stage 31): { [userId]: { projects, inquiries } } for the delete dialog; absent = none.
+    return NextResponse.json({ users, seats, recordCounts });
   } catch (err) {
     log.error("[GET /api/v1/orgs/[orgSlug]/users] listUsers", { err });
     return apiServerError();
@@ -140,7 +151,8 @@ export const POST = withRoute(
   if (!lastName) return apiBadRequest("lastName is required");
   if (!roleId) return apiBadRequest("roleId is required");
   if (!password) return apiBadRequest("password is required");
-  if (password.length < 8) return apiBadRequest("Password must be at least 8 characters");
+  if (!isValidPassword(password)) return apiBadRequest(PASSWORD_TOO_SHORT_MESSAGE);
+  if (!isValidProfileEmail(profileEmail)) return apiBadRequest(PROFILE_EMAIL_INVALID_MESSAGE);
 
   try {
     await createUser(session, {

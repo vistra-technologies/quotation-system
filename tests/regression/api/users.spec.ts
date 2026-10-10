@@ -21,6 +21,8 @@ import { covers } from "../fixtures/covers";
 import { Guarded, SaClient, createAllowance } from "../fixtures/clients";
 import { registerNegatives, GHOST, type Ctx } from "./api-matrix";
 import { ROLE_NAME } from "./permissions";
+import type { Ledger } from "../fixtures/ledger";
+import type { RunState } from "../fixtures/run-state";
 import { apiUrl } from "../../e2e/helpers";
 import { bypass, runPassword, sessionCookieLine, signIn } from "./sign-in";
 
@@ -33,6 +35,7 @@ covers("POST /api/v1/orgs/[orgSlug]/users/[userId]/deactivate");
 covers("POST /api/v1/orgs/[orgSlug]/users/[userId]/password");
 covers("PUT /api/v1/orgs/[orgSlug]/users/[userId]/profile");
 covers("PATCH /api/v1/orgs/[orgSlug]/users/[userId]/role");
+covers("POST /api/v1/orgs/[orgSlug]/users/[userId]/reassign-work");
 
 type UserRow = {
   id: string;
@@ -192,6 +195,19 @@ registerNegatives([
       { name: "roleId of another org", body: async (c: Ctx) => ({ roleId: await orgBRoleId(c) }), status: 400 },
     ],
   },
+  {
+    key: "POST /api/v1/orgs/[orgSlug]/users/[userId]/reassign-work",
+    method: "POST",
+    path: () => `/users/${GHOST}/reassign-work`, // a source that does not exist: a leaked gate moves nothing
+    permission: "MANAGE_USERS",
+    body: (c) => ({ toUserId: c.run.users.member.id }), // valid, so unknown/foreign ids reach the lookup
+    unknownId: () => `/users/${GHOST}/reassign-work`,
+    foreignId: async (c) => `/users/${await foreignUserId(c)}/reassign-work`,
+    invalid: [
+      { name: "{} (toUserId required)", body: {}, status: 400 },
+      { name: "non-string toUserId", body: { toUserId: 42 }, status: 400 },
+    ],
+  },
 ]);
 
 async function getUser(g: Guarded, url: (p: string) => string, id: string): Promise<{ user: UserRow; isSelf: boolean }> {
@@ -295,10 +311,10 @@ test.describe("users: rules", () => {
     expect((await orgB.get(orgApi(slug, "/me"))).status()).toBe(200); // still signed in and active
   });
 
-  // changeUserRole has no self / last-admin guard. Because today the demotion SUCCEEDS, the test runs in
-  // its own single-admin throwaway org C (ledgered kind org, hard-deleted at teardown) — never org B,
-  // whose admin the other probes rely on.
-  test("KNOWN BUG: the only Admin can demote itself, leaving the org with no user manager", async ({ run, ledger, playwright, baseURL }) => {
+  // Stage 31 S31-3: changeUserRole refuses a change that would leave the org with no ACTIVE user manager. The
+  // test runs in its own single-admin throwaway org C (ledgered kind org, hard-deleted at teardown) — never
+  // org B, whose admin the other probes rely on.
+  test("last user manager: the only Admin cannot demote itself (400); a second active manager makes it legal", async ({ run, ledger, playwright, baseURL }) => {
     const sa = await SaClient.login(baseURL!, process.env.TEST_SA_USERNAME!, process.env.TEST_SA_PASSWORD!, createAllowance([]), process.env.VERCEL_AUTOMATION_BYPASS_SECRET);
     const slug = `${run.prefix}c${randomBytes(2).toString("hex")}`;
     let ctx: APIRequestContext | undefined;
@@ -321,12 +337,28 @@ test.describe("users: rules", () => {
       );
       if (admins.length !== 1 || admins[0].id !== me.userId) throw new Error(`setup: org C must have exactly one Admin, has ${admins.length}`);
 
-      // KNOWN BUG — no last-admin guard on role change; when fixed, change this expectation to 400 and
-      // assert the user is still Admin and GET /users still 200.
       const r = await admin.patch(orgApi(slug, `/users/${me.userId}/role`), { data: { roleId: memberRole } });
-      expect(r.status(), await r.text()).toBe(200);
+      expect(r.status(), await r.text()).toBe(400);
+      expect(await r.json()).toEqual({ error: "An organization needs at least one active user manager" });
+      expect(((await (await admin.get(orgApi(slug, "/me"))).json()) as { roleName: string }).roleName).toBe(ROLE_NAME.admin);
+      expect((await admin.get(orgApi(slug, "/users"))).status()).toBe(200);
+
+      // a second ACTIVE manager makes the demotion legal ...
+      const adminRole = await roleIdIn(admin, slug, ROLE_NAME.admin);
+      const second = `${run.prefix}c2-${randomBytes(2).toString("hex")}`;
+      const mk = await admin.post(orgApi(slug, "/users"), { data: { username: second, firstName: "RGR", lastName: "Second", password: runPassword(), roleId: adminRole } });
+      expect(mk.status(), await mk.text()).toBe(201);
+      const secondId = ((await (await admin.get(orgApi(slug, "/users"))).json()) as { users: { id: string; username: string }[] }).users.find((x) => x.username === second)?.id;
+      expect(secondId, "second manager is listed").toBeTruthy();
+      // ... but only while they are active: deactivating them leaves the first Admin as the last manager again
+      expect((await admin.post(orgApi(slug, `/users/${secondId}/deactivate`))).status()).toBe(200);
+      const blocked = await admin.patch(orgApi(slug, `/users/${me.userId}/role`), { data: { roleId: memberRole } });
+      expect(blocked.status(), await blocked.text()).toBe(400); // a deactivated manager does not count
+      expect((await admin.post(orgApi(slug, `/users/${secondId}/activate`))).status()).toBe(200);
+      const ok = await admin.patch(orgApi(slug, `/users/${me.userId}/role`), { data: { roleId: memberRole } });
+      expect(ok.status(), await ok.text()).toBe(200);
       expect(((await (await admin.get(orgApi(slug, "/me"))).json()) as { roleName: string }).roleName).toBe(ROLE_NAME.member);
-      expect((await admin.get(orgApi(slug, "/users"))).status()).toBe(403); // nobody left who can manage users
+      expect((await admin.get(orgApi(slug, "/users"))).status()).toBe(403); // the demoted user can no longer manage users
     } finally {
       await ctx?.dispose();
       await sa.dispose();
@@ -362,7 +394,7 @@ test.describe("users: rules", () => {
     expect((await ctx.get(url("/me"))).status()).toBe(200);
   });
 
-  test("KNOWN BUG: an admin password reset leaves the user's existing sessions valid", async ({ as, f, url, run, playwright, baseURL }) => {
+  test("an admin password reset revokes the user's existing sessions (401 on their next request)", async ({ as, f, url, run, playwright, baseURL }) => {
     const u = await f.user("member");
     const held = await fresh(playwright, baseURL);
     const login = await signIn(held, run.testOrg.slug, u.username, runPassword());
@@ -370,18 +402,50 @@ test.describe("users: rules", () => {
     expect((await held.get(url("/me"))).status()).toBe(200);
     const r = await as.admin.post(url(`/users/${u.id}/password`), { data: { password: `${runPassword()}-Rotated9` } });
     expect(r.status(), await r.text()).toBe(200);
-    // KNOWN BUG — setUserPassword only rewrites the hash, sessions are not revoked; when fixed, change this
-    // expectation to 401 (the held session is refused on its next request).
-    expect((await held.get(url("/me"))).status()).toBe(200);
+    // Stage 31 S31-2 P2: the reset and the session delete share one transaction.
+    expect((await held.get(url("/me"))).status()).toBe(401);
   });
 
-  test("KNOWN BUG: password reset accepts a password shorter than create's 8-character minimum", async ({ as, f, url }) => {
-    const u = await f.user("member");
-    // KNOWN BUG — the reset route has no length policy (POST /users requires >= 8); when fixed, change this
-    // expectation to 400.
-    const r = await as.admin.post(url(`/users/${u.id}/password`), { data: { password: "short" } });
+  // S31-17: a throwaway Admin (f.user) — never the shared fixture admin, whose sessions every later test uses.
+  test("an admin resetting their OWN password keeps the current session and loses their other sessions", async ({ f, url, run, playwright, baseURL }) => {
+    const me = await f.user("admin");
+    const slug = run.testOrg.slug;
+    const current = await fresh(playwright, baseURL);
+    const other = await fresh(playwright, baseURL);
+    expect((await signIn(current, slug, me.username, runPassword())).status()).toBe(200);
+    expect((await signIn(other, slug, me.username, runPassword())).status()).toBe(200);
+    expect((await current.get(url("/me"))).status()).toBe(200);
+    expect((await other.get(url("/me"))).status()).toBe(200);
+
+    const newPw = `${runPassword()}-Own9`;
+    const r = await current.post(url(`/users/${me.id}/password`), { data: { password: newPw } });
     expect(r.status(), await r.text()).toBe(200);
-    expect(await r.json()).toEqual({ ok: true });
+    expect((await current.get(url("/me"))).status(), "the acting session survives").toBe(200);
+    expect((await other.get(url("/me"))).status(), "every other session is revoked").toBe(401);
+
+    const again = await fresh(playwright, baseURL);
+    expect((await signIn(again, slug, me.username, newPw)).status()).toBe(200); // the new password works
+  });
+
+  test("deactivate revokes the user's sessions, and reactivating does not bring them back", async ({ as, f, url, run, playwright, baseURL }) => {
+    const u = await f.user("member");
+    const held = await fresh(playwright, baseURL);
+    expect((await signIn(held, run.testOrg.slug, u.username, runPassword())).status()).toBe(200);
+    expect((await held.get(url("/me"))).status()).toBe(200);
+    expect((await as.admin.post(url(`/users/${u.id}/deactivate`))).status()).toBe(200);
+    expect((await held.get(url("/me"))).status()).toBe(401);
+    expect((await as.admin.post(url(`/users/${u.id}/activate`))).status()).toBe(200);
+    expect((await held.get(url("/me"))).status(), "the old cookie stays dead after reactivation").toBe(401);
+  });
+
+  test("password reset enforces create's 8-character minimum (400) and changes nothing", async ({ as, f, url, run, playwright, baseURL }) => {
+    const u = await f.user("member");
+    const r = await as.admin.post(url(`/users/${u.id}/password`), { data: { password: "short" } });
+    expect(r.status(), await r.text()).toBe(400);
+    expect(await r.json()).toEqual({ error: "Password must be at least 8 characters" });
+    // the old password still signs in (the refused reset wrote nothing)
+    const ctx = await fresh(playwright, baseURL);
+    expect((await signIn(ctx, run.testOrg.slug, u.username, runPassword())).status()).toBe(200);
   });
 
   test("deactivate → sign-in refused; activate → sign-in works again", async ({ as, f, url, run, playwright, baseURL }) => {
@@ -472,13 +536,25 @@ test.describe("users: rules", () => {
     expect((await as.admin.get(url(`/users/${run.users.member.id}`))).status()).toBe(200);
   });
 
-  test("KNOWN BUG: profile PUT stores a malformed profileEmail", async ({ as, f, url }) => {
+  test("profile PUT and user create reject a malformed profileEmail (400); a valid one or blank is accepted", async ({ as, f, url, run }) => {
     const u = await f.user("member");
-    // KNOWN BUG — profileEmail has no format validation; when fixed, change this expectation to 400 and
-    // assert profileEmail is unchanged (null).
     const r = await as.admin.put(url(`/users/${u.id}/profile`), { data: { profileEmail: "not-an-email" } });
-    expect(r.status(), await r.text()).toBe(200);
-    expect((await getUser(as.admin, url, u.id)).user.profileEmail).toBe("not-an-email");
+    expect(r.status(), await r.text()).toBe(400);
+    expect(await r.json()).toEqual({ error: "profileEmail must be a valid email address" });
+    expect((await getUser(as.admin, url, u.id)).user.profileEmail).toBeNull(); // unchanged
+    expect((await as.admin.put(url(`/users/${u.id}/profile`), { data: { profileEmail: " ok@example.test " } })).status()).toBe(200);
+    expect((await getUser(as.admin, url, u.id)).user.profileEmail).toBe("ok@example.test");
+    expect((await as.admin.put(url(`/users/${u.id}/profile`), { data: { profileEmail: "" } })).status()).toBe(200);
+
+    const roleId = await roleIdIn(as.admin, run.testOrg.slug, ROLE_NAME.member);
+    const before = ((await (await as.admin.get(url("/users"))).json()) as { users: unknown[] }).users.length;
+    const c = await as.admin.post(url("/users"), {
+      data: { username: `${run.prefix}bademail-${randomBytes(2).toString("hex")}`, firstName: "RGR", lastName: "Mail", password: runPassword(), roleId, profileEmail: "no-at-sign" },
+    });
+    expect(c.status(), await c.text()).toBe(400);
+    expect(((await c.json()) as { error: string }).error).toBe("profileEmail must be a valid email address");
+    const after = ((await (await as.admin.get(url("/users"))).json()) as { users: unknown[] }).users.length;
+    expect(after).toBeGreaterThanOrEqual(before); // nothing created by this request (other workers may add users)
   });
 
   test("U3 on profile: an external-role user's company can be switched but not cleared", async ({ as, f, url }) => {
@@ -496,16 +572,16 @@ test.describe("users: rules", () => {
     expect((await getUser(as.admin, url, u.id)).user.externalCompanyId).toBe(co.id);
   });
 
-  test("KNOWN BUG: U3 is not applied on role change — a company-less user can be moved to an external role", async ({ as, f, url, run }) => {
+  test("U3 on role change: a company-less user cannot be moved to an external role (400)", async ({ as, f, url, run }) => {
     const u = await f.user("member");
     expect((await getUser(as.admin, url, u.id)).user.externalCompanyId).toBeNull();
     const distId = await roleIdIn(as.admin, run.testOrg.slug, ROLE_NAME.distributor);
-    // KNOWN BUG — changeUserRole skips the U3 check that create/profile enforce; when fixed, change this
-    // expectation to 400 and assert the role is unchanged.
+    const before = (await getUser(as.admin, url, u.id)).user.roleId;
     const r = await as.admin.patch(url(`/users/${u.id}/role`), { data: { roleId: distId } });
-    expect(r.status(), await r.text()).toBe(200);
+    expect(r.status(), await r.text()).toBe(400);
+    expect(await r.json()).toEqual({ error: "External company is required for this role" });
     const { user } = await getUser(as.admin, url, u.id);
-    expect(user.roleId).toBe(distId);
+    expect(user.roleId).toBe(before); // unchanged
     expect(user.externalCompanyId).toBeNull();
   });
 
@@ -525,7 +601,7 @@ test.describe("users: rules", () => {
     expect(again.status()).toBeLessThan(500);
   });
 
-  test("DELETE is refused (400) while the user owns a project; deactivation is the alternative", async ({ as, f, url, run, ledger, playwright, baseURL }) => {
+  test("DELETE is never blocked by the user's records: they stay, with createdBy null and a name snapshot", async ({ as, f, url, run, ledger, playwright, baseURL }) => {
     const u = await f.user("member");
     const ctx = await fresh(playwright, baseURL);
     expect((await signIn(ctx, run.testOrg.slug, u.username, runPassword())).status()).toBe(200);
@@ -535,10 +611,127 @@ test.describe("users: rules", () => {
     const projectId = ((await p.json()) as { project: { id: string } }).project.id;
     ledger.add({ kind: "project", id: projectId, orgSlug: run.testOrg.slug, label: name }); // drained before the user
 
+    const iname = `${run.prefix}owned-inq-${randomBytes(3).toString("hex")}`;
+    const i = await ctx.post(url("/inquiries"), { data: { name: iname, currency: "AED", projectLocation: "Dubai, UAE" } });
+    expect(i.status(), await i.text()).toBe(201);
+    const inquiryId = ((await i.json()) as { inquiry: { id: string } }).inquiry.id;
+    ledger.add({ kind: "inquiry", id: inquiryId, orgSlug: run.testOrg.slug, label: iname });
+
+    const counts = ((await (await as.admin.get(url("/users"))).json()) as { recordCounts: Record<string, { projects: number; inquiries: number }> }).recordCounts;
+    expect(counts[u.id]).toEqual({ projects: 1, inquiries: 1 });
+
     const r = await as.admin.delete(url(`/users/${u.id}`));
+    expect(r.status(), await r.text()).toBe(204);
+    ledger.remove(u.id); // gone; the project and the inquiry stay in the ledger and are removed at teardown
+    expect((await as.admin.get(url(`/users/${u.id}`))).status()).toBe(404);
+
+    const p2 = ((await (await as.admin.get(url(`/projects/${projectId}`))).json()) as { project: Record<string, unknown> }).project;
+    expect(p2).toMatchObject({ createdByUserId: null, createdBy: null, createdByName: "RGR User" });
+    const i2 = ((await (await as.admin.get(url(`/inquiries/${inquiryId}`))).json()) as { inquiry: Record<string, unknown> }).inquiry;
+    expect(i2).toMatchObject({ createdByUserId: null, createdBy: null, createdByName: "RGR User" });
+    // the lists still return them (null creator), and scope=mine no longer matches the deleted user's records
+    const list = ((await (await as.admin.get(url(`/projects?pageSize=100&search=${encodeURIComponent(name)}`))).json()) as { projects: { id: string; createdBy: unknown; createdByName: string }[] }).projects;
+    expect(list.find((x) => x.id === projectId)).toMatchObject({ createdBy: null, createdByName: "RGR User" });
+  });
+
+  // ─── reassign-work (Stage 31 S31-4a): all users are throwaway f.user rows in the Test Org (S31-17) ───
+  const reassign = (g: Guarded, url: (p: string) => string, fromId: string, toUserId: unknown) =>
+    g.post(url(`/users/${fromId}/reassign-work`), { data: { toUserId } });
+
+  /** A throwaway member signed in on a fresh context who creates one project and one inquiry. */
+  async function ownsWork(c: { run: RunState; ledger: Ledger }, ctx: APIRequestContext, url: (p: string) => string, who: { username: string }) {
+    expect((await signIn(ctx, c.run.testOrg.slug, who.username, runPassword())).status()).toBe(200);
+    const tag = randomBytes(3).toString("hex");
+    const pn = `${c.run.prefix}ra-p-${tag}`;
+    const p = await ctx.post(url("/projects"), { data: { name: pn, currency: "AED", projectLocation: "Dubai, UAE" } });
+    expect(p.status(), await p.text()).toBe(201);
+    const projectId = ((await p.json()) as { project: { id: string } }).project.id;
+    c.ledger.add({ kind: "project", id: projectId, orgSlug: c.run.testOrg.slug, label: pn });
+    const iname = `${c.run.prefix}ra-i-${tag}`;
+    const i = await ctx.post(url("/inquiries"), { data: { name: iname, currency: "AED", projectLocation: "Dubai, UAE" } });
+    expect(i.status(), await i.text()).toBe(201);
+    const inquiryId = ((await i.json()) as { inquiry: { id: string } }).inquiry.id;
+    c.ledger.add({ kind: "inquiry", id: inquiryId, orgSlug: c.run.testOrg.slug, label: iname });
+    return { projectId, inquiryId };
+  }
+
+  test("reassign-work: moves the user's projects and inquiries (counts returned), scope=mine follows the new owner, and deleting the old owner then leaves nothing to snapshot", async ({ as, f, url, run, ledger, playwright, baseURL }) => {
+    const from = await f.user("member");
+    const to = await f.user("member");
+    const { projectId, inquiryId } = await ownsWork({ run, ledger }, await fresh(playwright, baseURL), url, from);
+
+    const r = await reassign(as.admin, url, from.id, to.id);
+    expect(r.status(), await r.text()).toBe(200);
+    expect(await r.json()).toEqual({ projects: 1, inquiries: 1 });
+
+    const project = ((await (await as.admin.get(url(`/projects/${projectId}`))).json()) as { project: Record<string, unknown> }).project;
+    expect(project).toMatchObject({ createdByUserId: to.id, createdBy: { id: to.id, username: to.username } });
+    const inquiry = ((await (await as.admin.get(url(`/inquiries/${inquiryId}`))).json()) as { inquiry: Record<string, unknown> }).inquiry;
+    expect(inquiry).toMatchObject({ createdByUserId: to.id });
+
+    // scope=mine follows the new owner (checked from the new owner's own session)
+    const toCtx = await fresh(playwright, baseURL);
+    expect((await signIn(toCtx, run.testOrg.slug, to.username, runPassword())).status()).toBe(200);
+    const mine = ((await (await toCtx.get(url("/projects?scope=mine&pageSize=100"))).json()) as { projects: { id: string }[] }).projects.map((x) => x.id);
+    expect(mine).toContain(projectId);
+
+    // the old owner now has nothing: a second call moves 0, and deleting them snapshots nothing onto these records
+    expect(await (await reassign(as.admin, url, from.id, to.id)).json()).toEqual({ projects: 0, inquiries: 0 });
+    expect((await as.admin.delete(url(`/users/${from.id}`))).status()).toBe(204);
+    ledger.remove(from.id);
+    const after = ((await (await as.admin.get(url(`/projects/${projectId}`))).json()) as { project: Record<string, unknown> }).project;
+    expect(after).toMatchObject({ createdByUserId: to.id, createdByName: null });
+  });
+
+  test("reassign-work: 400 for a missing toUserId, the same user and an inactive target; nothing moves", async ({ as, f, url, run, ledger, playwright, baseURL }) => {
+    const from = await f.user("member");
+    const inactive = await f.user("member");
+    const { projectId } = await ownsWork({ run, ledger }, await fresh(playwright, baseURL), url, from);
+    expect((await as.admin.post(url(`/users/${inactive.id}/deactivate`))).status()).toBe(200);
+
+    const none = await as.admin.post(url(`/users/${from.id}/reassign-work`), { data: {} });
+    expect(none.status(), await none.text()).toBe(400);
+    const same = await reassign(as.admin, url, from.id, from.id);
+    expect(same.status(), await same.text()).toBe(400);
+    const off = await reassign(as.admin, url, from.id, inactive.id);
+    expect(off.status(), await off.text()).toBe(400);
+    expect(((await off.json()) as { error: string }).error).toMatch(/must be active/i);
+
+    const project = ((await (await as.admin.get(url(`/projects/${projectId}`))).json()) as { project: Record<string, unknown> }).project;
+    expect(project.createdByUserId).toBe(from.id);
+  });
+
+  test("reassign-work: an unknown or another org's user (source or target) -> 404, nothing moves", async ({ as, f, url, run, orgB, ledger }) => {
+    const from = await f.user("member");
+    const victim = await foreignUserId({ run, f, orgB, as, ledger });
+    for (const [fromId, toId] of [[GHOST, from.id], [from.id, GHOST], [victim, from.id], [from.id, victim]]) {
+      const r = await reassign(as.admin, url, fromId, toId);
+      expect(r.status(), `${fromId} -> ${toId}: ${await r.text()}`).toBe(404);
+      expect(await r.json()).toEqual({ error: "User not found" });
+    }
+    const b = await orgB.get(orgApi(run.orgB.slug, `/users/${victim}`));
+    expect(b.status()).toBe(200); // the org-B user is untouched
+  });
+
+  test("reassign-work: an external target that cannot access the records -> 400 with the count, and nothing moves", async ({ as, f, url, run, ledger, playwright, baseURL }) => {
+    const from = await f.user("member"); // internal: its projects have no company
+    const dist = await f.user("distributor"); // external, with its own company
+    const { projectId, inquiryId } = await ownsWork({ run, ledger }, await fresh(playwright, baseURL), url, from);
+
+    const r = await reassign(as.admin, url, from.id, dist.id);
     expect(r.status(), await r.text()).toBe(400);
-    expect(((await r.json()) as { error: string }).error).toMatch(/associated projects or inquiries/i);
-    expect((await getUser(as.admin, url, u.id)).user.active).toBe(true);
+    expect(await r.json()).toEqual({ error: "Target user cannot access 2 of these records" });
+    const project = ((await (await as.admin.get(url(`/projects/${projectId}`))).json()) as { project: Record<string, unknown> }).project;
+    expect(project.createdByUserId).toBe(from.id);
+    const inquiry = ((await (await as.admin.get(url(`/inquiries/${inquiryId}`))).json()) as { inquiry: Record<string, unknown> }).inquiry;
+    expect(inquiry.createdByUserId).toBe(from.id);
+  });
+
+  test("reassign-work: a caller without MANAGE_USERS -> 403", async ({ as, f, url }) => {
+    const from = await f.user("member");
+    const to = await f.user("member");
+    const r = await reassign(as.member, url, from.id, to.id);
+    expect(r.status(), await r.text()).toBe(403);
   });
 
   test("KNOWN BUG: DELETE / PATCH role on an unknown or another org's user → 400 (documented: 404)", async ({ as, url, run, f, orgB, ledger }) => {

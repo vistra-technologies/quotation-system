@@ -79,9 +79,9 @@ export const GET = withRoute(
  * Auth: authenticated org member with MANAGE_USERS permission.
  *
  * Returns 204 on success (no body).
- * Returns 400 if the user cannot be deleted (self-delete guard, or has associated
- *   projects/inquiries that would violate FK constraints).
- * Returns 404 if the user does not exist in the org.
+ * Never blocked by the user's records (Stage 31 S31-4): their projects/inquiries stay, attributed
+ *   to a snapshot of the user's name.
+ * Returns 400 for the self-delete guard (and, until S31-10, for an unknown/other-org id).
  *
  * Tenancy: enforced by getApiSession() (403 on cross-org) and deleteUser()
  *          calling assertUserInOrg() before any mutation.
@@ -120,8 +120,7 @@ export const DELETE = withRoute(
     if (err instanceof Error) {
       if (
         err.message.includes("cannot delete your own account") ||
-        err.message.includes("not found or access denied") ||
-        err.message.includes("Cannot delete this user")
+        err.message.includes("not found or access denied")
       ) {
         return apiBadRequest(err.message);
       }

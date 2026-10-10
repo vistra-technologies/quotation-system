@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import { creatorCell } from "@/lib/creator-display";
 import { formatBudget } from "@/lib/format-currency";
 import { dismissInquiry } from "../actions";
 import { StartProjectButton } from "./start-project-button";
@@ -21,7 +22,9 @@ interface InquiryDetail {
   status: string;
   createdAt: string;
   externalCompany: { id: string; name: string } | null;
-  createdBy: { id: string; username: string };
+  // null once the creator was deleted (Stage 31 S31-4); createdByName is then the name snapshot.
+  createdBy: { id: string; username: string } | null;
+  createdByName: string | null;
   // Stage 14 Batch B — extended intake fields
   submissionDate: string | null;
   projectDeadline: string | null;
@@ -93,6 +96,14 @@ export default async function InquiryDetailPage({
   const isClosed =
     inquiry.status === "DISMISSED" || inquiry.status === "CONVERTED";
 
+  // Stage 31 S31-4: a deleted creator shows as "<name> (removed)".
+  const creator = creatorCell(
+    inquiry.createdBy,
+    inquiry.createdByName,
+    (name) => t("createdByRemoved", { name }),
+    t("createdByUnknown"),
+  );
+
   /** Status badge classes for the detail header */
   function statusBadgeClass(status: string): string {
     if (status === "NEW") return "bg-status-pending-bg text-status-pending-text";
@@ -136,7 +147,7 @@ export default async function InquiryDetailPage({
           </h1>
           {/* V2 — right-side metadata: username + created date */}
           <div className="shrink-0 text-right text-sm text-text-muted">
-            <p className="font-semibold">{inquiry.createdBy.username}</p>
+            <p className="font-semibold">{creator.text}</p>
             <p>{t("colDate")}: {new Date(inquiry.createdAt).toLocaleDateString()}</p>
           </div>
         </div>
@@ -220,7 +231,7 @@ export default async function InquiryDetailPage({
             value={inquiry.externalCompany?.name}
           />
           {/* Created by + date */}
-          <Field label="Created By" value={inquiry.createdBy.username} />
+          <Field label="Created By" value={creator.text} />
         </div>
       </div>
 

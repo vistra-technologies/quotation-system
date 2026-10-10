@@ -23,8 +23,8 @@ interface DeleteCompanyButtonProps {
  * The confirm message is passed as a prop from the parent server component so
  * this component has no i18n dependency (avoids clientMessages coupling).
  *
- * FK behavior (verified Stage 13 Batch 2): User/Project/Inquiry.externalCompanyId
- * all use ON DELETE SET NULL — clean cascade, no blocker.
+ * Stage 31 S31-5: a company that still has users, projects or inquiries is refused by the API
+ * (409 COMPANY_HAS_RECORDS); the action returns that message and it is shown inside the dialog.
  *
  * Mirrors the DeleteUserButton pattern (Stage 12 Batch 7g, updated Stage 14 Batch D).
  */
@@ -38,19 +38,26 @@ export function DeleteCompanyButton({
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  function handleDeleteConfirm() {
+  function closeDialog() {
     setIsConfirmOpen(false);
+    setErrorMessage(null);
+  }
+
+  function handleDeleteConfirm() {
     setErrorMessage(null);
     const formData = new FormData();
     formData.set("orgSlug", orgSlug);
     formData.set("companyId", companyId);
     startTransition(async () => {
       try {
-        await deleteExternalCompany(formData);
-      } catch (err) {
-        setErrorMessage(
-          err instanceof Error ? err.message : "Delete failed — please try again.",
-        );
+        const result = await deleteExternalCompany(formData);
+        if (result.error) {
+          setErrorMessage(result.error); // stay open and show why
+        } else {
+          setIsConfirmOpen(false);
+        }
+      } catch {
+        setErrorMessage("Delete failed — please try again.");
       }
     });
   }
@@ -62,16 +69,17 @@ export function DeleteCompanyButton({
         isOpen={isConfirmOpen}
         title={`Delete ${companyName}`}
         message={confirmMessage}
+        errorMessage={errorMessage}
         confirmLabel="Delete"
         onConfirm={handleDeleteConfirm}
-        onCancel={() => setIsConfirmOpen(false)}
+        onCancel={closeDialog}
       />
-      {errorMessage && (
-        <span className="text-xs text-red-600">{errorMessage}</span>
-      )}
       <button
         type="button"
-        onClick={() => setIsConfirmOpen(true)}
+        onClick={() => {
+          setErrorMessage(null);
+          setIsConfirmOpen(true);
+        }}
         disabled={isPending}
         aria-label={`Delete company ${companyName}`}
         title={`Delete company ${companyName}`}

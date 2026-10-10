@@ -4,6 +4,7 @@ import {
   apiForbidden,
   apiNotFound,
   apiBadRequest,
+  apiConflict,
   apiServerError,
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
@@ -12,6 +13,7 @@ import {
   updateExternalCompany,
   deleteExternalCompany,
 } from "@/lib/data/external-companies";
+import { companyHasRecordsMessage, COMPANY_HAS_RECORDS_CODE } from "@/lib/company-records";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -154,8 +156,9 @@ export const PATCH = withRoute(
  * Delete an external company from the org.
  *
  * Auth: authenticated org member with MANAGE_USERS permission.
- * FK cascade: User/Project/Inquiry.externalCompanyId use ON DELETE SET NULL —
- *   clean cascade, no dependent-records guard needed, no 409.
+ * Stage 31 S31-5: refused while the company still has users (active or deactivated), projects or
+ *   inquiries — 409 { error, code: "COMPANY_HAS_RECORDS" } with the counts in the message. (The FKs
+ *   are ON DELETE SET NULL, which would silently detach the records.)
  * Returns 200 on success, 404 if not found in org, 403 if lacking MANAGE_USERS.
  *
  * Stage 13 Batch 2.
@@ -188,8 +191,15 @@ export const DELETE = withRoute(
   }
 
   try {
-    const deleted = await deleteExternalCompany(session, companyId);
-    if (!deleted) return apiNotFound("External company not found");
+    const result = await deleteExternalCompany(session, companyId);
+    if (!result.ok) {
+      if (result.reason === "has_records") {
+        return apiConflict(companyHasRecordsMessage(result.counts), {
+          code: COMPANY_HAS_RECORDS_CODE,
+        });
+      }
+      return apiNotFound("External company not found");
+    }
     return NextResponse.json({ success: true });
   } catch (err) {
     log.error("[DELETE /api/v1/orgs/[orgSlug]/external-companies/[companyId]] deleteExternalCompany", { err });

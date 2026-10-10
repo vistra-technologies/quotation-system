@@ -262,13 +262,13 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Run on all paths except static assets, all /api/* routes, and the /organizations dev
-    // listing.  Excluding all of /api prevents "api" from being read as an org slug and
-    // avoids needless DB lookups on health checks, auth callbacks, etc.  The /organizations
-    // dev page is similarly excluded so "organizations" is never treated as a slug.
+    // Run on all paths except static assets and all /api/* routes.  Excluding all of /api
+    // prevents "api" from being read as an org slug and avoids needless DB lookups on health
+    // checks, auth callbacks, etc.  (Stage 31 S31-6: the /organizations listing page is gone, so
+    // it is no longer excluded; /organizations now answers the app's normal 404.)
     //
     // CONSEQUENCE: the suspension check above does NOT run for /api/** paths; org APIs
     // enforce suspension themselves in getApiSession() (403 ORG_SUSPENDED).
-    "/((?!_next/static|_next/image|favicon\\.ico|api|organizations).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|api).*)",
   ],
 };

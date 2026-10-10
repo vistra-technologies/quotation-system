@@ -52,7 +52,6 @@ export const DASHBOARD_TEXT = /Welcome, RGR /;
 export const PAGES: PageRow[] = [
   // ── apex / public ─────────────────────────────────────────────────────────
   // "/" is no longer a page: Stage 28 serves the landing from app/route.ts (GET /), covered in api/landing.spec.ts.
-  { path: "/organizations", access: "public", expectsText: /Fetched live from Postgres via Prisma/ },
 
   // ── org entry pages ───────────────────────────────────────────────────────
   { path: "/[orgSlug]", access: "public", expectsText: ORG_LOGIN_TEXT, landsOn: { anon: "/login", signedIn: "/dashboard", signedInText: DASHBOARD_TEXT } },

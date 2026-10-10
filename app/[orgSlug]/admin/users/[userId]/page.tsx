@@ -6,6 +6,7 @@ import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { UserDetailForms } from "./user-detail-forms";
 import { UserEditForm } from "./user-edit-form";
+import { ReassignWorkForm } from "./reassign-work-form";
 
 // Always render live — reads session cookie and DB.
 export const dynamic = "force-dynamic";
@@ -64,8 +65,9 @@ export default async function UserDetailPage({
   const { orgSlug, userId } = await params;
   const base = await orgHref(orgSlug, "");
 
-  const [userRes, rolesRes, companiesRes, t] = await Promise.all([
+  const [userRes, usersRes, rolesRes, companiesRes, t] = await Promise.all([
     internalFetch(`/api/v1/orgs/${orgSlug}/users/${userId}`),
+    internalFetch(`/api/v1/orgs/${orgSlug}/users`),
     internalFetch(`/api/v1/orgs/${orgSlug}/roles`),
     internalFetch(`/api/v1/orgs/${orgSlug}/external-companies`),
     getTranslations("users"),
@@ -87,6 +89,17 @@ export default async function UserDetailPage({
     user: UserDetail;
     isSelf: boolean;
   };
+
+  // Stage 31 S31-4a: colleagues this user's work can move to (active, not this user).
+  const reassignCandidates = usersRes.ok
+    ? (
+        (await usersRes.json()) as {
+          users: { id: string; username: string; firstName: string; lastName: string; active: boolean }[];
+        }
+      ).users
+        .filter((u) => u.active && u.id !== user.id)
+        .map((u) => ({ id: u.id, label: `${u.firstName} ${u.lastName} (${u.username})` }))
+    : [];
 
   const roles: RoleOption[] = rolesRes.ok
     ? ((await rolesRes.json()) as { roles: RoleOption[] }).roles
@@ -134,6 +147,11 @@ export default async function UserDetailPage({
           roles={roles}
           externalCompanies={externalCompanies}
         />
+      </div>
+
+      {/* Stage 31 S31-4a: hand this user's projects and inquiries to a colleague */}
+      <div className="mt-6">
+        <ReassignWorkForm orgSlug={orgSlug} userId={user.id} candidates={reassignCandidates} />
       </div>
 
       {/* Danger Zone: activate/deactivate + set password */}

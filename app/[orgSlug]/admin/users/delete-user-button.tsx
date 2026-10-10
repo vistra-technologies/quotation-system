@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { SelectField } from "@/components/select-field";
 import { deleteUser } from "./actions";
 
 interface DeleteUserButtonProps {
@@ -11,6 +12,16 @@ interface DeleteUserButtonProps {
   username: string;
   /** Confirm message resolved by the parent server component. */
   confirmMessage: string;
+  /**
+   * Stage 31 S31-4: what happens to the user's records ("Owns 2 projects and 1 inquiry. They stay,
+   * and will show as created by X (removed)."). Null when the user created nothing.
+   */
+  recordsMessage: string | null;
+  /** Other active users the work can be reassigned to (S31-4a). Empty hides the picker. */
+  reassignCandidates: { id: string; label: string }[];
+  /** "Reassign their work to" label and the keep-as-is option text, resolved by the parent. */
+  reassignLabel: string;
+  reassignNoneLabel: string;
 }
 
 /**
@@ -20,8 +31,13 @@ interface DeleteUserButtonProps {
  * (no window.confirm). On confirmation, calls the deleteUser server action
  * which DELETEs via the API route and revalidates the users list.
  *
- * The confirm message is passed as a prop from the parent server component so
- * this component has no i18n dependency (avoids clientMessages coupling).
+ * Stage 31: deleting is never blocked by the user's records. The dialog says what happens to them
+ * and offers an optional "Reassign their work to..." picker (the work moves first, then the user is
+ * deleted). The action returns state, so a refusal (self-delete, a target that cannot access the
+ * records) shows inside the dialog; picking another option clears it.
+ *
+ * All text is passed as props from the parent server component so this component has no i18n
+ * dependency (avoids clientMessages coupling).
  *
  * Consistent with the useTransition + server action pattern used in
  * user-detail-forms.tsx for activate/deactivate/role/password actions.
@@ -31,27 +47,74 @@ export function DeleteUserButton({
   userId,
   username,
   confirmMessage,
+  recordsMessage,
+  reassignCandidates,
+  reassignLabel,
+  reassignNoneLabel,
 }: DeleteUserButtonProps) {
   const [isPending, startTransition] = useTransition();
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [toUserId, setToUserId] = useState("");
+
+  function openDialog() {
+    setErrorMessage(null);
+    setToUserId("");
+    setIsConfirmOpen(true);
+  }
+
+  function closeDialog() {
+    setIsConfirmOpen(false);
+    setErrorMessage(null);
+  }
 
   function handleDeleteConfirm() {
-    setIsConfirmOpen(false);
     setErrorMessage(null);
     const formData = new FormData();
     formData.set("orgSlug", orgSlug);
     formData.set("userId", userId);
+    if (toUserId) formData.set("toUserId", toUserId);
     startTransition(async () => {
       try {
-        await deleteUser(formData);
-      } catch (err) {
-        setErrorMessage(
-          err instanceof Error ? err.message : "Delete failed — please try again.",
-        );
+        const result = await deleteUser({ error: null, success: false }, formData);
+        if (result.error) {
+          setErrorMessage(result.error); // stay open and show why
+        } else {
+          setIsConfirmOpen(false);
+        }
+      } catch {
+        setErrorMessage("Delete failed — please try again.");
       }
     });
   }
+
+  const dialogMessage = (
+    <>
+      <p>{confirmMessage}</p>
+      {recordsMessage && <p className="mt-2">{recordsMessage}</p>}
+      {recordsMessage && reassignCandidates.length > 0 && (
+        <div className="mt-3 block text-xs font-bold uppercase tracking-wide text-text-muted">
+          {reassignLabel}
+          <div className="mt-1 font-normal normal-case tracking-normal">
+            <SelectField
+              value={toUserId}
+              onChange={(e) => {
+                setToUserId(e.target.value);
+                setErrorMessage(null);
+              }}
+            >
+              <option value="">{reassignNoneLabel}</option>
+              {reassignCandidates.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </SelectField>
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <>
@@ -59,17 +122,15 @@ export function DeleteUserButton({
       <ConfirmDialog
         isOpen={isConfirmOpen}
         title={`Delete ${username}`}
-        message={confirmMessage}
+        message={dialogMessage}
+        errorMessage={errorMessage}
         confirmLabel="Delete"
         onConfirm={handleDeleteConfirm}
-        onCancel={() => setIsConfirmOpen(false)}
+        onCancel={closeDialog}
       />
-      {errorMessage && (
-        <span className="text-xs text-red-600">{errorMessage}</span>
-      )}
       <button
         type="button"
-        onClick={() => setIsConfirmOpen(true)}
+        onClick={openDialog}
         disabled={isPending}
         aria-label={`Delete user ${username}`}
         title={`Delete user ${username}`}

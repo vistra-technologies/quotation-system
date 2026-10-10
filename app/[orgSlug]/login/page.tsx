@@ -47,18 +47,16 @@ export default async function LoginPage({
 }) {
   const { orgSlug } = await params;
 
-  // Load all orgs from the public API endpoint, then find this org by slug.
-  // The proxy returns 404 for unknown slugs before reaching here, so missing
-  // org after API call is a defensive guard only.
+  // Resolve this org through the public single-org lookup (GET /api/v1/orgs?slug=...).
+  // The proxy returns 404 for unknown slugs before reaching here, so a missing
+  // org after the API call is a defensive guard only.
   //
-  // Stage 12 Batch 6: switched getOrgBySlug/getOrgById from lib/data/admin to
-  // internalFetch against the public GET /api/v1/orgs endpoint (plan D6).
-  const orgsRes = await internalFetch("/api/v1/orgs");
-  const { orgs } = orgsRes.ok
-    ? ((await orgsRes.json()) as { orgs: Array<{ id: string; slug: string; name: string }> })
-    : { orgs: [] };
-
-  const org = orgs.find((o) => o.slug === orgSlug);
+  // Stage 12 Batch 6: internalFetch against the public GET /api/v1/orgs endpoint (plan D6).
+  // Stage 31 S31-6: the endpoint no longer lists every tenant; one targeted lookup per need.
+  const orgRes = await internalFetch(`/api/v1/orgs?slug=${encodeURIComponent(orgSlug)}`);
+  const org = orgRes.ok
+    ? ((await orgRes.json()) as { org: { id: string; slug: string; name: string } }).org
+    : null;
   if (!org) {
     // Defensive guard — proxy should have returned 404 before reaching here.
     redirect("/");
@@ -81,7 +79,14 @@ export default async function LoginPage({
     // generic fully (same reason lib/session.ts uses `const u = user as any`).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rawUser = rawSession.user as any;
-    const sessionOrg = orgs.find((o) => o.id === (rawUser.organizationId as string));
+    // Second lookup only for a cross-org session, by id, for the notice. A 404/error keeps the
+    // "your organization" fallback below.
+    const sessionOrgRes = await internalFetch(
+      `/api/v1/orgs?id=${encodeURIComponent(rawUser.organizationId as string)}`,
+    );
+    const sessionOrg = sessionOrgRes.ok
+      ? ((await sessionOrgRes.json()) as { org: { id: string; slug: string; name: string } }).org
+      : null;
 
     const t = await getTranslations("login");
     const sessionOrgName = sessionOrg?.name ?? "your organization";

@@ -8,6 +8,7 @@ import {
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import { updateUserProfile } from "@/lib/data/users";
+import { isValidProfileEmail, PROFILE_EMAIL_INVALID_MESSAGE } from "@/lib/user-validation";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -98,6 +99,9 @@ export const PUT = withRoute(
       typeof body.profileEmail === "string" && body.profileEmail.trim()
         ? body.profileEmail.trim()
         : null;
+    if (!isValidProfileEmail(input.profileEmail)) {
+      return apiBadRequest(PROFILE_EMAIL_INVALID_MESSAGE);
+    }
   }
   if ("externalCompanyId" in body) {
     input.externalCompanyId =

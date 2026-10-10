@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
+import type { CompanyRecordCounts } from "@/lib/company-records";
+import { companyHasRecords } from "@/lib/company-records";
 
 // ─── Reads ───────────────────────────────────────────────────────────────────
 
@@ -98,22 +100,42 @@ export async function updateExternalCompany(
   return true;
 }
 
+export type DeleteExternalCompanyResult =
+  | { ok: true }
+  | { ok: false; reason: "not_found" }
+  | { ok: false; reason: "has_records"; counts: CompanyRecordCounts };
+
 /**
- * Delete an external company scoped to the session org.
- * FK references (User, Project, Inquiry) use ON DELETE SET NULL — clean cascade,
- * no dependent-records guard required.
- * Returns false if the company does not exist in this org (tenancy guard).
+ * Delete an external company scoped to the session org (Stage 31 S31-5).
+ * Refused while the company still has users (active or deactivated), projects or inquiries: those
+ * FKs are ON DELETE SET NULL, which would silently detach the records (invisible to external
+ * users afterwards). The counts and the delete share one transaction. The FKs stay SET NULL as a
+ * backstop for a row created between the count and the delete.
+ * Tenancy guard: not_found if the company is not in this org.
  */
 export async function deleteExternalCompany(
   session: SessionData,
   id: string,
-): Promise<boolean> {
-  const existing = await prisma.externalCompany.findFirst({
-    where: { id, organizationId: session.organizationId },
-    select: { id: true },
-  });
-  if (!existing) return false;
+): Promise<DeleteExternalCompanyResult> {
+  const organizationId = session.organizationId;
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.externalCompany.findFirst({
+      where: { id, organizationId },
+      select: { id: true },
+    });
+    if (!existing) return { ok: false as const, reason: "not_found" as const };
 
-  await prisma.externalCompany.delete({ where: { id } });
-  return true;
+    const [users, projects, inquiries] = await Promise.all([
+      tx.user.count({ where: { organizationId, externalCompanyId: id } }),
+      tx.project.count({ where: { organizationId, externalCompanyId: id } }),
+      tx.inquiry.count({ where: { organizationId, externalCompanyId: id } }),
+    ]);
+    const counts = { users, projects, inquiries };
+    if (companyHasRecords(counts)) {
+      return { ok: false as const, reason: "has_records" as const, counts };
+    }
+
+    await tx.externalCompany.delete({ where: { id } });
+    return { ok: true as const };
+  });
 }

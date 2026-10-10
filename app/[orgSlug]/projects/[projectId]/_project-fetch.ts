@@ -28,9 +28,11 @@ export interface ProjectDetail {
   createdAt: string;
   updatedAt: string;
   externalCompanyId: string | null;
-  createdByUserId: string;
+  createdByUserId: string | null;
+  /** Name snapshot, set when the creator was deleted (Stage 31 S31-4). */
+  createdByName: string | null;
   externalCompany: { id: string; name: string; country: "INDIA" | "UAE" } | null;
-  createdBy: { id: string; username: string };
+  createdBy: { id: string; username: string } | null;
   /** Step-gating counts, added Stage 19 Batch 4. */
   selectionCount: number;
   partitionCount: number;

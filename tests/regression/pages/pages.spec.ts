@@ -36,7 +36,6 @@ import {
   apexPathOf, expectLands, openAs, orgPathOf, orgTarget, param, paramsFor, readyWall, settledProblems, type Opened, type ParamDeps,
 } from "./page-helpers";
 
-coversPage("/organizations");
 coversPage("/[orgSlug]");
 coversPage("/[orgSlug]/login");
 coversPage("/[orgSlug]/dashboard");
@@ -568,17 +567,16 @@ test.describe("pins", () => {
     }
   });
 
-  test("DECISION NEEDED: /organizations is public on every host and lists every tenant (name, slug, created date)", async ({ browser, run }) => {
-    // DECISION NEEDED — a Stage 1 dev listing kept "for dev convenience" (app/page.tsx), excluded from proxy.ts's
-    // matcher, so it is served unauthenticated on the apex AND on every org subdomain. Same tenant-enumeration
-    // concern as the backlog item for GET /api/v1/orgs. If it is removed or gated, update this pin.
+  test("/organizations is gone: 404 on the apex and on an org subdomain, listing no tenant (Stage 31 S31-6)", async ({ browser, run }) => {
+    // Was the DECISION NEEDED pin (a public listing of every tenant). The page and the proxy matcher exclusion
+    // were removed, so the path answers the app's 404 everywhere.
     const hosts = isSubdomain ? ["/organizations", orgUrl(run.testOrg.slug, "/organizations")] : ["/organizations"];
     await withPage({ browser, run }, "anon", undefined, async (o) => {
       for (const h of hosts) {
         const res = await o.page.goto(h);
-        expect(res?.status(), h).toBe(200);
-        await expect(o.page.getByText(`/${run.testOrg.slug}`, { exact: true }), h).toBeVisible();
-        await expect(o.page.getByText(`/${run.orgB.slug}`, { exact: true }), h).toBeVisible();
+        expect(res?.status(), h).toBe(404);
+        await expect(o.page.getByText(`/${run.testOrg.slug}`, { exact: true }), h).toHaveCount(0);
+        await expect(o.page.getByText(`/${run.orgB.slug}`, { exact: true }), h).toHaveCount(0);
       }
     });
   });

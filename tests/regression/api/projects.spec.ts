@@ -18,7 +18,6 @@ import { globalStateFailuresFile, withRecordedGlobalState } from "../fixtures/gl
 import { withTestOrgConfigLock } from "../fixtures/config-window";
 import { pending, restorePendingRenames } from "../fixtures/pending-restore";
 import type { Factories } from "../fixtures/factories";
-import { bypass, runPassword, signIn } from "./sign-in";
 import { registerNegatives, GHOST, type Ctx } from "./api-matrix";
 import {
   orgApi,
@@ -296,35 +295,19 @@ test.describe("projects: create / read / patch / list", () => {
     expect((await as.member.get(url(`/projects/${id}`))).status()).toBe(200);
   });
 
-  // Fail closed (HF-3): an external user whose company was deleted (users.externalCompanyId -> NULL) owns nothing.
-  test("an external user whose company was deleted owns nothing: empty lists, zero stats, 404 by id, 403 on create", async ({ as, f, url, run, ledger, playwright, baseURL }) => {
-    const target = await f.project(); // Test Org project, internal-created (company-less)
-    await f.inquiry();
+  // Stage 31 S31-5: the hotfix built a company-less external user by deleting their company (users.externalCompanyId -> NULL).
+  // That path is closed: a company that still has a user (or a project / inquiry) is refused with 409. The fail-closed
+  // scope for legacy company-less rows (HF-3: matches nothing) is now pinned by tests/unit/ownership.test.ts.
+  test("a company that still has a user cannot be deleted (409): the external user keeps their company", async ({ as, f, url }) => {
     const u = await f.user("distributor"); // the factory creates + ledgers its company
     const g = await as.admin.get(url(`/users/${u.id}`));
     const coId = ((await g.json()) as { user: { externalCompanyId: string | null } }).user.externalCompanyId;
     expect(coId).toEqual(expect.any(String));
     const d = await as.admin.delete(url(`/external-companies/${coId}`));
-    expect(d.status(), await d.text()).toBe(200);
-    ledger.remove(coId!);
-
-    const ctx = await playwright.request.newContext({ baseURL, extraHTTPHeaders: bypass() });
-    try {
-      const login = await signIn(ctx, run.testOrg.slug, u.username, runPassword());
-      expect(login.status(), await login.text()).toBe(200);
-      expect(((await (await ctx.get(url("/projects"))).json()) as { projects: unknown[] }).projects).toEqual([]);
-      expect(((await (await ctx.get(url("/inquiries"))).json()) as { inquiries: unknown[] }).inquiries).toEqual([]);
-      const st = await ctx.get(url("/stats"));
-      expect(await st.json()).toEqual({ projectsTotal: 0, projectsInProgress: 0, inquiriesTotal: 0, inquiriesNew: 0, ordersTotal: 0 });
-      expect((await ctx.get(url(`/projects/${target.id}`))).status()).toBe(404);
-      const post = await ctx.post(url("/projects"), { data: { name: nm({ run }, "proj-orphan"), currency: "AED" } });
-      expect(post.status(), await post.text()).toBe(403);
-      expect(await post.json()).toEqual({ error: "Your account is not linked to a company" });
-      const postInq = await ctx.post(url("/inquiries"), { data: { name: nm({ run }, "inq-orphan"), currency: "AED" } });
-      expect(postInq.status(), await postInq.text()).toBe(403);
-    } finally {
-      await ctx.dispose(); // the user itself is ledgered; teardown deletes it
-    }
+    expect(d.status(), await d.text()).toBe(409);
+    expect(await d.json()).toEqual({ error: "This company still has 1 user(s). Reassign or remove them first.", code: "COMPANY_HAS_RECORDS" });
+    const after = (await (await as.admin.get(url(`/users/${u.id}`))).json()) as { user: { externalCompanyId: string | null } };
+    expect(after.user.externalCompanyId).toBe(coId);
   });
 
   test("KNOWN BUG: POST accepts any client-supplied status (an unknown value is stored, the project is then locked)", async ({ as, run, ledger, url }) => {

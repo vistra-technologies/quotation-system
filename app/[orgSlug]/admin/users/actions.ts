@@ -5,6 +5,7 @@ import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { withAction } from "@/lib/with-route";
+import { isValidPassword, PASSWORD_TOO_SHORT_MESSAGE } from "@/lib/user-validation";
 
 // ---------------------------------------------------------------------------
 // createUser
@@ -47,8 +48,8 @@ export const createUser = withAction(
   if (!username || !roleId || !password) {
     return { error: "Username, role, and password are required" };
   }
-  if (password.length < 8) {
-    return { error: "Password must be at least 8 characters" };
+  if (!isValidPassword(password)) {
+    return { error: PASSWORD_TOO_SHORT_MESSAGE };
   }
 
   const res = await internalFetch(`/api/v1/orgs/${orgSlug}/users`, {
@@ -257,8 +258,8 @@ export const setUserPasswordModal = withAction(
   // Blank = keep current — treat as a no-op success so the form feedback is
   // consistent with the SA modal's behaviour (SA action skips the PATCH too).
   if (!password.trim()) return { error: null, success: true };
-  if (password.length < 8) {
-    return { error: "Password must be at least 8 characters", success: false };
+  if (!isValidPassword(password)) {
+    return { error: PASSWORD_TOO_SHORT_MESSAGE, success: false };
   }
 
   const res = await internalFetch(
@@ -410,31 +411,38 @@ export const updateUserProfile = withAction(
 });
 
 // ---------------------------------------------------------------------------
-// deleteUser
+// reassignWork (Stage 31 S31-4a)
 // ---------------------------------------------------------------------------
 
-/**
- * Delete a user from the org.
- *
- * Thin marshaler (Stage 12 Batch 7g): delegates to
- * DELETE /api/v1/orgs/[orgSlug]/users/[userId] via internalFetch.
- * All tenancy enforcement and business logic live in the route handler.
- *
- * Throws on error so the caller (DeleteUserButton) can surface it.
- * The route handler returns 400 for expected rejection cases (self-delete,
- * FK constraint) — these throw with the server's descriptive message.
- */
-export const deleteUser = withAction(
-  "app/[orgSlug]/admin/users/actions#deleteUser",
-  async (formData: FormData): Promise<void> => {
-  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
-  const userId = formData.get("userId") as string | null;
+export type ReassignWorkState = {
+  error: string | null;
+  /** Counts moved by the last successful reassign; null before/without one. */
+  moved: { projects: number; inquiries: number } | null;
+};
 
-  if (!userId) throw new Error("userId is required");
+/**
+ * Move every project and inquiry created by one user to another active user of the org.
+ *
+ * Thin marshaler: delegates to POST /api/v1/orgs/[orgSlug]/users/[userId]/reassign-work via
+ * internalFetch. Returns state (never throws) so the detail page shows the server's message
+ * ("Target user cannot access N of these records", inactive target, ...) inline.
+ */
+export const reassignWork = withAction(
+  "app/[orgSlug]/admin/users/actions#reassignWork",
+  async (
+  prevState: ReassignWorkState,
+  formData: FormData,
+): Promise<ReassignWorkState> => {
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
+  const userId = (formData.get("userId") as string | null) ?? "";
+  const toUserId = (formData.get("toUserId") as string | null) ?? "";
+
+  if (!userId) return { error: "User ID is missing", moved: null };
+  if (!toUserId) return { error: "Choose who should receive the work", moved: null };
 
   const res = await internalFetch(
-    `/api/v1/orgs/${orgSlug}/users/${userId}`,
-    { method: "DELETE" },
+    `/api/v1/orgs/${orgSlug}/users/${userId}/reassign-work`,
+    { method: "POST", body: JSON.stringify({ toUserId }) },
   );
 
   if (res.status === 401 || res.status === 403) {
@@ -449,8 +457,85 @@ export const deleteUser = withAction(
     } catch {
       // ignore JSON parse failure
     }
-    throw new Error(errorMessage);
+    return { error: errorMessage, moved: null };
   }
 
+  const moved = (await res.json()) as { projects: number; inquiries: number };
   revalidatePath(`/${orgSlug}/admin/users`);
+  revalidatePath(`/${orgSlug}/admin/users/${userId}`);
+  revalidatePath(`/${orgSlug}/projects`);
+  revalidatePath(`/${orgSlug}/inquiries`);
+  return { error: null, moved };
+});
+
+// ---------------------------------------------------------------------------
+// deleteUser
+// ---------------------------------------------------------------------------
+
+export type DeleteUserState = { error: string | null; success: boolean };
+
+/**
+ * Delete a user from the org. Never blocked by the user's records (Stage 31 S31-4): they stay,
+ * attributed to a snapshot of the user's name.
+ *
+ * Thin marshaler (Stage 12 Batch 7g): delegates to
+ * DELETE /api/v1/orgs/[orgSlug]/users/[userId] via internalFetch.
+ * All tenancy enforcement and business logic live in the route handler.
+ *
+ * Returns state instead of throwing, so any remaining failure (self-delete, unknown id) shows in
+ * the confirm dialog rather than as a generic 500 (a thrown server-action error reaches the client
+ * with its message redacted in production).
+ *
+ * Optional `toUserId` (the dialog's "Reassign to..." picker): the work is reassigned first; if that
+ * fails nothing is deleted and the reassign error is returned.
+ */
+export const deleteUser = withAction(
+  "app/[orgSlug]/admin/users/actions#deleteUser",
+  async (
+  prevState: DeleteUserState,
+  formData: FormData,
+): Promise<DeleteUserState> => {
+  const orgSlug = (formData.get("orgSlug") as string | null) ?? "";
+  const userId = (formData.get("userId") as string | null) ?? "";
+  const toUserId = (formData.get("toUserId") as string | null) ?? "";
+
+  if (!userId) return { error: "User ID is missing", success: false };
+
+  async function errorOf(res: Response): Promise<string> {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      if (body.error) errorMessage = body.error;
+    } catch {
+      // ignore JSON parse failure
+    }
+    return errorMessage;
+  }
+
+  if (toUserId) {
+    const moveRes = await internalFetch(
+      `/api/v1/orgs/${orgSlug}/users/${userId}/reassign-work`,
+      { method: "POST", body: JSON.stringify({ toUserId }) },
+    );
+    if (moveRes.status === 401 || moveRes.status === 403) {
+      redirect(await orgHref(orgSlug, "/login"));
+    }
+    if (!moveRes.ok) return { error: await errorOf(moveRes), success: false };
+  }
+
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/users/${userId}`,
+    { method: "DELETE" },
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (!res.ok) return { error: await errorOf(res), success: false };
+
+  revalidatePath(`/${orgSlug}/admin/users`);
+  revalidatePath(`/${orgSlug}/projects`);
+  revalidatePath(`/${orgSlug}/inquiries`);
+  return { error: null, success: true };
 });

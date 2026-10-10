@@ -62,10 +62,16 @@ export default async function UsersPage({
 
   // Stage 29: the list response carries seats { limit, used } (every user row counts).
   const usersBody = usersRes.ok
-    ? ((await usersRes.json()) as { users: UserRow[]; seats?: { limit: number; used: number } })
+    ? ((await usersRes.json()) as {
+        users: UserRow[];
+        seats?: { limit: number; used: number };
+        recordCounts?: Record<string, { projects: number; inquiries: number }>;
+      })
     : null;
   const users: UserRow[] = usersBody?.users ?? [];
   const seats = usersBody?.seats ?? null;
+  // Stage 31: projects/inquiries each user created (absent = none), for the delete dialog.
+  const recordCounts = usersBody?.recordCounts ?? {};
   const atCap = seats !== null && seats.used >= seats.limit;
 
   const roles: RoleOption[] = rolesRes.ok
@@ -192,6 +198,20 @@ export default async function UsersPage({
                           userId={user.id}
                           username={user.username}
                           confirmMessage={t("deleteConfirm", { username: user.username })}
+                          recordsMessage={
+                            recordCounts[user.id]
+                              ? t("deleteRecords", {
+                                  projects: recordCounts[user.id].projects,
+                                  inquiries: recordCounts[user.id].inquiries,
+                                  name: `${user.firstName} ${user.lastName}`,
+                                })
+                              : null
+                          }
+                          reassignCandidates={users
+                            .filter((u) => u.active && u.id !== user.id)
+                            .map((u) => ({ id: u.id, label: `${u.firstName} ${u.lastName} (${u.username})` }))}
+                          reassignLabel={t("deleteReassignLabel")}
+                          reassignNoneLabel={t("deleteReassignNone", { name: `${user.firstName} ${user.lastName}` })}
                         />
                       </div>
                     </td>

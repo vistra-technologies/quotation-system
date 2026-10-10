@@ -28,3 +28,13 @@ export function ownedProjectWhere(session: SessionData): OwnedWhere {
 export function ownedInquiryWhere(session: SessionData): OwnedWhere {
   return owned(session);
 }
+
+/**
+ * `where` fragment matching Project/Inquiry rows an EXTERNAL user of `companyId` could NOT access
+ * (Stage 31 S31-4a, reassign-work): rows of another company or of no company. A target with no
+ * company can access nothing, so every row is "outside" (empty fragment).
+ */
+export function recordsOutsideCompanyWhere(companyId: string | null) {
+  if (companyId === null) return {};
+  return { OR: [{ externalCompanyId: null }, { externalCompanyId: { not: companyId } }] };
+}

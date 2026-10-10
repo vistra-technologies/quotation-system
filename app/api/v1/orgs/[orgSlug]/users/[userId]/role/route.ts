@@ -6,7 +6,7 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { changeUserRole } from "@/lib/data/users";
+import { changeUserRole, LAST_MANAGER_MESSAGE } from "@/lib/data/users";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -22,7 +22,9 @@ export const dynamic = "force-dynamic";
  * Body: { roleId: string }
  *
  * Returns 200 { ok: true } on success.
- * Returns 400 on missing roleId or if the new role does not belong to the org.
+ * Returns 400 on missing roleId, if the new role does not belong to the org, if an external role
+ *   is given to a user without an external company (U3), or if the change would leave the org
+ *   with no active user manager (Stage 31 S31-3).
  * Returns 404 if the user does not exist in the org.
  *
  * Tenancy: enforced by getApiSession() (403 on cross-org) and changeUserRole()
@@ -73,8 +75,11 @@ export const PATCH = withRoute(
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof Error) {
-      if (err.message.includes("not found")) {
-        // "User not found or access denied" or "Role not found or access denied"
+      if (
+        err.message.includes("not found") || // "User/Role not found or access denied"
+        err.message.includes("External company is required") || // U3 (S31-3)
+        err.message === LAST_MANAGER_MESSAGE // last active user manager (S31-3)
+      ) {
         return apiBadRequest(err.message);
       }
     }

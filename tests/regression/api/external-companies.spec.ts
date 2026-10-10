@@ -13,6 +13,7 @@ import { test, expect } from "../fixtures/test";
 import { covers } from "../fixtures/covers";
 import { registerNegatives, GHOST, type Ctx } from "./api-matrix";
 import { apiUrl } from "../../e2e/helpers";
+import { bypass, runPassword, signIn } from "./sign-in";
 
 covers("GET /api/v1/orgs/[orgSlug]/external-companies");
 covers("POST /api/v1/orgs/[orgSlug]/external-companies");
@@ -165,10 +166,9 @@ test.describe("external companies: rules", () => {
     expect(((await (await as.admin.get(url(`/external-companies/${co.id}`))).json()) as { company: Company }).company.name).toBe(co.name);
   });
 
-  // Pinned (route + DAL doc, Stage 13 Batch 2): there is NO "in use" guard — User/Project/Inquiry
-  // .externalCompanyId are ON DELETE SET NULL. Consequence flagged in the Task 7 report: an external-role
-  // user is left without the company U3 requires.
-  test("deleting a company that users reference succeeds (200) and nulls their externalCompanyId", async ({ as, f, url, ledger }) => {
+  // Stage 31 S31-5 (replaces the Stage 13 "no in-use guard, SET NULL" pin): a company that still has users, projects
+  // or inquiries cannot be deleted. The FKs stay ON DELETE SET NULL as a backstop only.
+  test("deleting a company that users reference is refused (409 COMPANY_HAS_RECORDS) and their externalCompanyId is unchanged", async ({ as, f, url }) => {
     const u = await f.user("distributor"); // the factory creates + ledgers its company
     const g = await as.admin.get(url(`/users/${u.id}`));
     expect(g.status(), await g.text()).toBe(200);
@@ -176,12 +176,60 @@ test.describe("external companies: rules", () => {
     expect(coId).toEqual(expect.any(String));
 
     const d = await as.admin.delete(url(`/external-companies/${coId}`));
-    expect(d.status(), await d.text()).toBe(200);
-    ledger.remove(coId!);
-    expect((await as.admin.get(url(`/external-companies/${coId}`))).status()).toBe(404);
+    expect(d.status(), await d.text()).toBe(409);
+    expect(await d.json()).toEqual({ error: "This company still has 1 user(s). Reassign or remove them first.", code: "COMPANY_HAS_RECORDS" });
+    expect((await as.admin.get(url(`/external-companies/${coId}`))).status()).toBe(200); // still there
     const after = (await (await as.admin.get(url(`/users/${u.id}`))).json()) as { user: { externalCompanyId: string | null; active: boolean } };
-    expect(after.user.externalCompanyId).toBeNull();
+    expect(after.user.externalCompanyId).toBe(coId);
     expect(after.user.active).toBe(true);
+  });
+
+  test("a DEACTIVATED user still counts: the delete is refused until the user is gone, then it succeeds", async ({ as, f, url, ledger }) => {
+    const u = await f.user("distributor");
+    const coId = ((await (await as.admin.get(url(`/users/${u.id}`))).json()) as { user: { externalCompanyId: string } }).user.externalCompanyId;
+    expect((await as.admin.post(url(`/users/${u.id}/deactivate`))).status()).toBe(200);
+    const blocked = await as.admin.delete(url(`/external-companies/${coId}`));
+    expect(blocked.status(), await blocked.text()).toBe(409);
+    expect(((await blocked.json()) as { error: string }).error).toContain("1 user(s)");
+
+    expect((await as.admin.delete(url(`/users/${u.id}`))).status()).toBe(204);
+    ledger.remove(u.id);
+    const ok = await as.admin.delete(url(`/external-companies/${coId}`));
+    expect(ok.status(), await ok.text()).toBe(200);
+    ledger.remove(coId);
+    expect((await as.admin.get(url(`/external-companies/${coId}`))).status()).toBe(404);
+  });
+
+  test("a company with only a project (no users) is refused with the count in the message; an empty company still deletes", async ({ as, f, url, run, ledger, playwright, baseURL }) => {
+    const co = await f.externalCompany();
+    // a distributor of this company creates the project and the inquiry (the company comes from the session)
+    const dist = await f.user("distributor");
+    const swap = await as.admin.put(url(`/users/${dist.id}/profile`), { data: { externalCompanyId: co.id } });
+    expect(swap.status(), await swap.text()).toBe(200);
+    const ctx = await playwright.request.newContext({ baseURL, extraHTTPHeaders: bypass() });
+    try {
+      expect((await signIn(ctx, run.testOrg.slug, dist.username, runPassword())).status()).toBe(200);
+      const pn = `${run.prefix}co-proj-${randomBytes(3).toString("hex")}`;
+      const p = await ctx.post(url("/projects"), { data: { name: pn, currency: "AED", projectLocation: "Dubai, UAE" } });
+      expect(p.status(), await p.text()).toBe(201);
+      ledger.add({ kind: "project", id: ((await p.json()) as { project: { id: string } }).project.id, orgSlug: run.testOrg.slug, label: pn });
+    } finally {
+      await ctx.dispose();
+    }
+    // the user moves to another company and is deleted: only the project still references `co`
+    const other = await f.externalCompany();
+    expect((await as.admin.put(url(`/users/${dist.id}/profile`), { data: { externalCompanyId: other.id } })).status()).toBe(200);
+
+    const blocked = await as.admin.delete(url(`/external-companies/${co.id}`));
+    expect(blocked.status(), await blocked.text()).toBe(409);
+    expect(await blocked.json()).toEqual({ error: "This company still has 1 project(s). Reassign or remove them first.", code: "COMPANY_HAS_RECORDS" });
+
+    // an empty company still deletes
+    const empty = await f.externalCompany();
+    const ok = await as.admin.delete(url(`/external-companies/${empty.id}`));
+    expect(ok.status(), await ok.text()).toBe(200);
+    ledger.remove(empty.id);
+    expect((await as.admin.get(url(`/external-companies/${empty.id}`))).status()).toBe(404);
   });
 
   test("duplicate names are allowed (no uniqueness constraint): a second create with the same name → 201", async ({ as, f, url, run, ledger }) => {
