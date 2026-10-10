@@ -29,7 +29,7 @@ export function stripGroupingSeparators(value: string): string {
  * for display using the correct locale grouping for the given currency.
  *
  * @param raw      - The raw value from the database (e.g. "1000000", null, or "").
- * @param currency - The currency code (e.g. "INR", "AED", "USD"). Case-insensitive.
+ * @param currency - The currency code (e.g. "INR"). Case-insensitive.
  * @returns        A formatted string (e.g. "10,00,000" for INR, "1,000,000" for USD/AED),
  *                 or "—" if the input is null, empty, or non-numeric.
  */

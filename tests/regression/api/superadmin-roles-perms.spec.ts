@@ -111,12 +111,13 @@ test.describe("SuperAdmin roles (org B)", () => {
     expect((await rolesOf(sa, run.orgB.id)).filter((r) => [`${run.prefix}noorg`, `${run.prefix}ghost`, "", " "].includes(r.name))).toEqual([]);
   });
 
-  // KNOWN BUG — POST/PATCH roles do not map the (organizationId, name) unique violation (P2002): a duplicate
-  // name answers 500 instead of 409. Nothing is written. When fixed, expect 409 here.
-  test("KNOWN BUG: a duplicate role name in the org answers 500 (unmapped P2002), not 409 — on create and on rename", async ({ sa, run }) => {
-    await expectStatus(await sa.post(`${SA}/roles`, { data: { orgId: run.orgB.id, name: "Admin" } }), 500, "create dup");
+  // Stage 31 S31-10: POST/PATCH roles map the (organizationId, name) unique violation (P2002) to 409 with a
+  // fixed text (was a 500, backlog). Nothing is written.
+  test("a duplicate role name in the org answers 409 (fixed text), on create and on rename", async ({ sa, run }) => {
+    const dup = { error: "A role with this name already exists" };
+    expect(await json<{ error: string }>(await sa.post(`${SA}/roles`, { data: { orgId: run.orgB.id, name: "Admin" } }), 409)).toEqual(dup);
     const mine = await newOrgBRole(sa, run);
-    await expectStatus(await sa.patch(`${SA}/roles/${mine.id}`, { data: { orgId: run.orgB.id, name: "Admin" } }), 500, "rename dup");
+    expect(await json<{ error: string }>(await sa.patch(`${SA}/roles/${mine.id}`, { data: { orgId: run.orgB.id, name: "Admin" } }), 409)).toEqual(dup);
     const after = await rolesOf(sa, run.orgB.id);
     expect(after.filter((r) => r.name === "Admin")).toHaveLength(1); // no second "Admin"
     expect(after.find((r) => r.id === mine.id)?.name).toBe(mine.name); // the rename did not apply
@@ -181,11 +182,11 @@ test.describe("SuperAdmin role permissions (org B)", () => {
     expect(actions.filter((a) => a === "permission.revoke")).toHaveLength(2);
   });
 
-  // KNOWN BUG — granting an id that is not in the permission catalog hits the RolePermission FK (P2003),
-  // which the route does not map: 500 instead of 400/404. Nothing is written. When fixed, expect 400 or 404.
-  test("KNOWN BUG: granting an unknown permissionId answers 500 (unmapped FK violation)", async ({ sa, run }) => {
+  // Stage 31 S31-10: granting an id that is not in the permission catalog hits the RolePermission FK (P2003),
+  // which now maps to 400 (was a 500, backlog). Nothing is written.
+  test("granting an unknown permissionId answers 400 (Unknown permissionId)", async ({ sa, run }) => {
     const mine = await newOrgBRole(sa, run);
-    await expectStatus(await sa.post(`${SA}/roles/${mine.id}/permissions`, { data: { orgId: run.orgB.id, permissionId: GHOST } }), 500);
+    expect(await json<{ error: string }>(await sa.post(`${SA}/roles/${mine.id}/permissions`, { data: { orgId: run.orgB.id, permissionId: GHOST } }), 400)).toEqual({ error: "Unknown permissionId" });
     expect(await rolePerms(sa, mine.id, run.orgB.id)).toEqual([]);
   });
 

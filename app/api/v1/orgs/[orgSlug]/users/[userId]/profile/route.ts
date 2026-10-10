@@ -7,7 +7,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { updateUserProfile } from "@/lib/data/users";
+import { updateUserProfile, USER_NOT_FOUND_MESSAGE } from "@/lib/data/users";
+import { readJsonObject } from "@/lib/api-body";
 import { isValidProfileEmail, PROFILE_EMAIL_INVALID_MESSAGE } from "@/lib/user-validation";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
@@ -61,12 +62,9 @@ export const PUT = withRoute(
     return apiServerError();
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return apiBadRequest("Request body must be valid JSON");
-  }
+  const parsedBody = await readJsonObject(request);
+  if (!parsedBody.ok) return parsedBody.response;
+  const body = parsedBody.body;
 
   // Build input — only include keys that were explicitly supplied in the body.
   // undefined means "not supplied"; null means "clear the field".
@@ -115,13 +113,15 @@ export const PUT = withRoute(
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof Error) {
-      if (err.message.includes("not found or access denied")) {
+      if (err.message === USER_NOT_FOUND_MESSAGE) {
         return apiNotFound("User not found");
       }
-      if (
-        err.message.includes("External company is required") ||
-        err.message.includes("External company not found")
-      ) {
+      // Unknown / other-org company: the DAL text is "External company not found or access denied";
+      // answer 400 with the plain wording (Stage 31 S31-10).
+      if (err.message.includes("External company not found")) {
+        return apiBadRequest("External company not found");
+      }
+      if (err.message.includes("External company is required")) {
         return apiBadRequest(err.message);
       }
     }

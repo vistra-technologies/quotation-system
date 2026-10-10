@@ -7,6 +7,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { listInquiriesPaginated, createInquiry } from "@/lib/data/inquiries";
+import { readJsonObject, parseOptionalDate } from "@/lib/api-body";
+import { isSupportedCurrency, CURRENCY_ERROR_MESSAGE } from "@/lib/currency";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -140,8 +142,8 @@ export const GET = withRoute(
  * destinationCountry is derived server-side from ExternalCompany.country (D19) — not accepted from the body.
  *
  * Returns 201 with the created inquiry on success.
- * Returns 400 on missing required fields or invalid external company.
- * Returns 409 on concurrent inquiryNumber collision.
+ * Returns 400 on missing required fields, an unsupported currency, an unparseable date, or invalid external company.
+ * Returns 409 on concurrent inquiryNumber collision (after a bounded server-side retry).
  */
 export const POST = withRoute(
   "POST /api/v1/orgs/[orgSlug]/inquiries",
@@ -162,12 +164,9 @@ export const POST = withRoute(
     return apiServerError();
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return apiBadRequest("Request body must be valid JSON");
-  }
+  const parsedBody = await readJsonObject(request);
+  if (!parsedBody.ok) return parsedBody.response;
+  const body = parsedBody.body;
 
   const name = typeof body.name === "string" ? body.name.trim() : null;
   // destinationCountry intentionally NOT parsed — derived from company at DAL level (D19)
@@ -186,13 +185,13 @@ export const POST = withRoute(
 
   // Stage 14 — extended intake fields
   // Dates: the action sends ISO date strings ("YYYY-MM-DD"); parse to Date with UTC midnight.
-  const parseDate = (v: unknown): Date | null =>
-    typeof v === "string" && v.trim() ? new Date(`${v.trim()}T00:00:00.000Z`) : null;
   const parseStr = (v: unknown): string | null =>
     typeof v === "string" && v.trim() ? v.trim() : null;
 
-  const submissionDate = parseDate(body.submissionDate);
-  const projectDeadline = parseDate(body.projectDeadline);
+  const submissionDate = parseOptionalDate(body.submissionDate, "submissionDate");
+  if ("error" in submissionDate) return apiBadRequest(submissionDate.error);
+  const projectDeadline = parseOptionalDate(body.projectDeadline, "projectDeadline");
+  if ("error" in projectDeadline) return apiBadRequest(projectDeadline.error);
   const projectBudget = parseStr(body.projectBudget);
   const mainContractorName = parseStr(body.mainContractorName);
   const interiorContractorName = parseStr(body.interiorContractorName);
@@ -210,6 +209,7 @@ export const POST = withRoute(
   if (!name || !currency) {
     return apiBadRequest("name and currency are required");
   }
+  if (!isSupportedCurrency(currency)) return apiBadRequest(CURRENCY_ERROR_MESSAGE);
 
   try {
     const inquiry = await createInquiry(session, {
@@ -217,8 +217,8 @@ export const POST = withRoute(
       currency,
       projectLocation,
       externalCompanyId,
-      submissionDate,
-      projectDeadline,
+      submissionDate: submissionDate.value,
+      projectDeadline: projectDeadline.value,
       projectBudget,
       mainContractorName,
       interiorContractorName,

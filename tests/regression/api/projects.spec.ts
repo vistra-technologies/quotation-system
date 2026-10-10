@@ -312,42 +312,57 @@ test.describe("projects: create / read / patch / list", () => {
     expect(after.user.externalCompanyId).toBe(coId);
   });
 
-  test("KNOWN BUG: POST accepts any client-supplied status (an unknown value is stored, the project is then locked)", async ({ as, run, ledger, url }) => {
+  test("POST ignores a client-supplied status: the project is created DRAFT and is deletable", async ({ as, run, ledger, url }) => {
+    // Stage 31 S31-11: was stored verbatim (an unknown value left the project locked, backlog).
     const { res, id, body } = await createLedgered(as.admin, { run, ledger }, "project", { name: nm({ run }, "proj-status"), currency: "AED", status: "rgr-NOT-A-STATUS" });
-    try {
-      // KNOWN BUG — createProject writes `status` from the body verbatim (Project.status is a plain
-      // String); when fixed, change this to 400 (or to 201 with status "DRAFT").
-      expect(res.status(), JSON.stringify(body)).toBe(201);
-      expect((body.project as Project).status).toBe("rgr-NOT-A-STATUS");
-      expect((await as.admin.delete(url(`/projects/${id}`))).status()).toBe(409); // not DRAFT → undeletable via API
-    } finally {
-      if (id) await rgrSetProjectStatus(id, "DRAFT"); // teardown deletes through the DRAFT-only route
-    }
-  });
-
-  test("KNOWN BUG: currency is not validated — \"EUR\" is accepted on create", async ({ as, run, ledger }) => {
-    // KNOWN BUG — only a non-empty currency is required (forms offer INR/AED/USD); when fixed, change to 400.
-    const { res, body } = await createLedgered(as.admin, { run, ledger }, "project", { name: nm({ run }, "proj-eur"), currency: "eur" });
     expect(res.status(), JSON.stringify(body)).toBe(201);
-    expect((body.project as Project).currency).toBe("EUR");
+    expect((body.project as Project).status).toBe("DRAFT");
+    expect((await as.admin.delete(url(`/projects/${id}`))).status()).toBe(200); // DRAFT → deletable via API
   });
 
-  test("KNOWN BUG: an unparseable date on PATCH returns 500 instead of 400 (nothing changes)", async ({ as, f, url }) => {
+  test("currency is validated: EUR is 400 on create and on PATCH (nothing created / changed); usd is stored as USD", async ({ as, f, run, ledger, url }) => {
+    // Stage 31 S31-11: was accepted verbatim (backlog); the forms offer INR/AED/USD.
+    const bad = await createLedgered(as.admin, { run, ledger }, "project", { name: nm({ run }, "proj-eur"), currency: "eur" });
+    expect(bad.res.status(), JSON.stringify(bad.body)).toBe(400);
+    expect(bad.body).toEqual({ error: "currency must be one of INR, AED, USD" });
+    const ok = await createLedgered(as.admin, { run, ledger }, "project", { name: nm({ run }, "proj-usd"), currency: "usd" });
+    expect(ok.res.status(), JSON.stringify(ok.body)).toBe(201);
+    expect((ok.body.project as Project).currency).toBe("USD");
+
     const p = await f.project();
-    // KNOWN BUG — parseDate yields an Invalid Date that Prisma rejects; when fixed, change this to 400.
-    const r = await as.admin.patch(url(`/projects/${p.id}`), { data: { name: `${p.name}-x`, submissionDate: "not-a-date" } });
-    expect(r.status()).toBe(500);
-    // Stage 30: the 500 body carries the request id, mirrored in the x-request-id header.
-    const errBody = (await r.json()) as { requestId?: string };
-    expect(errBody).toEqual({ error: "Internal server error", requestId: expect.any(String) });
-    expect(r.headers()["x-request-id"]).toBe(errBody.requestId);
-    expect((await json<{ project: Project }>(await as.admin.get(url(`/projects/${p.id}`)))).project.name).toBe(p.name);
+    const before = (await json<{ project: Project }>(await as.admin.get(url(`/projects/${p.id}`)))).project.currency;
+    const r = await as.admin.patch(url(`/projects/${p.id}`), { data: { currency: "EUR" } });
+    expect(r.status(), await r.text()).toBe(400);
+    expect(await r.json()).toEqual({ error: "currency must be one of INR, AED, USD" });
+    expect((await json<{ project: Project }>(await as.admin.get(url(`/projects/${p.id}`)))).project.currency).toBe(before);
+    const u = await as.admin.patch(url(`/projects/${p.id}`), { data: { currency: "usd" } });
+    expect(u.status(), await u.text()).toBe(200);
+    expect((await json<{ project: Project }>(u)).project.currency).toBe("USD");
   });
 
-  test("KNOWN BUG: a JSON body that is not an object (null) returns 500 instead of 400", async ({ as, url }) => {
-    // KNOWN BUG — `body.name` is read on a null body outside any try; when fixed, change this to 400.
-    const r = await as.admin.post(url("/projects"), { data: Buffer.from("null"), headers: { "Content-Type": "application/json" } });
-    expect(r.status()).toBe(500);
+  test("an unparseable date is 400 naming the field on create and on PATCH (nothing changes)", async ({ as, f, run, ledger, url }) => {
+    // Stage 31 S31-10: was a 500 (Invalid Date reached Prisma, backlog).
+    const p = await f.project();
+    const r = await as.admin.patch(url(`/projects/${p.id}`), { data: { name: `${p.name}-x`, submissionDate: "not-a-date" } });
+    expect(r.status(), await r.text()).toBe(400);
+    expect(await r.json()).toEqual({ error: "submissionDate must be a valid date (YYYY-MM-DD)" });
+    expect((await json<{ project: Project }>(await as.admin.get(url(`/projects/${p.id}`)))).project.name).toBe(p.name);
+
+    const name = nm({ run }, "proj-baddate");
+    const c = await createLedgered(as.admin, { run, ledger }, "project", { name, currency: "AED", projectDeadline: "2026-02-30" });
+    expect(c.res.status(), JSON.stringify(c.body)).toBe(400);
+    expect(c.body).toEqual({ error: "projectDeadline must be a valid date (YYYY-MM-DD)" });
+  });
+
+  test("a JSON body that is not an object (null) is 400 on create and on PATCH", async ({ as, f, url }) => {
+    // Stage 31 S31-10: was a 500 (`body.name` read on null, backlog).
+    const post = await as.admin.post(url("/projects"), { data: Buffer.from("null"), headers: { "Content-Type": "application/json" } });
+    expect(post.status(), await post.text()).toBe(400);
+    expect(await post.json()).toEqual({ error: "Request body must be a JSON object" });
+    const p = await f.project();
+    const patch = await as.admin.patch(url(`/projects/${p.id}`), { data: Buffer.from("[1]"), headers: { "Content-Type": "application/json" } });
+    expect(patch.status(), await patch.text()).toBe(400);
+    expect(await patch.json()).toEqual({ error: "Request body must be a JSON object" });
   });
 });
 
@@ -462,16 +477,16 @@ test.describe("projects: submit design / calculation / recompute", () => {
     }
   });
 
-  test("KNOWN BUG: submit-design is not DRAFT-gated — a SUBMITTED project re-submits (200) and rewrites its calculation", async ({ as, f, url }) => {
+  test("submit-design is DRAFT-gated: a SUBMITTED project answers 409 and its calculation is unchanged", async ({ as, f, url }) => {
     const w = await submitted(f, as.admin, url);
     const c0 = (await readCalculation(w.projectId))!.computedAt;
     try {
       await rgrSetProjectStatus(w.projectId, "SUBMITTED");
-      // KNOWN BUG — submitDesign() never checks Project.status, unlike recompute/reset/PATCH/DELETE (all
-      // DRAFT-only, 409). When fixed, change this expectation to 409 and assert computedAt is unchanged.
+      // Stage 31 S31-11: was 200 and rewrote the calculation (backlog); same gate as recompute/reset/PATCH/DELETE.
       const r = await as.admin.post(url(`/projects/${w.projectId}/submit-design`));
-      expect(r.status(), await r.text()).toBe(200);
-      expect(Date.parse((await readCalculation(w.projectId))!.computedAt)).toBeGreaterThan(Date.parse(c0));
+      expect(r.status(), await r.text()).toBe(409);
+      expect(await r.json()).toEqual({ error: "Only a DRAFT project can be submitted." });
+      expect((await readCalculation(w.projectId))!.computedAt).toBe(c0);
     } finally {
       await rgrSetProjectStatus(w.projectId, "DRAFT");
     }

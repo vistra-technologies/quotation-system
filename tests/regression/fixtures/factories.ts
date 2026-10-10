@@ -51,6 +51,9 @@ export async function postCreate(
     }
   };
   let r = await post();
+  // Kept after Stage 31 S31-12 on purpose: the server now retries a number race 3 times itself, so this fires
+  // far more rarely, but a suite creating many rows in parallel can still lose all 3 server attempts and get
+  // the (unchanged) 409. Removing it would trade a harmless re-post for a flaky run, and changes nothing observable.
   for (let i = 0; i < 3 && r.status() === 409 && (await r.text()).includes("project number conflict"); i++) {
     console.warn(`[regression] ${kind} create "${name}": project-number conflict (409), retry ${i + 1}/3`);
     r = await post();

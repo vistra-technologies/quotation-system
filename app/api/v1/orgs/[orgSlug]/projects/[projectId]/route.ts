@@ -7,6 +7,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { getProjectById, updateProject, deleteProject } from "@/lib/data/projects";
+import { readJsonObject, parseOptionalDate } from "@/lib/api-body";
+import { isSupportedCurrency, CURRENCY_ERROR_MESSAGE } from "@/lib/currency";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -98,20 +100,15 @@ export const PATCH = withRoute(
     return apiServerError();
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return apiBadRequest("Request body must be valid JSON");
-  }
+  const parsedBody = await readJsonObject(request);
+  if (!parsedBody.ok) return parsedBody.response;
+  const body = parsedBody.body;
 
   // Build the update input — only include fields that were provided.
   // externalCompanyId is silently ignored even if the client sends it.
   // destinationCountry is derived at create time and never updated (D19, Stage 14).
   const parseStr = (v: unknown): string | null =>
     typeof v === "string" && v.trim() ? v.trim() : null;
-  const parseDate = (v: unknown): Date | null =>
-    typeof v === "string" && v ? new Date(`${v}T00:00:00.000Z`) : null;
 
   const input: Parameters<typeof updateProject>[2] = {};
 
@@ -124,6 +121,7 @@ export const PATCH = withRoute(
   if (typeof body.currency === "string") {
     const trimmed = body.currency.trim().toUpperCase();
     if (!trimmed) return apiBadRequest("currency cannot be empty");
+    if (!isSupportedCurrency(trimmed)) return apiBadRequest(CURRENCY_ERROR_MESSAGE);
     input.currency = trimmed;
   }
 
@@ -135,8 +133,16 @@ export const PATCH = withRoute(
   }
 
   // Stage 14 Batch C — extended intake fields (only update if present in body)
-  if ("submissionDate" in body) input.submissionDate = parseDate(body.submissionDate);
-  if ("projectDeadline" in body) input.projectDeadline = parseDate(body.projectDeadline);
+  if ("submissionDate" in body) {
+    const d = parseOptionalDate(body.submissionDate, "submissionDate");
+    if ("error" in d) return apiBadRequest(d.error);
+    input.submissionDate = d.value;
+  }
+  if ("projectDeadline" in body) {
+    const d = parseOptionalDate(body.projectDeadline, "projectDeadline");
+    if ("error" in d) return apiBadRequest(d.error);
+    input.projectDeadline = d.value;
+  }
   if ("projectBudget" in body) input.projectBudget = parseStr(body.projectBudget);
   if ("mainContractorName" in body) input.mainContractorName = parseStr(body.mainContractorName);
   if ("interiorContractorName" in body) input.interiorContractorName = parseStr(body.interiorContractorName);

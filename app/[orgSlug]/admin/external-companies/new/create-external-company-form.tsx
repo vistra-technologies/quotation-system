@@ -4,6 +4,7 @@ import { useActionState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { SelectField } from "@/components/select-field";
+import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { createExternalCompany, type CreateExternalCompanyState } from "../actions";
 
 interface CreateExternalCompanyFormProps {
@@ -105,9 +106,11 @@ export function CreateExternalCompanyForm({ orgSlug }: CreateExternalCompanyForm
             name="defaultCurrency"
             required
           >
-            <option value="INR">{t("currencyINR")}</option>
-            <option value="AED">{t("currencyAED")}</option>
-            <option value="USD">{t("currencyUSD")}</option>
+            {SUPPORTED_CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {t(`currency${c}`)}
+              </option>
+            ))}
           </SelectField>
         </div>
 

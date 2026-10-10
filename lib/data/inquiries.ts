@@ -3,6 +3,7 @@ import { loadConfigSnapshot } from "@/lib/config-snapshot";
 import { resolveFormulaSetPin } from "@/lib/data/formula-pin";
 import { ownedInquiryWhere } from "@/lib/data/ownership";
 import { prisma } from "@/lib/prisma";
+import { withSequenceRetry } from "@/lib/sequence-retry";
 import type { SessionData } from "@/lib/session";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -201,8 +202,15 @@ export async function getInquiryById(session: SessionData, inquiryId: string) {
  * Throws { code: "SEQUENCE_CONFLICT" } on an inquiryNumber or companyInquiryNumber
  * race collision, or { code: "INVALID_EXTERNAL_COMPANY" } if externalCompanyId
  * doesn't resolve within the org. All other errors propagate to the caller.
+ *
+ * Stage 31 S31-12: a SEQUENCE_CONFLICT is retried (fresh transaction each time, up to 3 attempts in
+ * total) before it reaches the caller.
  */
-export async function createInquiry(
+export function createInquiry(session: SessionData, input: CreateInquiryInput) {
+  return withSequenceRetry(() => createInquiryOnce(session, input));
+}
+
+async function createInquiryOnce(
   session: SessionData,
   input: CreateInquiryInput,
 ) {
@@ -432,9 +440,13 @@ export async function dismissInquiry(session: SessionData, inquiryId: string) {
  * Throws { code: "NOT_FOUND" } if the inquiry doesn't exist or is from another org.
  * Throws { code: "ALREADY_CLOSED" } if already DISMISSED or CONVERTED.
  * Throws { code: "SEQUENCE_CONFLICT" } on a concurrent projectNumber or
- * companyProjectNumber P2002.
+ * companyProjectNumber P2002 (after the Stage 31 S31-12 retry: 3 attempts, fresh transaction each).
  */
-export async function convertInquiryToProject(
+export function convertInquiryToProject(session: SessionData, inquiryId: string) {
+  return withSequenceRetry(() => convertInquiryToProjectOnce(session, inquiryId));
+}
+
+async function convertInquiryToProjectOnce(
   session: SessionData,
   inquiryId: string,
 ) {

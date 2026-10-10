@@ -10,6 +10,7 @@ import {
   listExternalCompanies,
   createExternalCompany,
 } from "@/lib/data/external-companies";
+import { isSupportedCurrency, DEFAULT_CURRENCY_ERROR_MESSAGE } from "@/lib/currency";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -65,7 +66,7 @@ export const GET = withRoute(
  * Body: { name, type, country, defaultCurrency } — all required.
  *   type: "DISTRIBUTOR" | "ARCHITECTURAL_FIRM"
  *   country: "INDIA" | "UAE"
- *   defaultCurrency: "INR" | "AED" | "USD"
+ *   defaultCurrency: one of SUPPORTED_CURRENCIES (lib/currency.ts)
  *
  * Returns 201 on success.
  * Returns 400 on missing or invalid fields.
@@ -127,12 +128,8 @@ export const POST = withRoute(
     return apiBadRequest('country must be "INDIA" or "UAE"');
   }
 
-  if (
-    defaultCurrency !== "INR" &&
-    defaultCurrency !== "AED" &&
-    defaultCurrency !== "USD"
-  ) {
-    return apiBadRequest('defaultCurrency must be "INR", "AED", or "USD"');
+  if (!isSupportedCurrency(defaultCurrency)) {
+    return apiBadRequest(DEFAULT_CURRENCY_ERROR_MESSAGE);
   }
 
   try {

@@ -4,8 +4,10 @@ import {
   apiBadRequest,
   apiUnauthorized,
   apiNotFound,
+  apiConflict,
   apiServerError,
 } from "@/lib/api-error";
+import { isUniqueViolation } from "@/lib/prisma-errors";
 import {
   listComponentTypesForOrg,
   createComponentTypeForOrg,
@@ -136,6 +138,7 @@ export const POST = withRoute(
   try {
     componentType = await createComponentTypeForOrg(orgId, { code, name, categoryId, fieldsSchema, active });
   } catch (err) {
+    if (isUniqueViolation(err)) return apiConflict("Code already in use in this organization");
     if (err instanceof Error && err.message.includes("Category not found")) {
       return apiBadRequest(err.message);
     }

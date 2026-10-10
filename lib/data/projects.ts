@@ -16,6 +16,7 @@ import { buildMaterials, type MaterialsInput } from "@/lib/materials/index";
 import { resolveAndAggregate } from "@/lib/materials/resolve";
 import { ProblemCollector, type CalculationProblemReport } from "@/lib/materials/problems";
 import type { RoomSide } from "@/lib/data/rooms";
+import { withSequenceRetry } from "@/lib/sequence-retry";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -25,7 +26,6 @@ export interface CreateProjectInput {
   // (Stage 14 Batch C, D19) — callers must NOT supply it.
   currency: string;
   projectLocation?: string | null;
-  status: string;
   externalCompanyId?: string | null;
   // Stage 14 Batch A — extended intake fields
   submissionDate?: Date | null;
@@ -242,8 +242,15 @@ export interface UpdateProjectInput {
  * Throws { code: "SEQUENCE_CONFLICT" } on a projectNumber or companyProjectNumber
  * race collision, or { code: "INVALID_EXTERNAL_COMPANY" } if externalCompanyId
  * doesn't resolve within the org. All other errors propagate to the caller.
+ *
+ * Stage 31 S31-12: a SEQUENCE_CONFLICT is retried (fresh transaction each time, up to 3 attempts in
+ * total) before it reaches the caller.
  */
-export async function createProject(
+export function createProject(session: SessionData, input: CreateProjectInput) {
+  return withSequenceRetry(() => createProjectOnce(session, input));
+}
+
+async function createProjectOnce(
   session: SessionData,
   input: CreateProjectInput,
 ) {
@@ -314,7 +321,8 @@ export async function createProject(
           destinationCountry,
           currency: input.currency,
           projectLocation: input.projectLocation ?? null,
-          status: input.status,
+          // Stage 31 S31-11: a new project always starts as a DRAFT; the client cannot choose a status.
+          status: "DRAFT",
           externalCompanyId: resolvedExternalCompanyId,
           // Stage 14 Batch A — extended intake fields
           submissionDate: input.submissionDate ?? null,
@@ -489,6 +497,7 @@ function buildMaterialsInputHelper(
  * Requires at least one Partition — submitting an empty design isn't meaningful.
  *
  * Returns null if the project doesn't exist or belongs to a different org.
+ * Returns { notDraft: true } if the project isn't DRAFT (-> 409; Stage 31 S31-11, same gate as recomputeProject).
  * Returns { noPartitions: true } if the project has zero Partitions.
  * Returns { noFormulaSet: true } if the project has no pinned formula set or config snapshot.
  * Returns { calculationRefused: CalculationProblemReport } if Phase A or Phase B has problems.
@@ -496,6 +505,7 @@ function buildMaterialsInputHelper(
  */
 export type SubmitDesignResult =
   | null
+  | { notDraft: true }
   | { noPartitions: true }
   | { noFormulaSet: true }
   | { calculationRefused: CalculationProblemReport }
@@ -508,9 +518,10 @@ export async function submitDesign(
   return prisma.$transaction(async (tx): Promise<SubmitDesignResult> => {
     const existing = await tx.project.findFirst({
       where: { id: projectId, ...ownedProjectWhere(session) },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     if (!existing) return null;
+    if (existing.status !== "DRAFT") return { notDraft: true as const };
 
     const partitionCount = await tx.partition.count({
       where: { room: { floor: { projectId, project: { organizationId: session.organizationId } } } },

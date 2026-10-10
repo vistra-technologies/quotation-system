@@ -11,6 +11,8 @@ import {
   dismissInquiry,
   updateInquiry,
 } from "@/lib/data/inquiries";
+import { parseJsonObjectText, parseOptionalDate } from "@/lib/api-body";
+import { isSupportedCurrency, CURRENCY_ERROR_MESSAGE } from "@/lib/currency";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -120,13 +122,12 @@ export const PATCH = withRoute(
     "endClientGstNumber",
   ] as const;
 
+  // An empty body is the dismiss action; any non-empty body must be a JSON object (Stage 31 S31-10).
   let parsedBody: Record<string, unknown> | null = null;
   if (bodyText) {
-    try {
-      parsedBody = JSON.parse(bodyText) as Record<string, unknown>;
-    } catch {
-      return apiBadRequest("Invalid JSON body.");
-    }
+    const parsed = parseJsonObjectText(bodyText);
+    if (!parsed.ok) return parsed.response;
+    parsedBody = parsed.body;
   }
 
   const isUpdate =
@@ -150,11 +151,22 @@ export const PATCH = withRoute(
     if (currency !== undefined && (typeof currency !== "string" || !currency.trim())) {
       return apiBadRequest("currency must be a non-empty string.");
     }
+    if (currency !== undefined && !isSupportedCurrency(currency.trim().toUpperCase())) {
+      return apiBadRequest(CURRENCY_ERROR_MESSAGE);
+    }
 
     // Stage 14 — extended intake field helpers
-    const parseDate = (v: unknown): Date | null | undefined =>
-      v === undefined ? undefined :
-      typeof v === "string" && v.trim() ? new Date(`${v.trim()}T00:00:00.000Z`) : null;
+    // Stage 31 S31-10: an unparseable date is a 400 naming the field; absent stays "leave unchanged".
+    const dates: Record<"submissionDate" | "projectDeadline", Date | null | undefined> = {
+      submissionDate: undefined,
+      projectDeadline: undefined,
+    };
+    for (const field of ["submissionDate", "projectDeadline"] as const) {
+      if (body[field] === undefined) continue;
+      const d = parseOptionalDate(body[field], field);
+      if ("error" in d) return apiBadRequest(d.error);
+      dates[field] = d.value;
+    }
     const parseStr = (v: unknown): string | null | undefined =>
       v === undefined ? undefined :
       typeof v === "string" && v.trim() ? v.trim() : null;
@@ -170,8 +182,8 @@ export const PATCH = withRoute(
               : null)
             : undefined,
         // Stage 14 extended intake fields
-        submissionDate: parseDate(body.submissionDate),
-        projectDeadline: parseDate(body.projectDeadline),
+        submissionDate: dates.submissionDate,
+        projectDeadline: dates.projectDeadline,
         projectBudget: parseStr(body.projectBudget),
         mainContractorName: parseStr(body.mainContractorName),
         interiorContractorName: parseStr(body.interiorContractorName),

@@ -136,7 +136,7 @@ registerNegatives([
     unknownId: () => `/users/${GHOST}`,
     foreignId: async (c) => `/users/${await foreignUserId(c)}`,
   },
-  // unknown/foreign id → 400 today (doc says 404): hand-written below, not in the matrix
+  // unknown/foreign id → 404 (Stage 31 S31-10): hand-written below, not in the matrix
   { key: "DELETE /api/v1/orgs/[orgSlug]/users/[userId]", method: "DELETE", path: () => `/users/${GHOST}`, permission: "MANAGE_USERS" },
   {
     key: "POST /api/v1/orgs/[orgSlug]/users/[userId]/activate",
@@ -181,7 +181,7 @@ registerNegatives([
       { name: "empty firstName", body: { firstName: "" }, status: 400 },
       { name: "blank lastName", body: { lastName: "   " }, status: 400 },
       { name: "non-string firstName", body: { firstName: 42 }, status: 400 },
-      // unknown externalCompanyId → 404 "User not found" today (mis-mapped): hand-written below
+      // unknown externalCompanyId → 400 "External company not found" (Stage 31 S31-10): hand-written below
     ],
   },
   {
@@ -504,7 +504,7 @@ test.describe("users: rules", () => {
     expect(user.profileEmail).toBeNull();
   });
 
-  test("KNOWN BUG: profile PUT with an unknown / another org's externalCompanyId → 404 \"User not found\"", async ({ as, f, url, run, orgB }) => {
+  test("profile PUT with an unknown / another org's externalCompanyId → 400 \"External company not found\"", async ({ as, f, url, run, orgB }) => {
     const u = await f.user("distributor");
     const before = (await getUser(as.admin, url, u.id)).user.externalCompanyId;
     expect(before).toEqual(expect.any(String));
@@ -516,22 +516,20 @@ test.describe("users: rules", () => {
     const bCoId = ((await bList.json()) as { companies: { id: string; name: string }[] }).companies.find((x) => x.name === bCo)?.id;
     expect(bCoId, "org-B company is listed").toBeTruthy();
     for (const coId of [GHOST, bCoId!]) {
-      // KNOWN BUG — the route's first catch branch ("not found or access denied") also matches the DAL's
-      // "External company not found or access denied", so the company error is reported as a missing user;
-      // when fixed, change this expectation to 400 with an error naming the external company.
+      // Stage 31 S31-10: the company error used to be reported as a missing user (404 "User not found", backlog).
       const r = await as.admin.put(url(`/users/${u.id}/profile`), { data: { externalCompanyId: coId } });
-      expect(r.status(), await r.text()).toBe(404);
-      expect(await r.json()).toEqual({ error: "User not found" });
+      expect(r.status(), await r.text()).toBe(400);
+      expect(await r.json()).toEqual({ error: "External company not found" });
     }
     expect((await getUser(as.admin, url, u.id)).user.externalCompanyId).toBe(before); // safe part: nothing changed
   });
 
-  test("KNOWN BUG: profile PUT with a non-object JSON body → empty-body 500", async ({ as, url, run }) => {
-    for (const data of ["a string", null, 1]) {
-      // KNOWN BUG — `"k" in body` throws a TypeError outside any try; when fixed, change this expectation
-      // to 400 (body must be a JSON object).
+  test("profile PUT with a non-object JSON body → 400 (body must be a JSON object)", async ({ as, url, run }) => {
+    for (const data of ["a string", null, 1, [1]]) {
+      // Stage 31 S31-10: `"k" in body` used to throw a TypeError outside any try (empty-body 500, backlog).
       const r = await as.admin.put(url(`/users/${run.users.member.id}/profile`), { data: JSON.stringify(data), headers: { "Content-Type": "application/json" } });
-      expect(r.status(), `${JSON.stringify(data)}: ${await r.text()}`).toBe(500);
+      expect(r.status(), `${JSON.stringify(data)}: ${await r.text()}`).toBe(400);
+      expect(await r.json(), JSON.stringify(data)).toEqual({ error: "Request body must be a JSON object" });
     }
     expect((await as.admin.get(url(`/users/${run.users.member.id}`))).status()).toBe(200);
   });
@@ -734,18 +732,17 @@ test.describe("users: rules", () => {
     expect(r.status(), await r.text()).toBe(403);
   });
 
-  test("KNOWN BUG: DELETE / PATCH role on an unknown or another org's user → 400 (documented: 404)", async ({ as, url, run, f, orgB, ledger }) => {
+  test("DELETE / PATCH role on an unknown or another org's user → 404 (like every other [userId] route)", async ({ as, url, run, f, orgB, ledger }) => {
     const victim = await foreignUserId({ run, f, orgB, as, ledger });
     const memberRole = await roleIdIn(as.admin, run.testOrg.slug, ROLE_NAME.member);
     for (const id of [GHOST, victim]) {
-      // KNOWN BUG — both routes map the DAL's "User not found or access denied" to 400 while their docs
-      // (and every other [userId] route) say 404; when fixed, change both expectations to 404.
+      // Stage 31 S31-10: both routes used to map the DAL's "User not found or access denied" to 400 (backlog).
       const del = await as.admin.delete(url(`/users/${id}`));
-      expect(del.status(), await del.text()).toBe(400);
-      expect(await del.json()).toEqual({ error: "User not found or access denied" });
+      expect(del.status(), await del.text()).toBe(404);
+      expect(await del.json()).toEqual({ error: "User not found" });
       const role = await as.admin.patch(url(`/users/${id}/role`), { data: { roleId: memberRole } });
-      expect(role.status(), await role.text()).toBe(400);
-      expect(await role.json()).toEqual({ error: "User not found or access denied" });
+      expect(role.status(), await role.text()).toBe(404);
+      expect(await role.json()).toEqual({ error: "User not found" });
     }
     // safe part: the org-B user is untouched
     const b = await orgB.get(orgApi(run.orgB.slug, `/users/${victim}`));

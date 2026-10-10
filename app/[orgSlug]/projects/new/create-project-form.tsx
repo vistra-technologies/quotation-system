@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { SelectField } from "@/components/select-field";
 import { CompanyDropdown } from "@/components/company-dropdown";
+import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { formatBudget, stripGroupingSeparators } from "@/lib/format-currency";
 import { createProject, type CreateProjectState } from "../actions";
 
@@ -236,9 +237,11 @@ export function CreateProjectForm({
                   className={selectCls}
                   placeholder="Select currency"
                 >
-                  <option value="INR">INR</option>
-                  <option value="AED">AED</option>
-                  <option value="USD">USD</option>
+                  {SUPPORTED_CURRENCIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
                 </SelectField>
               </div>
 

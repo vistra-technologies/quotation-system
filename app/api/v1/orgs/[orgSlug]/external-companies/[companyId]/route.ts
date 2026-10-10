@@ -14,6 +14,7 @@ import {
   deleteExternalCompany,
 } from "@/lib/data/external-companies";
 import { companyHasRecordsMessage, COMPANY_HAS_RECORDS_CODE } from "@/lib/company-records";
+import { isSupportedCurrency, DEFAULT_CURRENCY_ERROR_MESSAGE } from "@/lib/currency";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -127,12 +128,8 @@ export const PATCH = withRoute(
     return apiBadRequest('country must be "INDIA" or "UAE"');
   }
 
-  if (
-    defaultCurrency !== "INR" &&
-    defaultCurrency !== "AED" &&
-    defaultCurrency !== "USD"
-  ) {
-    return apiBadRequest('defaultCurrency must be "INR", "AED", or "USD"');
+  if (!isSupportedCurrency(defaultCurrency)) {
+    return apiBadRequest(DEFAULT_CURRENCY_ERROR_MESSAGE);
   }
 
   try {

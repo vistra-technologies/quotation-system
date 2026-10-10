@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { SelectField } from "@/components/select-field";
+import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 import { formatBudget, stripGroupingSeparators } from "@/lib/format-currency";
 import { updateProject, type UpdateProjectState } from "../../actions";
 
@@ -272,9 +273,11 @@ export function EditProjectForm({
                   className={selectCls}
                   placeholder="Select currency"
                 >
-                  <option value="INR">INR</option>
-                  <option value="AED">AED</option>
-                  <option value="USD">USD</option>
+                  {SUPPORTED_CURRENCIES.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
                 </SelectField>
               </div>
 

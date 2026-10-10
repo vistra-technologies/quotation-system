@@ -39,7 +39,6 @@ export const createProject = withAction(
   const projectLocation =
     ((formData.get("projectLocation") as string | null)?.trim()) || null;
   const externalCompanyId = (formData.get("externalCompanyId") as string | null) || null;
-  const status = (formData.get("status") as string | null)?.trim() || "DRAFT";
 
   if (!name || !currency) {
     return { error: "Project name and currency are required." };
@@ -60,7 +59,6 @@ export const createProject = withAction(
       name,
       currency,
       projectLocation,
-      status,
       externalCompanyId,
       submissionDate: getStr("submissionDate"),
       projectDeadline: getStr("projectDeadline"),

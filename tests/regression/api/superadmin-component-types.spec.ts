@@ -161,12 +161,12 @@ test.describe("SuperAdmin component types (org B)", () => {
     expect((await types(sa, run.orgB.id)).filter((t) => t.code.startsWith(p))).toEqual([]);
   });
 
-  // KNOWN BUG — the SA POST route does not map the (organizationId, code) unique violation (P2002) — PATCH
-  // does (409 "code already in use in this org"). Nothing is written. When fixed, expect 409 here.
-  test("KNOWN BUG: POST with a code already used in the org answers 500 (unmapped P2002), not 409", async ({ sa, run }) => {
+  // Stage 31 S31-10: the SA POST route maps the (organizationId, code) unique violation (P2002) to 409
+  // (was a 500, backlog). Nothing is written.
+  test("POST with a code already used in the org answers 409 (Code already in use in this organization)", async ({ sa, run }) => {
     const mine = await newType(sa, run);
     const r = await sa.post(`${SA}/component-types`, { data: { orgId: run.orgB.id, code: mine.code.toLowerCase(), name: "rgr dup", categoryId: mine.categoryId } });
-    await expectStatus(r, 500);
+    expect(await json<{ error: string }>(r, 409)).toEqual({ error: "Code already in use in this organization" });
     expect((await types(sa, run.orgB.id)).filter((t) => t.code === mine.code)).toHaveLength(1);
   });
 
