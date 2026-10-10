@@ -10,8 +10,6 @@ export type AccountTab = "details" | "password";
 
 interface AccountPopupProps {
   orgSlug: string;
-  /** Tab to open on: "My Profile" -> details, "Change Password" -> password. */
-  initialTab: AccountTab;
   onClose: () => void;
   /** Display name (User.name) — fallback for the header when first/last are empty. */
   name: string;
@@ -52,7 +50,6 @@ const chipIcon = "h-3 w-3 shrink-0";
  */
 export function AccountPopup({
   orgSlug,
-  initialTab,
   onClose,
   name,
   username,
@@ -66,7 +63,7 @@ export function AccountPopup({
   const t = useTranslations("account");
   const router = useRouter();
 
-  const [tab, setTab] = useState<AccountTab>(initialTab);
+  const [tab, setTab] = useState<AccountTab>("details");
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState<Fields>({
     first: firstName,

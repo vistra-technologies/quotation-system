@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
-import { AccountPopup, type AccountTab } from "./account-popup";
+import { AccountPopup } from "./account-popup";
 
 interface TopBarActionsProps {
   orgSlug: string;
@@ -34,9 +34,9 @@ interface TopBarActionsProps {
  *
  * Matches quotation-system-docs/ui-mockups/finalized/project-details-page's
  * .eq-topbar — a Home icon-button plus a Profile icon-button that opens a
- * dropdown (avatar initial, username, role name, My Profile / Change Password,
- * Log Out). "My Profile" and "Change Password" open the My Account popup
- * (<AccountPopup>) on its Details / Password tab (Hotfix 2026-10-10).
+ * dropdown (avatar initial, username, role name, My Profile, Log Out). "My Profile"
+ * opens the My Account popup (<AccountPopup>) on its Details tab; the Password tab
+ * is reached from inside the popup (Hotfix 2026-10-10).
  *
  * Log Out reuses the same hard-navigation pattern as the prior
  * dashboard/logout-button.tsx (window.location.href, not router.push) so the
@@ -57,15 +57,15 @@ export function TopBarActions({
 }: TopBarActionsProps) {
   const t = useTranslations("account");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [popupTab, setPopupTab] = useState<AccountTab | null>(null);
+  const [popupOpen, setPopupOpen] = useState(false);
   const profileBtnRef = useRef<HTMLButtonElement>(null);
   const closePopup = useCallback(() => {
-    setPopupTab(null);
+    setPopupOpen(false);
     profileBtnRef.current?.focus();
   }, []);
-  function openPopup(tab: AccountTab) {
+  function openPopup() {
     setMenuOpen(false);
-    setPopupTab(tab);
+    setPopupOpen(true);
   }
   // Build org-scoped hrefs using the server-computed isSubdomain flag.
   const href = (subpath: string) =>
@@ -190,17 +190,10 @@ export function TopBarActions({
 
               <button
                 type="button"
-                onClick={() => openPopup("details")}
+                onClick={() => openPopup()}
                 className="block w-full rounded-sm px-2 py-1.5 text-left text-sm text-text-body hover:bg-primary-softer"
               >
                 {t("menuMyProfile")}
-              </button>
-              <button
-                type="button"
-                onClick={() => openPopup("password")}
-                className="block w-full rounded-sm px-2 py-1.5 text-left text-sm text-text-body hover:bg-primary-softer"
-              >
-                {t("menuChangePassword")}
               </button>
 
               <div className="my-2 h-px bg-border" />
@@ -217,10 +210,9 @@ export function TopBarActions({
         )}
       </div>
 
-      {popupTab && (
+      {popupOpen && (
         <AccountPopup
           orgSlug={orgSlug}
-          initialTab={popupTab}
           onClose={closePopup}
           name={name}
           username={username}

@@ -2,7 +2,8 @@
  * J8 — the My Account popup (Hotfix 2026-10-10). One throwaway Test-Org member (`f.user`, ledgered), signed
  * in on its own browser context; no shared user is edited and no password is changed except the throwaway's
  * (it is the user the password path is about). Checked in the browser:
- *   - the profile dropdown's "My Profile" opens the popup on Details (view-only), "Change Password" on Password;
+ *   - the profile dropdown's "My Profile" opens the popup on Details (view-only); there is no separate
+ *     "Change Password" entry, the Password tab is reached by clicking the tab;
  *   - Edit shows inputs; Save changes is disabled until a value differs; Cancel reverts;
  *   - saving updates the popup's identity header, and the profile menu's avatar initial (R -> A, from the
  *     refreshed server props) without a reload;
@@ -15,7 +16,7 @@ import { isHydrated } from "../pages/collect";
 
 test.use({ trace: "off" });
 
-test("J8: My Account popup — tabs from each menu entry, view/edit/cancel, dirty-gated save, header refresh, wrong password", async ({ browser, f, run }) => {
+test("J8: My Account popup — Details via menu, Password via tab, view/edit/cancel, dirty-gated save, header refresh, wrong password", async ({ browser, f, run }) => {
   test.setTimeout(180_000);
   const u = await f.user("member");
   const slug = run.testOrg.slug;
@@ -66,11 +67,14 @@ test("J8: My Account popup — tabs from each menu entry, view/edit/cancel, dirt
       await expect(dialog).toHaveCount(0);
     });
 
-    await test.step("the profile menu avatar refreshed (R -> A) without a reload; Change Password opens on Password; a wrong existing password is an inline error", async () => {
+    await test.step("the profile menu avatar refreshed (R -> A) without a reload; the Password tab is reached via the popup tab; a wrong existing password is an inline error", async () => {
       await profileBtn.click();
       // The initial comes from the layout's refreshed props (router.refresh), not the popup's local state.
       await expect(page.locator("div.absolute.right-0.top-11 div.rounded-full")).toHaveText("A");
-      await page.getByRole("button", { name: "Change Password" }).click();
+      await expect(page.getByRole("button", { name: "Change Password" })).toHaveCount(0); // no separate menu entry
+      await page.getByRole("button", { name: "My Profile" }).click();
+      await expect(dialog.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
+      await dialog.getByRole("tab", { name: "Password" }).click();
       await expect(dialog.getByRole("tab", { name: "Password" })).toHaveAttribute("aria-selected", "true");
       await dialog.getByLabel("Existing Password").fill("definitely-not-it-1");
       await dialog.getByLabel("New Password", { exact: true }).fill("Another-Valid-Pw-9");
