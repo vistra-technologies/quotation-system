@@ -19,7 +19,9 @@ import type { SaClient } from "./clients";
 export const TEST_ORG_LIMIT_FILE = path.join(os.homedir(), ".vistra-regression", "test-org-user-limit.json");
 
 /** How many users beyond the ones already in the Test Org the suite may need (role users + spec users). */
-export const TEST_ORG_LIMIT_HEADROOM = 50;
+// Stage 31: the suite creates ~44 throwaway users per run (the ledger drains at teardown); 80 leaves real margin. The
+// limit is raised for the run and restored to its recorded original afterwards (rule 10).
+export const TEST_ORG_LIMIT_HEADROOM = 80;
 /** Org B is created with this explicit limit (never the default 3): its specs add many users. */
 export const ORG_B_USER_LIMIT = 25;
 

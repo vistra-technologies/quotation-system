@@ -251,15 +251,18 @@ test('API: unauthenticated /users request returns 401', async ({ page }) => {
   expect(resp.status()).toBe(401);
 });
 
-test('API: /api/v1/orgs (public org-list) returns org list without auth', async ({ page }) => {
+test('API: /api/v1/orgs (public single-org lookup) returns one org without auth and never a list', async ({ page }) => {
   // Use acme-glass subdomain so the request routes to the app (apex domain 404s non-root paths).
-  const resp = await page.request.get(apiUrl("acme-glass", '/api/v1/orgs'));
+  // Stage 31 S31-6: the endpoint is a single-org lookup (?slug= or ?id=), not a list of every tenant.
+  const resp = await page.request.get(apiUrl("acme-glass", '/api/v1/orgs?slug=acme-glass'));
   expect(resp.status()).toBe(200);
   const body = await resp.json();
-  // API returns { orgs: [...] } shape, not a bare array
-  expect(typeof body).toBe('object');
-  expect(Array.isArray(body.orgs)).toBe(true);
-  expect(body.orgs.length).toBeGreaterThan(0);
+  expect(body.org).toMatchObject({ slug: 'acme-glass' });
+  expect(Object.keys(body.org).sort()).toEqual(['id', 'name', 'slug']);
+  expect(body.orgs).toBeUndefined();
+  // no parameter -> 400
+  const none = await page.request.get(apiUrl("acme-glass", '/api/v1/orgs'));
+  expect(none.status()).toBe(400);
 });
 
 // ---------------------------------------------------------------------------

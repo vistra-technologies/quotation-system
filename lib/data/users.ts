@@ -4,6 +4,7 @@ import { toAuthEmail } from "@/lib/auth-utils";
 import { assertUserSeatAvailable } from "@/lib/data/user-limit";
 import { recordsOutsideCompanyWhere } from "@/lib/data/ownership";
 import { PERMISSIONS } from "@/lib/rbac";
+import { shouldRevokeSessions } from "@/lib/session-revocation";
 import type { Prisma } from "@/app/generated/prisma/client";
 import type { SessionData } from "@/lib/session";
 
@@ -280,12 +281,17 @@ export async function updateOwnProfile(session: SessionData, input: OwnProfileUp
 /** Activate a user (sets active = true). Tenancy guard: user must be in session org. */
 export async function activateUser(session: SessionData, userId: string): Promise<void> {
   await assertUserInOrg(userId, session.organizationId);
-  // Stage 31 S31-2 P4: drop any session left over from a deactivation (done before sessions were
-  // revoked on deactivate) so reactivating never revives an old cookie. Same transaction as the write.
-  await prisma.$transaction([
-    prisma.user.update({ where: { id: userId }, data: { active: true } }),
-    prisma.session.deleteMany({ where: { userId } }),
-  ]);
+  // Stage 31 S31-2 P4: on a real inactive -> active transition, drop any session left over from a
+  // deactivation (done before sessions were revoked on deactivate) so reactivating never revives an old
+  // cookie. Activating an already-active user is a no-op and revokes nothing. Same transaction as the write.
+  await prisma.$transaction(async (tx) => {
+    const user = await tx.user.findUnique({ where: { id: userId }, select: { active: true } });
+    if (!user) throw new Error("User not found or access denied");
+    await tx.user.update({ where: { id: userId }, data: { active: true } });
+    if (shouldRevokeSessions({ passwordChanged: false, nextActive: true, storedActive: user.active })) {
+      await tx.session.deleteMany({ where: { userId } });
+    }
+  });
 }
 
 /**

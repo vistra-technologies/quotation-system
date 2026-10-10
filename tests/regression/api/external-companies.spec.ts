@@ -202,7 +202,7 @@ test.describe("external companies: rules", () => {
 
   test("a company with only a project (no users) is refused with the count in the message; an empty company still deletes", async ({ as, f, url, run, ledger, playwright, baseURL }) => {
     const co = await f.externalCompany();
-    // a distributor of this company creates the project and the inquiry (the company comes from the session)
+    // a distributor moved into `co` creates a project (the project's company comes from the session)
     const dist = await f.user("distributor");
     const swap = await as.admin.put(url(`/users/${dist.id}/profile`), { data: { externalCompanyId: co.id } });
     expect(swap.status(), await swap.text()).toBe(200);
@@ -216,7 +216,7 @@ test.describe("external companies: rules", () => {
     } finally {
       await ctx.dispose();
     }
-    // the user moves to another company and is deleted: only the project still references `co`
+    // the distributor moves to another company (the user is NOT deleted): only the project still references `co`
     const other = await f.externalCompany();
     expect((await as.admin.put(url(`/users/${dist.id}/profile`), { data: { externalCompanyId: other.id } })).status()).toBe(200);
 

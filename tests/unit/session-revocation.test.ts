@@ -13,6 +13,11 @@ test("deactivation revokes (even when already inactive: harmless and idempotent)
   assert.equal(shouldRevokeSessions({ passwordChanged: false, nextActive: false, storedActive: false }), true);
 });
 
+test("activate (S31-2 P4) uses the same rule: only a real inactive -> active transition revokes", () => {
+  assert.equal(shouldRevokeSessions({ passwordChanged: false, nextActive: true, storedActive: false }), true);
+  assert.equal(shouldRevokeSessions({ passwordChanged: false, nextActive: true, storedActive: true }), false);
+});
+
 test("reactivation (stored false -> true) revokes leftover sessions", () => {
   assert.equal(shouldRevokeSessions({ passwordChanged: false, nextActive: true, storedActive: false }), true);
 });

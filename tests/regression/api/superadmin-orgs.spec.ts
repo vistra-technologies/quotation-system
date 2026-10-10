@@ -500,7 +500,8 @@ test.describe("SuperAdmin org users (org B)", () => {
     expect(kept.status(), await kept.text()).toBe(200);
     const project = ((await kept.json()) as { project: { createdByUserId: string | null; createdBy: unknown; createdByName: string | null } }).project;
     expect(project).toMatchObject({ createdByUserId: null, createdBy: null });
-    expect(project.createdByName).toMatch(/^s*Rgrs+Users*$/);
+    // exact comparison (whitespace-normalised): the name was snapshotted from "  Rgr " + " User  "
+    expect((project.createdByName ?? "").trim().split(/\s+/).join(" ")).toBe("Rgr User");
   });
 
   test("DELETE removes the user (200 { deleted: true }), then 404; another org's user is out of reach; audit user.delete", async ({ sa, run, ledger, f, as, url }) => {
