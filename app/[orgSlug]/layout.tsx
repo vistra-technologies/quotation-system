@@ -1,6 +1,7 @@
 import { internalFetch } from "@/lib/internal-fetch";
 import { detectIsSubdomain } from "@/lib/orgHref";
-import { getTranslations } from "next-intl/server";
+import { NextIntlClientProvider } from "next-intl";
+import allMessages from "@/messages/en.json";
 import { TopBarActions } from "./top-bar-actions";
 import { Sidebar } from "./sidebar";
 import { ReloadOnLoginRedirect } from "./reload-on-login-redirect";
@@ -24,9 +25,9 @@ export const dynamic = "force-dynamic";
  * Stage 12 Batch 6: switched from getSession()/getAdminPermissions() DAL to
  * internalFetch against /api/v1/orgs/[orgSlug]/me.
  *
- * No NextIntlClientProvider here — the nav chrome is pure Server Component.
- * Existing per-section layouts (projects, admin, inquiries, orders) continue
- * to provide their own NextIntlClientProvider as before.
+ * The only NextIntlClientProvider here wraps the top-bar header (the My Account popup uses
+ * the `account` namespace); it is a sibling of <main>, so it never nests with the
+ * per-section layouts (projects, admin, inquiries, orders), which still provide their own.
  */
 export default async function OrgSlugLayout({
   children,
@@ -41,7 +42,6 @@ export default async function OrgSlugLayout({
   // receive the correct value as a prop — no client-side window.location read
   // required, no SSR/hydration mismatch.
   const isSubdomain = await detectIsSubdomain(orgSlug);
-  const tToast = await getTranslations("toast");
 
   const meRes = await internalFetch(`/api/v1/orgs/${orgSlug}/me`);
 
@@ -58,6 +58,10 @@ export default async function OrgSlugLayout({
     roleName: string;
     externalCompanyName: string | null;
     adminPermissions: string[];
+    firstName: string;
+    lastName: string;
+    mobile: string | null;
+    profileEmail: string | null;
   };
 
   const canManageUsers = me.adminPermissions.includes("MANAGE_USERS");
@@ -91,16 +95,21 @@ export default async function OrgSlugLayout({
         {/* D4 Stage 15: org/company chips moved from left to right corner, inside TopBarActions */}
         <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-end border-b border-border bg-bg-card px-10 shadow-header">
           {/* Home + Profile actions — right side (chips now included inside) */}
-          <TopBarActions
-            orgSlug={orgSlug}
-            isSubdomain={isSubdomain}
-            name={me.name}
-            username={me.username}
-            roleName={me.roleName}
-            orgName={me.orgName}
-            externalCompanyName={me.externalCompanyName}
-            comingSoonText={tToast("comingSoon")}
-          />
+          <NextIntlClientProvider messages={{ account: allMessages.account }}>
+            <TopBarActions
+              orgSlug={orgSlug}
+              isSubdomain={isSubdomain}
+              name={me.name}
+              username={me.username}
+              roleName={me.roleName}
+              orgName={me.orgName}
+              externalCompanyName={me.externalCompanyName}
+              firstName={me.firstName}
+              lastName={me.lastName}
+              mobile={me.mobile}
+              profileEmail={me.profileEmail}
+            />
+          </NextIntlClientProvider>
         </header>
 
         {/* Main content area */}

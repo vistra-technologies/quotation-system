@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
+import { AccountPopup, type AccountTab } from "./account-popup";
 
 interface TopBarActionsProps {
   orgSlug: string;
@@ -20,8 +22,11 @@ interface TopBarActionsProps {
   orgName: string;
   /** External company display name — rendered as the company chip when present (D4 Stage 15). */
   externalCompanyName: string | null;
-  /** Translated "Coming Soon" label for the Change Password placeholder (H-14). */
-  comingSoonText: string;
+  /** Own editable profile fields, for the My Account popup (Hotfix 2026-10-10). */
+  firstName: string;
+  lastName: string;
+  mobile: string | null;
+  profileEmail: string | null;
 }
 
 /**
@@ -29,9 +34,9 @@ interface TopBarActionsProps {
  *
  * Matches quotation-system-docs/ui-mockups/finalized/project-details-page's
  * .eq-topbar — a Home icon-button plus a Profile icon-button that opens a
- * dropdown (avatar initial, full name, role name, My Profile / Change Password
- * placeholders, Log Out). "My Profile" and "Change Password" have no page
- * yet, so they show an inline "Coming soon" note instead of navigating.
+ * dropdown (avatar initial, username, role name, My Profile / Change Password,
+ * Log Out). "My Profile" and "Change Password" open the My Account popup
+ * (<AccountPopup>) on its Details / Password tab (Hotfix 2026-10-10).
  *
  * Log Out reuses the same hard-navigation pattern as the prior
  * dashboard/logout-button.tsx (window.location.href, not router.push) so the
@@ -45,10 +50,19 @@ export function TopBarActions({
   roleName,
   orgName,
   externalCompanyName,
-  comingSoonText,
+  firstName,
+  lastName,
+  mobile,
+  profileEmail,
 }: TopBarActionsProps) {
+  const t = useTranslations("account");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [comingSoon, setComingSoon] = useState<string | null>(null);
+  const [popupTab, setPopupTab] = useState<AccountTab | null>(null);
+  const closePopup = useCallback(() => setPopupTab(null), []);
+  function openPopup(tab: AccountTab) {
+    setMenuOpen(false);
+    setPopupTab(tab);
+  }
   // Build org-scoped hrefs using the server-computed isSubdomain flag.
   const href = (subpath: string) =>
     isSubdomain ? subpath : `/${orgSlug}${subpath}`;
@@ -101,8 +115,8 @@ export function TopBarActions({
       )}
       <Link
         href={href("/dashboard")}
-        title="Home"
-        aria-label="Home"
+        title={t("homeTitle")}
+        aria-label={t("homeTitle")}
         className="ml-2 flex h-9 w-9 items-center justify-center rounded-sm border border-border bg-bg-white text-text-body transition-colors hover:bg-primary-softer"
       >
         <svg
@@ -125,7 +139,7 @@ export function TopBarActions({
         <button
           type="button"
           onClick={() => setMenuOpen((v) => !v)}
-          title="Profile"
+          title={t("profileButtonTitle")}
           aria-haspopup="true"
           aria-expanded={menuOpen}
           className="flex h-9 w-9 items-center justify-center rounded-sm border border-border bg-bg-white text-text-body transition-colors hover:bg-primary-softer"
@@ -151,10 +165,7 @@ export function TopBarActions({
             {/* Backdrop to close on outside click */}
             <div
               className="fixed inset-0 z-40"
-              onClick={() => {
-                setMenuOpen(false);
-                setComingSoon(null);
-              }}
+              onClick={() => setMenuOpen(false)}
             />
             <div className="absolute right-0 top-11 z-50 w-64 rounded-md border border-border bg-bg-white p-3 shadow-card">
               <div className="flex items-center gap-3 px-1 py-1">
@@ -174,21 +185,18 @@ export function TopBarActions({
 
               <button
                 type="button"
-                onClick={() => setComingSoon("profile")}
+                onClick={() => openPopup("details")}
                 className="block w-full rounded-sm px-2 py-1.5 text-left text-sm text-text-body hover:bg-primary-softer"
               >
-                My Profile
+                {t("menuMyProfile")}
               </button>
               <button
                 type="button"
-                onClick={() => setComingSoon("password")}
+                onClick={() => openPopup("password")}
                 className="block w-full rounded-sm px-2 py-1.5 text-left text-sm text-text-body hover:bg-primary-softer"
               >
-                Change Password
+                {t("menuChangePassword")}
               </button>
-              {comingSoon && (
-                <p className="px-2 pb-1 text-xs text-text-muted">{comingSoonText}</p>
-              )}
 
               <div className="my-2 h-px bg-border" />
 
@@ -197,12 +205,29 @@ export function TopBarActions({
                 onClick={handleLogout}
                 className="block w-full rounded-sm px-2 py-1.5 text-left text-sm font-semibold text-red-600 hover:bg-primary-softer"
               >
-                Log Out
+                {t("menuLogOut")}
               </button>
             </div>
           </>
         )}
       </div>
+
+      {popupTab && (
+        <AccountPopup
+          orgSlug={orgSlug}
+          initialTab={popupTab}
+          onClose={closePopup}
+          name={name}
+          username={username}
+          roleName={roleName}
+          orgName={orgName}
+          externalCompanyName={externalCompanyName}
+          firstName={firstName}
+          lastName={lastName}
+          mobile={mobile}
+          profileEmail={profileEmail}
+        />
+      )}
     </div>
   );
 }
