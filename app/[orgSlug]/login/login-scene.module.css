@@ -237,6 +237,8 @@
     transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1),
     left 0.9s cubic-bezier(0.2, 0.8, 0.2, 1),
     background 0.6s ease calc(var(--i) * 70ms),
+    backdrop-filter 0.6s ease,
+    -webkit-backdrop-filter 0.6s ease,
     border-color 0.4s ease,
     box-shadow 0.4s ease,
     opacity 0.8s ease;
@@ -355,11 +357,13 @@
 .world.privacy .pane {
   background: linear-gradient(
     160deg,
-    rgba(248, 250, 246, 0.8) 0%,
-    rgba(214, 230, 216, 0.74) 60%,
-    rgba(236, 240, 237, 0.8) 100%
+    rgba(248, 250, 246, 0.46) 0%,
+    rgba(214, 230, 216, 0.36) 60%,
+    rgba(236, 240, 237, 0.44) 100%
   );
-  border-color: rgba(255, 255, 255, 0.9);
+  -webkit-backdrop-filter: blur(10px) saturate(125%);
+  backdrop-filter: blur(10px) saturate(125%);
+  border-color: rgba(255, 255, 255, 0.8);
 }
 .world.privacy .pane .manifest {
   opacity: 0;
