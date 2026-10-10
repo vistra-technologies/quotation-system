@@ -8,7 +8,7 @@ import { registerNegatives } from "./api-matrix";
 import { PERMISSION_CODES, ROLES, ROLE_NAME, ROLE_PERMISSIONS } from "./permissions";
 import { apiUrl } from "../../e2e/helpers";
 import { createLedgered, tag } from "./project-helpers";
-import { authPost, bypass, runPassword, signIn } from "./sign-in";
+import { authPost, bypass, runPassword, signIn, trustedOrigin } from "./sign-in";
 import type { APIRequestContext, APIResponse } from "@playwright/test";
 
 covers("GET /api/v1/orgs");
@@ -20,22 +20,12 @@ covers("GET /api/v1/permissions");
 registerNegatives([
   // any authenticated org member — no permission gate
   { key: "GET /api/v1/orgs/[orgSlug]/me", method: "GET", path: () => "/me" },
-  // own profile: any authenticated org member; every rejected body is refused (400) before any write
+  // own profile: any authenticated org member; the invalid-body (400) cases run as a throwaway user in the describe below
   {
     key: "PATCH /api/v1/orgs/[orgSlug]/me",
     method: "PATCH",
     path: () => "/me",
     body: (c) => ({ firstName: `${c.run.prefix}neg` }),
-    invalid: [
-      { name: "{} (no editable field)", body: {}, status: 400 },
-      { name: "array body", body: [], status: 400 },
-      { name: "empty firstName", body: { firstName: "" }, status: 400 },
-      { name: "blank lastName", body: { lastName: "   " }, status: 400 },
-      { name: "firstName over 100 chars", body: { firstName: "a".repeat(101) }, status: 400 },
-      { name: "mobile over 30 chars", body: { mobile: "1".repeat(31) }, status: 400 },
-      { name: "malformed profileEmail", body: { profileEmail: "not-an-email" }, status: 400 },
-      { name: "unknown key", body: { firstName: "RGR", nickname: "x" }, status: 400 },
-    ],
   },
   { key: "GET /api/v1/orgs/[orgSlug]/stats", method: "GET", path: () => "/stats" },
   // global catalog: session + MANAGE_FEATURES, no org slug
@@ -165,17 +155,72 @@ test.describe("PATCH /api/v1/orgs/[orgSlug]/me (own profile)", () => {
     expect(await readMe(as.member, url)).toEqual(otherBefore);
   });
 
+  // Every rejected body is refused (400) before any write. Run as a throwaway user (not the shared admin) so a
+  // validator regression would only dirty a ledgered row.
+  test("invalid bodies are refused (400) and nothing is written", async ({ f, url, run, playwright, baseURL }) => {
+    const u = await f.user("member");
+    const ctx = await signedIn(playwright, baseURL, run.testOrg.slug, u.username);
+    const before = await readMe(ctx, url);
+    const invalid: { name: string; body: unknown }[] = [
+      { name: "{} (no editable field)", body: {} },
+      { name: "array body", body: [] },
+      { name: "empty firstName", body: { firstName: "" } },
+      { name: "blank lastName", body: { lastName: "   " } },
+      { name: "firstName over 100 chars", body: { firstName: "a".repeat(101) } },
+      { name: "mobile over 30 chars", body: { mobile: "1".repeat(31) } },
+      { name: "malformed profileEmail", body: { profileEmail: "not-an-email" } },
+      { name: "unknown key", body: { firstName: "RGR", nickname: "x" } },
+    ];
+    for (const c of invalid) {
+      const r = await ctx.patch(url("/me"), { data: c.body });
+      expect(r.status(), c.name).toBe(400);
+    }
+    expect(await readMe(ctx, url)).toEqual(before);
+  });
+
+  // better-auth's own POST /api/auth/update-user is exposed by the catch-all route; the privilege fields are
+  // input:false in lib/auth.ts, so better-auth answers 400 FIELD_NOT_ALLOWED for a truthy value (verified in
+  // node_modules/better-auth/dist/db/schema.mjs parseInputData) and nothing changes.
+  test("better-auth update-user cannot write role/company/org/username/email/active", async ({ as, f, url, run, playwright, baseURL }) => {
+    const u = await f.user("member");
+    const slug = run.testOrg.slug;
+    const ctx = await signedIn(playwright, baseURL, slug, u.username);
+    const before = await readMe(ctx, url);
+    const roles = ((await (await as.admin.get(url("/roles"))).json()) as { roles: { id: string; name: string }[] }).roles;
+    const adminRoleId = roles.find((x) => x.name === ROLE_NAME.admin)?.id;
+    expect(adminRoleId).toBeTruthy();
+    const origin = { Origin: trustedOrigin(slug, baseURL) };
+    const attempts: Record<string, unknown>[] = [
+      { roleId: adminRoleId },
+      { organizationId: run.orgB.id },
+      { externalCompanyId: "00000000-0000-4000-8000-000000000000" },
+      { username: "rgr-hijack" },
+      { profileEmail: "x@example.com" },
+      { active: true },
+    ];
+    for (const data of attempts) {
+      const r = await authPost(ctx, slug, "update-user", data, origin);
+      expect(r.status(), JSON.stringify(data) + " " + (await r.text())).toBe(400);
+    }
+    expect(await readMe(ctx, url)).toEqual(before);
+    const row = await as.admin.get(url(`/users/${u.id}`));
+    expect(((await row.json()) as { user: { username: string; active: boolean; role: { name: string } } }).user).toMatchObject({
+      username: u.username, active: true, role: { name: ROLE_NAME.member },
+    });
+  });
+
   test("password change: a wrong current password is refused; the right one rotates it (old rejected, new accepted)", async ({ f, url, run, playwright, baseURL }) => {
     const u = await f.user("member");
     const slug = run.testOrg.slug;
     const ctx = await signedIn(playwright, baseURL, slug, u.username);
     const newPw = `${runPassword()}-Rotated9`;
 
-    const wrong = await authPost(ctx, slug, "change-password", { currentPassword: "definitely-not-it-1", newPassword: newPw, revokeOtherSessions: true });
+    const origin = { Origin: trustedOrigin(slug, baseURL) }; // cookie-bearing auth POST: better-auth CSRF check
+    const wrong = await authPost(ctx, slug, "change-password", { currentPassword: "definitely-not-it-1", newPassword: newPw, revokeOtherSessions: true }, origin);
     expect(wrong.status(), await wrong.text()).toBe(400);
     expect(((await wrong.json()) as { code?: string }).code).toBe("INVALID_PASSWORD");
 
-    const ok = await authPost(ctx, slug, "change-password", { currentPassword: runPassword(), newPassword: newPw, revokeOtherSessions: true });
+    const ok = await authPost(ctx, slug, "change-password", { currentPassword: runPassword(), newPassword: newPw, revokeOtherSessions: true }, origin);
     expect(ok.status(), await ok.text()).toBe(200);
     expect((await ctx.get(url("/me"))).status()).toBe(200); // the changing session itself stays valid
 

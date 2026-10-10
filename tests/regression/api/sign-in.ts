@@ -21,16 +21,29 @@ export const bypass = (): Record<string, string> => {
   return b ? { "x-vercel-protection-bypass": b } : {};
 };
 
-/** POST to an auth endpoint, retrying only on 429 (waits X-Retry-After + 1 s). */
-export async function authPost(ctx: APIRequestContext, orgSlug: string, endpoint: string, data: unknown): Promise<APIResponse> {
+/**
+ * POST to an auth endpoint, retrying only on 429 (waits X-Retry-After + 1 s). A cookie-bearing auth POST
+ * needs a trusted Origin (better-auth CSRF check, 403 MISSING_OR_NULL_ORIGIN otherwise): pass
+ * `{ Origin: trustedOrigin(...) }` in `headers` for those.
+ */
+export async function authPost(
+  ctx: APIRequestContext,
+  orgSlug: string,
+  endpoint: string,
+  data: unknown,
+  headers?: Record<string, string>,
+): Promise<APIResponse> {
   let r!: APIResponse;
   for (let attempt = 1; attempt <= 5; attempt++) {
-    r = await ctx.post(apiUrl(orgSlug, `/api/auth/${endpoint}`), { data });
+    r = await ctx.post(apiUrl(orgSlug, `/api/auth/${endpoint}`), { data, headers });
     if (r.status() !== 429) return r;
     await new Promise((res) => setTimeout(res, (Number(r.headers()["x-retry-after"] ?? "10") + 1) * 1000));
   }
   return r;
 }
+
+/** The trusted Origin for this org's host (same shape health-auth.spec.ts sends for sign-out). */
+export const trustedOrigin = (orgSlug: string, baseURL: string | undefined): string => new URL(apiUrl(orgSlug, "/"), baseURL).origin;
 
 /** Sign `username` in on `ctx` (the context keeps the session cookie on success). */
 export const signIn = (ctx: APIRequestContext, orgSlug: string, username: string, password: string): Promise<APIResponse> =>

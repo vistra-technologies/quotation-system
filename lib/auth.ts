@@ -95,36 +95,48 @@ export const auth = betterAuth({
 
   // Declare domain additionalFields so better-auth saves/returns them
   // alongside the standard user fields.
+  //
+  // Every field is `input: false`: none may be written by a client through better-auth's own endpoints
+  // (POST /api/auth/update-user is exposed by the catch-all route and would otherwise let any signed-in user
+  // rewrite their own roleId/externalCompanyId/organizationId/active/username). Users are created and edited
+  // only server-side via Prisma (lib/data/users.ts, lib/data/superadmin/*, prisma/seed.ts); the user's own
+  // editable profile fields go through PATCH /api/v1/orgs/[orgSlug]/me.
   user: {
     additionalFields: {
       organizationId: {
         type: "string",
+        input: false,
         required: true,
         returned: true,
       },
       username: {
         type: "string",
+        input: false,
         required: true,
         returned: true,
       },
       active: {
         type: "boolean",
+        input: false,
         required: false,
         defaultValue: true,
         returned: true,
       },
       roleId: {
         type: "string",
+        input: false,
         required: true,
         returned: true,
       },
       externalCompanyId: {
         type: "string",
+        input: false,
         required: false,
         returned: true,
       },
       profileEmail: {
         type: "string",
+        input: false,
         required: false,
         returned: true,
       },
