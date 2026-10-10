@@ -232,7 +232,7 @@ test("projects: list row link + back-link navigate with clean subdomain URLs", a
       data: {
         name: "Subdomain nav regression — projects",
         destinationCountry: "SG",
-        currency: "SGD",
+        currency: "AED",
       },
     },
   );
@@ -360,7 +360,7 @@ test("project wizard: all 5 breadcrumb steps navigate with clean subdomain URLs"
       data: {
         name: "Wizard breadcrumb subdomain regression",
         destinationCountry: "MY",
-        currency: "MYR",
+        currency: "USD",
       },
     },
   );

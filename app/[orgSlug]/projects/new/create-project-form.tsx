@@ -93,7 +93,6 @@ export function CreateProjectForm({
 
       <form action={formAction} className="flex flex-col">
         <input type="hidden" name="orgSlug" value={orgSlug} />
-        <input type="hidden" name="status" value="DRAFT" />
 
         {/* ── Card 1: Project Information ─────────────────────────────── */}
         <div className="mb-5 rounded-md border border-border bg-bg-card shadow-card overflow-hidden">

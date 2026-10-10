@@ -315,9 +315,15 @@ test.describe("projects: create / read / patch / list", () => {
   test("POST ignores a client-supplied status: the project is created DRAFT and is deletable", async ({ as, run, ledger, url }) => {
     // Stage 31 S31-11: was stored verbatim (an unknown value left the project locked, backlog).
     const { res, id, body } = await createLedgered(as.admin, { run, ledger }, "project", { name: nm({ run }, "proj-status"), currency: "AED", status: "rgr-NOT-A-STATUS" });
-    expect(res.status(), JSON.stringify(body)).toBe(201);
-    expect((body.project as Project).status).toBe("DRAFT");
-    expect((await as.admin.delete(url(`/projects/${id}`))).status()).toBe(200); // DRAFT → deletable via API
+    try {
+      expect(res.status(), JSON.stringify(body)).toBe(201);
+      expect((body.project as Project).status).toBe("DRAFT");
+      expect((await as.admin.delete(url(`/projects/${id}`))).status()).toBe(200); // DRAFT → deletable via API
+    } finally {
+      // If the DRAFT force ever regresses the stored status is the junk value and teardown (DRAFT-only delete)
+      // could not remove the row: reset it, but only when the created row is not DRAFT.
+      if (id && (body.project as Project | undefined)?.status !== "DRAFT") await rgrSetProjectStatus(id, "DRAFT");
+    }
   });
 
   test("currency is validated: EUR is 400 on create and on PATCH (nothing created / changed); usd is stored as USD", async ({ as, f, run, ledger, url }) => {
