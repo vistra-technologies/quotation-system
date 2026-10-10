@@ -62,9 +62,10 @@ test("Dashboard: two KPI tiles (Projects, Inquiries) are present and there is no
   await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 15_000 });
 
   // The KPI tiles each have a label in muted small text below the count.
-  await expect(page.getByRole("main").getByText("Orders", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("main").getByText("Projects", { exact: true })).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("main").getByText("Inquiries", { exact: true })).toBeVisible({ timeout: 15_000 });
+  // Asserted after the tiles have loaded so it cannot pass vacuously.
+  await expect(page.getByRole("main").getByText("Orders", { exact: true })).toHaveCount(0);
 });
 
 test("Dashboard: Home icon in top-bar links to dashboard", async ({ page }) => {

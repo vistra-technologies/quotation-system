@@ -216,5 +216,6 @@ test("stale session: nav click lands on a bare login page, no sidebar", async ({
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible({ timeout: 30_000 });
   // The shell is gone: no sidebar nav links.
   await expect(page.getByRole("link", { name: "Projects" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Orders" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Inquiries" })).toHaveCount(0);
 });
