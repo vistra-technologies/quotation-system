@@ -561,6 +561,37 @@ test.describe("another session is active", () => {
     expect(calls).not.toContain("revoke-other-sessions"); // nobody was logged out
   });
 
+  // Stage 30 Batch 6: the scrim was trapped inside the animated form column
+  // (position:fixed resolved against it), so it covered only the form card.
+  test("overlay and dialog cover the whole viewport, including the left panel", async ({
+    page,
+  }) => {
+    await mockSecondLogin(page);
+    await signIn(page);
+
+    const dialog = page.getByRole("dialog", { name: "Log out the other session?" });
+    await expect(dialog).toBeVisible({ timeout: 15_000 });
+
+    const vp = page.viewportSize()!;
+    const scrim = await page.getByTestId("modal-scrim").boundingBox();
+    expect(scrim).not.toBeNull();
+    expect(Math.round(scrim!.x)).toBe(0);
+    expect(Math.round(scrim!.y)).toBe(0);
+    expect(Math.round(scrim!.width)).toBe(vp.width);
+    expect(Math.round(scrim!.height)).toBe(vp.height);
+
+    // The dialog is centred in the viewport, not in the form column.
+    const box = (await dialog.boundingBox())!;
+    expect(Math.abs(box.x + box.width / 2 - vp.width / 2)).toBeLessThan(2);
+
+    // The overlay is the topmost element at the far left (the scene panel).
+    const topIsScrim = await page.evaluate(() => {
+      const el = document.elementFromPoint(4, 4);
+      return !!el?.closest('[data-testid="modal-scrim"]');
+    });
+    expect(topIsScrim).toBe(true);
+  });
+
   test("Log out other session revokes the others and continues to the dashboard", async ({
     page,
   }) => {
