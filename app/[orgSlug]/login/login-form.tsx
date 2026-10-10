@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { authClient } from "@/lib/auth-client";
 import { toAuthEmail } from "@/lib/auth-utils";
 import { ORG_SUSPENDED_CODE, ORG_SUSPENDED_MESSAGE } from "@/lib/org-suspended";
@@ -397,8 +398,12 @@ export function LoginForm({
 
       {/* ── Another session is active (single-session-confirm) ──
           No backdrop/Escape dismissal: closing without choosing would leave this
-          new session signed in alongside the other one. */}
-      {otherSession && (
+          new session signed in alongside the other one.
+          Portaled to <body>: the form sits in a `.authCol > *` element that runs a
+          transform animation (fill-mode both), which makes it the containing block
+          for position:fixed, so rendered in place the scrim covered only the form
+          card (Stage 30 Batch 6). */}
+      {otherSession && createPortal(
         <div className={s.scrim} data-testid="modal-scrim">
           <div
             role="dialog"
@@ -443,7 +448,8 @@ export function LoginForm({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </form>
   );
