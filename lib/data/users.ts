@@ -242,6 +242,38 @@ export async function updateUserProfile(
   });
 }
 
+/**
+ * Own editable profile (Hotfix 2026-10-10, My Account popup): the four self-editable fields.
+ * Own row only: id comes from the session. Returns null if the row is gone.
+ */
+export async function getOwnProfile(session: SessionData) {
+  return prisma.user.findFirst({
+    where: { id: session.userId, organizationId: session.organizationId },
+    select: { firstName: true, lastName: true, mobile: true, profileEmail: true, name: true },
+  });
+}
+
+export type OwnProfileUpdate = {
+  firstName?: string;
+  lastName?: string;
+  mobile?: string | null;
+  profileEmail?: string | null;
+};
+
+/**
+ * Update the session user's OWN profile. A thin wrapper over updateUserProfile: the target id is
+ * always session.userId and the input type has no externalCompanyId, so a self-edit can never reach
+ * company/role/active fields. `name` is recomputed inside updateUserProfile.
+ */
+export async function updateOwnProfile(session: SessionData, input: OwnProfileUpdate): Promise<void> {
+  const safe: OwnProfileUpdate = {};
+  if (input.firstName !== undefined) safe.firstName = input.firstName;
+  if (input.lastName !== undefined) safe.lastName = input.lastName;
+  if (input.mobile !== undefined) safe.mobile = input.mobile;
+  if (input.profileEmail !== undefined) safe.profileEmail = input.profileEmail;
+  await updateUserProfile(session, session.userId, safe);
+}
+
 /** Activate a user (sets active = true). Tenancy guard: user must be in session org. */
 export async function activateUser(session: SessionData, userId: string): Promise<void> {
   await assertUserInOrg(userId, session.organizationId);
