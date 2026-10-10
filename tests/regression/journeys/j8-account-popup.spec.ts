@@ -4,7 +4,8 @@
  * (it is the user the password path is about). Checked in the browser:
  *   - the profile dropdown's "My Profile" opens the popup on Details (view-only), "Change Password" on Password;
  *   - Edit shows inputs; Save changes is disabled until a value differs; Cancel reverts;
- *   - saving updates the identity header (name + avatar initial) and the top-bar avatar without a reload;
+ *   - saving updates the popup's identity header, and the profile menu's avatar initial (R -> A, from the
+ *     refreshed server props) without a reload;
  *   - a wrong existing password shows the inline error and keeps the popup open.
  */
 import { test, expect } from "../fixtures/test";
@@ -65,8 +66,10 @@ test("J8: My Account popup — tabs from each menu entry, view/edit/cancel, dirt
       await expect(dialog).toHaveCount(0);
     });
 
-    await test.step("Change Password opens on Password; a wrong existing password is an inline error", async () => {
+    await test.step("the profile menu avatar refreshed (R -> A) without a reload; Change Password opens on Password; a wrong existing password is an inline error", async () => {
       await profileBtn.click();
+      // The initial comes from the layout's refreshed props (router.refresh), not the popup's local state.
+      await expect(page.locator("div.absolute.right-0.top-11 div.rounded-full")).toHaveText("A");
       await page.getByRole("button", { name: "Change Password" }).click();
       await expect(dialog.getByRole("tab", { name: "Password" })).toHaveAttribute("aria-selected", "true");
       await dialog.getByLabel("Existing Password").fill("definitely-not-it-1");
