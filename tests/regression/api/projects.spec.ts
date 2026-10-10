@@ -130,8 +130,10 @@ registerNegatives([
 
 /** f.wall + one GLASS selection filling the wall's only cell: ready for Submit Design. */
 async function readyWall(f: Factories, admin: Guarded, url: (p: string) => string) {
+  // S31-7: the config's codes must be Test-Org dropdown choices BEFORE the project (and its snapshot) exists
+  const cfg = await glassConfig(f);
   const w = await f.wall();
-  const sel = await f.selection(w.projectId, "GLASS", await glassConfig(f));
+  const sel = await f.selection(w.projectId, "GLASS", cfg);
   const p = await admin.patch(url(`/partitions/${w.partitionId}`), { data: { heightMm: 2400, design: oneCellDesign(sel.id) } });
   expect(p.status(), await p.text()).toBe(200);
   return { ...w, selectionId: sel.id };
@@ -609,6 +611,7 @@ test.describe("projects: frozen configSnapshot (shared ComponentType edit)", () 
           if (r.status() !== 200) throw new Error(`SA PATCH GLASS name → HTTP ${r.status()} ${await r.text()}`);
         };
 
+        const cfg = await glassConfig(f); // created BEFORE the window (keeps the rename short) and before the projects: their snapshots must list its codes
         const old = await f.project(); // frozen BEFORE the rename
         const cu = await f.project(); // config-update target
         const original = await readName();
@@ -616,7 +619,6 @@ test.describe("projects: frozen configSnapshot (shared ComponentType edit)", () 
         if (/^rgr-/.test(original)) {
           throw new Error(`Test Org ComponentType GLASS (${glassId}) is named "${original}" — a previous run's temporary rename was never reverted; restore its real name before running the suite`);
         }
-        const cfg = await glassConfig(f); // created BEFORE the window, to keep the rename as short as possible
         const glassIn = (s: Snapshot | null) => s!.componentTypes.find((t) => t.code === "GLASS")!;
         expect(glassIn(await readConfigSnapshot(old.id)).name).toBe(original);
         const temp = `${run.prefix}GLASS-renamed`;

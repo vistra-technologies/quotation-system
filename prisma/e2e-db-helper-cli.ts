@@ -24,7 +24,7 @@
  */
 import dotenv from "dotenv";
 import type { Prisma } from "../app/generated/prisma/client";
-import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry, scopedOp, assertRowInScope, matchesSweepPrefix, normalizeSweepCode } from "../tests/regression/fixtures/db-scope";
+import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry, scopedOp, assertRowInScope, matchesSweepPrefix, normalizeSweepCode, addAllowedCodes, stripPrefixedCodes, type OrgFieldConfig } from "../tests/regression/fixtures/db-scope";
 
 // Same precedence as Next: real env > .env.local > .env (dotenv never overrides an already-set var).
 dotenv.config({ path: ".env.local", quiet: true });
@@ -73,7 +73,7 @@ async function main() {
     if (scoped) {
       const id = input[scoped.idKey];
       const where = { where: { id: typeof id === "string" ? id : "" }, select: { organization: { select: { slug: true } } } };
-      const row = scoped.model === "project" ? await db.project.findUnique(where) : await db.partition.findUnique(where);
+      const row = scoped.model === "project" ? await db.project.findUnique(where) : scoped.model === "selection" ? await db.selection.findUnique(where) : await db.partition.findUnique(where);
       assertRowInScope(op, id, row?.organization.slug);
       op = scoped.base;
     }
@@ -201,6 +201,13 @@ async function main() {
         // transaction), but this makes the cascade an explicit, independently-observed assertion.
         const { organizationId } = input as { organizationId: string };
         return db.projectCalculation.count({ where: { organizationId } });
+      }
+      case "setSelectionConfig": {
+        // Writes a Selection's config verbatim, bypassing the API's config validation - only for states the
+        // API now refuses by design (e.g. a key the type's schema lacks). Reached only as rgr:setSelectionConfig.
+        const { selectionId, config } = input as { selectionId: string; config: Record<string, unknown> };
+        await db.selection.update({ where: { id: selectionId }, data: { config: config as Prisma.InputJsonValue } });
+        return null;
       }
       case "setProjectStatus": {
         // No API route can change Project.status this stage (Batch 5's own worklog note) — needed
@@ -389,6 +396,37 @@ async function main() {
           ...users.map((r) => ({ kind: "user", id: r.id, label: r.username })),
           ...roles.map((r) => ({ kind: "role", id: r.id, label: r.name })),
         ];
+      }
+      case "regressionAllowCodes": {
+        // Adds the run's rgr- inventory codes to a Test-Org type's dependent dropdown lists (see db-scope.ts).
+        const { orgSlug, typeCode, parent, codes } = input as { orgSlug: string; typeCode: string; parent: string; codes: Record<string, string> };
+        assertOrgInScope(orgSlug);
+        return await db.$transaction(async (tx) => {
+          const org = await tx.organization.findUniqueOrThrow({ where: { slug: orgSlug }, select: { id: true } });
+          const cfgRow = await tx.componentTypeOrgConfig.findFirstOrThrow({
+            where: { organizationId: org.id, componentType: { code: typeCode } },
+            select: { id: true, fieldOptionsConfig: true },
+          });
+          const next = addAllowedCodes(cfgRow.fieldOptionsConfig as OrgFieldConfig, parent, codes);
+          await tx.componentTypeOrgConfig.update({ where: { id: cfgRow.id }, data: { fieldOptionsConfig: next as Prisma.InputJsonValue } });
+          return null;
+        });
+      }
+      case "regressionStripCodes": {
+        // Removes every option/valueMap value starting with `prefix` from the in-scope org's type configs.
+        const { orgSlug, prefix } = input as { orgSlug: string; prefix: string };
+        assertOrgInScope(orgSlug);
+        assertSweepPrefix(prefix);
+        const org = await db.organization.findUnique({ where: { slug: orgSlug }, select: { id: true } });
+        if (!org) return 0;
+        let removed = 0;
+        for (const row of await db.componentTypeOrgConfig.findMany({ where: { organizationId: org.id }, select: { id: true, fieldOptionsConfig: true } })) {
+          const res = stripPrefixedCodes(row.fieldOptionsConfig as OrgFieldConfig, prefix);
+          if (res.removed === 0) continue;
+          await db.componentTypeOrgConfig.update({ where: { id: row.id }, data: { fieldOptionsConfig: res.cfg as Prisma.InputJsonValue } });
+          removed += res.removed;
+        }
+        return removed;
       }
       case "regressionDelete": {
         // Inquiries have no DELETE route. Refuses anything that is not an rgr- inquiry in an in-scope org.

@@ -1,5 +1,6 @@
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
+import { resolveOptions } from "@/lib/configurator-gating";
 
 /**
  * Pure validator for `Selection.config` values — Stage 31 S31-7.
@@ -39,17 +40,11 @@ export function validateSelectionConfig(
     }
     if (isBlank(value) || !CHOICE_TYPES.has(field.type)) continue;
 
-    const entry = cfg[key];
-    let allowed: string[];
-    if (field.dependsOn) {
-      const parentValue = config[field.dependsOn];
-      if (isBlank(parentValue)) {
-        return { ok: false, key, error: `"${key}" cannot be set while "${field.dependsOn}" is blank.` };
-      }
-      allowed = entry && "valueMap" in entry && typeof parentValue === "string" ? (entry.valueMap[parentValue] ?? []) : [];
-    } else {
-      allowed = entry && "options" in entry ? entry.options : [];
+    if (field.dependsOn && isBlank(config[field.dependsOn])) {
+      return { ok: false, key, error: `"${key}" cannot be set while "${field.dependsOn}" is blank.` };
     }
+    // One copy of the allowed-values rule: the same resolver the Configuration form uses for its dropdowns.
+    const allowed = resolveOptions(field, config as Record<string, string | boolean>, cfg);
     if (typeof value !== "string" || !allowed.includes(value)) {
       return { ok: false, key, error: `"${key}" has a value that is not one of its configured options.` };
     }

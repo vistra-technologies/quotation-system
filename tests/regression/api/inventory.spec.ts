@@ -22,6 +22,7 @@ import type { RunState } from "../fixtures/run-state";
 import { registerNegatives, GHOST, type Ctx } from "./api-matrix";
 import { orgApi, tag, glassConfig, expectSubmitted, oneCellDesign } from "./project-helpers";
 import { ok, rejected } from "./design-helpers";
+import { allowTestOrgCodes } from "../fixtures/test-org-codes";
 
 covers("GET /api/v1/orgs/[orgSlug]/inventory");
 covers("POST /api/v1/orgs/[orgSlug]/inventory");
@@ -367,8 +368,11 @@ test.describe("inventory: CRUD rules", () => {
 
 /** f.wall + one GLASS selection whose `u_profile` points at `uProfileCode`, then Submit Design → 200. */
 async function submittedUsing(f: Factories, admin: Guarded, url: (p: string) => string, uProfileCode: string) {
+  // S31-7: both the shared codes and this test's own u_profile code must be dropdown choices before the project exists
+  const cfg = { ...(await glassConfig(f)), u_profile: uProfileCode };
+  await allowTestOrgCodes("GLASS", { u_profile: uProfileCode });
   const w = await f.wall();
-  const sel = await f.selection(w.projectId, "GLASS", { ...(await glassConfig(f)), u_profile: uProfileCode });
+  const sel = await f.selection(w.projectId, "GLASS", cfg);
   const p = await admin.patch(url(`/partitions/${w.partitionId}`), { data: { heightMm: 2400, design: oneCellDesign(sel.id) } });
   expect(p.status(), await p.text()).toBe(200);
   await expectSubmitted(await admin.post(url(`/projects/${w.projectId}/submit-design`)));

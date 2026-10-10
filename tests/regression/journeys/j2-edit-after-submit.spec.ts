@@ -118,12 +118,12 @@ test("J2: edits after Submit Design — invalidation, Recompute gate, pills, and
     });
 
     await test.step("D: a saved-component config edit invalidates; re-submit → the glass KPI shows the new thickness", async () => {
-      const r = await as.admin.patch(T(c, `/selections/${gSel}`), { data: { config: { ...glassCfg(glass), thickness: "10" } } });
+      const r = await as.admin.patch(T(c, `/selections/${gSel}`), { data: { config: { ...glassCfg(glass), thickness: "12.76" } } });
       expect(r.status(), await r.text()).toBe(200);
       await expectInvalidated("selection config edit");
       const k3 = await submit();
-      expect(walls(k3)[0].glass.map((g) => [g.glassType, g.thickness])).toEqual([["ID1", "10"]]);
-      expect((k3.summary as unknown as SummaryFull).kpis.sqmByGlassType.map((g) => [g.glassType, g.thickness])).toEqual([["ID1", "10"]]);
+      expect(walls(k3)[0].glass.map((g) => [g.glassType, g.thickness])).toEqual([["ID1", "12.76"]]);
+      expect((k3.summary as unknown as SummaryFull).kpis.sqmByGlassType.map((g) => [g.glassType, g.thickness])).toEqual([["ID1", "12.76"]]);
     });
 
     await test.step("E: adding a wall invalidates and blocks Submit (CELL_UNASSIGNED) until it is designed; removing it invalidates again", async () => {

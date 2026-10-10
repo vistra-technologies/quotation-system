@@ -124,13 +124,13 @@ test.describe("selections: create / list / patch", () => {
     const glass = await typeId(as.admin, run, "GLASS");
     const door = await typeId(as.admin, run, "DOOR");
     const mk = async (orderIndex: number) =>
-      (await ok<{ selection: Selection }>(await as.admin.post(url("/selections"), { data: { projectId: p.id, componentTypeId: glass, label: nm({ run }, "S"), config: { category: "Single", thickness: "12" }, orderIndex } }), 201)).selection;
+      (await ok<{ selection: Selection }>(await as.admin.post(url("/selections"), { data: { projectId: p.id, componentTypeId: glass, label: nm({ run }, "S"), config: { category: "Single", glassType: "ID1", thickness: "12" }, orderIndex } }), 201)).selection;
     const [s0, s1] = [await mk(0), await mk(1)];
     const L = nm({ run }, "S-renamed");
-    const u = (await ok<{ selection: Selection }>(await as.member.patch(url(`/selections/${s0.id}`), { data: { label: ` ${L} `, config: { category: "Double" }, orderIndex: 9, componentTypeId: door } }))).selection;
-    expect(u).toMatchObject({ id: s0.id, label: L, config: { category: "Double" }, orderIndex: 0, componentTypeId: glass });
+    const u = (await ok<{ selection: Selection }>(await as.member.patch(url(`/selections/${s0.id}`), { data: { label: ` ${L} `, config: { category: "Glazed" }, orderIndex: 9, componentTypeId: door } }))).selection;
+    expect(u).toMatchObject({ id: s0.id, label: L, config: { category: "Glazed" }, orderIndex: 0, componentTypeId: glass });
     const lbl = (await ok<{ selection: Selection }>(await as.admin.patch(url(`/selections/${s0.id}`), { data: { label: `${L}-2` } }))).selection;
-    expect(lbl.config).toEqual({ category: "Double" }); // label-only PATCH leaves config alone
+    expect(lbl.config).toEqual({ category: "Glazed" }); // label-only PATCH leaves config alone
     const list = (await ok<{ selections: Selection[] }>(await as.admin.get(url(`/selections?projectId=${p.id}`)))).selections;
     expect(list.map((s) => [s.id, s.orderIndex])).toEqual([[s0.id, 0], [s1.id, 1]]);
     await rejected(await as.admin.patch(url(`/selections/${s1.id}`), { data: { orderIndex: 0 } }), 400, "At least one of label or config must be provided");
@@ -154,7 +154,7 @@ test.describe("selections: create / list / patch", () => {
     await ok(await as.admin.patch(url(`/selections/${s.id}`), { data: { label: nm({ run }, "S-lbl") } }));
     await ok(await as.admin.delete(url(`/selections/${spare.id}`)));
     expect(await readProjectState(p.id)).toMatchObject({ designSubmittedAt: expect.any(String), calcCount: 1 });
-    await ok(await as.admin.patch(url(`/selections/${s.id}`), { data: { config: { category: "Double" } } }));
+    await ok(await as.admin.patch(url(`/selections/${s.id}`), { data: { config: { category: "Glazed" } } }));
     expect(await readProjectState(p.id)).toMatchObject({ designSubmittedAt: null, calcCount: 0 });
   });
 

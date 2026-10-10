@@ -24,7 +24,7 @@ test("assertDeletableInquiry: null → false, rgr- → true, anything else throw
 test("scopedOp maps rgr: ops to their base op and rejects unknown rgr: ops; legacy ops are unscoped", () => {
   assert.deepEqual(scopedOp("rgr:setProjectStatus"), { base: "setProjectStatus", model: "project", idKey: "projectId" });
   assert.deepEqual(scopedOp("rgr:seedV1Design"), { base: "seedV1Design", model: "partition", idKey: "partitionId" });
-  assert.deepEqual(Object.values(SCOPED_OPS).map((s) => s.base).sort(), ["insertCalculation", "seedV1Design", "setDesignSubmittedAt", "setProjectStatus"]);
+  assert.deepEqual(Object.values(SCOPED_OPS).map((s) => s.base).sort(), ["insertCalculation", "seedV1Design", "setDesignSubmittedAt", "setProjectStatus", "setSelectionConfig"]);
   assert.equal(scopedOp("setProjectStatus"), null);
   assert.throws(() => scopedOp("rgr:dropEverything"), /refused/);
 });
@@ -45,4 +45,28 @@ test("matchesSweepPrefix: case- and padding-tolerant, still anchored at the star
   for (const bad of ["rgr-otherrun-inv", "x-rgr-murx0cvz-inv", "GLASS-WSEAL-01", "rgr-murx0cv"]) assert.equal(matchesSweepPrefix(bad, p), false, bad);
   assert.equal(matchesSweepPrefix("RGR-ANY-thing", "rgr-"), true); // recovery's generic prefix
   assert.equal(normalizeSweepCode("  RGR-MURX0CVZ-INV-A1 "), "rgr-murx0cvz-inv-a1");
+});
+
+test("addAllowedCodes adds rgr- codes under the parent branch, idempotently; refuses non-rgr codes and non-dependent fields", async () => {
+  const { addAllowedCodes } = await import("../regression/fixtures/db-scope");
+  const cfg = { u_profile: { valueMap: { ID1: ["GLASS-U-01"], ID2: ["X"] } }, category: { options: ["Single"] } };
+  const once = addAllowedCodes(cfg, "ID1", { u_profile: "rgr-abc-1" });
+  assert.deepEqual(once.u_profile.valueMap, { ID1: ["GLASS-U-01", "rgr-abc-1"], ID2: ["X"] });
+  assert.deepEqual(addAllowedCodes(once, "ID1", { u_profile: "rgr-abc-1" }), once);
+  assert.deepEqual(cfg.u_profile.valueMap.ID1, ["GLASS-U-01"]); // input untouched
+  assert.throws(() => addAllowedCodes(cfg, "ID1", { u_profile: "GLASS-U-99" }), /not an rgr- code/);
+  assert.throws(() => addAllowedCodes(cfg, "ID1", { category: "rgr-abc-2" }), /no valueMap/);
+  assert.throws(() => addAllowedCodes(cfg, "ID1", { nope: "rgr-abc-2" }), /no valueMap/);
+});
+
+test("stripPrefixedCodes removes exactly the prefixed values, so add then strip restores the original", async () => {
+  const { addAllowedCodes, stripPrefixedCodes } = await import("../regression/fixtures/db-scope");
+  const cfg = { u_profile: { valueMap: { ID1: ["GLASS-U-01"] } }, door: { valueMap: { "Simple Glass": ["D-1"] } }, category: { options: ["Single"] } };
+  const added = addAllowedCodes(addAllowedCodes(cfg, "ID1", { u_profile: "rgr-run1-a" }), "Simple Glass", { door: "RGR-RUN2-B" });
+  const only1 = stripPrefixedCodes(added, "rgr-run1-");
+  assert.equal(only1.removed, 1);
+  assert.deepEqual(only1.cfg.door.valueMap, { "Simple Glass": ["D-1", "RGR-RUN2-B"] });
+  const all = stripPrefixedCodes(added, "rgr-");
+  assert.equal(all.removed, 2);
+  assert.deepEqual(all.cfg, cfg);
 });

@@ -63,11 +63,12 @@ test("J5: SuperAdmin temp org — create → real data in every table → Suspen
       const roles = (await ok(await admin.get(B("/roles")), 200)) as { roles: { id: string; name: string }[] };
       const memberRole = roles.roles.find((r) => r.name === "Company Member")!.id;
       await ok(await admin.post(B("/users"), { data: { username: `${run.prefix}j5-member`, firstName: "RGR", lastName: "J5", password: runPassword(), roleId: memberRole } }));
+      // S31-7: the item set (and its dropdown choices) must exist before the project's config snapshot is frozen
+      const items = await makeItemSet(orgItems(admin, org.slug), run.prefix, "GLASS", "j5");
       const inq = (await ok(await admin.post(B("/inquiries"), { data: { name: `${run.prefix}j5-inq`, currency: "AED", projectLocation: "Dubai UAE" } }))) as { inquiry: { id: string } };
       const project = (await ok(await admin.post(B(`/inquiries/${inq.inquiry.id}/convert`)))) as { project: { id: string } };
       const projectId = project.project.id;
       const { partitionIds: [p1] } = await buildRoom(admin, org.slug, run.prefix, projectId, [wallOf(2000, 2400), PLAIN, PLAIN, PLAIN]);
-      const items = await makeItemSet(orgItems(admin, org.slug), run.prefix, "GLASS", "j5");
       const sel = await addSelection(admin, org.slug, projectId, "GLASS", `${run.prefix}J5 Glass`, glassCfg(items));
       await ok(await admin.patch(B(`/partitions/${p1}`), { data: { heightMm: 2400, design: designOf([[2000, [[2400, sel]]]]) } }), 200);
       await ok(await admin.post(B(`/projects/${projectId}/submit-design`)), 200);

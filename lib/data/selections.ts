@@ -216,13 +216,13 @@ export async function updateSelection(
   if (!existing) return null;
 
   // Stage 31 S31-7: validate the new config values against the project's frozen snapshot type (the same
-  // source create used), falling back to the live type only when there is no snapshot (or the type is
-  // not in it).
+  // source create used), falling back to the live type only when there is no snapshot at all. A snapshot
+  // that lacks the selection's type is rejected, exactly as create does.
   if (input.config !== undefined) {
-    const snapType = readSnapshotTypes(existing.project.configSnapshot)?.find(
-      (t) => t.id === existing.componentTypeId,
-    );
-    if (snapType) {
+    const snapshotTypes = readSnapshotTypes(existing.project.configSnapshot);
+    if (snapshotTypes) {
+      const snapType = snapshotTypes.find((t) => t.id === existing.componentTypeId);
+      if (!snapType) throw new SelectionConfigError("Component type not found or access denied.");
       assertValidConfig(
         parseFieldsSchema(snapType.fieldsSchema),
         parseFieldOptionsConfig(snapType.fieldOptionsConfig),

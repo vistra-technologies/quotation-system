@@ -105,8 +105,10 @@ function once(key: string, make: () => Promise<string>): Promise<string> {
 
 /** f.wall + one GLASS selection filling its only cell — ready for Submit Design (not submitted). */
 export async function readyWall(f: Factories, admin: Guarded, url: (p: string) => string) {
+  // S31-7: the config's codes must be Test-Org dropdown choices BEFORE the project (and its snapshot) exists
+  const cfg = await glassConfig(f);
   const w = await f.wall();
-  const sel = await f.selection(w.projectId, "GLASS", await glassConfig(f));
+  const sel = await f.selection(w.projectId, "GLASS", cfg);
   const p = await admin.patch(url(`/partitions/${w.partitionId}`), { data: { heightMm: 2400, design: oneCellDesign(sel.id) } });
   expect(p.status(), await p.text()).toBe(200);
   return { ...w, selectionId: sel.id };

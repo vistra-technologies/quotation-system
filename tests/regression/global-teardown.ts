@@ -10,7 +10,7 @@ import { removeOwnStrays, type Stray } from "./fixtures/cleanup-rules";
 import { releaseRunLock, lockHolderPid, teardownRefusal } from "./fixtures/run-lock";
 import { globalStateFailuresFile, readGlobalStateFailures, stuckTemporaryTypeNames } from "./fixtures/global-state";
 import { restoreTestOrgLimit } from "./fixtures/test-org-limit";
-import { regressionSnapshot, regressionSweep } from "../e2e/db-helpers";
+import { regressionSnapshot, regressionSweep, regressionStripCodes } from "../e2e/db-helpers";
 
 /** R16: the orchestrator reads this to decide whether a retry is allowed (never after a cleanup failure). */
 function writeStatus(s: { runId: string | null; cleanupFailed: boolean; reason?: string }) {
@@ -73,6 +73,7 @@ async function teardown(run: RunState) {
   let errors: string[];
   const stuckNames: string[] = [];
   let limitRestoreFailure: string | null = null;
+  let stripFailure: string | null = null;
   let strayRemoval: Awaited<ReturnType<typeof removeOwnStrays>> = { removed: [], errors: [], leftForOthers: [] };
   try {
     ({ deleted, errors } = await cleaner.drainLedger(ledger, mine));
@@ -115,6 +116,14 @@ async function teardown(run: RunState) {
   } finally {
     // Stage 29: put the Test Org's userLimit back EXACTLY (rule 10) — even when the drain above failed.
     limitRestoreFailure = await restoreTestOrgLimit(sa, run.testOrg.id);
+    // Stage 31 S31-7: take this run's inventory codes back out of the Test Org's GLASS/DOOR option lists
+    // (fixtures/test-org-codes.ts added them) so the shared configuration is back to its baseline exactly.
+    try {
+      const n = await regressionStripCodes(TEST_ORG, run.prefix);
+      if (n) console.log(`[regression] teardown: removed ${n} run code(s) from the Test Org's option lists`);
+    } catch (err) {
+      stripFailure = `could not remove this run's codes from the Test Org's option lists: ${err instanceof Error ? err.message : String(err)}`;
+    }
     await cleaner.dispose();
     await sa.dispose();
   }
@@ -126,7 +135,7 @@ async function teardown(run: RunState) {
   const orgsCompared = Object.keys(run.baseline.orgs).filter((s) => !ignore(s)).length;
   // global-state revert failures are appended by withRecordedGlobalState via this file
   const stateFile = globalStateFailuresFile(run.storageDir);
-  const revertFailures: string[] = [...readGlobalStateFailures(stateFile), ...stuckNames, ...(limitRestoreFailure ? [limitRestoreFailure] : [])];
+  const revertFailures: string[] = [...readGlobalStateFailures(stateFile), ...stuckNames, ...(limitRestoreFailure ? [limitRestoreFailure] : []), ...(stripFailure ? [stripFailure] : [])];
 
   const failed = errors.length > 0 || strays.length > 0 || delta.length > 0 || revertFailures.length > 0;
   const report = {

@@ -13,7 +13,7 @@ import { recoverOrphans } from "./fixtures/recovery";
 import { stuckTemporaryTypeNames } from "./fixtures/global-state";
 import { generateRunPassword, recoverMinAgeMs } from "./fixtures/cleanup-rules";
 import { raiseTestOrgLimit, restoreTestOrgLimit, ORG_B_USER_LIMIT } from "./fixtures/test-org-limit";
-import { regressionSnapshot, regressionSweep } from "../e2e/db-helpers";
+import { regressionSnapshot, regressionSweep, regressionStripCodes } from "../e2e/db-helpers";
 import { apiSignIn, apiUrl, getSeededFormulaSetId, isSubdomain } from "../e2e/helpers";
 
 const ROLE_NAME: Record<Role, string> = {
@@ -96,6 +96,11 @@ async function setup(env: ReturnType<typeof requireEnv>, runId: string) {
   } finally {
     await recoveryCleaner.dispose(); // closes its browser sessions; listOrgs() (SA-only) keeps working
   }
+
+  // 0b. A crashed earlier run may have left its rgr- inventory codes in the Test Org's GLASS/DOOR option lists
+  // (fixtures/test-org-codes.ts); they are suite-owned, so remove them BEFORE the baseline is taken.
+  const residue = await regressionStripCodes(TEST_ORG, "rgr-");
+  if (residue) console.log(`[regression] removed ${residue} leftover rgr- code(s) from the Test Org's option lists (crashed earlier run)`);
 
   // 1. Baseline snapshot BEFORE we touch anything (the final diff proves non-interference).
   let baseline = await regressionSnapshot();

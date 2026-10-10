@@ -33,6 +33,8 @@ import type { Guarded } from "../fixtures/clients";
 import type { Factories } from "../fixtures/factories";
 import type { RunState } from "../fixtures/run-state";
 import { orgApi } from "../api/project-helpers";
+import { allowTestOrgCodes } from "../fixtures/test-org-codes";
+import { rgrSetSelectionConfig } from "../../e2e/db-helpers";
 import {
   codesOf, doorCfg, expectLines, glassCfg, makeItemSet, readCalc, refused, testOrgItems,
   type Calculation, type ItemSet,
@@ -266,7 +268,10 @@ test.describe("calculation engine: exact material lists (copied tuples)", () => 
     const twoSection = async (doubleLeaf: boolean) => {
       const { projectId, partitionIds: [p1] } = await project(c, [wall(1400, 2400), PLAIN, PLAIN, PLAIN]);
       const gs = await selection(c, projectId, "GLASS", glassCfg(g));
-      const ds = await selection(c, projectId, "DOOR", doorCfg(d, doubleLeaf ? { isDoubleLeaf: "Yes" } : {}));
+      const ds = await selection(c, projectId, "DOOR", doorCfg(d));
+      // The Test Org's DOOR type has no isDoubleLeaf field, so the API (S31-7) rejects the key; the summary reads
+      // it from the stored config (lib/door-leaf.ts), so write that state straight into the DB (Test Org only).
+      if (doubleLeaf) await rgrSetSelectionConfig(ds, { ...doorCfg(d), isDoubleLeaf: "Yes" });
       const dsg = design([[800, [[2400, gs]]], [600, [[2400, ds]]]]); // patchTwoSection(…, "left")
       (dsg.sections[1].cells[0] as Record<string, unknown>).hinging = "left";
       await setDesign(c, p1, 2400, dsg);
@@ -339,6 +344,8 @@ test.describe("calculation engine: refusals keep the stored calculation", () => 
     // An item whose unit disagrees with the formula: woodWedge is billed in metres; this item says pieces.
     const wrongUnit = await f.inventoryItem({ code: `${run.prefix}engUnit-${Date.now().toString(36)}`, measurementUnit: "pieces", perUnitQuantity: 1 });
     const missing = `${run.prefix}engNoSuchCode`;
+    // The two off-set codes are still dropdown choices (S31-7); UNRESOLVED_CODE stays reachable: a choice with no inventory item.
+    await allowTestOrgCodes("GLASS", { whiteSealCode: missing, woodWedgeCode: wrongUnit.code });
     const { projectId, partitionIds: [p1] } = await project(c, [wall(4000, 3000), PLAIN, PLAIN, PLAIN]);
     const sel = await selection(c, projectId, "GLASS", { ...glassCfg(g), whiteSealCode: missing, woodWedgeCode: wrongUnit.code });
     await setDesign(c, p1, 3000, glass4(sel));

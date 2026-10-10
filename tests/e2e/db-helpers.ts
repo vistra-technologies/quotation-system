@@ -222,6 +222,10 @@ export async function rgrInsertCalculation(projectId: string): Promise<void> {
 export async function rgrSetDesignSubmittedAt(projectId: string): Promise<void> {
   runDbOp("rgr:setDesignSubmittedAt", { projectId });
 }
+/** Writes a Selection's config verbatim (bypasses API validation); Test Org / rgr- orgs only. */
+export async function rgrSetSelectionConfig(selectionId: string, config: Record<string, unknown>): Promise<void> {
+  runDbOp("rgr:setSelectionConfig", { selectionId, config });
+}
 export async function rgrSetProjectStatus(projectId: string, status: string): Promise<void> {
   runDbOp("rgr:setProjectStatus", { projectId, status });
 }
@@ -232,6 +236,14 @@ export async function closeTestDb(): Promise<void> {
 
 // ── Regression suite ──────────────────────────────────────────────────────────
 export async function regressionSnapshot(): Promise<Snapshot> { return runDbOp<Snapshot>("regressionSnapshot"); }
+/** Adds run-prefixed inventory codes to a Test-Org type's dependent dropdown lists. Call under the Test-Org config lock. */
+export async function regressionAllowCodes(orgSlug: string, typeCode: string, parent: string, codes: Record<string, string>): Promise<void> {
+  runDbOp("regressionAllowCodes", { orgSlug, typeCode, parent, codes });
+}
+/** Removes every option/valueMap value starting with `prefix` from the org's type configs; returns how many. */
+export async function regressionStripCodes(orgSlug: string, prefix: string): Promise<number> {
+  return runDbOp<number>("regressionStripCodes", { orgSlug, prefix });
+}
 export async function regressionSweep(orgSlug: string, prefix: string) {
   return runDbOp<Array<{ kind: string; id: string; label: string }>>("regressionSweep", { orgSlug, prefix });
 }

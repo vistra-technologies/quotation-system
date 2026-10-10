@@ -15,6 +15,7 @@ import type { Guarded } from "../fixtures/clients";
 import type { Ledger } from "../fixtures/ledger";
 import { postCreate, type Factories } from "../fixtures/factories";
 import type { RunState } from "../fixtures/run-state";
+import { allowTestOrgCodes } from "../fixtures/test-org-codes";
 import { apiUrl } from "../../e2e/helpers";
 import type { Ctx } from "./api-matrix";
 
@@ -67,6 +68,8 @@ export async function glassConfig(f: Factories): Promise<Record<string, string>>
     for (const [field, measurementUnit] of Object.entries(GLASS_CODE_FIELDS)) {
       out[field] = (await f.inventoryItem({ measurementUnit })).code;
     }
+    // S31-7: the codes must be choices of the Test Org's GLASS options before any project that uses them exists.
+    await allowTestOrgCodes("GLASS", out);
     return out;
   });
   return { category: "Single", glassType: "ID1", thickness: "12", ...codes };

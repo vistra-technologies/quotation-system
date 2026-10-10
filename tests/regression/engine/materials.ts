@@ -17,6 +17,7 @@ import { expect, type APIResponse } from "@playwright/test";
 import type { Guarded } from "../fixtures/clients";
 import type { Factories } from "../fixtures/factories";
 import { apiUrl } from "../../e2e/helpers";
+import { allowTestOrgCodes } from "../fixtures/test-org-codes";
 
 export type Unit = "metres" | "pieces";
 type FieldDef = { field: string; formula: string; unit: Unit; perUnit: number };
@@ -62,18 +63,50 @@ export interface ItemSet {
 }
 
 /** A creator of one inventory item in some org; returns its id and code. */
-export type ItemMaker = (o: { code: string; measurementUnit: Unit; perUnitQuantity: number }) => Promise<{ id: string; code: string }>;
+export type ItemMaker = ((o: { code: string; measurementUnit: Unit; perUnitQuantity: number }) => Promise<{ id: string; code: string }>) & {
+  /** Called by makeItemSet once the whole set exists (Test Org: makes the codes valid dropdown choices). */
+  afterSet?: (kind: "GLASS" | "DOOR", codes: Record<string, string>) => Promise<void>;
+};
 
-/** Test-Org items through the ledgering factory. */
-export const testOrgItems = (f: Factories): ItemMaker => (o) => f.inventoryItem(o);
+/**
+ * Test-Org items through the ledgering factory. After the set exists its codes are added to the Test Org's
+ * GLASS/DOOR option lists (S31-7: selection configs are validated against the project snapshot), so create
+ * the set BEFORE the project whose selections use it.
+ */
+export const testOrgItems = (f: Factories): ItemMaker => {
+  const make: ItemMaker = (o) => f.inventoryItem(o);
+  make.afterSet = allowTestOrgCodes;
+  return make;
+};
 
 /** Items in a throwaway org (cascade with the org; never ledgered on their own). */
 export function orgItems(admin: Guarded, slug: string): ItemMaker {
-  return async (o) => {
+  const make: ItemMaker = async (o) => {
     const r = await admin.post(apiUrl(slug, `/api/v1/orgs/${slug}/inventory`), { data: { name: `${o.code} name`, active: true, ...o } });
     expect(r.status(), await r.text()).toBe(201);
     return { id: ((await r.json()) as { item: { id: string } }).item.id, code: o.code };
   };
+  // S31-7: make the set's codes choices of the throwaway org's own GLASS/DOOR lists (the org is the suite's, so no lock/revert).
+  make.afterSet = async (kind, codes) => {
+    const base = apiUrl(slug, `/api/v1/orgs/${slug}`);
+    const types = await admin.get(`${base}/component-types`);
+    expect(types.status(), await types.text()).toBe(200);
+    const id = ((await types.json()) as { componentTypes: { id: string; code: string }[] }).componentTypes.find((t) => t.code === kind)?.id;
+    if (!id) throw new Error(`org ${slug} has no ComponentType ${kind}`);
+    const path = `${base}/component-types/${id}/field-values`;
+    type Cfg = Record<string, { options?: string[]; valueMap?: Record<string, string[]> }>;
+    const got = await admin.get(path);
+    expect(got.status(), await got.text()).toBe(200);
+    const cfg = structuredClone(((await got.json()) as { componentType: { fieldOptionsConfig: Cfg | null } }).componentType.fieldOptionsConfig ?? {});
+    const parent = kind === "GLASS" ? "ID1" : "Simple Glass";
+    for (const [field, value] of Object.entries(codes)) {
+      const vm = ((cfg[field] ??= {}).valueMap ??= {});
+      vm[parent] = [...new Set([...(vm[parent] ?? []), value])];
+    }
+    const put = await admin.put(path, { data: { fieldOptionsConfig: cfg } });
+    expect(put.status(), await put.text()).toBe(200);
+  };
+  return make;
 }
 
 /** One item per field of `kind`, codes `<prefix><label><rand>-<field index>`. */
@@ -88,6 +121,7 @@ export async function makeItemSet(make: ItemMaker, prefix: string, kind: "GLASS"
     set.ids[d.field] = id;
     set.byFormula[d.formula] = { code, unit: d.unit, perUnit: d.perUnit };
   }
+  await make.afterSet?.(kind, set.codes);
   return set;
 }
 
