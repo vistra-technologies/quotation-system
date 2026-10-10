@@ -24,7 +24,7 @@
  */
 import dotenv from "dotenv";
 import type { Prisma } from "../app/generated/prisma/client";
-import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry, scopedOp, assertRowInScope, matchesSweepPrefix, normalizeSweepCode, addAllowedCodes, stripPrefixedCodes, type OrgFieldConfig } from "../tests/regression/fixtures/db-scope";
+import { assertOrgInScope, assertSweepPrefix, assertDeletableInquiry, scopedOp, assertRowInScope, matchesSweepPrefix, normalizeSweepCode, addAllowedCodes, stripPrefixedCodes, SCOPED_ONLY_BASES, type OrgFieldConfig } from "../tests/regression/fixtures/db-scope";
 
 // Same precedence as Next: real env > .env.local > .env (dotenv never overrides an already-set var).
 dotenv.config({ path: ".env.local", quiet: true });
@@ -70,6 +70,10 @@ async function main() {
   try {
     // Regression-suite scoped variants: refuse unless the target row is in the Test Org / an rgr- org.
     const scoped = scopedOp(op);
+    // Ops with no legacy callers exist ONLY as their rgr: variant: the bare name would skip the scope check.
+    if (!scoped && SCOPED_ONLY_BASES.has(op)) {
+      throw new Error(`regression DB op refused: "${op}" is only reachable as "rgr:${op}" (scope-checked)`);
+    }
     if (scoped) {
       const id = input[scoped.idKey];
       const where = { where: { id: typeof id === "string" ? id : "" }, select: { organization: { select: { slug: true } } } };

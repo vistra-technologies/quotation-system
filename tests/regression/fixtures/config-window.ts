@@ -15,11 +15,25 @@ export const WINDOW_MS = 180_000;
 export const STALE_MS = 6 * 60_000;
 export const LOCK_WAIT_MS = 8 * 60_000;
 
-/** Run `body` holding TEST_ORG_CONFIG_LOCK with a full time budget for the window. Not re-entrant. */
+/** True while THIS process is inside withTestOrgConfigLock (the lock is not re-entrant: waiting would be on itself). */
+let heldByThisProcess = false;
+export const testOrgConfigLockHeldHere = (): boolean => heldByThisProcess;
+
+/** Run `body` holding TEST_ORG_CONFIG_LOCK with a full time budget for the window. Not re-entrant: a nested call throws at once. */
 export async function withTestOrgConfigLock<T>(run: Pick<RunState, "storageDir">, body: () => Promise<T>): Promise<T> {
+  if (heldByThisProcess) {
+    throw new Error("withTestOrgConfigLock: this process already holds TEST_ORG_CONFIG_LOCK (not re-entrant) - move the call out of the locked window");
+  }
   const original = test.info().timeout;
   test.setTimeout(original + LOCK_WAIT_MS);
-  return withLock(run.storageDir, TEST_ORG_CONFIG_LOCK, body, {
+  return withLock(run.storageDir, TEST_ORG_CONFIG_LOCK, async () => {
+    heldByThisProcess = true;
+    try {
+      return await body();
+    } finally {
+      heldByThisProcess = false;
+    }
+  }, {
     timeoutMs: LOCK_WAIT_MS,
     staleMs: STALE_MS,
     onAcquired: (waited) => test.setTimeout(original + waited + WINDOW_MS),

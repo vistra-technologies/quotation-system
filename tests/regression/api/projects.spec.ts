@@ -595,6 +595,9 @@ test.describe("projects: frozen configSnapshot (shared ComponentType edit)", () 
   // Holds TEST_ORG_CONFIG_LOCK for the whole test (catalog.spec.ts edits Test-Org types under the same lock):
   // the exact `changes` diffs below would otherwise pick up another spec's concurrent type edit.
   test("a ComponentType rename is invisible to an existing project's snapshot until config-update applies it", async ({ as, f, url, run, baseURL }) => {
+    // BEFORE the lock window: glassConfig may take TEST_ORG_CONFIG_LOCK itself (allowTestOrgCodes) and the lock is
+    // not re-entrant. It also has to precede the projects below: their snapshots must list its codes.
+    const cfg = await glassConfig(f);
     await withTestOrgConfigLock(run, async () => {
       const sa = await SaClient.login(baseURL!, process.env.TEST_SA_USERNAME!, process.env.TEST_SA_PASSWORD!, createAllowance([], [run.testOrg.id]), process.env.VERCEL_AUTOMATION_BYPASS_SECRET);
       try {
@@ -611,7 +614,6 @@ test.describe("projects: frozen configSnapshot (shared ComponentType edit)", () 
           if (r.status() !== 200) throw new Error(`SA PATCH GLASS name → HTTP ${r.status()} ${await r.text()}`);
         };
 
-        const cfg = await glassConfig(f); // created BEFORE the window (keeps the rename short) and before the projects: their snapshots must list its codes
         const old = await f.project(); // frozen BEFORE the rename
         const cu = await f.project(); // config-update target
         const original = await readName();

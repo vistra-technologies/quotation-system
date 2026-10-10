@@ -70,3 +70,11 @@ test("stripPrefixedCodes removes exactly the prefixed values, so add then strip 
   assert.equal(all.removed, 2);
   assert.deepEqual(all.cfg, cfg);
 });
+
+test("SCOPED_ONLY_BASES: setSelectionConfig is a base op that exists only as rgr:setSelectionConfig", async () => {
+  const { SCOPED_ONLY_BASES } = await import("../regression/fixtures/db-scope");
+  assert.equal(SCOPED_ONLY_BASES.has("setSelectionConfig"), true);
+  assert.equal(scopedOp("setSelectionConfig"), null); // bare name is unscoped => the CLI refuses it via SCOPED_ONLY_BASES
+  assert.equal(scopedOp("rgr:setSelectionConfig")?.base, "setSelectionConfig");
+  for (const base of SCOPED_ONLY_BASES) assert.ok(Object.values(SCOPED_OPS).some((s) => s.base === base), base);
+});

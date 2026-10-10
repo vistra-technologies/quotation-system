@@ -35,6 +35,9 @@ export const SCOPED_OPS: Record<string, { base: string; model: "project" | "part
   "rgr:setSelectionConfig": { base: "setSelectionConfig", model: "selection", idKey: "selectionId" },
 };
 
+/** Base ops that must never run unscoped (no legacy caller): only via their rgr: name. */
+export const SCOPED_ONLY_BASES: ReadonlySet<string> = new Set(["setSelectionConfig"]);
+
 /** The scoped-op descriptor for `op`, or null for an unscoped op. Throws on an unknown `rgr:` op. */
 export function scopedOp(op: string): (typeof SCOPED_OPS)[string] | null {
   if (!op.startsWith("rgr:")) return null;
