@@ -16,7 +16,6 @@ interface StatsResponse {
   projectsInProgress: number;
   inquiriesTotal: number;
   inquiriesNew: number;
-  ordersTotal: number;
 }
 
 const EMPTY_STATS: StatsResponse = {
@@ -24,13 +23,12 @@ const EMPTY_STATS: StatsResponse = {
   projectsInProgress: 0,
   inquiriesTotal: 0,
   inquiriesNew: 0,
-  ordersTotal: 0,
 };
 
 /**
  * Dashboard landing page (Server Component).
  *
- * Shows a welcome header and KPI tiles for Orders, Projects, and Inquiries.
+ * Shows a welcome header and KPI tiles for Projects and Inquiries (Orders tile hidden until the Order stage).
  * Redirects to /{orgSlug}/login if no valid session exists.
  *
  * Stage 12 Batch 6: switched from getSession()/getOrgById()/getSessionRole()/
@@ -39,8 +37,7 @@ const EMPTY_STATS: StatsResponse = {
  *
  * Stage 12 Batch 7b: added parallel internalFetch against
  * /api/v1/orgs/[orgSlug]/stats for real KPI counts. Stats fall back to 0
- * on any error — never shows "—". The Orders count is always 0 (no Order
- * model exists yet; see development-cycles/README.md). The "in progress" chip
+ * on any error — never shows "—". The "in progress" chip
  * counts DRAFT projects (the only active status currently in use). The
  * "awaiting reply" chip counts NEW inquiries. See plan-batch7b.md for the
  * full trend-chip interpretation rationale.
@@ -84,37 +81,6 @@ export default async function DashboardPage({
 
       {/* KPI tiles */}
       <div className="flex flex-wrap gap-4">
-        {/* Orders — always 0; no Order model exists yet */}
-        <div className="flex min-w-[230px] flex-1 flex-col rounded-md border border-border bg-bg-card p-[18px] shadow-card">
-          <div className="mb-3.5 flex items-center justify-between">
-            <div className="flex h-9 w-9 items-center justify-center rounded-[9px] bg-primary-softer text-primary">
-              <svg
-                width="20"
-                height="20"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                <path d="M3.27 6.96 12 12.01l8.73-5.05M12 22.08V12" />
-              </svg>
-            </div>
-            <span className="whitespace-nowrap rounded-pill bg-status-refunded-bg px-2.5 py-0.5 text-[11px] font-bold text-status-refunded-text">
-              No orders yet
-            </span>
-          </div>
-          <div className="text-[25px] font-extrabold leading-none text-text-heading">
-            {stats.ordersTotal}
-          </div>
-          <div className="mt-1.5 text-[11.5px] font-bold text-text-muted">
-            Orders
-          </div>
-        </div>
-
         {/* Projects — total count + DRAFT "in progress" chip */}
         <div className="flex min-w-[230px] flex-1 flex-col rounded-md border border-border bg-bg-card p-[18px] shadow-card">
           <div className="mb-3.5 flex items-center justify-between">

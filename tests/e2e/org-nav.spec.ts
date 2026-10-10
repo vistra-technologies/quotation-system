@@ -205,16 +205,16 @@ test("cross-org session replay: vistra session rejected on acme-glass dashboard"
 test("stale session: nav click lands on a bare login page, no sidebar", async ({ page }) => {
   await apiSignIn(page, "acme-glass", "admin");
   await page.goto(orgUrl("acme-glass", "/dashboard"));
-  await expect(page.getByRole("link", { name: "Orders" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("link", { name: "Inquiries" })).toBeVisible({ timeout: 30_000 });
 
   // Simulate another login revoking this session: the cookie no longer authenticates.
   await page.context().clearCookies();
 
-  await page.getByRole("link", { name: "Orders" }).click();
+  await page.getByRole("link", { name: "Inquiries" }).click();
   await page.waitForURL(orgUrlPattern("acme-glass", "/login"), { timeout: 30_000 });
 
   await expect(page.locator('input[autocomplete="username"]')).toBeVisible({ timeout: 30_000 });
   // The shell is gone: no sidebar nav links.
-  await expect(page.getByRole("link", { name: "Orders" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Projects" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Inquiries" })).toHaveCount(0);
 });
