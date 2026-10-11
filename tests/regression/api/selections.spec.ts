@@ -91,7 +91,7 @@ test.describe("selections: create / list / patch", () => {
     const p = await f.project();
     const glass = await typeId(as.admin, run, "GLASS");
     const L = nm({ run }, "S");
-    const config = { category: "Single", thickness: "12", rgrFlag: true, rgrNum: 7, rgrNull: null };
+    const config = { category: "Single", glassType: "ID1", thickness: "12", rgrFlag: true, rgrNum: 7, rgrNull: null };
     const s = (await ok<{ selection: Selection }>(await as.member.post(url("/selections"), { data: { projectId: ` ${p.id} `, componentTypeId: glass, label: ` ${L} `, config, orderIndex: 4 } }), 201)).selection;
     expect(s).toMatchObject({ projectId: p.id, componentTypeId: glass, label: L, config, orderIndex: 4, organizationId: run.testOrg.id });
     const list = (await ok<{ selections: Selection[] }>(await as.member.get(url(`/selections?projectId=${p.id}`)))).selections;
