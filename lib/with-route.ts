@@ -44,13 +44,16 @@ async function readParams(rest: unknown[]): Promise<Record<string, string> | und
   }
 }
 
+/** The key itself must be identifier-shaped too, so client text or a huge key never reaches a log line. */
+const QUERY_KEY_RE = /^[A-Za-z][A-Za-z0-9]{0,40}Id$/;
+
 /** S32-4: only `*Id` query keys with an id-shaped value, at most 5. Nothing else from the query is read. */
 function readQueryIds(request: Request): Record<string, string> | undefined {
   try {
     const out: Record<string, string> = {};
     for (const [k, v] of new URL(request.url).searchParams) {
       if (Object.keys(out).length >= MAX_QUERY_IDS) break;
-      if (/Id$/.test(k) && !(k in out) && REQUEST_ID_RE.test(v)) out[k] = v;
+      if (QUERY_KEY_RE.test(k) && !(k in out) && REQUEST_ID_RE.test(v)) out[k] = v;
     }
     return Object.keys(out).length ? out : undefined;
   } catch {

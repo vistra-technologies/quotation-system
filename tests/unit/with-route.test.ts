@@ -249,6 +249,22 @@ test("queryIds: only *Id keys with id-shaped values are logged; search and page 
   assert.equal(raw.includes("search"), false);
 });
 
+test("queryIds: a crafted or oversized key is dropped, real keys are kept", async () => {
+  const h = wr(async () => ok());
+  const longKey = "a".repeat(9000) + "Id";
+  await h(
+    reqUrl(
+      `http://localhost/api/x?${encodeURIComponent("jane.doe@example.comId")}=abc&${longKey}=abc` +
+        "&orgId=o1&projectId=p1&floorId=f1&roomId=r1&externalCompanyId=c1",
+    ),
+  );
+  const q = endLine().queryIds as Record<string, string>;
+  assert.deepEqual(q, { orgId: "o1", projectId: "p1", floorId: "f1", roomId: "r1", externalCompanyId: "c1" });
+  const raw = JSON.stringify(lines.map((l) => l.line));
+  assert.equal(raw.includes("jane.doe"), false);
+  assert.equal(raw.includes("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), false);
+});
+
 test("queryIds: at most 5 keys", async () => {
   const h = wr(async () => ok());
   await h(reqUrl("http://localhost/api/x?aId=1&bId=2&cId=3&dId=4&eId=5&fId=6&gId=7"));
