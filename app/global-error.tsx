@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { reportClientError } from "@/lib/client-error-report";
 import "./globals.css";
 
@@ -20,8 +20,12 @@ export default function GlobalError({
   error: Error & { digest?: string };
   unstable_retry: () => void;
 }) {
+  // Stage 32 (S32-7): without a digest, the ref reportClientError generated and sent is the reference.
+  const [ref, setRef] = useState<string | undefined>();
   useEffect(() => {
-    reportClientError(error, "global");
+    // The ref only exists after the report is sent (sessionStorage dedupe), so it is state set from the effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRef(reportClientError(error, "global"));
   }, [error]);
 
   return (
@@ -30,9 +34,9 @@ export default function GlobalError({
         <h2 className="text-sm font-semibold text-text-heading">
           Something went wrong.
         </h2>
-        {error.digest && (
+        {(error.digest || ref) && (
           <p className="text-xs text-text-muted">
-            Error reference: {error.digest}
+            Error reference: {error.digest || ref}
           </p>
         )}
         <button

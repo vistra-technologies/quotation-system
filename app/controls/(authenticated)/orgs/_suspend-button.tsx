@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface SuspendOrgButtonProps {
   orgId: string;
@@ -48,7 +49,7 @@ export function SuspendOrgButton({
           error?: string;
         };
         alert(
-          `Failed to ${action} organization: ${data.error ?? `HTTP ${res.status}`}`,
+          `Failed to ${action} organization: ${apiErrorMessage(data, `HTTP ${res.status}`)}`,
         );
         return;
       }

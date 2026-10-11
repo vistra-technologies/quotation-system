@@ -12,11 +12,13 @@ export type ClientErrorReport = {
   message: string;
   digest?: string;
   path?: string;
+  /** Client-generated reference (Stage 32, S32-7): only when the error has no digest. */
+  ref?: string;
 };
 
-const ALLOWED_KEYS = new Set(["boundary", "message", "digest", "path"]);
+const ALLOWED_KEYS = new Set(["boundary", "message", "digest", "path", "ref"]);
 
-/** `boundary` and `message` are required; `digest` and `path` optional. Any other key, type or range is invalid. */
+/** `boundary` and `message` are required; `digest`, `path` and `ref` optional. Any other key, type or range is invalid. */
 export function parseClientErrorReport(raw: unknown): ClientErrorReport | null {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
@@ -34,6 +36,10 @@ export function parseClientErrorReport(raw: unknown): ClientErrorReport | null {
       return null;
     }
     out.path = o.path;
+  }
+  if (o.ref !== undefined) {
+    if (typeof o.ref !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(o.ref)) return null;
+    out.ref = o.ref;
   }
   return out;
 }

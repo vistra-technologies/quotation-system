@@ -6,6 +6,7 @@ import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { withAction } from "@/lib/with-route";
 import { isValidPassword, PASSWORD_TOO_SHORT_MESSAGE } from "@/lib/user-validation";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 // ---------------------------------------------------------------------------
 // createUser
@@ -79,7 +80,7 @@ export const createUser = withAction(
         limit?: number;
         current?: number;
       };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
       // Stage 29: 409 USER_LIMIT_REACHED is surfaced as form state (never a 500).
       if (res.status === 409 && body.code === "USER_LIMIT_REACHED") {
         errorMessage = `User limit reached (${body.current}/${body.limit}). Contact your platform administrator.`;
@@ -126,7 +127,7 @@ export const activateUser = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -171,7 +172,7 @@ export const deactivateUser = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -218,7 +219,7 @@ export const changeUserRole = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -278,7 +279,7 @@ export const setUserPasswordModal = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -325,7 +326,7 @@ export const setUserPassword = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -398,7 +399,7 @@ export const updateUserProfile = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -453,7 +454,7 @@ export const reassignWork = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -505,7 +506,7 @@ export const deleteUser = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }

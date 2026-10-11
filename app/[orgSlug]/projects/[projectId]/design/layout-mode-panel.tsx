@@ -10,6 +10,7 @@ import { useUnit } from "./unit-context";
 import { useEffectiveRoomName } from "./design-draft-context";
 import { sideName } from "./room-floor-plan";
 import type { PartitionRow, RoomRow } from "./types";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface LayoutModePanelProps {
   orgSlug: string;
@@ -263,7 +264,7 @@ function PartitionSummaryPanel({
       }
       if (!patchRes.ok) {
         const body = (await patchRes.json().catch(() => ({}))) as { error?: string };
-        setRemoveError(body.error ?? "An unexpected error occurred — please try again.");
+        setRemoveError(apiErrorMessage(body, "An unexpected error occurred — please try again."));
         return;
       }
       const { room: updatedRoom } = (await patchRes.json()) as { room: RoomRow };

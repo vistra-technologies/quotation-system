@@ -5,6 +5,7 @@ import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { withAction } from "@/lib/with-route";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 // ---------------------------------------------------------------------------
 // createInquiry
@@ -109,7 +110,7 @@ export const createInquiry = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -230,7 +231,7 @@ export const updateInquiry = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -333,7 +334,7 @@ export const convertInquiryToProject = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }

@@ -41,6 +41,7 @@ import type {
   SelectionRow,
   ViewMode,
 } from "./types";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface DesignWorkspaceProps {
   orgSlug: string;
@@ -114,7 +115,7 @@ function DesignWorkspaceInner({
       }
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setSubmitDesignError(body.error ?? "Could not submit the design — please try again.");
+        setSubmitDesignError(apiErrorMessage(body, "Could not submit the design — please try again."));
         return;
       }
       // Bug 13: show translucent slide-in toast confirming submission.

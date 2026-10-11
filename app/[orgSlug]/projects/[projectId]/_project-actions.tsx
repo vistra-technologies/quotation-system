@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { LoadingOverlay } from "@/components/loading-overlay";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface ProjectActionsProps {
   orgSlug: string;
@@ -53,7 +54,7 @@ export function ProjectActions({ orgSlug, projectId, projectLabel, projectsHref,
           : await fetch(`${base}/reset`, { method: "POST" });
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? `${kind === "delete" ? "Delete" : "Reset"} failed (HTTP ${res.status})`);
+        setError(apiErrorMessage(data, `${kind === "delete" ? "Delete" : "Reset"} failed (HTTP ${res.status})`));
         setBusy(false);
         return;
       }

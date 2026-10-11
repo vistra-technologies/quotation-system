@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { internalFetch } from "@/lib/internal-fetch";
 import { redirect } from "next/navigation";
 import { withAction } from "@/lib/with-route";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 // ─── addUser ─────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ export const addUser = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -145,7 +146,7 @@ export const editUser = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -188,7 +189,7 @@ export const deleteSAUser = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }

@@ -17,7 +17,7 @@ export const MAX_LINE_BYTES = 8 * 1024;
 /** Identity/base keys the logger owns (status/durationMs/err are legitimate caller fields); caller fields with these names are renamed to field_<key>. */
 const RESERVED = new Set([
   "ts", "level", "msg", "requestId", "parentRequestId", "route", "method", "orgSlug", "userId",
-  "username", "saId", "saUsername", "env", "commit",
+  "username", "saId", "saUsername", "params", "queryIds", "env", "commit",
 ]);
 
 function configuredLevel(): Level {
@@ -52,6 +52,8 @@ function write(level: Level, msg: string, fields?: Record<string, unknown>): voi
       if (ctx.username) base.username = scrubString(ctx.username);
       if (ctx.saId) base.saId = ctx.saId;
       if (ctx.saUsername) base.saUsername = scrubString(ctx.saUsername);
+      if (ctx.params && Object.keys(ctx.params).length) base.params = ctx.params;
+      if (ctx.queryIds && Object.keys(ctx.queryIds).length) base.queryIds = ctx.queryIds;
     }
     base.env = process.env.VERCEL_ENV ?? "development";
     base.commit = (process.env.VERCEL_GIT_COMMIT_SHA ?? "").slice(0, 7);

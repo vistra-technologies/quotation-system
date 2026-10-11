@@ -12,6 +12,7 @@ import {
   type SelectionConfig,
 } from "@/lib/config-update";
 import { resolveOptions } from "@/lib/configurator-gating";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface Props {
   orgSlug: string;
@@ -99,7 +100,7 @@ export function UpdateConfigWizard({ orgSlug, projectId, backHref, preview }: Pr
       );
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(data.error ?? `Update failed (HTTP ${res.status})`);
+        setError(apiErrorMessage(data, `Update failed (HTTP ${res.status})`));
         setBusy(false);
         return;
       }

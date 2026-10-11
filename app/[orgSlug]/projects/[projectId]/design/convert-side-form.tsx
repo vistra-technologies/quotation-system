@@ -6,6 +6,7 @@ import { LoadingOverlay } from "@/components/loading-overlay";
 import { redirectToLogin } from "./login-redirect";
 import { useUnit } from "./unit-context";
 import type { RoomRow } from "./types";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface ConvertSideFormProps {
   orgSlug: string;
@@ -201,7 +202,7 @@ export function ConvertSideForm({
         const body = (await patchRes.json().catch(() => ({}))) as {
           error?: string;
         };
-        setError(body.error ?? "An unexpected error occurred — please try again.");
+        setError(apiErrorMessage(body, "An unexpected error occurred — please try again."));
         return;
       }
 

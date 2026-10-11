@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { reportClientError } from "@/lib/client-error-report";
 
 /**
@@ -18,9 +18,13 @@ export default function AdminError({
   error: Error & { digest?: string };
   unstable_retry: () => void;
 }) {
+  // Stage 32 (S32-7): without a digest, the ref reportClientError generated and sent is the reference.
+  const [ref, setRef] = useState<string | undefined>();
   useEffect(() => {
     console.error(error);
-    reportClientError(error, "admin");
+    // The ref only exists after the report is sent (sessionStorage dedupe), so it is state set from the effect.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRef(reportClientError(error, "admin"));
   }, [error]);
 
   return (
@@ -28,9 +32,9 @@ export default function AdminError({
       <h2 className="text-sm font-semibold text-red-800 dark:text-red-200">
         Something went wrong loading this page.
       </h2>
-      {error.digest && (
+      {(error.digest || ref) && (
         <p className="text-xs text-red-600 dark:text-red-400">
-          Error reference: {error.digest}
+          Error reference: {error.digest || ref}
         </p>
       )}
       <button

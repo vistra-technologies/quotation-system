@@ -19,7 +19,17 @@ test("parseClientErrorReport: exact keys and ranges", () => {
       path: "/" + "p".repeat(199),
     }),
   );
+  assert.deepEqual(parseClientErrorReport({ boundary: "global", message: "m", ref: "a1B-_" }), {
+    boundary: "global",
+    message: "m",
+    ref: "a1B-_",
+  });
+  assert.ok(parseClientErrorReport({ boundary: "global", message: "m", ref: "r".repeat(64) }));
   const bad: unknown[] = [
+    { boundary: "global", message: "m", ref: "r".repeat(65) },
+    { boundary: "global", message: "m", ref: "a/b" },
+    { boundary: "global", message: "m", ref: "" },
+    { boundary: "global", message: "m", ref: 5 },
     null, "s", 3, [], [{ boundary: "global", message: "m" }],
     { message: "m" },
     { boundary: "other", message: "m" },
@@ -78,6 +88,16 @@ test("204 on a valid report, logs one client.error at error with host, no user i
   assert.equal(ce[0].host, "app.test");
   assert.equal(ce[0].userId, undefined);
   assert.equal(ce[0].boundary, "global");
+});
+
+test("a report with a ref is 204 and the client.error line carries ref", async () => {
+  const ref = "0b6f2d5e-4c3a-4f9e-9a52-2f0d7a1c8e11";
+  const r = await post(JSON.stringify({ boundary: "admin", message: "boom", path: "/x", ref }));
+  assert.equal(r.status, 204);
+  const ce = lines.filter((l) => l.msg === "client.error");
+  assert.equal(ce.length, 1);
+  assert.equal(ce[0].ref, ref);
+  assert.equal((await post(JSON.stringify({ boundary: "admin", message: "m", ref: "a/b" }))).status, 400);
 });
 
 test("413 over 2 KB by header and by actual body, 400 on bad shape, 403 on foreign Origin", async () => {

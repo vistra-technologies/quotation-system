@@ -5,6 +5,7 @@ import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { withAction } from "@/lib/with-route";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 // ---------------------------------------------------------------------------
 // createSelection
@@ -80,7 +81,7 @@ export const createSelection = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -149,7 +150,7 @@ export const updateSelection = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -206,7 +207,7 @@ export const deleteSelection = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }

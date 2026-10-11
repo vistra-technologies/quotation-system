@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 /**
  * Client Component login form for the SuperAdmin console (/controls/login).
@@ -39,10 +40,7 @@ export function LoginForm() {
         window.location.href = "/controls/orgs";
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(
-          (data as { error?: string }).error ??
-            "Sign in failed. Check your credentials.",
-        );
+        setError(apiErrorMessage(data, "Sign in failed. Check your credentials."));
       }
     } catch {
       setError("Network error — please try again.");

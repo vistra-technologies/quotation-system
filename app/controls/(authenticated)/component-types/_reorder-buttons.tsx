@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface ReorderButtonsProps {
   orgId: string;
@@ -46,7 +47,7 @@ export function ReorderButtons({
       );
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setErrorMessage(data.error ?? `HTTP ${res.status}`);
+        setErrorMessage(apiErrorMessage(data, `HTTP ${res.status}`));
         return;
       }
       router.refresh();

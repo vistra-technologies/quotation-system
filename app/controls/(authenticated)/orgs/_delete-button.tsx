@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface DeleteOrgButtonProps {
   orgId: string;
@@ -45,7 +46,7 @@ export function DeleteOrgButton({ orgId, orgName, orgSlug }: DeleteOrgButtonProp
       if (!res.ok) {
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         setErrorMessage(
-          `Delete failed: ${data.error ?? `HTTP ${res.status}`}`,
+          `Delete failed: ${apiErrorMessage(data, `HTTP ${res.status}`)}`,
         );
         return;
       }

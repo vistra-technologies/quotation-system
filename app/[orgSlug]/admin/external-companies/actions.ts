@@ -6,6 +6,7 @@ import { isSupportedCurrency } from "@/lib/currency";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { withAction } from "@/lib/with-route";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 // ---------------------------------------------------------------------------
 // createExternalCompany
@@ -67,7 +68,7 @@ export const createExternalCompany = withAction(
 
   if (!res.ok) {
     const body = (await res.json()) as { error?: string };
-    return { error: body.error ?? "Failed to create company" };
+    return { error: apiErrorMessage(body, "Failed to create company") };
   }
 
   revalidatePath(`/${orgSlug}/admin/external-companies`);
@@ -130,7 +131,7 @@ export const updateExternalCompany = withAction(
 
   if (!res.ok) {
     const body = (await res.json()) as { error?: string };
-    return { error: body.error ?? "Failed to update company" };
+    return { error: apiErrorMessage(body, "Failed to update company") };
   }
 
   revalidatePath(`/${orgSlug}/admin/external-companies`);
@@ -174,7 +175,7 @@ export const deleteExternalCompany = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }

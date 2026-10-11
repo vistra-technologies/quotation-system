@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { apiServerError } from "@/lib/api-error";
 import {
   requireSuperAdminFromRequest,
   SuperAdminUnauthorizedError,
@@ -26,6 +27,6 @@ export const GET = withRoute("GET /api/v1/superadmin/ping", async (request: Requ
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     log.error("ping", { err });
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return apiServerError();
   }
 });
