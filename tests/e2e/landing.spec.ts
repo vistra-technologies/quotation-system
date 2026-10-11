@@ -207,3 +207,23 @@ test.describe("apex landing â€” mobile", () => {
     expect(overflow).toBeLessThanOrEqual(1);
   });
 });
+
+// KNOWN BUG fix (backlog 2026-10-05): the hero grid column grew past the viewport on phones and clipped the copy.
+for (const width of [390, 360]) {
+  test.describe(`apex landing — hero fits at ${width}px`, () => {
+    test.use({ viewport: { width, height: 800 } });
+
+    test("hero heading and paragraph stay inside the viewport", async ({ page }) => {
+      await page.goto("/");
+      const h1 = page.locator("#home h1");
+      const lede = page.locator("#home .hero-lede");
+      await expect(h1).toBeVisible();
+      for (const el of [h1, lede]) {
+        const box = await el.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+      }
+    });
+  });
+}
