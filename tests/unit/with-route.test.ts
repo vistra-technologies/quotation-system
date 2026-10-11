@@ -185,3 +185,101 @@ test("withAction: a failing or hanging identity lookup never breaks or long-dela
   assert.ok(Date.now() - t0 < 3000);
   assert.equal("userId" in terminal("action.end")[0].line, false);
 });
+
+// ---- Stage 32: params / queryIds (S32-3, S32-4) ----
+const reqUrl = (url: string) => new Request(url, { headers: { "x-vercel-id": "iad1::p-1" } });
+const endLine = () => terminal("request.end")[0].line;
+const ok = () => NextResponse.json({ ok: true });
+type Ctx = { params?: Promise<unknown> };
+const wr = (fn: () => Promise<NextResponse> | NextResponse) =>
+  withRoute("GET /x", (async () => fn()) as (r: Request, c?: Ctx) => Promise<NextResponse>);
+
+test("params: id-shaped string params are logged on request.end exactly", async () => {
+  const h = wr(async () => ok());
+  const params = { orgSlug: "e2e-testorg", projectId: "abc_123" };
+  await h(req(), { params: Promise.resolve(params) });
+  assert.deepEqual(endLine().params, params);
+});
+
+test("params: arrays, 129-char values and values with / or @ are dropped", async () => {
+  const h = wr(async () => ok());
+  await h(req(), {
+    params: Promise.resolve({
+      all: ["sign-in", "email"],
+      long: "a".repeat(129),
+      slash: "a/b",
+      at: "a@b",
+      keep: "k-1",
+    }),
+  });
+  assert.deepEqual(endLine().params, { keep: "k-1" });
+});
+
+test("params: no second argument -> no params key and the handler runs", async () => {
+  let ran = false;
+  const h = wr(async () => {
+    ran = true;
+    return ok();
+  });
+  await h(req());
+  assert.equal(ran, true);
+  assert.equal("params" in endLine(), false);
+});
+
+test("params: a rejecting params promise never fails the request", async () => {
+  let ran = false;
+  const h = wr(async () => {
+    ran = true;
+    return ok();
+  });
+  const rejecting = Promise.reject(new Error("nope"));
+  const res = await h(req(), { params: rejecting });
+  assert.equal(res.status, 200);
+  assert.equal(ran, true);
+  assert.equal("params" in endLine(), false);
+});
+
+test("queryIds: only *Id keys with id-shaped values are logged; search and page never are", async () => {
+  const h = wr(async () => ok());
+  await h(reqUrl("http://localhost/api/x?projectId=abc&search=Jane&page=2&floorId=a/b"));
+  const line = endLine();
+  assert.deepEqual(line.queryIds, { projectId: "abc" });
+  const raw = JSON.stringify(lines.map((l) => l.line));
+  assert.equal(raw.includes("Jane"), false);
+  assert.equal(raw.includes("search"), false);
+});
+
+test("queryIds: at most 5 keys", async () => {
+  const h = wr(async () => ok());
+  await h(reqUrl("http://localhost/api/x?aId=1&bId=2&cId=3&dId=4&eId=5&fId=6&gId=7"));
+  assert.equal(Object.keys(endLine().queryIds as object).length, 5);
+});
+
+test("params and queryIds are on every line of the request, and survive the 8 KB truncation path", async () => {
+  const { log } = await import("@/lib/logger");
+  const h = wr(async () => {
+    log.info("mid");
+    log.error("big", { blob: "x".repeat(20000) });
+    return ok();
+  });
+  await h(reqUrl("http://localhost/api/x?projectId=abc"), { params: Promise.resolve({ orgSlug: "o-1" }) });
+  const big = lines.find((l) => l.line.msg === "big")!.line;
+  assert.equal(big.truncated, true);
+  assert.deepEqual(big.params, { orgSlug: "o-1" });
+  assert.deepEqual(big.queryIds, { projectId: "abc" });
+  const mid = lines.find((l) => l.line.msg === "mid")!.line;
+  assert.deepEqual(mid.params, { orgSlug: "o-1" });
+});
+
+test("a caller field named params or queryIds is renamed with the field_ prefix", async () => {
+  const { log } = await import("@/lib/logger");
+  const h = wr(async () => {
+    log.info("custom", { params: "mine", queryIds: "mine" });
+    return ok();
+  });
+  await h(req(), { params: Promise.resolve({ orgSlug: "o-1" }) });
+  const l = lines.find((x) => x.line.msg === "custom")!.line;
+  assert.equal(l.field_params, "mine");
+  assert.equal(l.field_queryIds, "mine");
+  assert.deepEqual(l.params, { orgSlug: "o-1" });
+});

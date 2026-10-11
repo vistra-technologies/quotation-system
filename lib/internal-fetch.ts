@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { getContext } from "@/lib/log-context";
+import { parentRequestIdFor } from "@/lib/request-id";
 
 /**
  * Cookie-forwarding fetch helper for Server Components and Server Actions.
@@ -54,7 +55,8 @@ export async function internalFetch(
   }
 
   // Stage 30 (S30-3): lets the API route log the action/page request that caused it.
-  const parentRequestId = getContext()?.requestId;
+  // Stage 32 (S32-5): a page render has no ALS context, so fall back to the inbound x-vercel-id.
+  const parentRequestId = parentRequestIdFor(getContext()?.requestId, requestHeaders.get("x-vercel-id"));
   if (parentRequestId) {
     mergedHeaders["x-parent-request-id"] = parentRequestId;
   }

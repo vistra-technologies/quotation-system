@@ -6,7 +6,7 @@ import { flushToAxiom } from "@/lib/axiom";
 import { runWithContext, type LogContext } from "@/lib/log-context";
 import { log } from "@/lib/logger";
 import { serializeError } from "@/lib/log-redact";
-import { requestIdFrom } from "@/lib/request-id";
+import { REQUEST_ID_RE, requestIdFrom } from "@/lib/request-id";
 
 export { requestIdFrom };
 
@@ -22,6 +22,41 @@ export { requestIdFrom };
  */
 
 const PARENT_ID_RE = /^[A-Za-z0-9:_-]{1,128}$/;
+
+const MAX_QUERY_IDS = 5;
+
+/**
+ * S32-3: keeps string-valued route params that are id-shaped. Arrays (the `[...all]` catch-all) and anything
+ * longer or outside the id shape are dropped. The params Promise is awaited in its own try/catch so a missing
+ * or rejecting `params` never fails the request.
+ */
+async function readParams(rest: unknown[]): Promise<Record<string, string> | undefined> {
+  try {
+    const raw = await (rest[0] as { params?: unknown } | undefined)?.params;
+    if (!raw || typeof raw !== "object") return undefined;
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+      if (typeof v === "string" && REQUEST_ID_RE.test(v)) out[k] = v;
+    }
+    return Object.keys(out).length ? out : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** S32-4: only `*Id` query keys with an id-shaped value, at most 5. Nothing else from the query is read. */
+function readQueryIds(request: Request): Record<string, string> | undefined {
+  try {
+    const out: Record<string, string> = {};
+    for (const [k, v] of new URL(request.url).searchParams) {
+      if (Object.keys(out).length >= MAX_QUERY_IDS) break;
+      if (/Id$/.test(k) && !(k in out) && REQUEST_ID_RE.test(v)) out[k] = v;
+    }
+    return Object.keys(out).length ? out : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * Registers the end-of-request Axiom flush (S30-8). The buffer is captured BY REFERENCE: ALS is not
@@ -67,6 +102,10 @@ export function withRoute<A extends unknown[], R extends Response>(
       buffer: [],
     };
     if (parent && PARENT_ID_RE.test(parent)) ctx.parentRequestId = parent;
+    const params = await readParams(rest);
+    if (params) ctx.params = params;
+    const queryIds = readQueryIds(request);
+    if (queryIds) ctx.queryIds = queryIds;
     registerFlush(ctx.buffer);
 
     return runWithContext(ctx, async () => {

@@ -19,6 +19,10 @@ export type LogContext = {
   username?: string;
   saId?: string;
   saUsername?: string;
+  /** S32-3: id-shaped route params (strings only). */
+  params?: Record<string, string>;
+  /** S32-4: id-shaped `*Id` query keys (max 5). */
+  queryIds?: Record<string, string>;
   /** Lines written during this request (capped). Drained by the transport in a later batch. */
   buffer: unknown[];
 };
