@@ -210,7 +210,7 @@ test.describe("apex landing — mobile", () => {
 
 // KNOWN BUG fix (backlog 2026-10-05): the hero grid column grew past the viewport on phones and clipped the copy.
 for (const width of [390, 360]) {
-  test.describe(`apex landing � hero fits at ${width}px`, () => {
+  test.describe(`apex landing — hero fits at ${width}px`, () => {
     test.use({ viewport: { width, height: 800 } });
 
     test("hero heading and paragraph stay inside the viewport", async ({ page }) => {
