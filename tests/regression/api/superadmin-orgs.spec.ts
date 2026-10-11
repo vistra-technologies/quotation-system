@@ -490,7 +490,10 @@ test.describe("SuperAdmin org users (org B)", () => {
       const p = await ctx.post(orgApi(run.orgB.slug, "/projects"), { data: { name, currency: "AED", projectLocation: "Dubai, UAE" } });
       expect(p.status(), await p.text()).toBe(201);
       projectId = ((await p.json()) as { project: { id: string } }).project.id;
-      ledger.add({ kind: "project", id: projectId, orgSlug: run.orgB.slug, label: name });
+      // Do NOT ledger this project: org B is itself ledgered as an "org" and its SA hard-delete
+      // (Stage 17 full FK-safe cascade) drops all org-B rows. Ledgering a child here would require an
+      // org-B admin session at teardown drain time (which the drainer can't get without TEST_ADMIN_PASSWORD)
+      // and cause cleanupFailed on every run when that env var is unset.
     } finally {
       await ctx.dispose();
     }

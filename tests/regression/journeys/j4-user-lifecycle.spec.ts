@@ -34,7 +34,10 @@ async function choose(page: Page, trigger: ReturnType<Page["locator"]>, option: 
   await expect(trigger).toHaveText(option);
 }
 
-/** Sign in through the org login page (retries the form's own 429 cooldown). Lands on /dashboard. */
+/** Sign in through the org login page (retries the form's own 429 cooldown). Lands on /dashboard.
+ *  When NEXT_PUBLIC_SINGLE_SESSION_CONFIRM=true (staging/production) a fresh API sign-in (freshSignIn)
+ *  leaves a live session; the next UI login shows "Log out the other session?" — this helper clicks
+ *  through that dialog so the journey works regardless of whether the flag is on or off. */
 async function uiLogin(page: Page, run: RunState, username: string, password: string): Promise<void> {
   for (let attempt = 1; attempt <= 4; attempt++) {
     await page.goto(orgTarget(run, "/login"));
@@ -44,10 +47,36 @@ async function uiLogin(page: Page, run: RunState, username: string, password: st
     await page.getByPlaceholder("Enter your password").fill(password);
     await page.locator("form button[type=submit]").click();
     const out = await expect
-      .poll(async () => (orgPathOf(run, page.url()) === "/dashboard" ? "in" : (await page.getByText(/too many|try again in/i).count()) ? "429" : ""), { timeout: 30_000 })
+      .poll(
+        async () => {
+          if (orgPathOf(run, page.url()) === "/dashboard") return "in";
+          if (await page.getByText(/too many|try again in/i).count()) return "429";
+          // NEXT_PUBLIC_SINGLE_SESSION_CONFIRM=true: existing session (e.g. freshSignIn) triggers a dialog.
+          if (await page.getByRole("button", { name: "Log out other session" }).count()) return "dialog";
+          return "";
+        },
+        {
+          timeout: 30_000,
+          message: "Expected /dashboard, rate-limit notice, or single-session confirm dialog after submitting login",
+        },
+      )
       .not.toBe("")
-      .then(() => (orgPathOf(run, page.url()) === "/dashboard" ? "in" : "429"));
+      .then(async () => {
+        if (orgPathOf(run, page.url()) === "/dashboard") return "in";
+        if (await page.getByRole("button", { name: "Log out other session" }).count()) return "dialog";
+        return "429";
+      });
     if (out === "in") return;
+    if (out === "dialog") {
+      await page.getByRole("button", { name: "Log out other session" }).click();
+      await expect
+        .poll(() => orgPathOf(run, page.url()) === "/dashboard", {
+          timeout: 30_000,
+          message: "Expected /dashboard after clicking 'Log out other session'",
+        })
+        .toBe(true);
+      return;
+    }
     await page.waitForTimeout(11_000);
   }
   throw new Error(`UI login of ${username} kept hitting the rate limit`);
