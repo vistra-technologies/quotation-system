@@ -7,6 +7,8 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { listProjectsPaginated, createProject } from "@/lib/data/projects";
+import { readJsonObject, parseOptionalDate } from "@/lib/api-body";
+import { isSupportedCurrency, CURRENCY_ERROR_MESSAGE } from "@/lib/currency";
 import { isFormulaPinError } from "@/lib/data/formula-pin";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
@@ -136,13 +138,14 @@ export const GET = withRoute(
  * Create a new project in the org.
  *
  * Auth: any authenticated org member (no specific RBAC permission required).
- * Body: { name, currency, status?, externalCompanyId? }
+ * Body: { name, currency, externalCompanyId?, ...extendedFields }
+ * Status: always created as DRAFT (Stage 31 S31-11) — a client-sent `status` is ignored.
  * Note: destinationCountry is derived server-side from the linked company's country (D19, Stage 14)
  *       and is not accepted from the client.
  *
  * Returns 201 with the created project on success.
- * Returns 400 on missing required fields.
- * Returns 409 on concurrent projectNumber collision.
+ * Returns 400 on missing required fields, an unsupported currency, or an unparseable date.
+ * Returns 409 on concurrent projectNumber collision (after a bounded server-side retry).
  */
 export const POST = withRoute(
   "POST /api/v1/orgs/[orgSlug]/projects",
@@ -163,12 +166,9 @@ export const POST = withRoute(
     return apiServerError();
   }
 
-  let body: Record<string, unknown>;
-  try {
-    body = (await request.json()) as Record<string, unknown>;
-  } catch {
-    return apiBadRequest("Request body must be valid JSON");
-  }
+  const parsedBody = await readJsonObject(request);
+  if (!parsedBody.ok) return parsedBody.response;
+  const body = parsedBody.body;
 
   const name = typeof body.name === "string" ? body.name.trim() : null;
   // destinationCountry is derived server-side from the company's country (D19) — not parsed from body.
@@ -180,8 +180,6 @@ export const POST = withRoute(
     typeof body.projectLocation === "string" && body.projectLocation.trim()
       ? body.projectLocation.trim()
       : null;
-  const status =
-    typeof body.status === "string" ? body.status.trim() : "DRAFT";
   const externalCompanyId =
     typeof body.externalCompanyId === "string" && body.externalCompanyId
       ? body.externalCompanyId
@@ -190,22 +188,24 @@ export const POST = withRoute(
   // Stage 14 Batch C — extended intake fields
   const parseStr = (v: unknown) =>
     typeof v === "string" && v.trim() ? v.trim() : null;
-  const parseDate = (v: unknown): Date | null =>
-    typeof v === "string" && v ? new Date(`${v}T00:00:00.000Z`) : null;
+  const submissionDate = parseOptionalDate(body.submissionDate, "submissionDate");
+  if ("error" in submissionDate) return apiBadRequest(submissionDate.error);
+  const projectDeadline = parseOptionalDate(body.projectDeadline, "projectDeadline");
+  if ("error" in projectDeadline) return apiBadRequest(projectDeadline.error);
 
   if (!name || !currency) {
     return apiBadRequest("name and currency are required");
   }
+  if (!isSupportedCurrency(currency)) return apiBadRequest(CURRENCY_ERROR_MESSAGE);
 
   try {
     const project = await createProject(session, {
       name,
       currency,
       projectLocation,
-      status,
       externalCompanyId,
-      submissionDate: parseDate(body.submissionDate),
-      projectDeadline: parseDate(body.projectDeadline),
+      submissionDate: submissionDate.value,
+      projectDeadline: projectDeadline.value,
       projectBudget: parseStr(body.projectBudget),
       mainContractorName: parseStr(body.mainContractorName),
       interiorContractorName: parseStr(body.interiorContractorName),

@@ -3,8 +3,10 @@ import { getApiSession, ApiAuthError, apiAuthErrorResponse } from "@/lib/api-aut
 import {
   apiForbidden,
   apiBadRequest,
+  apiConflict,
   apiServerError,
 } from "@/lib/api-error";
+import { isUniqueViolation } from "@/lib/prisma-errors";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import { listRoles, createRole } from "@/lib/data/admin";
 import { log } from "@/lib/logger";
@@ -94,6 +96,7 @@ export const GET = withRoute(
  *
  * Returns 201 with { role } on success (full role row including id).
  * Returns 400 if name is missing.
+ * Returns 409 if a role with this name already exists in the org.
  * Returns 403 if MANAGE_FEATURES is not held.
  *
  * Tenancy: enforced by getApiSession() (403 on cross-org); createRole() scopes
@@ -146,6 +149,8 @@ export const POST = withRoute(
     const role = await createRole(session, { name, description });
     return NextResponse.json({ role }, { status: 201 });
   } catch (err) {
+    // (organizationId, name) unique — fixed text, never the Prisma message (Stage 31 S31-10).
+    if (isUniqueViolation(err)) return apiConflict("A role with this name already exists");
     log.error("[POST /api/v1/orgs/[orgSlug]/roles] createRole", { err });
     return apiServerError();
   }

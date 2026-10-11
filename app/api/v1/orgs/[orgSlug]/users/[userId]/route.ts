@@ -7,7 +7,7 @@ import {
   apiServerError,
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { getUserById, deleteUser } from "@/lib/data/users";
+import { getUserById, deleteUser, USER_NOT_FOUND_MESSAGE } from "@/lib/data/users";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -81,7 +81,8 @@ export const GET = withRoute(
  * Returns 204 on success (no body).
  * Never blocked by the user's records (Stage 31 S31-4): their projects/inquiries stay, attributed
  *   to a snapshot of the user's name.
- * Returns 400 for the self-delete guard (and, until S31-10, for an unknown/other-org id).
+ * Returns 400 for the self-delete guard.
+ * Returns 404 for an unknown or other-org user id.
  *
  * Tenancy: enforced by getApiSession() (403 on cross-org) and deleteUser()
  *          calling assertUserInOrg() before any mutation.
@@ -117,13 +118,10 @@ export const DELETE = withRoute(
     await deleteUser(session, userId);
     return new NextResponse(null, { status: 204 });
   } catch (err) {
-    if (err instanceof Error) {
-      if (
-        err.message.includes("cannot delete your own account") ||
-        err.message.includes("not found or access denied")
-      ) {
-        return apiBadRequest(err.message);
-      }
+    // Unknown or other-org user id: 404 (Stage 31 S31-10).
+    if (err instanceof Error && err.message === USER_NOT_FOUND_MESSAGE) return apiNotFound("User not found");
+    if (err instanceof Error && err.message.includes("cannot delete your own account")) {
+      return apiBadRequest(err.message);
     }
     log.error("[DELETE /api/v1/orgs/[orgSlug]/users/[userId]] deleteUser", { err });
     return apiServerError();

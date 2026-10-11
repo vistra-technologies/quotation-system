@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
+import { isSupportedCurrency } from "@/lib/currency";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { withAction } from "@/lib/with-route";
@@ -47,11 +48,7 @@ export const createExternalCompany = withAction(
     return { error: "Invalid country" };
   }
 
-  if (
-    defaultCurrency !== "INR" &&
-    defaultCurrency !== "AED" &&
-    defaultCurrency !== "USD"
-  ) {
+  if (!isSupportedCurrency(defaultCurrency)) {
     return { error: "Invalid default currency" };
   }
 
@@ -116,11 +113,7 @@ export const updateExternalCompany = withAction(
     return { error: "Invalid country" };
   }
 
-  if (
-    defaultCurrency !== "INR" &&
-    defaultCurrency !== "AED" &&
-    defaultCurrency !== "USD"
-  ) {
+  if (!isSupportedCurrency(defaultCurrency)) {
     return { error: "Invalid default currency" };
   }
 

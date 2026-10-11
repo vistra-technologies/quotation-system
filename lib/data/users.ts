@@ -8,6 +8,12 @@ import { shouldRevokeSessions } from "@/lib/session-revocation";
 import type { Prisma } from "@/app/generated/prisma/client";
 import type { SessionData } from "@/lib/session";
 
+/**
+ * Thrown for a user id that is unknown or belongs to another org (one text for both, so callers cannot
+ * enumerate). Routes match it exactly to answer 404 (Stage 31 S31-10).
+ */
+export const USER_NOT_FOUND_MESSAGE = "User not found or access denied";
+
 // ─── Reads ───────────────────────────────────────────────────────────────────
 
 /** List all users in the session org, A→Z by username, with role name. */
@@ -56,7 +62,7 @@ export async function assertUserInOrg(userId: string, organizationId: string): P
     where: { id: userId, organizationId },
     select: { id: true },
   });
-  if (!user) throw new Error("User not found or access denied");
+  if (!user) throw new Error(USER_NOT_FOUND_MESSAGE);
 }
 
 // ─── Mutations ───────────────────────────────────────────────────────────────
@@ -192,7 +198,7 @@ export async function updateUserProfile(
     where: { id: userId, organizationId: session.organizationId },
     select: { id: true, roleId: true },
   });
-  if (!user) throw new Error("User not found or access denied");
+  if (!user) throw new Error(USER_NOT_FOUND_MESSAGE);
 
   // U3 enforcement on edit: if the user's role requires an external company,
   // clearing it here is rejected.
@@ -286,7 +292,7 @@ export async function activateUser(session: SessionData, userId: string): Promis
   // cookie. Activating an already-active user is a no-op and revokes nothing. Same transaction as the write.
   await prisma.$transaction(async (tx) => {
     const user = await tx.user.findUnique({ where: { id: userId }, select: { active: true } });
-    if (!user) throw new Error("User not found or access denied");
+    if (!user) throw new Error(USER_NOT_FOUND_MESSAGE);
     await tx.user.update({ where: { id: userId }, data: { active: true } });
     if (shouldRevokeSessions({ passwordChanged: false, nextActive: true, storedActive: user.active })) {
       await tx.session.deleteMany({ where: { userId } });
@@ -332,7 +338,7 @@ export async function changeUserRole(
       where: { id: userId, organizationId },
       select: { id: true, active: true, externalCompanyId: true },
     });
-    if (!user) throw new Error("User not found or access denied");
+    if (!user) throw new Error(USER_NOT_FOUND_MESSAGE);
 
     const role = await tx.role.findFirst({
       where: { id: newRoleId, organizationId },
@@ -380,7 +386,7 @@ export async function deleteUserKeepingRecords(
   userId: string,
 ): Promise<void> {
   const user = await tx.user.findUnique({ where: { id: userId }, select: { name: true } });
-  if (!user) throw new Error("User not found or access denied");
+  if (!user) throw new Error(USER_NOT_FOUND_MESSAGE);
   await tx.project.updateMany({
     where: { createdByUserId: userId },
     data: { createdByName: user.name },
@@ -453,7 +459,7 @@ export async function reassignUserWork(
         },
       }),
     ]);
-    if (!from || !to) throw new Error("User not found or access denied");
+    if (!from || !to) throw new Error(USER_NOT_FOUND_MESSAGE);
     if (fromUserId === toUserId) throw new Error("Cannot reassign work to the same user");
     if (!to.active) throw new Error("Target user must be active");
 

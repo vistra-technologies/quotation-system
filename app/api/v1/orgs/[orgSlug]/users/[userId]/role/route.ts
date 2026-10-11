@@ -3,10 +3,11 @@ import { getApiSession, ApiAuthError, apiAuthErrorResponse } from "@/lib/api-aut
 import {
   apiForbidden,
   apiBadRequest,
+  apiNotFound,
   apiServerError,
 } from "@/lib/api-error";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
-import { changeUserRole, LAST_MANAGER_MESSAGE } from "@/lib/data/users";
+import { changeUserRole, LAST_MANAGER_MESSAGE, USER_NOT_FOUND_MESSAGE } from "@/lib/data/users";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -74,9 +75,11 @@ export const PATCH = withRoute(
     await changeUserRole(session, userId, roleId);
     return NextResponse.json({ ok: true });
   } catch (err) {
+    // Unknown or other-org user id: 404 like every other [userId] route (Stage 31 S31-10).
+    if (err instanceof Error && err.message === USER_NOT_FOUND_MESSAGE) return apiNotFound("User not found");
     if (err instanceof Error) {
       if (
-        err.message.includes("not found") || // "User/Role not found or access denied"
+        err.message.includes("not found") || // "Role not found or access denied"
         err.message.includes("External company is required") || // U3 (S31-3)
         err.message === LAST_MANAGER_MESSAGE // last active user manager (S31-3)
       ) {

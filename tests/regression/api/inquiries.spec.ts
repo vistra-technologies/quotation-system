@@ -9,6 +9,7 @@
  * There is NO inquiry DELETE route: inquiries are ledgered kind `inquiry` (deleted by the guarded DB
  * helper at teardown). Projects created by `convert` are ledgered kind `project` (DRAFT, API-deletable).
  */
+import type { APIResponse } from "@playwright/test";
 import { test, expect } from "../fixtures/test";
 import { covers } from "../fixtures/covers";
 import { registerNegatives, GHOST, type Ctx } from "./api-matrix";
@@ -28,6 +29,8 @@ covers("POST /api/v1/orgs/[orgSlug]/inquiries");
 covers("GET /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]");
 covers("PATCH /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]");
 covers("POST /api/v1/orgs/[orgSlug]/inquiries/[inquiryId]/convert");
+
+const json = async <T>(r: APIResponse): Promise<T> => (await r.json()) as T;
 
 type Inquiry = {
   id: string;
@@ -348,29 +351,50 @@ test.describe("inquiries: rules", () => {
     expect((await as.member.get(url(`/inquiries/${id}`))).status()).toBe(200); // internal baseline
   });
 
-  test("KNOWN BUG: currency is not validated — \"EUR\" (not one of INR/AED/USD) is accepted", async ({ as, run, ledger }) => {
-    // KNOWN BUG — the route only requires a non-empty currency; the forms offer INR/AED/USD and external
-    // companies' defaultCurrency is validated to that set. When fixed, change this expectation to 400.
-    const { res, body } = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-eur"), currency: "eur" });
-    expect(res.status(), JSON.stringify(body)).toBe(201);
-    expect((body.inquiry as Inquiry).currency).toBe("EUR");
+  test("currency is validated: EUR is 400 on create and on PATCH (nothing created / changed); usd is stored as USD", async ({ as, f, run, ledger, url }) => {
+    // Stage 31 S31-11: was accepted verbatim (backlog); the forms offer INR/AED/USD.
+    const bad = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-eur"), currency: "eur" });
+    expect(bad.res.status(), JSON.stringify(bad.body)).toBe(400);
+    expect(bad.body).toEqual({ error: "currency must be one of INR, AED, USD" });
+    const ok = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-usd"), currency: "usd" });
+    expect(ok.res.status(), JSON.stringify(ok.body)).toBe(201);
+    expect((ok.body.inquiry as Inquiry).currency).toBe("USD");
+
+    const inq = await f.inquiry();
+    const r = await as.admin.patch(url(`/inquiries/${inq.id}`), { data: { currency: "EUR" } });
+    expect(r.status(), await r.text()).toBe(400);
+    expect(await r.json()).toEqual({ error: "currency must be one of INR, AED, USD" });
+    expect(((await json<{ inquiry: Inquiry }>(await as.admin.get(url(`/inquiries/${inq.id}`)))).inquiry).currency).toBe("AED");
+    const u = await as.admin.patch(url(`/inquiries/${inq.id}`), { data: { currency: "usd" } });
+    expect(u.status(), await u.text()).toBe(200);
+    expect((await json<{ inquiry: Inquiry }>(u)).inquiry.currency).toBe("USD");
   });
 
-  test("KNOWN BUG: an unparseable date returns 500 instead of 400 (nothing is created)", async ({ as, run, ledger, url }) => {
+  test("an unparseable date is 400 naming the field on create and on PATCH (nothing is created / changed)", async ({ as, f, run, ledger, url }) => {
+    // Stage 31 S31-10: was a 500 (Invalid Date reached Prisma, backlog).
     const name = nm({ run }, "inq-baddate");
-    // KNOWN BUG — parseDate builds an Invalid Date which Prisma rejects inside createInquiry, surfacing
-    // as a generic 500; when fixed, change this expectation to 400.
     const { res, body } = await createLedgered(as.admin, { run, ledger }, "inquiry", { name, currency: "AED", submissionDate: "not-a-date" });
-    expect(res.status()).toBe(500);
-    // Stage 30: the 500 body carries the request id, mirrored in the x-request-id header.
-    expect(body).toEqual({ error: "Internal server error", requestId: expect.any(String) });
-    expect(res.headers()["x-request-id"]).toBe((body as { requestId?: string }).requestId);
+    expect(res.status(), JSON.stringify(body)).toBe(400);
+    expect(body).toEqual({ error: "submissionDate must be a valid date (YYYY-MM-DD)" });
     expect(await listIds(as.admin, url(`/inquiries?search=${encodeURIComponent(name)}`), "inquiries")).toEqual([]);
+
+    const inq = await f.inquiry();
+    const p = await as.admin.patch(url(`/inquiries/${inq.id}`), { data: { name: `${inq.name}-x`, projectDeadline: "2026-13-01" } });
+    expect(p.status(), await p.text()).toBe(400);
+    expect(await p.json()).toEqual({ error: "projectDeadline must be a valid date (YYYY-MM-DD)" });
+    expect(((await json<{ inquiry: Inquiry }>(await as.admin.get(url(`/inquiries/${inq.id}`)))).inquiry).name).toBe(inq.name);
   });
 
-  test("KNOWN BUG: a JSON body that is not an object (null) returns 500 instead of 400", async ({ as, url }) => {
-    // KNOWN BUG — `body.name` is read on a null body outside any try; when fixed, change this to 400.
-    const r = await as.admin.post(url("/inquiries"), { data: Buffer.from("null"), headers: { "Content-Type": "application/json" } });
-    expect(r.status()).toBe(500);
+  test("a JSON body that is not an object (null) is 400 on create and on PATCH (the inquiry is not dismissed)", async ({ as, f, url }) => {
+    // Stage 31 S31-10: was a 500 (`body.name` read on null, backlog). On PATCH a `null` body used to reach the
+    // dismiss path.
+    const post = await as.admin.post(url("/inquiries"), { data: Buffer.from("null"), headers: { "Content-Type": "application/json" } });
+    expect(post.status(), await post.text()).toBe(400);
+    expect(await post.json()).toEqual({ error: "Request body must be a JSON object" });
+    const inq = await f.inquiry();
+    const patch = await as.admin.patch(url(`/inquiries/${inq.id}`), { data: Buffer.from("null"), headers: { "Content-Type": "application/json" } });
+    expect(patch.status(), await patch.text()).toBe(400);
+    expect(await patch.json()).toEqual({ error: "Request body must be a JSON object" });
+    expect(((await json<{ inquiry: Inquiry }>(await as.admin.get(url(`/inquiries/${inq.id}`)))).inquiry).status).toBe("NEW");
   });
 });

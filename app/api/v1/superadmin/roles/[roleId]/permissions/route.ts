@@ -12,6 +12,7 @@ import {
   revokeRolePermissionForOrg,
   createRoleAuditLog,
 } from "@/lib/data/superadmin/roles";
+import { isFkViolation } from "@/lib/prisma-errors";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -70,7 +71,7 @@ export const GET = withRoute(
 // Body: { orgId: string; permissionId: string }
 //
 // Returns 201 on success.
-// Returns 400 if orgId or permissionId is missing.
+// Returns 400 if orgId or permissionId is missing, or permissionId is not in the catalog.
 // Returns 404 if role not found or belongs to a different org.
 
 export const POST = withRoute(
@@ -118,6 +119,7 @@ export const POST = withRoute(
   try {
     ok = await grantRolePermissionForOrg(orgId, roleId, permissionId);
   } catch (err) {
+    if (isFkViolation(err)) return apiBadRequest("Unknown permissionId");
     log.error("[POST /api/v1/superadmin/roles/[roleId]/permissions] grantRolePermissionForOrg", { err });
     return apiServerError();
   }

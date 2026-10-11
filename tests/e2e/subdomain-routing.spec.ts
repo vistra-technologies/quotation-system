@@ -219,7 +219,7 @@ test("vistra.test.easeetool.com inquiries list row links have no org-slug prefix
       data: {
         name: "Subdomain back-link regression",
         destinationCountry: "SG",
-        currency: "SGD",
+        currency: "AED",
       },
     },
   );
@@ -271,7 +271,7 @@ test("vistra.test.easeetool.com inquiry detail back link navigates cleanly", asy
       data: {
         name: "Back-link click-through regression",
         destinationCountry: "MY",
-        currency: "MYR",
+        currency: "USD",
       },
     },
   );

@@ -25,7 +25,7 @@ export const dynamic = "force-dynamic";
  *
  * Returns 400 if the project has zero Partitions (nothing to submit).
  * Returns 404 if the project does not exist or belongs to a different org.
- * Returns 409 if the project has no active formula set / config snapshot pinned (defensive).
+ * Returns 409 if the project is not DRAFT (Stage 31 S31-11), or has no active formula set / config snapshot pinned (defensive).
  * Returns 422 (CalculationProblemReport body) if Phase A or Phase B of the gate has problems
  *   (structural cell/selection issues, or unresolved/inactive/mismatched inventory codes).
  *   The stored calculation is NOT written on a 422 — the stored row remains unchanged.
@@ -55,6 +55,10 @@ export const POST = withRoute(
 
     if (result === null) {
       return apiNotFound("Project not found");
+    }
+
+    if ("notDraft" in result) {
+      return apiConflict("Only a DRAFT project can be submitted.");
     }
 
     if ("noPartitions" in result) {

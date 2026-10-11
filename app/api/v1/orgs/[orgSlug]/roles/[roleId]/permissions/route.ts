@@ -13,6 +13,7 @@ import {
   addRolePermission,
   removeRolePermission,
 } from "@/lib/data/admin";
+import { isFkViolation, isRecordNotFound } from "@/lib/prisma-errors";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -83,7 +84,7 @@ export const GET = withRoute(
  *          to the session's organization.
  *
  * Returns 201 on success (or no-op idempotent upsert).
- * Returns 400 if permissionId is missing.
+ * Returns 400 if permissionId is missing or not in the permission catalog ("Unknown permissionId").
  * Returns 403 if MANAGE_FEATURES is not held.
  */
 export const POST = withRoute(
@@ -128,6 +129,8 @@ export const POST = withRoute(
     await addRolePermission(session, roleId, permissionId);
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (err) {
+    // The RolePermission FK to Permission: the id is not in the global catalog (Stage 31 S31-10).
+    if (isFkViolation(err)) return apiBadRequest("Unknown permissionId");
     if (err instanceof Error && err.message.includes("not found")) {
       return apiNotFound(err.message);
     }
@@ -147,6 +150,7 @@ export const POST = withRoute(
  *          to the session's organization.
  *
  * Returns 200 on success.
+ * Returns 404 if the role does not hold that permission.
  * Returns 400 if permissionId is missing.
  * Returns 403 if MANAGE_FEATURES is not held.
  */
@@ -192,6 +196,8 @@ export const DELETE = withRoute(
     await removeRolePermission(session, roleId, permissionId);
     return NextResponse.json({ success: true });
   } catch (err) {
+    // The role holds no such permission: fixed text, never Prisma's P2025 message (Stage 31 S31-10).
+    if (isRecordNotFound(err)) return apiNotFound("Permission is not granted to this role");
     if (err instanceof Error && err.message.includes("not found")) {
       return apiNotFound(err.message);
     }

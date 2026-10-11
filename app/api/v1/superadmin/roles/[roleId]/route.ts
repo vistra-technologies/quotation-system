@@ -4,8 +4,10 @@ import {
   apiBadRequest,
   apiUnauthorized,
   apiNotFound,
+  apiConflict,
   apiServerError,
 } from "@/lib/api-error";
+import { isUniqueViolation } from "@/lib/prisma-errors";
 import {
   updateRoleNameForOrg,
   createRoleAuditLog,
@@ -28,6 +30,7 @@ export const dynamic = "force-dynamic";
 // Returns 400 on missing/invalid fields.
 // Returns 401 when not authenticated as SuperAdmin.
 // Returns 404 if the role does not exist or belongs to a different org.
+// Returns 409 if a role with this name already exists in the org.
 
 export const PATCH = withRoute(
   "PATCH /api/v1/superadmin/roles/[roleId]",
@@ -74,6 +77,7 @@ export const PATCH = withRoute(
   try {
     role = await updateRoleNameForOrg(orgId, roleId, name);
   } catch (err) {
+    if (isUniqueViolation(err)) return apiConflict("A role with this name already exists");
     log.error("[PATCH /api/v1/superadmin/roles/[roleId]] updateRoleNameForOrg", { err });
     return apiServerError();
   }

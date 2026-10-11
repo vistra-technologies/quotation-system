@@ -199,17 +199,13 @@ test.describe("roles: mutations (org B only)", () => {
     expect((await rolesOf(as.admin, run.testOrg.slug)).map((x) => x.id)).not.toContain(role.id);
   });
 
-  test("KNOWN BUG: POST /roles with a name already used in the org → 500", async ({ orgB, run }) => {
+  test("POST /roles with a name already used in the org → 409 (fixed text, no Prisma text)", async ({ orgB, run }) => {
     const role = await orgBRole(orgB, run);
-    // KNOWN BUG — Role is @@unique([organizationId, name]) but createRole's P2002 is not mapped; when fixed,
-    // change this expectation to 409.
+    // Stage 31 S31-10: Role is @@unique([organizationId, name]); the P2002 maps to 409 (was a 500, backlog).
     const r = await orgB.post(orgApi(run.orgB.slug, "/roles"), { data: { name: role.name } });
-    expect(r.status(), await r.text()).toBe(500);
-    // Stage 30: the 500 body carries the request id, mirrored in the x-request-id header.
-    const body = (await r.json()) as { requestId?: string };
-    expect(body).toEqual({ error: "Internal server error", requestId: expect.any(String) });
-    expect(r.headers()["x-request-id"]).toBe(body.requestId);
-    // safe part: still exactly one role with that name
+    expect(r.status(), await r.text()).toBe(409);
+    expect(await r.json()).toEqual({ error: "A role with this name already exists" });
+    // still exactly one role with that name
     expect((await rolesOf(orgB, run.orgB.slug)).filter((x) => x.name === role.name)).toHaveLength(1);
   });
 
@@ -264,29 +260,24 @@ test.describe("roles: mutations (org B only)", () => {
     expect((await sess.get(orgApi(slug, "/roles"))).status()).toBe(403);
   });
 
-  test("KNOWN BUG: revoking a permission the role does not hold → 404 whose body echoes the raw Prisma error", async ({ orgB, run }) => {
+  test("revoking a permission the role does not hold → 404 with a fixed text (no Prisma error echoed)", async ({ orgB, run }) => {
     const slug = run.orgB.slug;
     const role = await orgBRole(orgB, run);
     const quote = await permissionId(orgB, slug, "QUOTE");
-    // KNOWN BUG — err.message (Prisma's P2025 text) is returned to the client; when fixed, keep the 404 and
-    // change the body expectation to a generic message that does not match /prisma|invocation/i.
+    // Stage 31 S31-10: was a 404 whose body echoed Prisma's P2025 text (backlog).
     const r = await orgB.delete(orgApi(slug, `/roles/${role.id}/permissions`), { data: { permissionId: quote } });
     expect(r.status(), await r.text()).toBe(404);
-    expect(((await r.json()) as { error: string }).error).toMatch(/Invalid `prisma\.rolePermission\.delete\(\)` invocation/);
+    expect(await r.json()).toEqual({ error: "Permission is not granted to this role" });
     expect(await rolePerms(orgB, slug, role.id)).toEqual([]); // safe part: nothing changed
   });
 
-  test("KNOWN BUG: granting an unknown permission id → 500 (nothing granted)", async ({ orgB, run }) => {
+  test("granting an unknown permission id → 400 (nothing granted)", async ({ orgB, run }) => {
     const slug = run.orgB.slug;
     const role = await orgBRole(orgB, run);
-    // KNOWN BUG — addRolePermission upserts without checking the permission exists, so the FK violation
-    // surfaces as a 500; when fixed, change this expectation to 404 (or 400).
+    // Stage 31 S31-10: the RolePermission FK violation (P2003) maps to 400 (was a 500, backlog).
     const r = await orgB.post(orgApi(slug, `/roles/${role.id}/permissions`), { data: { permissionId: GHOST } });
-    expect(r.status(), await r.text()).toBe(500);
-    // Stage 30: the 500 body carries the request id, mirrored in the x-request-id header.
-    const body = (await r.json()) as { requestId?: string };
-    expect(body).toEqual({ error: "Internal server error", requestId: expect.any(String) });
-    expect(r.headers()["x-request-id"]).toBe(body.requestId);
+    expect(r.status(), await r.text()).toBe(400);
+    expect(await r.json()).toEqual({ error: "Unknown permissionId" });
     expect(await rolePerms(orgB, slug, role.id)).toEqual([]); // safe part: nothing granted
   });
 

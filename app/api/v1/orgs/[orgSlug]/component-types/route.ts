@@ -3,8 +3,10 @@ import { getApiSession, ApiAuthError, apiAuthErrorResponse } from "@/lib/api-aut
 import {
   apiForbidden,
   apiBadRequest,
+  apiConflict,
   apiServerError,
 } from "@/lib/api-error";
+import { isUniqueViolation } from "@/lib/prisma-errors";
 import { requirePermission, PERMISSIONS, ForbiddenError } from "@/lib/rbac";
 import {
   listComponentTypes,
@@ -137,6 +139,8 @@ export const POST = withRoute(
     });
     return NextResponse.json({ componentType }, { status: 201 });
   } catch (err) {
+    // @@unique([organizationId, code]) (Stage 31 S31-10); fixed text, never Prisma's message.
+    if (isUniqueViolation(err)) return apiConflict("Code already in use in this organization");
     if (err instanceof Error) {
       if (
         err.message.includes("not found") ||

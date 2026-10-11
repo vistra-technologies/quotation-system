@@ -524,16 +524,15 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     await ok(await orgB.patch(B(`/component-types/${ct.id}`), { data: { active: true } }));
   });
 
-  // KNOWN BUG (pinned, R24): POST with a code the org already has is not mapped to 409 (PATCH maps P2002 to
-  // 409 "code already in use in this org"; POST only maps "not found"/"access denied") → 500. When fixed:
-  // expect 409 with that message.
-  test("KNOWN BUG: POST with a duplicate code → 500 (not 409); no second row", async ({ run, orgB }) => {
+  // Stage 31 S31-10: POST with a code the org already has maps the P2002 to 409 (was a 500, backlog).
+  test("POST with a duplicate code → 409 (Code already in use in this organization); no second row", async ({ run, orgB }) => {
     const a = await mkBType({ run, orgB });
     const categoryId = await firstCategoryId(orgB, run.orgB.slug);
     const r = await orgB.post(orgApi(run.orgB.slug, "/component-types"), {
       data: { code: a.code.toLowerCase(), name: `${run.prefix}ct-dup`, categoryId, fieldsSchema: [] },
     });
-    expect(r.status(), await r.text()).toBe(500);
+    expect(r.status(), await r.text()).toBe(409);
+    expect(await r.json()).toEqual({ error: "Code already in use in this organization" });
     expect((await listTypes(orgB, run.orgB.slug)).filter((t) => t.code === a.code)).toHaveLength(1);
   });
 });

@@ -1,3 +1,4 @@
+import type { SupportedCurrency } from "@/lib/currency";
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
 import type { CompanyRecordCounts } from "@/lib/company-records";
@@ -44,7 +45,7 @@ export type CreateExternalCompanyInput = {
   name: string;
   type: "DISTRIBUTOR" | "ARCHITECTURAL_FIRM";
   country: "INDIA" | "UAE";
-  defaultCurrency: "INR" | "AED" | "USD";
+  defaultCurrency: SupportedCurrency;
 };
 
 /**
@@ -70,7 +71,7 @@ export type UpdateExternalCompanyInput = {
   name: string;
   type: "DISTRIBUTOR" | "ARCHITECTURAL_FIRM";
   country: "INDIA" | "UAE";
-  defaultCurrency: "INR" | "AED" | "USD";
+  defaultCurrency: SupportedCurrency;
 };
 
 /**
