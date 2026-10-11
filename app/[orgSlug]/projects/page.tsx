@@ -146,6 +146,7 @@ export default async function ProjectsPage({
     notFound();
   }
 
+  throw new Error("stage32-f2-temporary-render-throw");
   const me = (await meRes.json()) as {
     externalCompanyId: string | null;
     name: string;
