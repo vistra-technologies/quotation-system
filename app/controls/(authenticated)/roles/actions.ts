@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { withAction } from "@/lib/with-route";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 // ─── createSuperAdminRole ─────────────────────────────────────────────────────
 
@@ -44,7 +45,7 @@ export const createSuperAdminRole = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -92,7 +93,7 @@ export const renameSuperAdminRole = withAction(
     let errorMessage = "An unexpected error occurred — please try again.";
     try {
       const body = (await res.json()) as { error?: string };
-      if (body.error) errorMessage = body.error;
+      errorMessage = apiErrorMessage(body, errorMessage);
     } catch {
       // ignore JSON parse failure
     }
@@ -137,7 +138,7 @@ export const grantSuperAdminRolePermission = withAction(
 
   if (!res.ok) {
     const body = (await res.json()) as { error?: string };
-    throw new Error(body.error ?? "Failed to grant permission");
+    throw new Error(apiErrorMessage(body, "Failed to grant permission"));
   }
 
   revalidatePath("/controls", "layout");
@@ -175,7 +176,7 @@ export const revokeSuperAdminRolePermission = withAction(
 
   if (!res.ok) {
     const body = (await res.json()) as { error?: string };
-    throw new Error(body.error ?? "Failed to revoke permission");
+    throw new Error(apiErrorMessage(body, "Failed to revoke permission"));
   }
 
   revalidatePath("/controls", "layout");

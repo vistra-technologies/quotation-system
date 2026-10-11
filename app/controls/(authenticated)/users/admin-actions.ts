@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { apiErrorMessage } from "@/lib/api-error-message";
 import { internalFetch } from "@/lib/internal-fetch";
 import { withAction } from "@/lib/with-route";
 
@@ -10,14 +11,15 @@ import { withAction } from "@/lib/with-route";
 
 export type AdminFormState = { error: string | null; ok?: boolean };
 
+const UNEXPECTED = "An unexpected error occurred — please try again.";
+
 async function errorFrom(res: Response): Promise<string> {
   try {
-    const body = (await res.json()) as { error?: string };
-    if (body.error) return body.error;
+    return apiErrorMessage(await res.json(), UNEXPECTED);
   } catch {
     // ignore JSON parse failure
   }
-  return "An unexpected error occurred — please try again.";
+  return UNEXPECTED;
 }
 
 function readPasswords(formData: FormData): { password: string; error: string | null } {

@@ -7,6 +7,7 @@ import { SelectField } from "@/components/select-field";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { TrashIcon } from "@/components/trash-icon";
 import type { FloorRow } from "./types";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface FloorBarProps {
   orgSlug: string;
@@ -101,7 +102,7 @@ export function FloorBar({
       if (res.status === 401 || res.status === 403) { redirectToLogin(orgSlug, isSubdomain); return; }
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? "Failed to add floor — please try again.");
+        setError(apiErrorMessage(body, "Failed to add floor — please try again."));
         return;
       }
       const { floor } = (await res.json()) as { floor: FloorRow };
@@ -130,7 +131,7 @@ export function FloorBar({
       if (res.status === 401 || res.status === 403) { redirectToLogin(orgSlug, isSubdomain); return; }
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? "Failed to rename floor — please try again.");
+        setError(apiErrorMessage(body, "Failed to rename floor — please try again."));
         return;
       }
       const { floor } = (await res.json()) as { floor: FloorRow };

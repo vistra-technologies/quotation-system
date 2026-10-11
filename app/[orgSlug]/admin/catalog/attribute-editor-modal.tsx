@@ -6,6 +6,7 @@ import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { descendants, emptyGroupCount, findAttr, isChain, sync } from "./catalog-model";
 import { AttributeStepEditor } from "./attribute-step-editor";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface AttributeEditorModalProps {
   orgSlug: string;
@@ -115,7 +116,7 @@ export function AttributeEditorModal({
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setSaveError(body.error ?? `Save failed (HTTP ${res.status})`);
+        setSaveError(apiErrorMessage(body, `Save failed (HTTP ${res.status})`));
         setSaving(false);
         return;
       }

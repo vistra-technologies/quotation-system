@@ -17,6 +17,8 @@ export const dynamic = "force-dynamic";
 //   not a JSON object with exactly the allowed keys/ranges -> 400
 //   > 60 accepted reports/min per instance -> 429 (best effort)
 //   success -> 204 and one `client.error` log line (host, no user id; the raw body is never logged).
+// Stage 32 (S32-7): the one optional extra key `ref` (client-generated, only when the error has no digest)
+// is logged on the `client.error` line so the reference the boundary shows can be searched.
 
 const cap = createRateCap();
 
@@ -77,6 +79,7 @@ export const POST = withRoute("POST /api/v1/client-errors", async (request: Requ
     boundary: report.boundary,
     message: report.message,
     digest: report.digest,
+    ref: report.ref,
     path: report.path,
     host,
   });

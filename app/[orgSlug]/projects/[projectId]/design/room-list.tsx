@@ -9,6 +9,7 @@ import { redirectToLogin } from "./login-redirect";
 import { useDraftContext } from "./design-draft-context";
 import { makeDoorResolver, toPanelViewRows } from "./partition-view";
 import type { PartitionRow, RoomRow, SelectionRow } from "./types";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface RoomListProps {
   orgSlug: string;
@@ -211,7 +212,7 @@ export function RoomList({
       if (res.status === 401 || res.status === 403) { redirectToLogin(orgSlug, isSubdomain); return; }
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setDeleteError(body.error ?? "Failed to delete room — please try again.");
+        setDeleteError(apiErrorMessage(body, "Failed to delete room — please try again."));
         return;
       }
 

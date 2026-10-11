@@ -7,6 +7,7 @@ import { redirectToLogin } from "../design/login-redirect";
 import type { CalculationProblemReport } from "@/lib/materials/problems";
 import type { Summary, MaterialListLine } from "@/lib/summary/types";
 import type { ConfigSnapshot } from "@/lib/config-snapshot";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 /**
  * Summary page action row (Stage 26 Batch 2 shape, Batch 3/4 wiring) — Recompute + Export PDF buttons,
@@ -90,7 +91,7 @@ export function ActionRow({
       }
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setConflictMessage(body.error ?? "Could not recompute — please try again.");
+        setConflictMessage(apiErrorMessage(body, "Could not recompute — please try again."));
         return;
       }
       // 200 — the stored row was updated. Re-render the Server Component so Batch 1's

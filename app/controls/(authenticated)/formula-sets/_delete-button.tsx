@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface DeleteFormulaSetButtonProps {
   setId: string;
@@ -60,7 +61,7 @@ export function DeleteFormulaSetButton({
         setErrorMessage(
           res.status === 409
             ? "This set is now in use and can't be deleted."
-            : `Delete failed: ${data.error ?? `HTTP ${res.status}`}`,
+            : `Delete failed: ${apiErrorMessage(data, `HTTP ${res.status}`)}`,
         );
         return;
       }

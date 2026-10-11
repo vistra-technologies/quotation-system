@@ -5,6 +5,7 @@ import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import { withAction } from "@/lib/with-route";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -87,7 +88,7 @@ export const createSuperAdminComponentType = withAction(
 
   if (!res.ok) {
     const body = (await res.json()) as { error?: string };
-    throw new Error(body.error ?? "Failed to create component type");
+    throw new Error(apiErrorMessage(body, "Failed to create component type"));
   }
 
   const { componentType } = (await res.json()) as { componentType: { id: string } };
@@ -153,7 +154,7 @@ export const updateSuperAdminComponentType = withAction(
 
   if (!res.ok) {
     const body = (await res.json()) as { error?: string };
-    return { error: body.error ?? "Failed to update component type" };
+    return { error: apiErrorMessage(body, "Failed to update component type") };
   }
 
   revalidatePath("/controls", "layout");
@@ -190,7 +191,7 @@ export const deleteSuperAdminComponentType = withAction(
 
   if (!res.ok) {
     const body = (await res.json()) as { error?: string };
-    throw new Error(body.error ?? "Failed to delete component type");
+    throw new Error(apiErrorMessage(body, "Failed to delete component type"));
   }
 
   revalidatePath("/controls", "layout");

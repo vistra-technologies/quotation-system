@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { redirectToLogin } from "./login-redirect";
 import type { RoomRow } from "./types";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface NewRoomFormProps {
   orgSlug: string;
@@ -65,7 +66,7 @@ export function NewRoomForm({
       }
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(body.error ?? "Failed to create room — please try again.");
+        setError(apiErrorMessage(body, "Failed to create room — please try again."));
         return;
       }
       const { room } = (await res.json()) as { room: RoomRow };

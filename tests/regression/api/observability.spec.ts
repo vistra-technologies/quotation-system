@@ -2,7 +2,8 @@
  * Stage 30 observability: every wrapped route answers with an `x-request-id` header (org 200/401/404,
  * SuperAdmin 200/401, /api/auth sign-in 401), and /api/health stays unwrapped and unchanged.
  *
- * Read-only: no writes, no data created. The deterministic 500 body (`requestId` mirrored in the header)
+ * Read-only: no writes, no data created (the client-errors POSTs are log-only, no DB; Stage 32 adds the
+ * optional `ref` key: a valid ref is 204, a 65-char or non-id-shaped ref is 400). The deterministic 500 body (`requestId` mirrored in the header)
  * is pinned in roles-permissions / projects / inquiries; it is not repeated here. A server-action-driven
  * page POST is not cheaply reachable from the API-level suite (actions are invoked through Next's
  * action protocol, not a stable URL), so it is not asserted here.
@@ -93,6 +94,12 @@ test.describe("POST /api/v1/client-errors", () => {
     expectRequestId(r);
   });
 
+  test("a report with a ref is 204", async ({ anon }) => {
+    const r = await anon.post(CE, { data: { ...report, ref: `rgr-${Date.now()}` } });
+    expect(r.status(), await r.text()).toBe(204);
+    expectRequestId(r);
+  });
+
   test("an own-origin Origin is accepted (digest + admin boundary)", async ({ anon, baseURL }) => {
     const r = await anon.post(CE, {
       data: { boundary: "admin", message: "rgr probe", digest: "rgr-1", path: "/x/admin" },
@@ -110,6 +117,8 @@ test.describe("POST /api/v1/client-errors", () => {
   test("an extra key, a bad boundary, or a non-object is 400", async ({ anon }) => {
     for (const data of [
       { ...report, extra: 1 },
+      { ...report, ref: "x".repeat(65) },
+      { ...report, ref: "a/b" },
       { ...report, boundary: "nope" },
       { ...report, message: "m".repeat(301) },
       [1, 2],

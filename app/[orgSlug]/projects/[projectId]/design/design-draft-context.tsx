@@ -32,6 +32,7 @@ import type {
   RoomRow,
   SelectionRow,
 } from "./types";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 // ─── Selection type (replaces ConfigureSelection — always uses panelIds[]) ────
 
@@ -548,7 +549,7 @@ export function DraftProvider({
       }
       if (!partitionRes.ok) {
         const body = (await partitionRes.json().catch(() => ({}))) as { error?: string };
-        return { ok: false, error: body.error ?? "An unexpected error occurred — please try again." };
+        return { ok: false, error: apiErrorMessage(body, "An unexpected error occurred — please try again.") };
       }
       const { partition: savedRaw } = (await partitionRes.json()) as { partition: PartitionRow };
       let updated: PartitionRow;
@@ -567,7 +568,7 @@ export function DraftProvider({
         }
         if (!res.ok) {
           const body = (await res.json().catch(() => ({}))) as { error?: string };
-          return { ok: false, error: body.error ?? "Failed to rename room — please try again." };
+          return { ok: false, error: apiErrorMessage(body, "Failed to rename room — please try again.") };
         }
         const { room } = (await res.json()) as { room: RoomRow };
         updatedRooms.push(room);

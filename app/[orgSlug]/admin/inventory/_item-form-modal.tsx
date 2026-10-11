@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiErrorMessage } from "@/lib/api-error-message";
 import { MEASUREMENT_UNITS, isMeasurementUnit } from "@/lib/units";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -163,8 +164,7 @@ export function ItemFormModal({
       }
 
       const data = await res.json().catch(() => ({ error: "Unexpected error." }));
-      const message =
-        (data as { error?: string }).error ?? "An unexpected error occurred.";
+      const message = apiErrorMessage(data, "An unexpected error occurred.");
 
       if (res.status === 409) {
         setApiError(message);

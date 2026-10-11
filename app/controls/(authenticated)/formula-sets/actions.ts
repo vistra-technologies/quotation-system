@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect, RedirectType } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { withAction } from "@/lib/with-route";
+import { apiErrorMessage } from "@/lib/api-error-message";
 
 // ─── State types ──────────────────────────────────────────────────────────────
 
@@ -67,11 +68,11 @@ export const createSuperAdminFormulaSet = withAction(
     };
     if (responseBody.validationErrors && responseBody.validationErrors.length > 0) {
       return {
-        error: responseBody.error ?? "Validation failed",
+        error: apiErrorMessage(responseBody, "Validation failed"),
         validationErrors: responseBody.validationErrors,
       };
     }
-    return { error: responseBody.error ?? "Failed to create formula set" };
+    return { error: apiErrorMessage(responseBody, "Failed to create formula set") };
   }
 
   const { formulaSet } = (await res.json()) as { formulaSet: { id: string } };
@@ -136,11 +137,11 @@ export const updateSuperAdminFormulaSet = withAction(
     };
     if (responseBody.validationErrors && responseBody.validationErrors.length > 0) {
       return {
-        error: responseBody.error ?? "Validation failed",
+        error: apiErrorMessage(responseBody, "Validation failed"),
         validationErrors: responseBody.validationErrors,
       };
     }
-    return { error: responseBody.error ?? "Failed to update formula set" };
+    return { error: apiErrorMessage(responseBody, "Failed to update formula set") };
   }
 
   revalidatePath("/controls/formula-sets");
