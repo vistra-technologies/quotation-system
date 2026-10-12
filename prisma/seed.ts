@@ -13,6 +13,7 @@ import {
 import { seedFormulaSets } from "./seed-formula-sets";
 import { ACTIVE_FORMULA_SET_NAME } from "../lib/formula-sets";
 import { CLOISONS_INVENTORY_DEFS } from "./inventory/cloisons-inventory";
+import { createTerminalIo, promptInitialSuperAdminPassword } from "./seed-prompt";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -429,56 +430,46 @@ async function main() {
   // no other org has (or needs) a seeded inventory catalog.
 
   // ── 6. SuperAdmin bootstrap accounts ────────────────────────────────────────
-  // Reads SUPERADMIN_DEVADMIN_PASSWORD, SUPERADMIN_ISHAN_PASSWORD,
-  // SUPERADMIN_SHAJI_PASSWORD from env. If ANY are missing, skips the entire
-  // SuperAdmin seed step with a warning — the rest of the seed still completes.
-  // Never logs plaintext passwords. Create-only (S31-14): an existing SuperAdmin is never
-  // touched, so re-seeding cannot reset a rotated password.
-  //
-  // The three env vars must be set in Vercel (Production + Preview + Development)
-  // before this seed step can run on any deployed environment.
-  // See profile.md "Ops prerequisite" section.
-  const superAdminDefs = [
-    { username: "devadmin", envVar: "SUPERADMIN_DEVADMIN_PASSWORD" },
-    { username: "ishan",    envVar: "SUPERADMIN_ISHAN_PASSWORD" },
-    { username: "shaji",    envVar: "SUPERADMIN_SHAJI_PASSWORD" },
-  ];
-
-  const missingVars = superAdminDefs.filter((d) => !process.env[d.envVar]);
-  if (missingVars.length > 0) {
-    console.warn(
-      `\nSuperAdmin seed SKIPPED — missing env vars: ${missingVars.map((d) => d.envVar).join(", ")}`,
-    );
-    console.warn("Set those env vars in Vercel (Production + Preview + Development) and re-seed.");
-  } else {
-    let created = 0;
-    let kept = 0;
-    for (const def of superAdminDefs) {
-      const existing = await prisma.superAdmin.findUnique({
-        where: { username: def.username },
-        select: { id: true },
-      });
-      if (existing) {
-        kept++;
-        continue;
-      }
-      const plaintext = process.env[def.envVar]!; // asserted non-null above
-      const hash = await authCtx.password.hash(plaintext);
-      const email = toPlatformAuthEmail(def.username);
-
-      await prisma.superAdmin.upsert({
-        where: { username: def.username },
-        update: {}, // create-only: never overwrite an existing password
-        create: {
-          username: def.username,
-          email,
-          passwordHash: hash,
-        },
-      });
-      created++;
+  // Create-only (S31-14): an existing SuperAdmin is never touched, so re-seeding cannot reset a
+  // rotated password, and an existing account is never prompted for. For a MISSING account the
+  // person running the seed is asked for its initial password at the terminal (echo hidden,
+  // confirmed twice, validated by validateSuperAdminPassword; empty entry skips that account).
+  // If stdin is not a TTY the missing accounts are skipped with a warning and the rest of the
+  // seed still completes. No env vars are read. Plaintext is never logged.
+  const superAdminUsernames = ["devadmin", "ishan", "shaji"];
+  const promptIo = createTerminalIo();
+  let created = 0;
+  let kept = 0;
+  let skipped = 0;
+  for (const username of superAdminUsernames) {
+    const existing = await prisma.superAdmin.findUnique({
+      where: { username },
+      select: { id: true },
+    });
+    if (existing) {
+      kept++;
+      continue;
     }
-    console.log(`SuperAdmins: created ${created}, kept ${kept} existing (passwords untouched)`);
+    const plaintext = await promptInitialSuperAdminPassword(username, promptIo);
+    if (plaintext === null) {
+      skipped++;
+      continue;
+    }
+    const hash = await authCtx.password.hash(plaintext);
+    await prisma.superAdmin.upsert({
+      where: { username },
+      update: {}, // create-only: never overwrite an existing password
+      create: {
+        username,
+        email: toPlatformAuthEmail(username),
+        passwordHash: hash,
+      },
+    });
+    created++;
   }
+  console.log(
+    `SuperAdmins: created ${created}, kept ${kept} existing (passwords untouched), skipped ${skipped}`,
+  );
 
   // ── 7. Summary ──────────────────────────────────────────────────────────────
   const totalRoles = await prisma.role.count();
@@ -510,7 +501,7 @@ async function main() {
     `Component types:    ${totalComponentTypesCount}  (informational — see the note above; legacy codes on pre-existing orgs make a fixed "expected" figure meaningless)`,
   );
   const totalSuperAdmins = await prisma.superAdmin.count();
-  console.log(`SuperAdmins:        ${totalSuperAdmins}  (3 expected when env vars are set)`);
+  console.log(`SuperAdmins:        ${totalSuperAdmins}  (3 expected unless some were skipped)`);
   console.log(`\nSeeded password: ${SEED_PASSWORD}`);
   console.log(`Login at e.g. http://localhost:3000/cloisons/login`);
   console.log(`========================`);
