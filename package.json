@@ -15,6 +15,7 @@
     "test:regression:coverage": "tsx tests/regression/coverage-map.ts",
     "test:regression:affected": "tsx tests/regression/affected-runner.ts",
     "test:regression:report": "tsx scripts/regression-report.mjs",
+    "seed:interactive": "tsx prisma/seed.ts",
     "migrate:design-v2": "tsx prisma/migrate-design-v1-to-v2.ts",
     "backfill:audit-log": "tsx prisma/backfill-audit-log-labels.ts",
     "backfill:config-snapshot": "tsx prisma/backfill-config-snapshots.ts",

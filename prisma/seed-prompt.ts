@@ -27,7 +27,10 @@ export async function promptInitialSuperAdminPassword(
 ): Promise<string | null> {
   if (!io.isTTY) {
     io.write(
-      `SuperAdmin "${username}" SKIPPED: not created because stdin is not a terminal, so there is nobody to ask for a password. Run the seed interactively to create it.\n`,
+      `SuperAdmin "${username}" SKIPPED: stdin is not a terminal, so there is nobody to ask for a password. ` +
+        `Note that "npx prisma db seed" never provides a terminal. To create it, run "npm run seed:interactive" ` +
+        `(or "npx tsx prisma/seed.ts") from PowerShell, cmd or Windows Terminal. ` +
+        `Git Bash/mintty also gives no terminal; prefix the command with "winpty" (untested) or use another terminal.\n`,
     );
     return null;
   }

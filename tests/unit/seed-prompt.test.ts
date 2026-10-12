@@ -55,6 +55,7 @@ test("non-TTY never prompts, warns, and skips", async () => {
   assert.equal(await promptInitialSuperAdminPassword("devadmin", io), null);
   assert.equal(asked.length, 0);
   assert.ok(written.some((m) => m.includes("SKIPPED")));
+  assert.ok(written.some((m) => m.includes("npm run seed:interactive") && m.includes("winpty")));
 });
 
 test("plaintext is never written to output", async () => {

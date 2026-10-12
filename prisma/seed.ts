@@ -436,6 +436,9 @@ async function main() {
   // confirmed twice, validated by validateSuperAdminPassword; empty entry skips that account).
   // If stdin is not a TTY the missing accounts are skipped with a warning and the rest of the
   // seed still completes. No env vars are read. Plaintext is never logged.
+  // NOTE: `npx prisma db seed` gives the seed a piped stdin (never a TTY), so it can never
+  // prompt. To create SuperAdmins run `npm run seed:interactive` (= `tsx prisma/seed.ts`) from
+  // PowerShell/cmd/Windows Terminal; dotenv and the DB-target guard still apply.
   const superAdminUsernames = ["devadmin", "ishan", "shaji"];
   const promptIo = createTerminalIo();
   let created = 0;
