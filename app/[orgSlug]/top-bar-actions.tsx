@@ -73,7 +73,7 @@ export function TopBarActions({
 }: TopBarActionsProps) {
   const t = useTranslations("account");
   const qe = useTranslations("quickEstimate");
-  const estimate = useEstimateState(orgSlug, estimateTypes, estimateDefaultCurrency ?? "INR");
+  const estimate = useEstimateState(orgSlug, estimateEnabled, estimateTypes, estimateDefaultCurrency ?? "INR");
   const [estimateOpen, setEstimateOpen] = useState(false);
   const estimateBtnRef = useRef<HTMLButtonElement>(null);
   const estimateTipId = useId();

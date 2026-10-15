@@ -151,6 +151,7 @@ export function QuickEstimatePopup({ orgName, username, types, state, onClose }:
   const rootRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const clearBtnRef = useRef<HTMLButtonElement>(null);
+  const exportBtnRef = useRef<HTMLButtonElement>(null);
   const [step, setStep] = useState<"edit" | "export">("edit");
   const [pickerLine, setPickerLine] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -180,12 +181,18 @@ export function QuickEstimatePopup({ orgName, username, types, state, onClose }:
       else if (confirming) {
         setConfirming(false);
         afterRender.current = () => clearBtnRef.current?.focus();
-      } else if (step === "export") setStep("edit");
+      } else if (step === "export") backToEdit();
       else onClose();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [pickerLine, confirming, step, onClose]);
+
+  // Back from the export step re-mounts the editor: put focus on the Export PDF button, not on body.
+  function backToEdit() {
+    setStep("edit");
+    afterRender.current = () => exportBtnRef.current?.focus();
+  }
 
   const currency = draft.currency;
   const valueLines = toValueLines(draft.lines);
@@ -236,7 +243,7 @@ export function QuickEstimatePopup({ orgName, username, types, state, onClose }:
           currency={currency}
           lines={valueLines}
           result={result}
-          onBack={() => setStep("edit")}
+          onBack={backToEdit}
         />
       ) : (
         <div
@@ -461,7 +468,7 @@ export function QuickEstimatePopup({ orgName, username, types, state, onClose }:
                     </button>
                   )}
                   <span className="qe-spacer" />
-                  <button type="button" className="qe-btn qe-btn-primary" disabled={result.priced === 0} onClick={() => setStep("export")}>
+                  <button ref={exportBtnRef} type="button" className="qe-btn qe-btn-primary" disabled={result.priced === 0} onClick={() => setStep("export")}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
                     </svg>

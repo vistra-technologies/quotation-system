@@ -11,6 +11,13 @@ import { emptyDraft, type DraftLine, type EstimateDraft } from "./lines";
  */
 export const storageKey = (orgSlug: string) => `qe:v1:${orgSlug}`;
 
+/**
+ * The saved draft is only read and written once the setup guard has really passed (enabled, with usable
+ * types). A failed or empty component-types read (a transient 500, or an admin mid-edit) yields no types;
+ * restoring against that would drop every line and the persist step would then erase them from storage.
+ */
+export const draftStorageActive = (enabled: boolean, types: readonly unknown[]): boolean => enabled && types.length > 0;
+
 interface StoredLine {
   typeCode: string;
   itemName: string;

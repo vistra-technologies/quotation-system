@@ -17,7 +17,7 @@ import {
   type ComponentTypeInput,
 } from "../../lib/quick-estimate/palette";
 import { newLine, toValueLines, hasDraftItems } from "../../lib/quick-estimate/lines";
-import { parseStoredDraft, serializeDraft } from "../../lib/quick-estimate/storage";
+import { draftStorageActive, parseStoredDraft, serializeDraft } from "../../lib/quick-estimate/storage";
 import { formatAmount, formatMoney } from "../../lib/quick-estimate/format";
 import { buildSheet } from "../../lib/quick-estimate/sheet";
 import type { FieldEntry } from "../../lib/types/field-entry";
@@ -375,6 +375,13 @@ test("storage: an unsupported stored currency falls back to the default; an unkn
   const d = parseStoredDraft(JSON.stringify({ currency: "EUR", discountMode: "fixed", lines: [] }), types, "AED", nextId);
   assert.equal(d.currency, "AED");
   assert.equal(d.discountMode, "pct");
+});
+
+test("storage: the draft is only touched once the guard has passed (a failed read must not erase it)", () => {
+  assert.equal(draftStorageActive(false, []), false); // failed or empty component-types read
+  assert.equal(draftStorageActive(false, types), false); // GLASS unusable (admin mid-edit): popup cannot open either
+  assert.equal(draftStorageActive(true, []), false);
+  assert.equal(draftStorageActive(true, types), true);
 });
 
 // ─── Format (S33-9) ─────────────────────────────────────────────────────────

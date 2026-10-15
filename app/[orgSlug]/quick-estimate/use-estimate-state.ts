@@ -5,7 +5,7 @@ import type { SupportedCurrency } from "@/lib/currency";
 import { parseUnitPrice, type DiscountMode } from "@/lib/quick-estimate/estimate";
 import { emptyDraft, hasDraftItems, newLine, type EstimateDraft } from "@/lib/quick-estimate/lines";
 import type { EstimateOption, EstimateType } from "@/lib/quick-estimate/palette";
-import { parseStoredDraft, serializeDraft, storageKey } from "@/lib/quick-estimate/storage";
+import { draftStorageActive, parseStoredDraft, serializeDraft, storageKey } from "@/lib/quick-estimate/storage";
 
 /** Removes the saved draft; called on Log Out before the session ends (S33-8). Never throws. */
 export function clearStoredEstimate(orgSlug: string) {
@@ -22,7 +22,7 @@ export function clearStoredEstimate(orgSlug: string) {
  * mount effect (state starts empty), and the persist effect waits for it so the empty initial state can't
  * overwrite the saved draft.
  */
-export function useEstimateState(orgSlug: string, types: EstimateType[], defaultCurrency: SupportedCurrency) {
+export function useEstimateState(orgSlug: string, enabled: boolean, types: EstimateType[], defaultCurrency: SupportedCurrency) {
   const idRef = useRef(0);
   const nextId = useCallback(() => `ql${++idRef.current}`, []);
   const [draft, setDraft] = useState<EstimateDraft>(() => emptyDraft(defaultCurrency));
@@ -30,7 +30,11 @@ export function useEstimateState(orgSlug: string, types: EstimateType[], default
   // The currency before the last change, for Undo on the currency-change banner. Not persisted.
   const [prevCurrency, setPrevCurrency] = useState<SupportedCurrency | null>(null);
 
+  // Until the guard has really passed (see draftStorageActive) the stored draft is left untouched.
+  const active = draftStorageActive(enabled, types);
+
   useEffect(() => {
+    if (!active || loaded) return;
     let raw: string | null = null;
     try {
       raw = sessionStorage.getItem(storageKey(orgSlug));
@@ -40,9 +44,9 @@ export function useEstimateState(orgSlug: string, types: EstimateType[], default
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time client-only hydration from sessionStorage (avoids an SSR mismatch)
     setDraft(parseStoredDraft(raw, types, defaultCurrency, nextId));
     setLoaded(true);
-    // Intentionally once: later prop changes (router.refresh) must not discard the draft.
+    // Once, as soon as the guard has passed: later prop changes (router.refresh) must not discard the draft.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [active]);
 
   useEffect(() => {
     if (!loaded) return;
