@@ -361,6 +361,7 @@ export function QuickEstimatePopup({ orgName, username, types, state, onClose }:
                                 className={draft.discountMode === "pct" ? "qe-on" : undefined}
                                 aria-pressed={draft.discountMode === "pct"}
                                 title={t("discountPercent")}
+                                aria-label={t("discountPercent")}
                                 onClick={() => state.setDiscountMode("pct")}
                               >
                                 %
@@ -370,6 +371,7 @@ export function QuickEstimatePopup({ orgName, username, types, state, onClose }:
                                 className={draft.discountMode === "amount" ? "qe-on" : undefined}
                                 aria-pressed={draft.discountMode === "amount"}
                                 title={t("discountAmount")}
+                                aria-label={t("discountAmount")}
                                 onClick={() => state.setDiscountMode("amount")}
                               >
                                 {currency}
