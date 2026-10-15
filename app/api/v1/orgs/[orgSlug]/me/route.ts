@@ -13,6 +13,7 @@ import {
 import { getExternalCompanyById } from "@/lib/data/external-companies";
 import { getOwnProfile, updateOwnProfile } from "@/lib/data/users";
 import { parseOwnProfileInput } from "@/lib/own-profile";
+import { isSupportedCurrency } from "@/lib/currency";
 import { PERMISSIONS } from "@/lib/rbac";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
@@ -34,6 +35,7 @@ export const dynamic = "force-dynamic";
  *     userId, name, username,          // identity
  *     externalCompanyId,               // null for internal users
  *     externalCompanyName,             // null for internal users or unknown company
+ *     externalCompanyCurrency,         // the company defaultCurrency (INR|AED|USD); null for internal users (Stage 33, Quick Estimate default)
  *     orgName,                         // organization display name
  *     roleName,                        // user's role display name
  *     firstName, lastName, mobile, profileEmail,  // own editable profile (Hotfix 2026-10-10)
@@ -42,7 +44,8 @@ export const dynamic = "force-dynamic";
  *   }
  *
  * Consumers:
- *   - app/[orgSlug]/layout.tsx  — uses name, roleName, externalCompanyName, adminPermissions for shell chrome
+ *   - app/[orgSlug]/layout.tsx  — uses name, roleName, externalCompanyName, adminPermissions for shell chrome,
+ *     and externalCompanyCurrency as the Quick Estimate popup's default currency
  *   - app/[orgSlug]/admin/layout.tsx  — uses adminPermissions.length to gate the whole /admin/* sub-tree
  *   - app/[orgSlug]/dashboard/page.tsx  — uses orgName, roleName, permissionCodes
  *   - admin/catalog/*, admin/external-companies/*
@@ -105,6 +108,9 @@ export const GET = withRoute(
       username: session.username,
       externalCompanyId: session.externalCompanyId,
       externalCompanyName: externalCompany?.name ?? null,
+      externalCompanyCurrency: isSupportedCurrency(externalCompany?.defaultCurrency)
+        ? externalCompany.defaultCurrency
+        : null,
       orgName: org?.name ?? session.organizationId,
       roleName: role?.name ?? session.roleId,
       firstName: profile?.firstName ?? "",

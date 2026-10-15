@@ -42,7 +42,7 @@ test.describe("GET /api/v1/orgs/[orgSlug]/me", () => {
       const me = (await r.json()) as Record<string, unknown>;
       expect(Object.keys(me).sort()).toEqual(
         [
-          "adminPermissions", "externalCompanyId", "externalCompanyName", "firstName", "lastName", "mobile", "name", "orgName",
+          "adminPermissions", "externalCompanyCurrency", "externalCompanyId", "externalCompanyName", "firstName", "lastName", "mobile", "name", "orgName",
           "permissionCodes", "profileEmail", "roleName", "userId", "username",
         ].sort(),
       );
@@ -57,8 +57,17 @@ test.describe("GET /api/v1/orgs/[orgSlug]/me", () => {
       expect([...(me.permissionCodes as string[])].sort()).toEqual([...ROLE_PERMISSIONS[role]].sort());
       const adminish = ["MANAGE_USERS", "MANAGE_FEATURES", "MANAGE_PRICING"];
       expect([...(me.adminPermissions as string[])].sort()).toEqual(ROLE_PERMISSIONS[role].filter((p) => adminish.includes(p)).sort());
-      if (role === "admin" || role === "member") expect(me.externalCompanyId).toBeNull();
-      else expect(me.externalCompanyId).toEqual(expect.any(String));
+      if (role === "admin" || role === "member") {
+        expect(me.externalCompanyId).toBeNull();
+        expect(me.externalCompanyCurrency).toBeNull(); // Stage 33: internal users have no company currency
+      } else {
+        expect(me.externalCompanyId).toEqual(expect.any(String));
+        // Stage 33: the Quick Estimate default currency is the user's own company defaultCurrency.
+        expect(["INR", "AED", "USD"]).toContain(me.externalCompanyCurrency);
+        const co = await as.admin.get(url(`/external-companies/${me.externalCompanyId as string}`));
+        expect(co.status(), await co.text()).toBe(200);
+        expect(me.externalCompanyCurrency).toBe(((await co.json()) as { company: { defaultCurrency: string } }).company.defaultCurrency);
+      }
     });
   }
 

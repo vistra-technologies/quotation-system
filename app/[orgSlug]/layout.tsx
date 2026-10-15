@@ -1,4 +1,6 @@
 import { internalFetch } from "@/lib/internal-fetch";
+import { isSupportedCurrency, type SupportedCurrency } from "@/lib/currency";
+import { usableEstimateTypes, type ComponentTypeInput, type EstimateType } from "@/lib/quick-estimate/palette";
 import { detectIsSubdomain } from "@/lib/orgHref";
 import { NextIntlClientProvider } from "next-intl";
 import allMessages from "@/messages/en.json";
@@ -26,9 +28,26 @@ export const dynamic = "force-dynamic";
  * internalFetch against /api/v1/orgs/[orgSlug]/me.
  *
  * The only NextIntlClientProvider here wraps the top-bar header (the My Account popup uses
- * the `account` namespace); it is a sibling of <main>, so it never nests with the
- * per-section layouts (projects, admin, inquiries, orders), which still provide their own.
+ * the `account` namespace, the Quick Estimate popup the `quickEstimate` one); it is a sibling of <main>,
+ * so it never nests with the per-section layouts (projects, admin, inquiries, orders), which still
+ * provide their own.
+ *
+ * Stage 33 (Quick Estimate): the component-types list is fetched in parallel with /me. The setup guard
+ * (usableEstimateTypes) runs here on the server and only the trimmed usable types reach the client. A
+ * failed or malformed response renders the calculator icon disabled; it never fails the shell.
  */
+
+async function loadEstimatePalette(ctRes: Promise<Response>): Promise<{ enabled: boolean; types: EstimateType[] }> {
+  try {
+    const res = await ctRes;
+    if (!res.ok) return { enabled: false, types: [] };
+    const body = (await res.json()) as { componentTypes?: ComponentTypeInput[] };
+    if (!Array.isArray(body.componentTypes)) return { enabled: false, types: [] };
+    return usableEstimateTypes(body.componentTypes);
+  } catch {
+    return { enabled: false, types: [] };
+  }
+}
 export default async function OrgSlugLayout({
   children,
   params,
@@ -43,7 +62,11 @@ export default async function OrgSlugLayout({
   // required, no SSR/hydration mismatch.
   const isSubdomain = await detectIsSubdomain(orgSlug);
 
-  const meRes = await internalFetch(`/api/v1/orgs/${orgSlug}/me`);
+  // Parallel (S33-3). The types promise gets its own catch inside loadEstimatePalette, so an early return
+  // below (401/403: no chrome) leaves no unhandled rejection.
+  const meResPromise = internalFetch(`/api/v1/orgs/${orgSlug}/me`);
+  const typesPromise = loadEstimatePalette(internalFetch(`/api/v1/orgs/${orgSlug}/component-types`));
+  const meRes = await meResPromise;
 
   // No session (401) or cross-org guard (403) → render page without chrome.
   // This is the pass-through for the login page and unauthenticated states.
@@ -62,7 +85,12 @@ export default async function OrgSlugLayout({
     lastName: string;
     mobile: string | null;
     profileEmail: string | null;
+    externalCompanyCurrency: string | null;
   };
+  const estimate = await typesPromise;
+  const estimateCurrency: SupportedCurrency | null = isSupportedCurrency(me.externalCompanyCurrency)
+    ? me.externalCompanyCurrency
+    : null;
 
   const canManageUsers = me.adminPermissions.includes("MANAGE_USERS");
   // Stage 20 Batch 3: canManageFeatures reintroduced — gates the "Catalog" flyout link
@@ -95,7 +123,7 @@ export default async function OrgSlugLayout({
         {/* D4 Stage 15: org/company chips moved from left to right corner, inside TopBarActions */}
         <header className="sticky top-0 z-30 flex h-16 shrink-0 items-center justify-end border-b border-border bg-bg-card px-10 shadow-header">
           {/* Home + Profile actions — right side (chips now included inside) */}
-          <NextIntlClientProvider messages={{ account: allMessages.account }}>
+          <NextIntlClientProvider messages={{ account: allMessages.account, quickEstimate: allMessages.quickEstimate }}>
             <TopBarActions
               orgSlug={orgSlug}
               isSubdomain={isSubdomain}
@@ -108,6 +136,9 @@ export default async function OrgSlugLayout({
               lastName={me.lastName}
               mobile={me.mobile}
               profileEmail={me.profileEmail}
+              estimateEnabled={estimate.enabled}
+              estimateTypes={estimate.types}
+              estimateDefaultCurrency={estimateCurrency}
             />
           </NextIntlClientProvider>
         </header>

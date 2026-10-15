@@ -1,7 +1,8 @@
 /**
- * Summary PDF generation (Stage 26 Batch 4, S26-5). The **only** file in the repo that imports
- * `jspdf`/`jspdf-autotable` — both are dynamically imported inside `generateSummaryPdf()` so the ~500 KB
- * combined bundle is never part of the initial page load, only fetched on Export click.
+ * Summary PDF generation (Stage 26 Batch 4, S26-5). One of two files that import `jspdf`/`jspdf-autotable`
+ * (the other is `lib/quick-estimate/pdf.ts`, Stage 33) — both are dynamically imported inside
+ * `generateSummaryPdf()` so the ~500 KB combined bundle is never part of the initial page load, only
+ * fetched on Export click.
  *
  * Uses jspdf-autotable's standalone `autoTable(doc, options)` function (its documented ESM entry point)
  * rather than the `doc.autoTable()` prototype method — the prototype method is only auto-attached when a
