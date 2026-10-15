@@ -1,8 +1,9 @@
-import type { Prisma } from "@/app/generated/prisma/client";
+import { Prisma } from "@/app/generated/prisma/client";
 import { loadConfigSnapshot } from "@/lib/config-snapshot";
 import { resolveFormulaSetPin } from "@/lib/data/formula-pin";
 import { ownedInquiryWhere } from "@/lib/data/ownership";
 import { prisma } from "@/lib/prisma";
+import { stampQuickEstimate, type ParsedQuickEstimate } from "@/lib/quick-estimate/inquiry-estimate";
 import { withSequenceRetry } from "@/lib/sequence-retry";
 import type { SessionData } from "@/lib/session";
 
@@ -30,6 +31,8 @@ export interface CreateInquiryInput {
   endClientCity?: string | null;
   endClientState?: string | null;
   endClientGstNumber?: string | null;
+  /** Stage 33 S33-17: validated by parseQuickEstimateInput; stamped here against `currency`. Absent/null = none. */
+  quickEstimate?: ParsedQuickEstimate | null;
 }
 
 export interface UpdateInquiryInput {
@@ -56,6 +59,11 @@ export interface UpdateInquiryInput {
   endClientCity?: string | null;
   endClientState?: string | null;
   endClientGstNumber?: string | null;
+  /**
+   * Stage 33 S33-17: absent = keep; an object replaces the whole estimate (stamped against `currency` if this
+   * request changes it, else the stored currency); null clears it (SQL NULL).
+   */
+  quickEstimate?: ParsedQuickEstimate | null;
 }
 
 export interface ListInquiriesParams {
@@ -155,6 +163,8 @@ export async function listInquiriesPaginated(
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
+      // Stage 33: the saved estimate (up to ~40 KB) is read on the single GET only.
+      omit: { quickEstimate: true },
       include: {
         externalCompany: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true, username: true } },
@@ -289,6 +299,18 @@ async function createInquiryOnce(
           endClientCity: input.endClientCity ?? null,
           endClientState: input.endClientState ?? null,
           endClientGstNumber: input.endClientGstNumber ?? null,
+          // Stage 33 S33-17: stamped with the inquiry's own currency; a mismatching client currency throws
+          // QuickEstimateError (the route maps it to 400 INVALID_QUICK_ESTIMATE).
+          ...(input.quickEstimate
+            ? {
+                quickEstimate: stampQuickEstimate(
+                  input.quickEstimate,
+                  input.currency,
+                  session.name || session.username,
+                  new Date(),
+                ) as unknown as Prisma.InputJsonValue,
+              }
+            : {}),
         },
       });
     });
@@ -318,6 +340,9 @@ async function createInquiryOnce(
  *
  * `externalCompanyId` is never touched — it is locked for the life of the
  * record (see stage-13.md "Decisions made during scoping").
+ *
+ * Stage 33: also throws a QuickEstimateError ({ code: "INVALID_QUICK_ESTIMATE" }) when the estimate's
+ * client-sent currency differs from the effective inquiry currency. The NEW-only gate covers a clear too.
  */
 export async function updateInquiry(
   session: SessionData,
@@ -326,7 +351,7 @@ export async function updateInquiry(
 ) {
   const inquiry = await prisma.inquiry.findFirst({
     where: { id: inquiryId, ...ownedInquiryWhere(session) },
-    select: { id: true, status: true },
+    select: { id: true, status: true, currency: true },
   });
 
   if (!inquiry) {
@@ -362,6 +387,8 @@ export async function updateInquiry(
     endClientCity?: string | null;
     endClientState?: string | null;
     endClientGstNumber?: string | null;
+    // Stage 33 S33-17: DbNull = SQL NULL (a plain null is a type error on Json?; JsonNull would store JSON null)
+    quickEstimate?: Prisma.InputJsonValue | typeof Prisma.DbNull;
   } = {};
   if (input.name !== undefined) data.name = input.name;
   // destinationCountry: excluded from updates — locked at create time (D19)
@@ -384,6 +411,18 @@ export async function updateInquiry(
   if (input.endClientCity !== undefined) data.endClientCity = input.endClientCity;
   if (input.endClientState !== undefined) data.endClientState = input.endClientState;
   if (input.endClientGstNumber !== undefined) data.endClientGstNumber = input.endClientGstNumber;
+  if (input.quickEstimate === null) {
+    data.quickEstimate = Prisma.DbNull;
+  } else if (input.quickEstimate !== undefined) {
+    // Stamped against the currency this request sets, else the stored one. A later currency-only PATCH leaves
+    // the saved estimate as it is (drift is allowed).
+    data.quickEstimate = stampQuickEstimate(
+      input.quickEstimate,
+      input.currency ?? inquiry.currency,
+      session.name || session.username,
+      new Date(),
+    ) as unknown as Prisma.InputJsonValue;
+  }
 
   return prisma.inquiry.update({
     where: { id: inquiryId },

@@ -13,6 +13,12 @@ import {
 } from "@/lib/data/inquiries";
 import { parseJsonObjectText, parseOptionalDate } from "@/lib/api-body";
 import { isSupportedCurrency, CURRENCY_ERROR_MESSAGE } from "@/lib/currency";
+import {
+  INVALID_QUICK_ESTIMATE,
+  QuickEstimateError,
+  parseQuickEstimateInput,
+  type ParsedQuickEstimate,
+} from "@/lib/quick-estimate/inquiry-estimate";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -75,6 +81,9 @@ export const GET = withRoute(
  *    Updates the supplied editable fields. Only allowed while status === "NEW";
  *    returns 409 otherwise. `externalCompanyId` is silently excluded from the
  *    update payload even if the client sends it (locked for the life of the record).
+ *    Stage 33 S33-17: `quickEstimate` is an update field too. Absent keeps it, an object replaces the whole
+ *    estimate (server-stamped v/currency/updatedAt/updatedByName), null clears it. Invalid values or a currency
+ *    that differs from the effective inquiry currency are 400 INVALID_QUICK_ESTIMATE; the NEW-only 409 applies.
  *
  * Auth: any authenticated org member (no specific RBAC permission required).
  * Tenancy: enforced by getApiSession() (403 on cross-org) and DAL findFirst on
@@ -120,6 +129,8 @@ export const PATCH = withRoute(
     "endClientName", "endClientPhone", "endClientEmail",
     "endClientAddressLine1", "endClientAddressLine2", "endClientCity", "endClientState",
     "endClientGstNumber",
+    // Stage 33 S33-17: without this a body holding only quickEstimate would fall through to DISMISS.
+    "quickEstimate",
   ] as const;
 
   // An empty body is the dismiss action; any non-empty body must be a JSON object (Stage 31 S31-10).
@@ -171,8 +182,19 @@ export const PATCH = withRoute(
       v === undefined ? undefined :
       typeof v === "string" && v.trim() ? v.trim() : null;
 
+    // Stage 33 S33-17: absent = keep, an object replaces, null clears.
+    let quickEstimate: ParsedQuickEstimate | null | undefined;
+    if (body.quickEstimate === null) {
+      quickEstimate = null;
+    } else if (body.quickEstimate !== undefined) {
+      const parsed = parseQuickEstimateInput(body.quickEstimate);
+      if (!parsed.ok) return apiBadRequest(parsed.error, INVALID_QUICK_ESTIMATE);
+      quickEstimate = parsed.value;
+    }
+
     try {
       const inquiry = await updateInquiry(session, inquiryId, {
+        quickEstimate,
         name: name?.trim(),
         currency: currency?.trim().toUpperCase(),
         projectLocation:
@@ -200,6 +222,9 @@ export const PATCH = withRoute(
       });
       return NextResponse.json({ inquiry });
     } catch (err) {
+      if (err instanceof QuickEstimateError) {
+        return apiBadRequest(err.message, INVALID_QUICK_ESTIMATE);
+      }
       if (typeof err === "object" && err !== null && "code" in err) {
         const code = (err as { code: string }).code;
         if (code === "NOT_FOUND") return apiNotFound("Inquiry not found.");

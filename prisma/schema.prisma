@@ -468,6 +468,7 @@ model Inquiry {
   endClientCity            String?
   endClientState           String?
   endClientGstNumber       String?   // required for India, optional for UAE — form-layer only
+  quickEstimate        Json?            // Stage 33: self-contained value snapshot, shape in lib/quick-estimate/inquiry-estimate.ts
   createdAt            DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
   projects             Project[]        // back-relation: Projects created by converting this Inquiry

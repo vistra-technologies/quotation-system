@@ -398,3 +398,135 @@ test.describe("inquiries: rules", () => {
     expect(((await json<{ inquiry: Inquiry }>(await as.admin.get(url(`/inquiries/${inq.id}`)))).inquiry).status).toBe("NEW");
   });
 });
+
+// Stage 33 Batch 2 (S33-17): Inquiry.quickEstimate. A self-contained value snapshot, no UI yet.
+type StoredEstimate = {
+  v: number; currency: string; discountMode: string; discountValue: number; taxPct: number;
+  lines: Array<Record<string, unknown>>; updatedAt: string; updatedByName: string;
+};
+type WithEstimate = Inquiry & { quickEstimate: StoredEstimate | null };
+
+const estLine = (over: Record<string, unknown> = {}) => ({ itemName: "Partition", variantText: "Double glazed", unit: "m²", qty: 12.5, unitPrice: 3200, ...over });
+const est = (over: Record<string, unknown> = {}) => ({ lines: [estLine()], discountMode: "amount", discountValue: 100, taxPct: 5, ...over });
+
+test.describe("inquiries: quickEstimate", () => {
+  const getEstimate = async (g: { get: (u: string) => Promise<APIResponse> }, u: string) =>
+    (await json<{ inquiry: WithEstimate }>(await g.get(u))).inquiry;
+
+  test("round-trip: POST stores a stamped snapshot, PATCH replaces it, null clears it; the list omits it", async ({ as, run, ledger, url }) => {
+    const created = await createLedgered(as.admin, { run, ledger }, "inquiry", {
+      name: nm({ run }, "inq-qe"), currency: "AED",
+      quickEstimate: est({ currency: " aed ", v: 9, updatedAt: "2000-01-01T00:00:00.000Z", updatedByName: "Evil", componentTypeCode: "GLASS", extra: 1 }),
+    });
+    expect(created.res.status(), JSON.stringify(created.body)).toBe(201);
+    const id = created.id!;
+    const got = await getEstimate(as.member, url(`/inquiries/${id}`));
+    expect(got.quickEstimate).toMatchObject({ v: 1, currency: "AED", discountMode: "amount", discountValue: 100, taxPct: 5, lines: [estLine()] });
+    expect(got.quickEstimate!.updatedByName).not.toBe("Evil");
+    expect(got.quickEstimate!.updatedByName.length).toBeGreaterThan(0);
+    expect(new Date(got.quickEstimate!.updatedAt).getFullYear()).toBeGreaterThan(2020);
+    expect(Object.keys(got.quickEstimate!).sort()).toEqual(["currency", "discountMode", "discountValue", "lines", "taxPct", "updatedAt", "updatedByName", "v"]);
+    expect(got.quickEstimate!.lines).toHaveLength(1);
+
+    const l = await json<{ inquiries: Array<Record<string, unknown>> }>(await as.admin.get(url(`/inquiries?search=${encodeURIComponent(got.name)}`)));
+    expect(l.inquiries.map((x) => x.id)).toEqual([id]);
+    expect(l.inquiries[0]).not.toHaveProperty("quickEstimate");
+
+    const r = await as.admin.patch(url(`/inquiries/${id}`), { data: { quickEstimate: est({ lines: [estLine({ itemName: "Door", unit: "pcs", qty: 2 }), estLine()], discountMode: undefined, discountValue: 5 }) } });
+    expect(r.status(), await r.text()).toBe(200);
+    const after = await getEstimate(as.admin, url(`/inquiries/${id}`));
+    expect(after.quickEstimate!.lines).toHaveLength(2);
+    expect(after.quickEstimate).toMatchObject({ discountMode: "pct", discountValue: 5 });
+
+    const c = await as.admin.patch(url(`/inquiries/${id}`), { data: { quickEstimate: null } });
+    expect(c.status(), await c.text()).toBe(200);
+    expect((await getEstimate(as.admin, url(`/inquiries/${id}`))).quickEstimate).toBeNull();
+    expect((await getEstimate(as.admin, url(`/inquiries/${id}`))).status).toBe("NEW");
+  });
+
+  test("it never dismisses: a PATCH with only quickEstimate keeps the inquiry NEW, and other PATCHes keep the estimate", async ({ as, run, ledger, url }) => {
+    const { id } = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-qe-nd"), currency: "AED" });
+    const r = await as.admin.patch(url(`/inquiries/${id}`), { data: { quickEstimate: est() } });
+    expect(r.status(), await r.text()).toBe(200);
+    expect((await json<{ inquiry: Inquiry }>(r)).inquiry.status).toBe("NEW");
+    const saved = (await getEstimate(as.admin, url(`/inquiries/${id}`))).quickEstimate;
+    expect(saved).not.toBeNull();
+    const n = await as.admin.patch(url(`/inquiries/${id}`), { data: { projectLocation: "Sharjah" } });
+    expect(n.status(), await n.text()).toBe(200);
+    const after = await getEstimate(as.admin, url(`/inquiries/${id}`));
+    expect(after.status).toBe("NEW");
+    expect(after.quickEstimate).toEqual(saved);
+  });
+
+  test("validation: each bad value is 400 INVALID_QUICK_ESTIMATE and nothing is created or changed", async ({ as, run, ledger, url }) => {
+    const cases: Array<[string, unknown]> = [
+      ["empty lines", est({ lines: [] })],
+      ["unit kg", est({ lines: [estLine({ unit: "kg" })] })],
+      ["pcs qty 1.5", est({ lines: [estLine({ unit: "pcs", qty: 1.5 })] })],
+      ["pct discount 101", est({ discountMode: "pct", discountValue: 101 })],
+      ["discountMode fixed", est({ discountMode: "fixed" })],
+      ["not an object", "x"],
+      ["currency mismatch", est({ currency: "USD" })],
+    ];
+    const keep = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-qe-val"), currency: "AED", quickEstimate: est() });
+    expect(keep.res.status(), JSON.stringify(keep.body)).toBe(201);
+    const before = (await getEstimate(as.admin, url(`/inquiries/${keep.id}`))).quickEstimate;
+    for (const [name, quickEstimate] of cases) {
+      const postName = nm({ run }, "inq-qe-bad");
+      const p = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: postName, currency: "AED", quickEstimate });
+      expect(p.res.status(), `POST ${name}`).toBe(400);
+      expect(p.body, `POST ${name}`).toMatchObject({ code: "INVALID_QUICK_ESTIMATE" });
+      expect(await listIds(as.admin, url(`/inquiries?search=${encodeURIComponent(postName)}`), "inquiries"), `POST ${name}`).toEqual([]);
+      const r = await as.admin.patch(url(`/inquiries/${keep.id}`), { data: { quickEstimate } });
+      expect(r.status(), `PATCH ${name}`).toBe(400);
+      expect(await r.json(), `PATCH ${name}`).toMatchObject({ code: "INVALID_QUICK_ESTIMATE" });
+    }
+    const after = await getEstimate(as.admin, url(`/inquiries/${keep.id}`));
+    expect(after.quickEstimate).toEqual(before);
+    expect(after.status).toBe("NEW");
+  });
+
+  test("currency: PATCH currency + estimate in the new currency is 200; PATCH currency alone leaves the estimate's old currency", async ({ as, run, ledger, url }) => {
+    const { id } = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-qe-cur"), currency: "AED", quickEstimate: est() });
+    const ok = await as.admin.patch(url(`/inquiries/${id}`), { data: { currency: "usd", quickEstimate: est({ currency: "USD" }) } });
+    expect(ok.status(), await ok.text()).toBe(200);
+    expect((await getEstimate(as.admin, url(`/inquiries/${id}`))).quickEstimate!.currency).toBe("USD");
+    // stored currency is now USD: an estimate sent as AED without changing currency is a mismatch
+    const bad = await as.admin.patch(url(`/inquiries/${id}`), { data: { quickEstimate: est({ currency: "AED" }) } });
+    expect(bad.status()).toBe(400);
+    const drift = await as.admin.patch(url(`/inquiries/${id}`), { data: { currency: "INR" } });
+    expect(drift.status(), await drift.text()).toBe(200);
+    const g = await getEstimate(as.admin, url(`/inquiries/${id}`));
+    expect(g.currency).toBe("INR");
+    expect(g.quickEstimate!.currency).toBe("USD");
+  });
+
+  test("NEW gate: after dismiss a PATCH (estimate or clear) is 409 and the stored value is unchanged", async ({ as, run, ledger, url }) => {
+    const { id } = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-qe-gate"), currency: "AED", quickEstimate: est() });
+    const before = (await getEstimate(as.admin, url(`/inquiries/${id}`))).quickEstimate;
+    const d = await as.admin.patch(url(`/inquiries/${id}`), { data: { externalCompanyId: "ignored" } });
+    expect(d.status(), await d.text()).toBe(200);
+    for (const quickEstimate of [est({ discountValue: 7, discountMode: "pct" }), null]) {
+      const r = await as.admin.patch(url(`/inquiries/${id}`), { data: { quickEstimate } });
+      expect(r.status(), await r.text()).toBe(409);
+      expect(await r.json()).toEqual({ error: "Only NEW inquiries can be edited." });
+    }
+    const after = await getEstimate(as.admin, url(`/inquiries/${id}`));
+    expect(after.status).toBe("DISMISSED");
+    expect(after.quickEstimate).toEqual(before);
+  });
+
+  test("cross-company: an external user PATCHing another company's inquiry estimate is 404 and nothing changes", async ({ as, f, run, ledger, url }) => {
+    const otherCo = await f.externalCompany();
+    const { id } = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-qe-idor"), currency: "AED", externalCompanyId: otherCo.id, quickEstimate: est() });
+    const before = (await getEstimate(as.admin, url(`/inquiries/${id}`))).quickEstimate;
+    expect(before).not.toBeNull();
+    const r = await as.distributor.patch(url(`/inquiries/${id}`), { data: { quickEstimate: est({ discountValue: 1, discountMode: "pct" }) } });
+    expect(r.status(), await r.text()).toBe(404);
+    const c = await as.distributor.patch(url(`/inquiries/${id}`), { data: { quickEstimate: null } });
+    expect(c.status()).toBe(404);
+    const after = await getEstimate(as.admin, url(`/inquiries/${id}`));
+    expect(after.quickEstimate).toEqual(before);
+    expect(after.status).toBe("NEW");
+  });
+});

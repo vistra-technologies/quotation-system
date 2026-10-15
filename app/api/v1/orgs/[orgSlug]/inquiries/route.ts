@@ -9,6 +9,12 @@ import {
 import { listInquiriesPaginated, createInquiry } from "@/lib/data/inquiries";
 import { readJsonObject, parseOptionalDate } from "@/lib/api-body";
 import { isSupportedCurrency, CURRENCY_ERROR_MESSAGE } from "@/lib/currency";
+import {
+  INVALID_QUICK_ESTIMATE,
+  QuickEstimateError,
+  parseQuickEstimateInput,
+  type ParsedQuickEstimate,
+} from "@/lib/quick-estimate/inquiry-estimate";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -137,7 +143,11 @@ export const GET = withRoute(
  * Create a new inquiry in the org.
  *
  * Auth: any authenticated org member (no specific RBAC permission required).
- * Body: { name, currency, externalCompanyId?, projectLocation?, ...extendedFields }
+ * Body: { name, currency, externalCompanyId?, projectLocation?, ...extendedFields, quickEstimate? }
+ *
+ * quickEstimate (Stage 33 S33-17, optional): { currency?, discountMode?, discountValue?, taxPct?, lines[1..100] },
+ * values only. The server stamps v, currency (= the inquiry currency), updatedAt and updatedByName. A currency
+ * that differs from the inquiry's, or any out-of-range value, is 400 INVALID_QUICK_ESTIMATE (nothing is clamped).
  *
  * destinationCountry is derived server-side from ExternalCompany.country (D19) — not accepted from the body.
  *
@@ -211,8 +221,17 @@ export const POST = withRoute(
   }
   if (!isSupportedCurrency(currency)) return apiBadRequest(CURRENCY_ERROR_MESSAGE);
 
+  // Stage 33 S33-17: optional saved Quick Estimate. Absent or null = none.
+  let quickEstimate: ParsedQuickEstimate | null = null;
+  if (body.quickEstimate !== undefined && body.quickEstimate !== null) {
+    const parsed = parseQuickEstimateInput(body.quickEstimate);
+    if (!parsed.ok) return apiBadRequest(parsed.error, INVALID_QUICK_ESTIMATE);
+    quickEstimate = parsed.value;
+  }
+
   try {
     const inquiry = await createInquiry(session, {
+      quickEstimate,
       name,
       currency,
       projectLocation,
@@ -253,6 +272,9 @@ export const POST = withRoute(
       (err as { code: string }).code === "NO_COMPANY"
     ) {
       return apiForbidden("Your account is not linked to a company");
+    }
+    if (err instanceof QuickEstimateError) {
+      return apiBadRequest(err.message, INVALID_QUICK_ESTIMATE);
     }
     if (
       typeof err === "object" &&
