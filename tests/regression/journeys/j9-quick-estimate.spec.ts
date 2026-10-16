@@ -140,14 +140,19 @@ test("J9: Quick Estimate — maths, % and fixed discount, draft kept on close, C
       await expect(dialog.getByRole("combobox")).toHaveText("INR");
     });
 
-    await test.step("Export PDF -> preview -> Download yields quick-estimate-YYYY-MM-DD.pdf", async () => {
+    await test.step("Export PDF -> preview -> Download yields project-estimate-YYYY-MM-DD.pdf", async () => {
       await dialog.getByRole("button", { name: "Export PDF" }).click();
       const preview = page.getByRole("dialog", { name: "Export PDF" });
       await expect(preview).toBeVisible();
-      await expect(preview.getByText("Indicative estimate only — not a quotation.")).toBeVisible();
+      await expect(preview.getByText("Indicative estimate only. Not a quotation. Final pricing is subject to a formal quotation.")).toBeVisible();
+      await expect(preview.getByText("PROJECT ESTIMATE")).toBeVisible();
+      await expect(preview.getByText("Discount 5%")).toBeVisible();
+      await expect(preview.getByText("Tax 18%")).toBeVisible();
+      await expect(preview.getByTestId("qe-s-for")).toHaveText("Prepared for:");
       await preview.getByLabel("Prepared for").fill("Regression Test");
+      await expect(preview.getByTestId("qe-s-for")).toHaveText("Prepared for: Regression Test");
       const [download] = await Promise.all([page.waitForEvent("download"), preview.getByRole("button", { name: "Download" }).click()]);
-      expect(download.suggestedFilename()).toMatch(/^quick-estimate-\d{4}-\d{2}-\d{2}\.pdf$/);
+      expect(download.suggestedFilename()).toMatch(/^project-estimate-\d{4}-\d{2}-\d{2}\.pdf$/);
     });
   });
 

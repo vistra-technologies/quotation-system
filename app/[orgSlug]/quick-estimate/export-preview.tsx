@@ -9,7 +9,6 @@ import { buildSheet, type SheetLabels } from "@/lib/quick-estimate/sheet";
 
 interface ExportPreviewProps {
   orgName: string;
-  username: string;
   currency: SupportedCurrency;
   lines: ValueLine[];
   result: EstimateResult;
@@ -28,7 +27,7 @@ function localDateParts(d: Date) {
  * never sent anywhere) and Download. The preview and the PDF are built from the same `buildSheet`, so the
  * wording and numbers can't drift.
  */
-export function ExportPreview({ orgName, username, currency, lines, result, onBack }: ExportPreviewProps) {
+export function ExportPreview({ orgName, currency, lines, result, onBack }: ExportPreviewProps) {
   const t = useTranslations("quickEstimate");
   const [preparedFor, setPreparedFor] = useState("");
   const [busy, setBusy] = useState(false);
@@ -44,7 +43,7 @@ export function ExportPreview({ orgName, username, currency, lines, result, onBa
   const labels: SheetLabels = { subtotal: t("subtotal"), discount: t("discount"), tax: t("tax"), total: t("total") };
   const sheet = buildSheet(lines, result, currency, labels);
   const forName = preparedFor.trim();
-  const metaLines = [today.label, currency, ...(forName ? [t("pdfFor", { name: forName })] : []), username];
+  const metaLines = [today.label, currency];
 
   async function download() {
     setBusy(true);
@@ -53,11 +52,13 @@ export function ExportPreview({ orgName, username, currency, lines, result, onBa
       await generateQuickEstimatePdf({
         orgName,
         title: t("pdfTitle"),
+        preparedForLabel: t("pdfPreparedFor"),
+        preparedFor: forName,
         metaLines,
         head: { item: t("pdfColItem"), qty: t("pdfColQty"), rate: t("pdfColRate"), amount: t("pdfColAmount") },
         sheet,
         disclaimer: t("disclaimer"),
-        filename: `quick-estimate-${today.iso}.pdf`,
+        filename: `project-estimate-${today.iso}.pdf`,
       });
     } catch {
       setFailed(true);
@@ -107,6 +108,9 @@ export function ExportPreview({ orgName, username, currency, lines, result, onBa
             <div>
               <div className="qe-s-org">{orgName}</div>
               <div className="qe-s-doc">{t("pdfTitle")}</div>
+              <div className="qe-s-for" data-testid="qe-s-for">
+                {t("pdfPreparedFor")}: {forName ? <span>{forName}</span> : <span className="qe-s-for-rule" aria-hidden="true" />}
+              </div>
             </div>
             <div className="qe-s-meta">
               {metaLines.map((line, i) => (

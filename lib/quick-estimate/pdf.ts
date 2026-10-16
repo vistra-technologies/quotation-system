@@ -15,13 +15,17 @@ const GREEN_SOFT: [number, number, number] = [236, 240, 237];
 
 export interface QuickEstimatePdfInput {
   orgName: string;
-  /** "QUICK ESTIMATE" */
+  /** "PROJECT ESTIMATE" */
   title: string;
-  /** Right-aligned meta lines: date, currency, "For <name>" (optional), username. */
+  /** "Prepared for" */
+  preparedForLabel: string;
+  /** The name typed by the user; empty draws a blank 50 mm rule to write on by hand. */
+  preparedFor: string;
+  /** Right-aligned meta lines: date, currency. */
   metaLines: string[];
   head: { item: string; qty: string; rate: string; amount: string };
   sheet: Sheet;
-  /** "Indicative estimate only — not a quotation." */
+  /** "Indicative estimate only. Not a quotation. Final pricing is subject to a formal quotation." */
   disclaimer: string;
   filename: string;
 }
@@ -44,6 +48,22 @@ export async function generateQuickEstimatePdf(input: QuickEstimatePdfInput): Pr
   doc.setTextColor(...GREEN);
   doc.text(input.title.split("").join(" "), MARGIN, 74);
 
+  // "Prepared for: <name>", or the label followed by a blank 50 mm rule (always present, D-15).
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(100, 100, 100);
+  const forPrefix = `${input.preparedForLabel}: `;
+  const forY = 92;
+  doc.text(forPrefix, MARGIN, forY);
+  const forX = MARGIN + doc.getTextWidth(forPrefix);
+  if (input.preparedFor) {
+    doc.text(input.preparedFor, forX, forY);
+  } else {
+    doc.setDrawColor(150, 150, 150);
+    doc.setLineWidth(0.5);
+    doc.line(forX, forY + 1.5, forX + (50 * 72) / 25.4, forY + 1.5);
+  }
+
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
@@ -54,7 +74,7 @@ export async function generateQuickEstimatePdf(input: QuickEstimatePdfInput): Pr
     doc.text(line, right, metaY, { align: "right" });
     metaY += 12;
   });
-  const ruleY = Math.max(92, metaY + 4);
+  const ruleY = Math.max(106, metaY + 4);
   doc.setDrawColor(...GREEN);
   doc.setLineWidth(1.5);
   doc.line(MARGIN, ruleY, right, ruleY);

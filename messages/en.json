@@ -521,13 +521,13 @@
     "search": "Search",
     "options": "Options",
     "noMatch": "No matching items",
-    "pdfTitle": "QUICK ESTIMATE",
-    "pdfFor": "For {name}",
+    "pdfTitle": "PROJECT ESTIMATE",
+    "pdfPreparedFor": "Prepared for",
     "pdfColItem": "ITEM",
     "pdfColQty": "QTY",
     "pdfColRate": "UNIT RATE",
     "pdfColAmount": "AMOUNT",
-    "disclaimer": "Indicative estimate only — not a quotation.",
+    "disclaimer": "Indicative estimate only. Not a quotation. Final pricing is subject to a formal quotation.",
     "exportFailed": "Couldn't create the PDF. Try again."
   }
 }

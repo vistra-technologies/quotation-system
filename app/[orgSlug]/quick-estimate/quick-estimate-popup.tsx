@@ -18,7 +18,6 @@ import "./quick-estimate.css";
 
 interface QuickEstimatePopupProps {
   orgName: string;
-  username: string;
   types: EstimateType[];
   state: EstimateState;
   /** Closes the popup; the caller returns focus to the calculator icon. */
@@ -145,7 +144,7 @@ function LineRow({ line, result, currency, types, pickerOpen, onTogglePicker, on
  * the popup), focus is trapped, and the backdrop closes it. Makes no network request (S33-14); the draft
  * lives in the caller (`useEstimateState`).
  */
-export function QuickEstimatePopup({ orgName, username, types, state, onClose }: QuickEstimatePopupProps) {
+export function QuickEstimatePopup({ orgName, types, state, onClose }: QuickEstimatePopupProps) {
   const t = useTranslations("quickEstimate");
   const { draft } = state;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -239,7 +238,6 @@ export function QuickEstimatePopup({ orgName, username, types, state, onClose }:
       {step === "export" ? (
         <ExportPreview
           orgName={orgName}
-          username={username}
           currency={currency}
           lines={valueLines}
           result={result}

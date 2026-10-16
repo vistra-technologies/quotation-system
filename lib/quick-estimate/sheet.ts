@@ -5,8 +5,8 @@ import { formatAmount, formatMoney, formatQty } from "./format";
 /**
  * The printable estimate, built once from `computeEstimate`'s result and shared by the export preview and
  * the PDF (one source of maths and wording). Pure and value-only. Negatives use an ASCII hyphen because the
- * PDF's Helvetica is WinAnsi (S33-11). Only priced lines appear; Discount and Tax rows appear only when
- * non-zero.
+ * PDF's Helvetica is WinAnsi (S33-11). Only priced lines appear; Discount and Tax rows are always present,
+ * even at zero (D-19).
  */
 export interface SheetLabels {
   subtotal: string;
@@ -56,13 +56,9 @@ export function buildSheet(
   });
 
   const totals: SheetTotal[] = [{ label: labels.subtotal, value: formatAmount(result.subtotal, currency) }];
-  if (result.discount > 0) {
-    const pct = result.discountMode === "pct" ? ` ${formatQty(result.discountValue, currency)}%` : "";
-    totals.push({ label: `${labels.discount}${pct}`, value: `- ${formatAmount(result.discount, currency)}` });
-  }
-  if (result.tax > 0) {
-    totals.push({ label: `${labels.tax} ${formatQty(result.taxPct, currency)}%`, value: `+ ${formatAmount(result.tax, currency)}` });
-  }
+  const pct = result.discountMode === "pct" ? ` ${formatQty(result.discountValue, currency)}%` : "";
+  totals.push({ label: `${labels.discount}${pct}`, value: `- ${formatAmount(result.discount, currency)}` });
+  totals.push({ label: `${labels.tax} ${formatQty(result.taxPct, currency)}%`, value: `+ ${formatAmount(result.tax, currency)}` });
   totals.push({ label: labels.total, value: formatMoney(result.grandTotal, currency), grand: true });
   return { rows, totals };
 }

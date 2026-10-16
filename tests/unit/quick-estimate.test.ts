@@ -398,7 +398,7 @@ test("format: INR groups en-IN, others en-US, and the currency is a code, never 
 
 const labels = { subtotal: "Subtotal", discount: "Discount", tax: "Tax", total: "Total" };
 
-test("sheet: only priced lines are rows; Discount and Tax rows appear only when non-zero; ASCII signs", () => {
+test("sheet: only priced lines are rows; Discount and Tax rows are always present, even at 0; ASCII signs", () => {
   const lines = [L("m²", 42.5, 3200, "Partition"), L("pcs", 0, 10, "Unpriced"), L("pcs", 3, 28500, "Door")];
   const r = computeEstimate(lines, PCT(5), 18);
   const s = buildSheet(lines, r, "INR", labels);
@@ -411,7 +411,12 @@ test("sheet: only priced lines are rows; Discount and Tax rows appear only when 
     ["Total", "INR 2,48,301.50"],
   ]);
   const plain = buildSheet(lines, computeEstimate(lines, PCT(0), 0), "INR", labels);
-  assert.deepEqual(plain.totals.map((t) => t.label), ["Subtotal", "Total"]);
+  assert.deepEqual(plain.totals.map((t) => [t.label, t.value]), [
+    ["Subtotal", "2,21,500.00"],
+    ["Discount 0%", "- 0.00"],
+    ["Tax 0%", "+ 0.00"],
+    ["Total", "INR 2,21,500.00"],
+  ]);
   const amount = buildSheet(lines, computeEstimate(lines, AMT(1000), 0), "USD", labels);
   assert.deepEqual(amount.totals[1], { label: "Discount", value: "- 1,000.00" }); // no % in amount mode
 });

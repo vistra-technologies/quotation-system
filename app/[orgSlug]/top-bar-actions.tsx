@@ -295,7 +295,6 @@ export function TopBarActions({
       {estimateOpen && estimateEnabled && (
         <QuickEstimatePopup
           orgName={orgName}
-          username={username}
           types={estimateTypes}
           state={estimate}
           onClose={closeEstimate}

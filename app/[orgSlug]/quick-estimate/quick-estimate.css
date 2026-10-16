@@ -577,6 +577,8 @@
 .qe-s-top { display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 18px; border-bottom: 2px solid var(--color-primary); }
 .qe-s-org { font-size: 17px; font-weight: 800; color: var(--color-text-heading); }
 .qe-s-doc { font-size: 9px; letter-spacing: 0.14em; color: var(--color-primary); font-weight: 800; margin-top: 4px; }
+.qe-s-for { margin-top: 6px; color: #666; }
+.qe-s-for-rule { display: inline-block; width: 50mm; border-bottom: 1px solid #999; vertical-align: baseline; }
 .qe-s-meta { text-align: right; color: #666; line-height: 1.6; }
 .qe-s-meta b { color: #222; }
 .qe-s-row { display: grid; grid-template-columns: 18px 1fr 70px 84px 90px; gap: 8px; padding: 9px 6px; border-bottom: 1px solid #ececec; align-items: start; }
