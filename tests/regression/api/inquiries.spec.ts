@@ -467,6 +467,20 @@ test.describe("inquiries: quickEstimate", () => {
       ["discountMode fixed", est({ discountMode: "fixed" })],
       ["not an object", "x"],
       ["currency mismatch", est({ currency: "USD" })],
+      ["array", [est()]],
+      ["101 lines", est({ lines: Array.from({ length: 101 }, () => estLine()) })],
+      ["lines not an array", est({ lines: estLine() })],
+      ["negative qty", est({ lines: [estLine({ qty: -1 })] })],
+      ["m2 qty 3 decimals", est({ lines: [estLine({ qty: 1.234 })] })],
+      ["negative unitPrice", est({ lines: [estLine({ unitPrice: -5 })] })],
+      ["string qty", est({ lines: [estLine({ qty: "12" })] })],
+      ["blank itemName", est({ lines: [estLine({ itemName: "   " })] })],
+      ["itemName 121 chars", est({ lines: [estLine({ itemName: "x".repeat(121) })] })],
+      ["variantText 201 chars", est({ lines: [estLine({ variantText: "x".repeat(201) })] })],
+      ["taxPct 100.5", est({ taxPct: 100.5 })],
+      ["negative taxPct", est({ taxPct: -1 })],
+      ["amount discount 3 decimals", est({ discountMode: "amount", discountValue: 1.234 })],
+      ["negative amount discount", est({ discountMode: "amount", discountValue: -1 })],
     ];
     const keep = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-qe-val"), currency: "AED", quickEstimate: est() });
     expect(keep.res.status(), JSON.stringify(keep.body)).toBe(201);
@@ -499,6 +513,19 @@ test.describe("inquiries: quickEstimate", () => {
     const g = await getEstimate(as.admin, url(`/inquiries/${id}`));
     expect(g.currency).toBe("INR");
     expect(g.quickEstimate!.currency).toBe("USD");
+  });
+
+  test("boundaries are accepted: 100 lines, a fixed amount above the subtotal, absent variantText/tax, POST null", async ({ as, run, ledger, url }) => {
+    const none = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-qe-null"), currency: "AED", quickEstimate: null });
+    expect(none.res.status(), JSON.stringify(none.body)).toBe(201);
+    expect((await getEstimate(as.admin, url(`/inquiries/${none.id}`))).quickEstimate).toBeNull();
+    const lines = Array.from({ length: 100 }, () => ({ itemName: "Door", unit: "pcs", qty: 0, unitPrice: 0 }));
+    const r = await as.admin.patch(url(`/inquiries/${none.id}`), { data: { quickEstimate: { lines, discountMode: "amount", discountValue: 999999.99 } } });
+    expect(r.status(), await r.text()).toBe(200);
+    const got = (await getEstimate(as.admin, url(`/inquiries/${none.id}`))).quickEstimate!;
+    expect(got.lines).toHaveLength(100);
+    expect(got.lines[0]).toMatchObject({ itemName: "Door", variantText: "", unit: "pcs", qty: 0, unitPrice: 0 });
+    expect(got).toMatchObject({ discountMode: "amount", discountValue: 999999.99, taxPct: 0, currency: "AED" });
   });
 
   test("NEW gate: after dismiss a PATCH (estimate or clear) is 409 and the stored value is unchanged", async ({ as, run, ledger, url }) => {
