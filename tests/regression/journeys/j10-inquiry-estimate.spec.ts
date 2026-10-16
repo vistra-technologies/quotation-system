@@ -151,7 +151,7 @@ test("J10: Quick Estimate on inquiries — attach on New Inquiry, Create, detail
       await choose(page, currency, "AED");
       await expect(section.getByTestId("qe-est-drift")).toBeVisible();
       await page.getByRole("button", { name: "Create Inquiry" }).click();
-      await expect(page.getByText(/must match the inquiry currency (AED)/)).toBeVisible(SLOW);
+      await expect(page.getByText("must match the inquiry currency (AED)")).toBeVisible(SLOW);
       expect(orgPathOf(run, page.url())).toBe("/inquiries/new");
       await expect(section).toBeVisible();
       expect(await draftLines(page)).toBe(1);
