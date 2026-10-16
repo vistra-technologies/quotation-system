@@ -48,7 +48,7 @@ export async function generateQuickEstimatePdf(input: QuickEstimatePdfInput): Pr
   doc.setTextColor(...GREEN);
   doc.text(input.title.split("").join(" "), MARGIN, 74);
 
-  // "Prepared for: <name>", or the label followed by a blank 50 mm rule (always present, D-15).
+  // "Prepared for: <name>", or the label followed by a blank 50 mm rule (always present, D-16).
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);

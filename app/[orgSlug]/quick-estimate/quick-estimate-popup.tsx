@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 import { SelectField } from "@/components/select-field";
 import { SUPPORTED_CURRENCIES, type SupportedCurrency } from "@/lib/currency";
 import { computeEstimate, isInvalidQty, type EstimateLineResult } from "@/lib/quick-estimate/estimate";
 import { formatAmount, formatMoney } from "@/lib/quick-estimate/format";
+import { sameDraft } from "@/lib/quick-estimate/inquiry-draft";
 import { toValueLines, type DraftLine } from "@/lib/quick-estimate/lines";
 import type { EstimateType } from "@/lib/quick-estimate/palette";
 import { ComponentChip } from "./component-chip";
+import type { InquiryMode } from "./estimate-provider";
 import { ExportPreview } from "./export-preview";
 import { ItemPicker } from "./item-picker";
 import type { EstimateState } from "./use-estimate-state";
@@ -20,8 +22,14 @@ interface QuickEstimatePopupProps {
   orgName: string;
   types: EstimateType[];
   state: EstimateState;
-  /** Closes the popup; the caller returns focus to the calculator icon. */
+  /** Closes the popup; the caller returns focus to the opener. */
   onClose: () => void;
+  /**
+   * Inquiry mode (S33-23): the currency is locked and shown as a label, the primary footer button attaches or
+   * updates the inquiry's estimate, Export PDF is secondary. The popup writes nothing to sessionStorage; the
+   * caller persists the snapshot. Absent = standalone, all Batch 1 behaviour.
+   */
+  inquiryMode?: InquiryMode;
 }
 
 interface LineRowProps {
@@ -144,16 +152,21 @@ function LineRow({ line, result, currency, types, pickerOpen, onTogglePicker, on
  * the popup), focus is trapped, and the backdrop closes it. Makes no network request (S33-14); the draft
  * lives in the caller (`useEstimateState`).
  */
-export function QuickEstimatePopup({ orgName, types, state, onClose }: QuickEstimatePopupProps) {
+export function QuickEstimatePopup({ orgName, types, state, onClose, inquiryMode }: QuickEstimatePopupProps) {
   const t = useTranslations("quickEstimate");
   const { draft } = state;
   const rootRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const clearBtnRef = useRef<HTMLButtonElement>(null);
   const exportBtnRef = useRef<HTMLButtonElement>(null);
+  const attachBtnRef = useRef<HTMLButtonElement>(null);
   const [step, setStep] = useState<"edit" | "export">("edit");
   const [pickerLine, setPickerLine] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
+  const [confirm, setConfirm] = useState<"clear" | "discard" | null>(null);
+  // What the popup was opened with: the discard confirm compares against it (S33-23).
+  const [opened] = useState(() => state.draft);
+  // Inquiry exports prefill "Prepared for" and add the project name; read when the export step opens.
+  const [exportMeta, setExportMeta] = useState<{ preparedFor: string; projectName: string } | null>(null);
   // A focus move to run after the next render (new DOM must exist first). Refs only: no state in effects.
   const afterRender = useRef<(() => void) | null>(null);
 
@@ -171,21 +184,32 @@ export function QuickEstimatePopup({ orgName, types, state, onClose }: QuickEsti
     }
   });
 
+  // Closing an inquiry-mode update with unsaved changes asks first (S33-23); everything else closes at once.
+  const requestClose = useCallback(() => {
+    if (inquiryMode?.isUpdate && !sameDraft(state.draft, opened)) {
+      setPickerLine(null);
+      setConfirm("discard");
+      return;
+    }
+    onClose();
+  }, [inquiryMode?.isUpdate, state.draft, opened, onClose]);
+
   // Layered Esc. SelectField and the picker consume their own Esc (preventDefault), which is skipped here.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== "Escape" || e.defaultPrevented) return;
       e.preventDefault();
       if (pickerLine !== null) setPickerLine(null);
-      else if (confirming) {
-        setConfirming(false);
-        afterRender.current = () => clearBtnRef.current?.focus();
+      else if (confirm !== null) {
+        const kind = confirm;
+        setConfirm(null);
+        afterRender.current = () => (kind === "clear" ? clearBtnRef : attachBtnRef).current?.focus();
       } else if (step === "export") backToEdit();
-      else onClose();
+      else requestClose();
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [pickerLine, confirming, step, onClose]);
+  }, [pickerLine, confirm, step, requestClose]);
 
   // Back from the export step re-mounts the editor: put focus on the Export PDF button, not on body.
   function backToEdit() {
@@ -223,9 +247,20 @@ export function QuickEstimatePopup({ orgName, types, state, onClose }: QuickEsti
     };
   }
 
+  function openExport() {
+    setExportMeta(inquiryMode ? inquiryMode.getExportMeta() : null);
+    setStep("export");
+  }
+
+  function attach() {
+    if (!inquiryMode || result.priced === 0) return;
+    inquiryMode.onAttach(state.draft);
+    onClose();
+  }
+
   function confirmClear() {
     state.clearLines();
-    setConfirming(false);
+    setConfirm(null);
     setPickerLine(null);
     afterRender.current = () => rootRef.current?.querySelector<HTMLElement>("[data-empty-add]")?.focus();
   }
@@ -241,13 +276,15 @@ export function QuickEstimatePopup({ orgName, types, state, onClose }: QuickEsti
           currency={currency}
           lines={valueLines}
           result={result}
+          initialPreparedFor={exportMeta?.preparedFor}
+          projectName={exportMeta?.projectName}
           onBack={backToEdit}
         />
       ) : (
         <div
           className="qe-backdrop"
           onMouseDown={(e) => {
-            if (e.target === e.currentTarget) onClose();
+            if (e.target === e.currentTarget) requestClose();
           }}
         >
           <div ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="qe-title" className="qe-dialog">
@@ -265,18 +302,22 @@ export function QuickEstimatePopup({ orgName, types, state, onClose }: QuickEsti
                 <span className="qe-info-tip" role="tooltip">{t("infoTip")}</span>
               </span>
               <span className="qe-spacer" />
-              <div className="qe-cur">
-                <SelectField
-                  value={currency}
-                  title={t("currency")}
-                  onChange={(e) => state.setCurrency(e.target.value as SupportedCurrency)}
-                >
-                  {SUPPORTED_CURRENCIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </SelectField>
-              </div>
-              <button type="button" className="qe-x" onClick={onClose} title={t("close")} aria-label={t("close")}>
+              {inquiryMode ? (
+                <span className="qe-cur-label" title={t("currency")} aria-label={`${t("currency")} ${currency}`}>{currency}</span>
+              ) : (
+                <div className="qe-cur">
+                  <SelectField
+                    value={currency}
+                    title={t("currency")}
+                    onChange={(e) => state.setCurrency(e.target.value as SupportedCurrency)}
+                  >
+                    {SUPPORTED_CURRENCIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </SelectField>
+                </div>
+              )}
+              <button type="button" className="qe-x" onClick={requestClose} title={t("close")} aria-label={t("close")}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                   <path d="M6 6l12 12M18 6 6 18" />
                 </svg>
@@ -291,7 +332,7 @@ export function QuickEstimatePopup({ orgName, types, state, onClose }: QuickEsti
                 </svg>
                 <span>{t("currencyChanged", { currency })}</span>
                 <span className="qe-spacer" />
-                {state.prevCurrency !== null && (
+                {state.prevCurrency !== null && !inquiryMode && (
                   <button type="button" onClick={state.undoCurrency}>{t("undo")}</button>
                 )}
                 <button type="button" className="qe-notice-ok" onClick={state.acceptRates}>{t("ratesCorrect")}</button>
@@ -433,31 +474,45 @@ export function QuickEstimatePopup({ orgName, types, state, onClose }: QuickEsti
             </div>
 
             <div className="qe-foot">
-              {confirming ? (
+              {confirm !== null ? (
                 <div className="qe-foot-confirm" role="alertdialog" aria-labelledby="qe-confirm-text">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                     <path d="M12 3 2 20h20z" />
                     <path d="M12 10v4M12 17h.01" />
                   </svg>
-                  <span id="qe-confirm-text">{t("clearConfirm")}</span>
+                  <span id="qe-confirm-text">{confirm === "clear" ? t("clearConfirm") : t("discardConfirm")}</span>
                   <span className="qe-spacer" />
                   <button
                     type="button"
                     className="qe-btn qe-btn-outline"
                     autoFocus
                     onClick={() => {
-                      setConfirming(false);
-                      afterRender.current = () => clearBtnRef.current?.focus();
+                      const kind = confirm;
+                      setConfirm(null);
+                      afterRender.current = () => (kind === "clear" ? clearBtnRef : attachBtnRef).current?.focus();
                     }}
                   >
                     {t("keepEditing")}
                   </button>
-                  <button type="button" className="qe-btn qe-btn-danger" onClick={confirmClear}>{t("clearAll")}</button>
+                  {confirm === "clear" ? (
+                    <button type="button" className="qe-btn qe-btn-danger" onClick={confirmClear}>{t("clearAll")}</button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="qe-btn qe-btn-danger"
+                      onClick={() => {
+                        setConfirm(null);
+                        onClose();
+                      }}
+                    >
+                      {t("discard")}
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="qe-foot-main">
                   {!none && (
-                    <button ref={clearBtnRef} type="button" className="qe-clear" onClick={() => setConfirming(true)}>
+                    <button ref={clearBtnRef} type="button" className="qe-clear" onClick={() => setConfirm("clear")}>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                         <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
                         <path d="M3 3v5h5" />
@@ -466,12 +521,32 @@ export function QuickEstimatePopup({ orgName, types, state, onClose }: QuickEsti
                     </button>
                   )}
                   <span className="qe-spacer" />
-                  <button ref={exportBtnRef} type="button" className="qe-btn qe-btn-primary" disabled={result.priced === 0} onClick={() => setStep("export")}>
+                  <button
+                    ref={exportBtnRef}
+                    type="button"
+                    className={`qe-btn ${inquiryMode ? "qe-btn-outline" : "qe-btn-primary"}`}
+                    disabled={result.priced === 0}
+                    onClick={openExport}
+                  >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d="M12 4v11M7 10l5 5 5-5M5 20h14" />
                     </svg>
                     {t("exportPdf")}
                   </button>
+                  {inquiryMode && (
+                    <button
+                      ref={attachBtnRef}
+                      type="button"
+                      className="qe-btn qe-btn-primary"
+                      disabled={result.priced === 0}
+                      onClick={attach}
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M21.4 11.1l-9.2 9.2a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+                      </svg>
+                      {inquiryMode.isUpdate ? t("updateEstimate") : t("attachToInquiry")}
+                    </button>
+                  )}
                 </div>
               )}
             </div>

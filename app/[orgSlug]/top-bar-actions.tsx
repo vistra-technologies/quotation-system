@@ -4,11 +4,10 @@ import { useCallback, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { authClient } from "@/lib/auth-client";
-import type { SupportedCurrency } from "@/lib/currency";
-import type { EstimateType } from "@/lib/quick-estimate/palette";
 import { AccountPopup } from "./account-popup";
+import { useEstimate } from "./quick-estimate/estimate-provider";
 import { QuickEstimatePopup } from "./quick-estimate/quick-estimate-popup";
-import { clearStoredEstimate, useEstimateState } from "./quick-estimate/use-estimate-state";
+import { clearStoredEstimate } from "./quick-estimate/use-estimate-state";
 
 interface TopBarActionsProps {
   orgSlug: string;
@@ -31,12 +30,6 @@ interface TopBarActionsProps {
   lastName: string;
   mobile: string | null;
   profileEmail: string | null;
-  /** Quick Estimate (Stage 33): false -> the calculator icon renders disabled with a tooltip. */
-  estimateEnabled: boolean;
-  /** The usable component types, already trimmed by the layout (S33-3). */
-  estimateTypes: EstimateType[];
-  /** The external company default currency; null for internal users (the popup then defaults to INR). */
-  estimateDefaultCurrency: SupportedCurrency | null;
 }
 
 /**
@@ -52,8 +45,9 @@ interface TopBarActionsProps {
  * dashboard/logout-button.tsx (window.location.href, not router.push) so the
  * router cache doesn't restore a stale authenticated view on browser Back.
  *
- * Stage 33: the calculator icon opens the Quick Estimate popup. The draft state lives here (this component
- * persists across client navigation) and is mirrored to sessionStorage; Log Out removes it.
+ * Stage 33: the calculator icon opens the Quick Estimate popup. The draft lives in `EstimateProvider` (D-22),
+ * mirrored to sessionStorage; Log Out removes it. This component renders the only popup, from the provider's
+ * open request (standalone, or inquiry mode when the New Inquiry form asked for it).
  */
 export function TopBarActions({
   orgSlug,
@@ -67,20 +61,16 @@ export function TopBarActions({
   lastName,
   mobile,
   profileEmail,
-  estimateEnabled,
-  estimateTypes,
-  estimateDefaultCurrency,
 }: TopBarActionsProps) {
   const t = useTranslations("account");
   const qe = useTranslations("quickEstimate");
-  const estimate = useEstimateState(orgSlug, estimateEnabled, estimateTypes, estimateDefaultCurrency ?? "INR");
-  const [estimateOpen, setEstimateOpen] = useState(false);
+  const est = useEstimate();
+  const estimateEnabled = est.enabled;
+  const estimate = est.draft;
+  const request = est.request;
+  const estimateOpen = request !== null;
   const estimateBtnRef = useRef<HTMLButtonElement>(null);
   const estimateTipId = useId();
-  const closeEstimate = useCallback(() => {
-    setEstimateOpen(false);
-    estimateBtnRef.current?.focus();
-  }, []);
   const [menuOpen, setMenuOpen] = useState(false);
   const [popupOpen, setPopupOpen] = useState(false);
   const profileBtnRef = useRef<HTMLButtonElement>(null);
@@ -150,7 +140,7 @@ export function TopBarActions({
           ref={estimateBtnRef}
           type="button"
           onClick={() => {
-            if (estimateEnabled) setEstimateOpen((v) => !v);
+            if (estimateEnabled) est.toggleFromIcon(estimateBtnRef.current);
           }}
           title={estimateEnabled ? (estimate.hasDraft && !estimateOpen ? qe("iconTitleDraft") : qe("iconTitle")) : undefined}
           aria-label={qe("iconTitle")}
@@ -292,12 +282,13 @@ export function TopBarActions({
         )}
       </div>
 
-      {estimateOpen && estimateEnabled && (
+      {request && estimateEnabled && (
         <QuickEstimatePopup
           orgName={orgName}
-          types={estimateTypes}
-          state={estimate}
-          onClose={closeEstimate}
+          types={est.types}
+          state={request.kind === "inquiry" && request.source === "session" ? est.session : est.draft}
+          inquiryMode={request.kind === "inquiry" ? request.mode : undefined}
+          onClose={est.close}
         />
       )}
 

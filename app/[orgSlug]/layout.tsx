@@ -4,6 +4,7 @@ import { usableEstimateTypes, type ComponentTypeInput, type EstimateType } from 
 import { detectIsSubdomain } from "@/lib/orgHref";
 import { NextIntlClientProvider } from "next-intl";
 import allMessages from "@/messages/en.json";
+import { EstimateProvider } from "./quick-estimate/estimate-provider";
 import { TopBarActions } from "./top-bar-actions";
 import { Sidebar } from "./sidebar";
 import { ReloadOnLoginRedirect } from "./reload-on-login-redirect";
@@ -30,7 +31,8 @@ export const dynamic = "force-dynamic";
  * The only NextIntlClientProvider here wraps the top-bar header (the My Account popup uses
  * the `account` namespace, the Quick Estimate popup the `quickEstimate` one); it is a sibling of <main>,
  * so it never nests with the per-section layouts (projects, admin, inquiries, orders), which still
- * provide their own.
+ * provide their own. `EstimateProvider` (no intl) wraps the whole shell so the top bar and the inquiry
+ * pages share one Quick Estimate draft (D-22).
  *
  * Stage 33 (Quick Estimate): the component-types list is fetched in parallel with /me. The setup guard
  * (usableEstimateTypes) runs here on the server and only the trimmed usable types reach the client. A
@@ -104,6 +106,13 @@ export default async function OrgSlugLayout({
   const canManagePricing = me.adminPermissions.includes("MANAGE_PRICING");
 
   return (
+    <EstimateProvider
+      orgSlug={orgSlug}
+      orgName={me.orgName}
+      enabled={estimate.enabled}
+      types={estimate.types}
+      defaultCurrency={estimateCurrency ?? "INR"}
+    >
     <div className="flex h-screen bg-bg-page">
       {/* Hard-reloads if a client-side nav lands on /login (revoked/expired session),
           so the stale shell doesn't stay around the login form. */}
@@ -136,9 +145,6 @@ export default async function OrgSlugLayout({
               lastName={me.lastName}
               mobile={me.mobile}
               profileEmail={me.profileEmail}
-              estimateEnabled={estimate.enabled}
-              estimateTypes={estimate.types}
-              estimateDefaultCurrency={estimateCurrency}
             />
           </NextIntlClientProvider>
         </header>
@@ -147,5 +153,6 @@ export default async function OrgSlugLayout({
         <main className="flex-1 overflow-auto">{children}</main>
       </div>
     </div>
+    </EstimateProvider>
   );
 }

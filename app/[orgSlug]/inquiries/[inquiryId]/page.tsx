@@ -5,7 +5,9 @@ import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { creatorCell } from "@/lib/creator-display";
 import { formatBudget } from "@/lib/format-currency";
+import type { InquiryQuickEstimateV1 } from "@/lib/quick-estimate/inquiry-estimate";
 import { dismissInquiry } from "../actions";
+import { InquiryEstimateCard } from "./inquiry-estimate-card";
 import { StartProjectButton } from "./start-project-button";
 
 // Always render live — reads session cookie and DB.
@@ -41,6 +43,8 @@ interface InquiryDetail {
   endClientCity: string | null;
   endClientState: string | null;
   endClientGstNumber: string | null;
+  // Stage 33 S33-17: the stored Quick Estimate snapshot, or null.
+  quickEstimate: InquiryQuickEstimateV1 | null;
 }
 
 /** Shared read-only field renderer for the 3-card detail layout. */
@@ -69,6 +73,9 @@ function Field({ label, value }: { label: string; value?: string | null }) {
  * Stage 14 Batch B: card section restructured from 2-col to 3 stacked cards
  * per finalized mockup (Project Information / Contractor Details / End Client Details).
  * All 15 new fields displayed. Existing header unchanged.
+ *
+ * Stage 33 Batch 5 (S33-21 / S33-22): the Quick Estimate card sits below the three cards (P7 mockup); it is a
+ * client component fed by this page's props, no extra fetch.
  */
 export default async function InquiryDetailPage({
   params,
@@ -277,6 +284,18 @@ export default async function InquiryDetailPage({
           <Field label={t("fieldEndClientCity")} value={inquiry.endClientCity} />
           <Field label={t("fieldEndClientState")} value={inquiry.endClientState} />
         </div>
+      </div>
+
+      <div className="mt-6">
+        <InquiryEstimateCard
+          orgSlug={orgSlug}
+          inquiryId={inquiryId}
+          status={inquiry.status}
+          currency={inquiry.currency}
+          projectName={inquiry.name}
+          endClientName={inquiry.endClientName}
+          quickEstimate={inquiry.quickEstimate ?? null}
+        />
       </div>
     </div>
   );

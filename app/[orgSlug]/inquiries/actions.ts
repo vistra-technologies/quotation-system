@@ -6,6 +6,7 @@ import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
 import { withAction } from "@/lib/with-route";
 import { apiErrorMessage } from "@/lib/api-error-message";
+import type { EstimateInput } from "@/lib/quick-estimate/inquiry-draft";
 
 // ---------------------------------------------------------------------------
 // createInquiry
@@ -76,6 +77,18 @@ export const createInquiry = withAction(
     return { error: "Name and currency are required." };
   }
 
+  // Stage 33 (S33-20): the attached Quick Estimate rides in a hidden JSON field, only while one is attached.
+  // The server validates it (S33-17); this only forwards a parsed object and omits the key otherwise.
+  let quickEstimate: unknown;
+  const rawEstimate = (formData.get("quickEstimate") as string | null)?.trim();
+  if (rawEstimate) {
+    try {
+      quickEstimate = JSON.parse(rawEstimate);
+    } catch {
+      return { error: "The attached estimate could not be read — remove it and add it again." };
+    }
+  }
+
   const res = await internalFetch(`/api/v1/orgs/${orgSlug}/inquiries`, {
     method: "POST",
     body: JSON.stringify({
@@ -83,6 +96,7 @@ export const createInquiry = withAction(
       currency,
       projectLocation,
       externalCompanyId,
+      ...(quickEstimate !== undefined ? { quickEstimate } : {}),
       // Stage 14 — extended intake fields (dates sent as ISO date strings)
       submissionDate,
       projectDeadline,
@@ -244,6 +258,56 @@ export const updateInquiry = withAction(
     await orgHref(orgSlug, `/inquiries/${inquiryId}`),
     RedirectType.replace,
   );
+});
+
+// ---------------------------------------------------------------------------
+// updateInquiryEstimate
+// ---------------------------------------------------------------------------
+
+export type UpdateInquiryEstimateResult = { error: string | null };
+
+/**
+ * Set, replace or clear (`null`) the Quick Estimate on an existing inquiry (Stage 33 S33-21).
+ *
+ * Thin marshaler: PATCH /api/v1/orgs/[orgSlug]/inquiries/[inquiryId] with `{ quickEstimate }`. The route
+ * validates (S33-17), stamps currency/updatedAt/updatedByName, enforces the NEW-only gate and the ownership
+ * filter, and the DAL writes DbNull for a clear. Called imperatively from the detail card, so it returns an
+ * error instead of redirecting. `withAction` logs no arguments, so no estimate content reaches the logs.
+ */
+export const updateInquiryEstimate = withAction(
+  "app/[orgSlug]/inquiries/actions#updateInquiryEstimate",
+  async (
+  orgSlug: string,
+  inquiryId: string,
+  estimate: EstimateInput | null,
+): Promise<UpdateInquiryEstimateResult> => {
+  const res = await internalFetch(
+    `/api/v1/orgs/${orgSlug}/inquiries/${inquiryId}`,
+    { method: "PATCH", body: JSON.stringify({ quickEstimate: estimate }) },
+  );
+
+  if (res.status === 401 || res.status === 403) {
+    redirect(await orgHref(orgSlug, "/login"));
+  }
+
+  if (res.status === 409) {
+    return { error: "This inquiry can no longer be edited (already dismissed or converted)." };
+  }
+
+  if (!res.ok) {
+    let errorMessage = "An unexpected error occurred — please try again.";
+    try {
+      const body = (await res.json()) as { error?: string };
+      errorMessage = apiErrorMessage(body, errorMessage);
+    } catch {
+      // ignore JSON parse failure
+    }
+    return { error: errorMessage };
+  }
+
+  revalidatePath(`/${orgSlug}/inquiries`);
+  revalidatePath(`/${orgSlug}/inquiries/${inquiryId}`);
+  return { error: null };
 });
 
 // ---------------------------------------------------------------------------

@@ -1,13 +1,26 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { SelectField } from "@/components/select-field";
 import { CompanyDropdown } from "@/components/company-dropdown";
-import { SUPPORTED_CURRENCIES } from "@/lib/currency";
+import { isSupportedCurrency, SUPPORTED_CURRENCIES, type SupportedCurrency } from "@/lib/currency";
 import { formatBudget, stripGroupingSeparators } from "@/lib/format-currency";
+import {
+  draftToAttached,
+  pricedDraftLines,
+  storedToDraft,
+  type AttachedEstimate,
+} from "@/lib/quick-estimate/inquiry-draft";
+import type { EstimateDraft } from "@/lib/quick-estimate/lines";
+import { EstimateActionButton } from "../../quick-estimate/estimate-action-button";
+import { EstimatePanel } from "../../quick-estimate/estimate-panel";
+import { useEstimate, type InquiryMode } from "../../quick-estimate/estimate-provider";
+import { evaluateEstimate } from "../../quick-estimate/estimate-summary";
+import { ExportOverlay } from "../../quick-estimate/export-overlay";
+import { UndoToast, useUndoToast } from "../../quick-estimate/undo-toast";
 import { createInquiry, type CreateInquiryState } from "../actions";
 
 interface CreateInquiryFormProps {
@@ -21,6 +34,70 @@ interface CreateInquiryFormProps {
 }
 
 const initialState: CreateInquiryState = { error: null };
+
+/**
+ * One of the three form cards, collapsible (S33-20, v3 mockup). Folded state is owned by the form (controlled,
+ * not `<details>`). The content wrapper is `inert` while folded, so Tab skips every field inside; the header
+ * click and the chevron button both toggle.
+ */
+function FoldCard({
+  title,
+  subtitle,
+  folded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  folded: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  const qe = useTranslations("quickEstimate");
+  const label = folded ? qe("foldExpand") : qe("foldCollapse");
+  return (
+    <div className="mb-6 overflow-hidden rounded-md border border-border bg-bg-card shadow-card" data-folded={folded}>
+      <div className="flex cursor-pointer select-none items-center gap-3 bg-primary-softer px-5 py-3.5" onClick={onToggle}>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-base font-extrabold text-primary-dark">{title}</h2>
+          <p className="mt-0.5 text-xs font-medium text-text-muted">{subtitle}</p>
+        </div>
+        <button
+          type="button"
+          aria-expanded={!folded}
+          aria-label={`${label}: ${title}`}
+          title={label}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-transparent text-primary-dark hover:border-primary-soft hover:bg-bg-white"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`transition-transform duration-200 ${folded ? "-rotate-90" : ""}`}
+            aria-hidden="true"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+      </div>
+      <div
+        inert={folded}
+        className={`grid transition-[grid-template-rows] duration-200 ${folded ? "grid-rows-[0fr]" : "grid-rows-[1fr]"}`}
+      >
+        <div className="min-h-0 overflow-hidden">{children}</div>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Client Component form for creating a new inquiry.
@@ -85,6 +162,120 @@ export function CreateInquiryForm({
     setBudgetValue(formatted === "—" ? "" : formatted);
   }
 
+  // ── Quick Estimate (Stage 33, S33-19 / S33-20) ────────────────────────────────────────────────────
+  const qe = useTranslations("quickEstimate");
+  const est = useEstimate();
+  const formRef = useRef<HTMLFormElement>(null);
+  const addBtnRef = useRef<HTMLButtonElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  const { toast, show: showToast, hide: hideToast } = useUndoToast();
+  // The estimate attached to this form, held in memory until Create Inquiry posts it with the form.
+  const [attached, setAttached] = useState<AttachedEstimate | null>(null);
+  const [folded, setFolded] = useState<boolean[]>([false, false, false]);
+  // Set while the export overlay is open: the live End client / project name, read when it was opened.
+  const [exporting, setExporting] = useState<{ preparedFor: string; projectName: string } | null>(null);
+  const formCurrency: SupportedCurrency = isSupportedCurrency(selectedCurrency) ? selectedCurrency : "INR";
+  const hasDraft = est.draft.hasDraft;
+
+  function toggleFold(i: number) {
+    setFolded((f) => f.map((v, j) => (j === i ? !v : v)));
+  }
+
+  function readExportMeta() {
+    const fd = formRef.current ? new FormData(formRef.current) : null;
+    const text = (k: string) => String(fd?.get(k) ?? "").trim();
+    return { preparedFor: text("endClientName"), projectName: text("name") };
+  }
+
+  /** The popup's primary button (Attach / Update): keep the snapshot, write it back to the draft (D-23), fold. */
+  function handleAttach(snapshot: EstimateDraft) {
+    const wasAttached = attached !== null;
+    setAttached(draftToAttached(snapshot));
+    est.draft.reset({ ...snapshot, lines: pricedDraftLines(snapshot).map((l) => ({ ...l, flag: false })) });
+    setFolded([true, true, true]);
+    // The section mounts on this render; scroll to it and flash it once it exists (v3 mockup).
+    setTimeout(() => {
+      const el = sectionRef.current;
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      el.classList.remove("qe-est-flash");
+      void el.offsetWidth;
+      el.classList.add("qe-est-flash");
+    }, 240);
+    showToast(wasAttached ? qe("toastUpdated") : qe("toastAttached"));
+  }
+
+  /** Add / Continue / Edit estimate, and the top-bar calculator icon while this form is mounted. */
+  function openEstimate(trigger: HTMLElement | null) {
+    if (!est.enabled) return;
+    const mode: InquiryMode = {
+      currency: formCurrency,
+      isUpdate: attached !== null,
+      onAttach: handleAttach,
+      getExportMeta: readExportMeta,
+    };
+    if (attached) {
+      // Editing: a storage-free copy seeded from the attached values, so the shared draft is untouched until Update.
+      let seq = 0;
+      est.session.reset(storedToDraft({ ...attached.input, currency: attached.currency }, est.types, formCurrency, () => `s${++seq}`));
+      est.open({ kind: "inquiry", source: "session", mode, returnFocus: trigger });
+    } else {
+      // A fresh estimate uses the shared draft, switched to the form's currency (flags priced rates, D-28).
+      if (est.draft.draft.currency !== formCurrency) est.draft.setCurrency(formCurrency);
+      est.open({ kind: "inquiry", source: "draft", mode, returnFocus: trigger });
+    }
+  }
+
+  /** Remove clears the attached estimate and the draft lines, reopens the sections; Undo restores both (D-23). */
+  function removeEstimate() {
+    if (!attached) return;
+    const prevAttached = attached;
+    const prevDraft = est.draft.draft;
+    setAttached(null);
+    est.draft.clearLines();
+    setFolded([false, false, false]);
+    addBtnRef.current?.focus();
+    showToast(qe("toastRemoved"), () => {
+      setAttached(prevAttached);
+      est.draft.reset(prevDraft);
+    });
+  }
+
+  // The top-bar icon opens this form's inquiry-mode popup while the form is mounted (S33-19).
+  const openRef = useRef(openEstimate);
+  useEffect(() => {
+    openRef.current = openEstimate;
+  });
+  const { registerInquiryOpener } = est;
+  useEffect(() => {
+    registerInquiryOpener((trigger) => openRef.current(trigger));
+    return () => registerInquiryOpener(null);
+  }, [registerInquiryOpener]);
+
+  // A successful Create clears the draft lines (D-23). createInquiry ends in a redirect, so there is no return
+  // value to read: a submit that never produced a new action state, followed by this form unmounting, is a
+  // success (a failure returns state and keeps the form mounted). Only when an estimate was attached.
+  const submitted = useRef(false);
+  useEffect(() => {
+    submitted.current = false;
+  }, [state]);
+  const clearDraftLines = est.draft.clearLines;
+  useEffect(
+    () => () => {
+      if (submitted.current) clearDraftLines();
+    },
+    [clearDraftLines],
+  );
+
+  // A folded (inert) section can't show the browser's validation bubble: unfold everything first, then re-report.
+  function unfoldIfInvalid(e: ReactMouseEvent<HTMLButtonElement>) {
+    const form = formRef.current;
+    if (!form || !folded.some(Boolean) || form.checkValidity()) return;
+    e.preventDefault();
+    setFolded([false, false, false]);
+    requestAnimationFrame(() => form.reportValidity());
+  }
+
   return (
     <>
       <LoadingOverlay visible={isPending} />
@@ -96,23 +287,24 @@ export function CreateInquiryForm({
         </div>
       )}
 
-      <form action={formAction}>
+      <form
+        ref={formRef}
+        action={formAction}
+        onSubmit={() => {
+          submitted.current = attached !== null;
+        }}
+      >
         <input type="hidden" name="orgSlug" value={orgSlug} />
 
         {/* ═══════════════════════════════════════════════════════════════════
             Card 1 — Project Information
         ═══════════════════════════════════════════════════════════════════ */}
-        <div className="mb-6 overflow-hidden rounded-md border border-border bg-bg-card shadow-card">
-          {/* Panel title */}
-          <div className="bg-primary-softer px-5 py-3.5">
-            <h2 className="text-base font-extrabold text-primary-dark">
-              {t("sectionProjectInfo")}
-            </h2>
-            <p className="mt-0.5 text-xs font-medium text-text-muted">
-              Core details about this inquiry and its project
-            </p>
-          </div>
-
+        <FoldCard
+          title={t("sectionProjectInfo")}
+          subtitle="Core details about this inquiry and its project"
+          folded={folded[0]}
+          onToggle={() => toggleFold(0)}
+        >
           <div className="p-5">
             {/* 2-col grid — C2: Inquiry Id left, Company right in Row 1 */}
             <div className="grid grid-cols-1 gap-x-5 gap-y-0 sm:grid-cols-2">
@@ -271,21 +463,17 @@ export function CreateInquiryForm({
               </div>
             </div>
           </div>
-        </div>
+        </FoldCard>
 
         {/* ═══════════════════════════════════════════════════════════════════
             Card 2 — Contractor & Consultant Details
         ═══════════════════════════════════════════════════════════════════ */}
-        <div className="mb-6 overflow-hidden rounded-md border border-border bg-bg-card shadow-card">
-          <div className="bg-primary-softer px-5 py-3.5">
-            <h2 className="text-base font-extrabold text-primary-dark">
-              {t("sectionContractorDetails")}
-            </h2>
-            <p className="mt-0.5 text-xs font-medium text-text-muted">
-              Contractors and consultants tied to this project
-            </p>
-          </div>
-
+        <FoldCard
+          title={t("sectionContractorDetails")}
+          subtitle="Contractors and consultants tied to this project"
+          folded={folded[1]}
+          onToggle={() => toggleFold(1)}
+        >
           <div className="p-5 grid grid-cols-1 gap-x-5 gap-y-0 sm:grid-cols-2">
             <div className="flex flex-col gap-1 mb-[14px]">
               <label htmlFor="mainContractorName" className={labelCls}>
@@ -345,21 +533,17 @@ export function CreateInquiryForm({
               />
             </div>
           </div>
-        </div>
+        </FoldCard>
 
         {/* ═══════════════════════════════════════════════════════════════════
-            Card 3 — End Client Details (footer inside this card — D16)
+            Card 3 — End Client Details
         ═══════════════════════════════════════════════════════════════════ */}
-        <div className="overflow-hidden rounded-md border border-border bg-bg-card shadow-card">
-          <div className="bg-primary-softer px-5 py-3.5">
-            <h2 className="text-base font-extrabold text-primary-dark">
-              {t("sectionEndClientDetails")}
-            </h2>
-            <p className="mt-0.5 text-xs font-medium text-text-muted">
-              Contact and billing details for the end client
-            </p>
-          </div>
-
+        <FoldCard
+          title={t("sectionEndClientDetails")}
+          subtitle="Contact and billing details for the end client"
+          folded={folded[2]}
+          onToggle={() => toggleFold(2)}
+        >
           <div className="p-5 grid grid-cols-1 gap-x-5 gap-y-0 sm:grid-cols-2">
             {/* End Client Name */}
             <div className="flex flex-col gap-1 mb-[14px]">
@@ -479,24 +663,88 @@ export function CreateInquiryForm({
             </div>
           </div>
 
-          {/* Card footer — inside Card 3 (D16) */}
-          <div className="flex items-center justify-end gap-3 border-t border-border px-6 py-4">
-            <Link
-              href={backHref}
-              className="inline-flex items-center rounded-sm border border-border bg-bg-white px-5 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
-            >
-              Cancel
-            </Link>
-            <button
-              type="submit"
-              disabled={isPending}
-              className="inline-flex items-center rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {t("submitCreate")}
-            </button>
-          </div>
+        </FoldCard>
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            Estimate (Stage 33, S33-20) — appears once an estimate is attached
+        ═══════════════════════════════════════════════════════════════════ */}
+        {attached && (
+          <>
+            <EstimatePanel
+              sectionRef={sectionRef}
+              view={{ currency: attached.currency, ...attached.input }}
+              inquiryCurrency={selectedCurrency}
+              canEdit
+              guardOn={est.enabled}
+              onEdit={openEstimate}
+              onExport={() => setExporting(readExportMeta())}
+              onRemove={removeEstimate}
+            />
+            {/* The estimate rides the form post as JSON; the server validates it (S33-17). */}
+            <input type="hidden" name="quickEstimate" value={JSON.stringify(attached.input)} />
+          </>
+        )}
+
+        {/* Actions: Add / Continue / Edit estimate on the left, Cancel / Create on the right (v3 mockup) */}
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-bg-white px-5 py-3 shadow-card">
+          <EstimateActionButton
+            enabled={est.enabled}
+            buttonRef={addBtnRef}
+            onClick={openEstimate}
+            data-testid="qe-add-estimate"
+            className="relative inline-flex items-center gap-2 rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-primary-dark hover:border-primary-soft hover:bg-primary-softer"
+          >
+            {attached ? (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />
+              </svg>
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <rect x="5" y="2.5" width="14" height="19" rx="2" />
+                <rect x="8" y="5.5" width="8" height="4" rx=".5" />
+                <path d="M8.5 13h.01M12 13h.01M15.5 13h.01M8.5 16.5h.01M12 16.5h.01M15.5 16.5h.01" />
+              </svg>
+            )}
+            {attached ? qe("editEstimate") : hasDraft ? qe("continueEstimate") : qe("addEstimate")}
+            {!attached && hasDraft && est.enabled && (
+              <span
+                data-testid="qe-add-dot"
+                className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-bg-white bg-primary"
+                aria-hidden="true"
+              />
+            )}
+          </EstimateActionButton>
+          <span className="flex-1" />
+          <Link
+            href={backHref}
+            className="inline-flex items-center rounded-sm border border-border bg-bg-white px-5 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
+          >
+            Cancel
+          </Link>
+          <button
+            type="submit"
+            disabled={isPending}
+            onClick={unfoldIfInvalid}
+            className="inline-flex items-center rounded-sm bg-primary px-5 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {t("submitCreate")}
+          </button>
         </div>
       </form>
+
+      {exporting && attached && (
+        <ExportOverlay
+          orgName={est.orgName}
+          currency={attached.currency}
+          lines={attached.input.lines}
+          result={evaluateEstimate({ currency: attached.currency, ...attached.input })}
+          initialPreparedFor={exporting.preparedFor}
+          projectName={exporting.projectName}
+          onClose={() => setExporting(null)}
+        />
+      )}
+      <UndoToast toast={toast} onDone={hideToast} />
     </>
   );
 }

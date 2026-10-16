@@ -17,12 +17,20 @@ export function clearStoredEstimate(orgSlug: string) {
 }
 
 /**
- * The Quick Estimate draft (S33-8). Lives in the top-bar client component, which persists across client
- * navigation, and is mirrored to sessionStorage so a reload in the same tab keeps it. Hydration happens in a
+ * The Quick Estimate draft (S33-8). Owned by `EstimateProvider` (hoisted into the org layout, D-22), which
+ * persists across client navigation, and mirrored to sessionStorage so a reload in the same tab keeps it. Hydration happens in a
  * mount effect (state starts empty), and the persist effect waits for it so the empty initial state can't
  * overwrite the saved draft.
  */
-export function useEstimateState(orgSlug: string, enabled: boolean, types: EstimateType[], defaultCurrency: SupportedCurrency) {
+export function useEstimateState(
+  orgSlug: string,
+  enabled: boolean,
+  types: EstimateType[],
+  defaultCurrency: SupportedCurrency,
+  /** `persist: false` is the storage-free session copy the inquiry pages edit (S33-19, S33-23). */
+  options: { persist?: boolean } = {},
+) {
+  const persist = options.persist !== false;
   const idRef = useRef(0);
   const nextId = useCallback(() => `ql${++idRef.current}`, []);
   const [draft, setDraft] = useState<EstimateDraft>(() => emptyDraft(defaultCurrency));
@@ -31,7 +39,7 @@ export function useEstimateState(orgSlug: string, enabled: boolean, types: Estim
   const [prevCurrency, setPrevCurrency] = useState<SupportedCurrency | null>(null);
 
   // Until the guard has really passed (see draftStorageActive) the stored draft is left untouched.
-  const active = draftStorageActive(enabled, types);
+  const active = persist && draftStorageActive(enabled, types);
 
   useEffect(() => {
     if (!active || loaded) return;
@@ -49,13 +57,13 @@ export function useEstimateState(orgSlug: string, enabled: boolean, types: Estim
   }, [active]);
 
   useEffect(() => {
-    if (!loaded) return;
+    if (!persist || !loaded) return;
     try {
       sessionStorage.setItem(storageKey(orgSlug), serializeDraft(draft));
     } catch {
       // Quota or privacy mode: the draft just isn't kept across a reload.
     }
-  }, [draft, loaded, orgSlug]);
+  }, [draft, loaded, orgSlug, persist]);
 
   const currentCurrency = draft.currency;
   const setCurrency = useCallback(
@@ -137,9 +145,20 @@ export function useEstimateState(orgSlug: string, enabled: boolean, types: Estim
     setPrevCurrency(null);
   }, []);
 
+  // Replace the whole state (inquiry pages: seed the session copy, write an attach back, restore on Undo).
+  // Lines get fresh ids from this instance, so ids from another instance can never collide with `addLine`.
+  const reset = useCallback(
+    (next: EstimateDraft) => {
+      setDraft({ ...next, lines: next.lines.map((l) => ({ ...l, id: nextId() })) });
+      setPrevCurrency(null);
+    },
+    [nextId],
+  );
+
   return {
     draft,
     hasDraft: hasDraftItems(draft.lines),
+    reset,
     prevCurrency,
     setCurrency,
     undoCurrency,

@@ -136,6 +136,19 @@
 .qe-info:hover .qe-info-tip, .qe-info:focus .qe-info-tip { visibility: visible; opacity: 1; }
 .qe-spacer { flex: 1; }
 .qe-cur { width: 104px; }
+/* Inquiry mode (S33-23): the locked currency shown as a non-interactive label */
+.qe-cur-label {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-card);
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--color-text-heading);
+}
 .qe-x {
   width: 34px;
   height: 34px;
@@ -594,4 +607,15 @@
 
 @media (prefers-reduced-motion: reduce) {
   .qe-root *, .qe-root *::before, .qe-root *::after { animation: none !important; transition: none !important; }
+}
+
+/* Inquiry pages: the Estimate section briefly highlights when it appears (v3 mockup). Outside .qe-root. */
+@keyframes qe-est-in {
+  0% { box-shadow: 0 0 0 0 rgba(78, 127, 88, 0); border-color: var(--color-border); }
+  25% { box-shadow: 0 0 0 4px rgba(78, 127, 88, 0.22); border-color: var(--color-primary); }
+  100% { box-shadow: 0 0 0 0 rgba(78, 127, 88, 0); border-color: var(--color-border); }
+}
+.qe-est-flash { animation: qe-est-in 1.6s ease; }
+@media (prefers-reduced-motion: reduce) {
+  .qe-est-flash { animation: none; }
 }

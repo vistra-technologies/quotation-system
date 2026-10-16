@@ -11,7 +11,7 @@ import allMessages from "@/messages/en.json";
  * because the inquiry list is accessible to any authenticated user without
  * a special permission, mirroring the projects layout pattern.
  *
- * Only the `inquiries` and `common` namespaces are forwarded to the client —
+ * Only the `inquiries`, `common` and `quickEstimate` namespaces are forwarded to the client —
  * the full messages/en.json is never sent wholesale.
  *
  * Stage 12 Batch 7c: reduced page margins to match the list-page mockup
@@ -21,6 +21,8 @@ export default function InquiriesLayout({ children }: { children: React.ReactNod
   const clientMessages = {
     common: allMessages.common,
     inquiries: allMessages.inquiries,
+    // Stage 33 Batch 5: the New Inquiry estimate section and the detail card (and their export preview).
+    quickEstimate: allMessages.quickEstimate,
   };
 
   return (

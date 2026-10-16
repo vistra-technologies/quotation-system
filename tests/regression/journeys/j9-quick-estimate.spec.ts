@@ -148,6 +148,7 @@ test("J9: Quick Estimate — maths, % and fixed discount, draft kept on close, C
       await expect(preview.getByText("PROJECT ESTIMATE")).toBeVisible();
       await expect(preview.getByText("Discount 5%")).toBeVisible();
       await expect(preview.getByText("Tax 18%")).toBeVisible();
+      await expect(preview.locator(".qe-sheet")).not.toContainText(run.users.admin.username); // no user identity on the sheet (D-15)
       await expect(preview.getByTestId("qe-s-for")).toHaveText("Prepared for:");
       await preview.getByLabel("Prepared for").fill("Regression Test");
       await expect(preview.getByTestId("qe-s-for")).toHaveText("Prepared for: Regression Test");
