@@ -143,6 +143,25 @@ test("J10: Quick Estimate on inquiries — attach on New Inquiry, Create, detail
       await expect(addBtn).toHaveText("Edit estimate");
     });
 
+    await test.step("6b. Create with a drifted currency is refused (D-29): error shown, nothing saved, estimate and draft kept", async () => {
+      await page.locator("#name").fill(name);
+      await page.locator("#projectLocation").fill("RGR City");
+      await page.locator("#mainContractorName").fill("RGR Main");
+      const currency = page.locator('button[aria-controls="currency-listbox"]');
+      await choose(page, currency, "AED");
+      await expect(section.getByTestId("qe-est-drift")).toBeVisible();
+      await page.getByRole("button", { name: "Create Inquiry" }).click();
+      await expect(page.getByText(/must match the inquiry currency (AED)/)).toBeVisible(SLOW);
+      expect(orgPathOf(run, page.url())).toBe("/inquiries/new");
+      await expect(section).toBeVisible();
+      expect(await draftLines(page)).toBe(1);
+      const l = await getJson<{ inquiries: { id: string; name: string }[] }>(as.admin, T(c, `/inquiries?search=${encodeURIComponent(name)}`));
+      expect(l.inquiries.find((x) => x.name === name), "nothing was created").toBeUndefined();
+      // the Edit estimate -> Update -> Create route re-prices in AED (unit-tested); here return to INR and carry on
+      await choose(page, currency, "INR");
+      await expect(section.getByTestId("qe-est-drift")).toHaveCount(0);
+    });
+
     // ── 7. Create Inquiry -> the LIST; find the row by name, ledger it, open its detail ───────────────────
     await test.step("7. Create Inquiry lands on the list; the draft lines are cleared only after the success", async () => {
       await page.locator("#name").fill(name);

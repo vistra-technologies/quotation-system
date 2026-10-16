@@ -262,7 +262,8 @@ export function CreateInquiryForm({
   const clearDraftLines = est.draft.clearLines;
   useEffect(
     () => () => {
-      if (submitted.current) clearDraftLines();
+      // A 401/403 bounce to login is a client navigation that also unmounts the form; nothing was created then.
+      if (submitted.current && !window.location.pathname.endsWith("/login")) clearDraftLines();
     },
     [clearDraftLines],
   );
@@ -680,8 +681,10 @@ export function CreateInquiryForm({
               onExport={() => setExporting(readExportMeta())}
               onRemove={removeEstimate}
             />
-            {/* The estimate rides the form post as JSON; the server validates it (S33-17). */}
-            <input type="hidden" name="quickEstimate" value={JSON.stringify(attached.input)} />
+            {/* The estimate rides the form post as JSON; the server validates it (S33-17). It carries its own
+                currency (D-29): if the form's Currency differs, the server refuses with a 400 instead of
+                restamping rates typed in another currency. */}
+            <input type="hidden" name="quickEstimate" value={JSON.stringify({ ...attached.input, currency: attached.currency })} />
           </>
         )}
 
