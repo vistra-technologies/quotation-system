@@ -626,7 +626,8 @@
    Unlayered, so these beat the Tailwind utilities (min-w-[600px], text-right) on the same elements. */
 @media (max-width: 760px) {
   .qe-est-tools { width: 100%; }
-  .qe-est-tools { justify-content: flex-end; }
+  .qe-est-tools > * { flex: 1 1 auto; }
+  .qe-est-tools > span > button { width: 100%; justify-content: center; }
   .qe-est-table { min-width: 0; }
   .qe-est-table thead { display: none; }
   .qe-est-table tr { display: grid; grid-template-columns: auto auto 1fr; column-gap: 6px; row-gap: 6px; padding: 12px 14px; }
