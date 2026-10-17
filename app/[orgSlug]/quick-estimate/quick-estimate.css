@@ -638,4 +638,8 @@
   .qe-est-amt { text-align: right !important; color: var(--color-text-heading); font-size: 14px; }
   .qe-est-foot { flex-direction: column-reverse; align-items: stretch; }
   .qe-est-sum { width: 100%; }
+  /* the 13px cells and the totals lines may wrap: a nowrap amount is wider than a phone-width column */
+  .qe-est-table td { white-space: normal; }
+  .qe-est-sum > div { flex-wrap: wrap; gap: 2px 8px; }
+  .qe-est-sum span { white-space: normal; }
 }

@@ -153,7 +153,7 @@ export default async function InquiryDetailPage({
             {formattedInquiryNumber} — {inquiry.name}
           </h1>
           {/* V2 — right-side metadata: username + created date */}
-          <div className="shrink-0 text-right text-sm text-text-muted">
+          <div className="shrink-0 text-right text-sm text-text-muted max-[760px]:min-w-0 max-[760px]:shrink max-[760px]:break-words">
             <p className="font-semibold">{creator.text}</p>
             <p>{t("colDate")}: {new Date(inquiry.createdAt).toLocaleDateString()}</p>
           </div>
