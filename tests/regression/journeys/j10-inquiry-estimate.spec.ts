@@ -67,7 +67,7 @@ test("J10: Quick Estimate on inquiries — attach on New Inquiry, Create, detail
 
     // ── 1-4. New Inquiry: Add estimate -> popup in inquiry mode -> Attach -> folded cards + Estimate section ──
     await page.goto(orgUrl(slug, "/inquiries/new"));
-    const addBtn = page.getByTestId("qe-add-estimate");
+    const addBtn = page.getByTestId("qe-add-estimate").filter({ visible: true });
     await expect.poll(() => isHydrated(addBtn)).toBe(true);
 
     await test.step("'Add estimate' sits left of Cancel / Create Inquiry", async () => {
