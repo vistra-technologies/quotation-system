@@ -77,6 +77,27 @@ test("recoverDecision: older than the threshold → delete; younger / unparseabl
   assert.equal(recoverDecision(label(now - 1), now, 0).delete, true);
 });
 
+test("recoverDecision (S33-27): a name without a plausible run timestamp is aged by createdAt", () => {
+  const now = 1_790_000_000_000;
+  const iso = (ms: number) => new Date(ms).toISOString();
+  const walk = "rgr-b5walk-03d9"; // ad-hoc walk: "b5walk" is not a plausible timestamp
+  assert.equal(recoverDecision(walk, now, RECOVER_MIN_AGE_MS, iso(now - RECOVER_MIN_AGE_MS - 1)).delete, true);
+  const young = recoverDecision(walk, now, RECOVER_MIN_AGE_MS, iso(now - 60_000));
+  assert.equal(young.delete, false);
+  assert.match(young.reason!, /may still be active/);
+  assert.equal(recoverDecision("rgr-oops", now, RECOVER_MIN_AGE_MS, iso(now - 3 * RECOVER_MIN_AGE_MS)).delete, true); // no run id at all
+  // no createdAt (or an unparseable one): unchanged, skipped as age unknown
+  const none = recoverDecision(walk, now, RECOVER_MIN_AGE_MS);
+  assert.equal(none.delete, false);
+  assert.match(none.reason!, /age unknown/);
+  assert.equal(recoverDecision(walk, now, RECOVER_MIN_AGE_MS, "not a date").delete, false);
+  assert.equal(recoverDecision(walk, now, RECOVER_MIN_AGE_MS, iso(now + 3_600_000)).delete, false); // future
+  // a plausible run id decides by the run id; createdAt is ignored either way
+  const label = (ms: number) => `rgr-${ms.toString(36)}-x`;
+  assert.equal(recoverDecision(label(now - 60_000), now, RECOVER_MIN_AGE_MS, iso(now - 10 * RECOVER_MIN_AGE_MS)).delete, false);
+  assert.equal(recoverDecision(label(now - RECOVER_MIN_AGE_MS - 1), now, RECOVER_MIN_AGE_MS, iso(now - 60_000)).delete, true);
+});
+
 test("generateRunPassword: fresh, long, mixed", () => {
   const a = generateRunPassword();
   const b = generateRunPassword();

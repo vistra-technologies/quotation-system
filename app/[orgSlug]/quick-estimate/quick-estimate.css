@@ -619,3 +619,23 @@
 @media (prefers-reduced-motion: reduce) {
   .qe-est-flash { animation: none; }
 }
+
+/* ---------- Phone width: the inquiry estimate card (Stage 33 Batch 7, S33-25) ----------
+   The signed-off mockups' @media (max-width: 760px) .est-* rules: header tools take the full row, the table
+   stacks (item on top, qty x rate and amount underneath, header row hidden), the totals box is full width.
+   Unlayered, so these beat the Tailwind utilities (min-w-[600px], text-right) on the same elements. */
+@media (max-width: 760px) {
+  .qe-est-tools { width: 100%; }
+  .qe-est-tools { justify-content: flex-end; }
+  .qe-est-table { min-width: 0; }
+  .qe-est-table thead { display: none; }
+  .qe-est-table tr { display: grid; grid-template-columns: auto auto 1fr; column-gap: 6px; row-gap: 6px; padding: 12px 14px; }
+  .qe-est-table td { padding: 0; font-size: 13px; text-align: left; }
+  .qe-est-idx { display: none; }
+  .qe-est-it { grid-column: 1 / -1; font-size: 14px; }
+  .qe-est-qty, .qe-est-rate { color: var(--color-text-muted); }
+  .qe-est-rate::before { content: "\00d7  "; }
+  .qe-est-amt { text-align: right !important; color: var(--color-text-heading); font-size: 14px; }
+  .qe-est-foot { flex-direction: column-reverse; align-items: stretch; }
+  .qe-est-sum { width: 100%; }
+}

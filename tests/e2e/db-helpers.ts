@@ -245,7 +245,7 @@ export async function regressionStripCodes(orgSlug: string, prefix: string): Pro
   return runDbOp<number>("regressionStripCodes", { orgSlug, prefix });
 }
 export async function regressionSweep(orgSlug: string, prefix: string) {
-  return runDbOp<Array<{ kind: string; id: string; label: string }>>("regressionSweep", { orgSlug, prefix });
+  return runDbOp<Array<{ kind: string; id: string; label: string; createdAt?: string }>>("regressionSweep", { orgSlug, prefix });
 }
 /** true = deleted, false = no such inquiry in that org. */
 export async function regressionDeleteInquiry(orgSlug: string, id: string): Promise<boolean> {

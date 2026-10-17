@@ -5,7 +5,7 @@ type Drainer = Pick<Cleaner, "drain">;
 import { TEST_ORG } from "../env";
 import { recoverDecision, REPORT_ONLY_KINDS, reportOnlyNote } from "./cleanup-rules";
 
-type Sweep = (orgSlug: string, prefix: string) => Promise<Array<{ kind: string; id: string; label: string }>>;
+type Sweep = (orgSlug: string, prefix: string) => Promise<Array<{ kind: string; id: string; label: string; createdAt?: string }>>;
 
 /**
  * Orphan recovery, run FIRST in global setup: drain what a crashed previous run left in the persistent
@@ -32,8 +32,8 @@ export async function recoverOrphans(opts: {
   const now = opts.now ?? Date.now();
   const skipped: string[] = [];
   const skippedIds = new Set<string>();
-  const keep = (e: LedgerEntry) => {
-    const d = recoverDecision(e.label, now, opts.minAgeMs);
+  const keep = (e: LedgerEntry, createdAt?: string) => {
+    const d = recoverDecision(e.label, now, opts.minAgeMs, createdAt);
     if (!d.delete) {
       if (!skippedIds.has(e.id)) skipped.push(`${e.kind}: ${d.reason}`);
       skippedIds.add(e.id);
@@ -41,10 +41,12 @@ export async function recoverOrphans(opts: {
     return d.delete;
   };
 
-  const fromLedger = opts.ledger.inDeleteOrder().filter(keep);
+  const fromLedger = opts.ledger.inDeleteOrder().filter((e) => keep(e));
   const ledgerIds = new Set(opts.ledger.all().map((e) => e.id));
 
-  const strays: LedgerEntry[] = (await opts.sweep(TEST_ORG, "rgr-")).map((s) => ({
+  const sweptRows = await opts.sweep(TEST_ORG, "rgr-");
+  const sweptCreatedAt = new Map(sweptRows.map((s) => [s.id, s.createdAt]));
+  const strays: LedgerEntry[] = sweptRows.map((s) => ({
     kind: s.kind as LedgerEntry["kind"], id: s.id, orgSlug: TEST_ORG, label: s.label, createdAt: "",
   }));
   for (const o of await opts.rgrOrgs()) strays.push({ kind: "org", id: o.id, orgSlug: o.slug, label: o.slug, createdAt: "" });
@@ -52,7 +54,7 @@ export async function recoverOrphans(opts: {
   // I2: kinds with no delete route (custom roles) are reported, never drained — a deleter can't exist for them
   const reportOnly = strays.filter((e) => REPORT_ONLY_KINDS.has(e.kind)).map(reportOnlyNote);
   // a swept row that is already in the ledger is drained once, as the ledger entry
-  const fromSweep = strays.filter((e) => !REPORT_ONLY_KINDS.has(e.kind) && !ledgerIds.has(e.id) && !skippedIds.has(e.id) && keep(e));
+  const fromSweep = strays.filter((e) => !REPORT_ONLY_KINDS.has(e.kind) && !ledgerIds.has(e.id) && !skippedIds.has(e.id) && keep(e, sweptCreatedAt.get(e.id)));
 
   // ONE drain batch (drainOrder: projects before the run admin, ...) — draining the ledger first would
   // let an UNLEDGERED project (e.g. a create whose 201 was lost) block the ledgered run admin's delete

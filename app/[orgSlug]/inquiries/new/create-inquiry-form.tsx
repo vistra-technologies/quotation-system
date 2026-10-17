@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { startTransition, useActionState, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { SelectField } from "@/components/select-field";
@@ -290,9 +290,13 @@ export function CreateInquiryForm({
 
       <form
         ref={formRef}
-        action={formAction}
-        onSubmit={() => {
+        // No `action` prop (S33-24): React 19 resets a form's uncontrolled fields after a <form action> completes,
+        // even when the action returns { error }. Dispatching by hand keeps every typed value on a refused create.
+        onSubmit={(e) => {
+          e.preventDefault();
           submitted.current = attached !== null;
+          const fd = new FormData(e.currentTarget);
+          startTransition(() => formAction(fd));
         }}
       >
         <input type="hidden" name="orgSlug" value={orgSlug} />

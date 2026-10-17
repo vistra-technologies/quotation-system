@@ -96,11 +96,26 @@ export function runIdOf(name: string): { runId: string; startedAt: number } | nu
 
 const PLAUSIBLE_FROM = Date.UTC(2024, 0, 1);
 
-export function recoverDecision(name: string, now: number, minAgeMs: number): { delete: boolean; reason?: string } {
+/**
+ * `createdAt` (ISO, DB row age; S33-27) is the fallback when the NAME carries no plausible run timestamp
+ * (e.g. rgr-b5walk-03d9, an ad-hoc walk): same gate, age = now - createdAt. A plausible run id always decides
+ * by the run id; no (or an unparseable) createdAt keeps the old "age unknown" skip.
+ */
+export function recoverDecision(name: string, now: number, minAgeMs: number, createdAt?: string): { delete: boolean; reason?: string } {
   const r = runIdOf(name);
-  if (!r) return { delete: false, reason: `"${name}" has no rgr-<runId>- prefix (age unknown)` };
+  const created = createdAt ? Date.parse(createdAt) : Number.NaN;
+  const byCreatedAt = (why: string): { delete: boolean; reason?: string } => {
+    if (!Number.isFinite(created)) return { delete: false, reason: why };
+    const age = now - created;
+    if (age < 0) return { delete: false, reason: `"${name}": createdAt is in the future (age unknown)` };
+    if (age < minAgeMs) {
+      return { delete: false, reason: `"${name}": created ${Math.round(age / 60000)} min ago, younger than ${Math.round(minAgeMs / 60000)} min — may still be active` };
+    }
+    return { delete: true };
+  };
+  if (!r) return byCreatedAt(`"${name}" has no rgr-<runId>- prefix (age unknown)`);
   if (!Number.isFinite(r.startedAt) || r.startedAt < PLAUSIBLE_FROM) {
-    return { delete: false, reason: `"${name}": runId "${r.runId}" is not a plausible run timestamp (age unknown)` };
+    return byCreatedAt(`"${name}": runId "${r.runId}" is not a plausible run timestamp (age unknown)`);
   }
   const age = now - r.startedAt;
   if (age < 0) return { delete: false, reason: `"${name}": runId "${r.runId}" is in the future (age unknown)` };

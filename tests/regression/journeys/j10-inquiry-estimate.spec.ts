@@ -147,6 +147,7 @@ test("J10: Quick Estimate on inquiries — attach on New Inquiry, Create, detail
       await page.locator("#name").fill(name);
       await page.locator("#projectLocation").fill("RGR City");
       await page.locator("#mainContractorName").fill("RGR Main");
+      await page.locator("#endClientName").fill(endClient);
       const currency = page.locator('button[aria-controls="currency-listbox"]');
       await choose(page, currency, "AED");
       await expect(section.getByTestId("qe-est-drift")).toBeVisible();
@@ -155,6 +156,11 @@ test("J10: Quick Estimate on inquiries — attach on New Inquiry, Create, detail
       expect(orgPathOf(run, page.url())).toBe("/inquiries/new");
       await expect(section).toBeVisible();
       expect(await draftLines(page)).toBe(1);
+      // S33-24: the refusal must not wipe the typed fields (React 19 resets a <form action> form; ours submits by hand)
+      await expect(page.locator("#name")).toHaveValue(name);
+      await expect(page.locator("#projectLocation")).toHaveValue("RGR City");
+      await expect(page.locator("#mainContractorName")).toHaveValue("RGR Main");
+      await expect(page.locator("#endClientName")).toHaveValue(endClient);
       const l = await getJson<{ inquiries: { id: string; name: string }[] }>(as.admin, T(c, `/inquiries?search=${encodeURIComponent(name)}`));
       expect(l.inquiries.find((x) => x.name === name), "nothing was created").toBeUndefined();
       // the Edit estimate -> Update -> Create route re-prices in AED (unit-tested); here return to INR and carry on
@@ -164,10 +170,7 @@ test("J10: Quick Estimate on inquiries — attach on New Inquiry, Create, detail
 
     // ── 7. Create Inquiry -> the LIST; find the row by name, ledger it, open its detail ───────────────────
     await test.step("7. Create Inquiry lands on the list; the draft lines are cleared only after the success", async () => {
-      await page.locator("#name").fill(name);
-      await page.locator("#projectLocation").fill("RGR City");
-      await page.locator("#mainContractorName").fill("RGR Main");
-      await page.locator("#endClientName").fill(endClient);
+      // the fields typed in 6b are still there (S33-24): no re-fill
       const create = page.getByRole("button", { name: "Create Inquiry" });
       await expect.poll(() => isHydrated(create)).toBe(true);
       await create.click();
@@ -195,6 +198,23 @@ test("J10: Quick Estimate on inquiries — attach on New Inquiry, Create, detail
       await expect(section).toContainText(/Updated \d{2} \w{3} \d{4} by /);
       await expect(section.getByTestId("qe-est-edit")).toBeVisible();
       await expect(section.getByRole("button", { name: "Remove estimate from inquiry" })).toBeVisible();
+    });
+
+    await test.step("8b. phone width (S33-25): the estimate table stacks and fits its card; the viewport is restored", async () => {
+      const original = page.viewportSize();
+      await page.setViewportSize({ width: 390, height: 844 });
+      try {
+        await expect(section).toBeVisible();
+        const table = section.getByTestId("qe-est-table");
+        await expect(table.locator("thead")).toHaveCSS("display", "none");
+        await expect(table.locator("tbody tr").first()).toHaveCSS("display", "grid");
+        // no sideways scroll inside the card: the stacked table fits the width it is given
+        expect(await table.evaluate((el) => el.scrollWidth <= el.clientWidth), "estimate table fits its card").toBe(true);
+        expect(await section.evaluate((el) => el.scrollWidth <= el.clientWidth), "estimate card does not overflow itself").toBe(true);
+      } finally {
+        if (original) await page.setViewportSize(original);
+      }
+      await expect(section.getByTestId("qe-est-table").locator("thead")).not.toHaveCSS("display", "none");
     });
 
     await test.step("9. Export PDF: End client prefilled, project name on the sheet, blank rule when cleared, project-estimate-*.pdf", async () => {

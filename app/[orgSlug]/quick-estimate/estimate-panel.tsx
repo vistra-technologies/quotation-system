@@ -71,7 +71,7 @@ export function EstimatePanel({ view, inquiryCurrency, updatedLine, canEdit, gua
             {updatedLine ? ` · ${updatedLine}` : ""}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="qe-est-tools flex shrink-0 items-center gap-1.5">
           {canEdit && (
             <EstimateActionButton
               enabled={guardOn}

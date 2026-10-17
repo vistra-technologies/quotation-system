@@ -148,8 +148,8 @@ export default async function InquiryDetailPage({
       {/* ── Detail header ────────────────────────────────────────────────────── */}
       <div className="mb-6">
         {/* Title row: inquiry number + name on the left; username + date on the right (V2) */}
-        <div className="mb-3 flex items-start justify-between gap-4">
-          <h1 className="text-[27px] font-extrabold text-text-heading">
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+          <h1 className="min-w-0 break-words text-[27px] font-extrabold text-text-heading">
             {formattedInquiryNumber} — {inquiry.name}
           </h1>
           {/* V2 — right-side metadata: username + created date */}

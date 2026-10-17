@@ -21,6 +21,7 @@
  * READ (the seeded formula set and org B).
  */
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import { test, expect } from "../api/sa-helpers";
 import { coversPage } from "../fixtures/covers";
 import type { Role } from "../fixtures/run-state";
@@ -428,6 +429,24 @@ test.describe("routing", () => {
       const res = await o.page.goto(orgUrl(`${run.prefix}nope`, "/login"));
       expect(res?.status()).toBe(404);
       expect(await res?.text()).toContain("Organization not found");
+    });
+  });
+
+  // Stage 33 S33-26: the inquiry list lives in app/[orgSlug]/inquiries/(list)/ and the detail has no loading.tsx, so
+  // notFound() runs before any Suspense boundary and the response is a real 404 (it used to be a 200 shell).
+  test("an unknown inquiry id is an HTTP 404 on the detail and edit pages; a real id is a 200 (read-only)", async ({ browser, run, f }) => {
+    const known = await f.inquiry(); // ledgered rgr- inquiry; only read here
+    const unknown = randomUUID();
+    await withPage({ browser, run }, "admin", undefined, async (o) => {
+      for (const rel of [`/inquiries/${unknown}`, `/inquiries/${unknown}/edit`]) {
+        const res = await o.page.goto(orgTarget(run, rel));
+        expect(res?.status(), rel).toBe(404);
+        await expect(o.page.getByRole("heading", { name: "Page not found" }), rel).toBeVisible();
+      }
+      for (const rel of [`/inquiries/${known.id}`, "/inquiries"]) {
+        const res = await o.page.goto(orgTarget(run, rel));
+        expect(res?.status(), rel).toBe(200);
+      }
     });
   });
 });

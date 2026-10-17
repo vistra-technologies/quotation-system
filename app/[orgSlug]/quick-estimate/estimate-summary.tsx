@@ -39,7 +39,7 @@ export function EstimateSummary({ view }: { view: EstimateView }) {
   return (
     <div>
       <div className="overflow-x-auto rounded-sm border border-border" data-testid="qe-est-table">
-        <table className="w-full min-w-[600px] border-collapse text-[13px] [font-variant-numeric:tabular-nums]">
+        <table className="qe-est-table w-full min-w-[600px] border-collapse text-[13px] [font-variant-numeric:tabular-nums]">
           <thead>
             <tr className="bg-bg-card text-[10px] font-bold uppercase tracking-wider text-text-muted">
               <th className="w-10 px-3 py-2 text-left">#</th>
@@ -52,16 +52,16 @@ export function EstimateSummary({ view }: { view: EstimateView }) {
           <tbody>
             {sheet.rows.map((r, i) => (
               <tr key={r.n} className="border-t border-border align-top">
-                <td className="px-3 py-2.5 font-bold text-text-placeholder">{r.n}</td>
-                <td className="px-3 py-2.5">
+                <td className="qe-est-idx px-3 py-2.5 font-bold text-text-placeholder">{r.n}</td>
+                <td className="qe-est-it px-3 py-2.5">
                   <b className="block font-extrabold text-text-heading">{r.name}</b>
                   {r.variant && <span className="mt-px block text-xs text-text-muted">{r.variant}</span>}
                 </td>
-                <td className="whitespace-nowrap px-3 py-2.5 text-right">{r.qty}</td>
-                <td className="whitespace-nowrap px-3 py-2.5 text-right">
+                <td className="qe-est-qty whitespace-nowrap px-3 py-2.5 text-right">{r.qty}</td>
+                <td className="qe-est-rate whitespace-nowrap px-3 py-2.5 text-right">
                   {r.rate} <span className="font-semibold text-text-muted">/{priced[i]?.unit}</span>
                 </td>
-                <td className="whitespace-nowrap px-3 py-2.5 text-right font-extrabold text-text-heading">
+                <td className="qe-est-amt whitespace-nowrap px-3 py-2.5 text-right font-extrabold text-text-heading">
                   {view.currency} {r.amount}
                 </td>
               </tr>
@@ -69,8 +69,8 @@ export function EstimateSummary({ view }: { view: EstimateView }) {
           </tbody>
         </table>
       </div>
-      <div className="mt-3 flex justify-end">
-        <div className="w-[300px] max-w-full rounded-md border border-border bg-bg-card px-3.5 pb-2.5 pt-2" data-testid="qe-est-totals">
+      <div className="qe-est-foot mt-3 flex justify-end">
+        <div className="qe-est-sum w-[300px] max-w-full rounded-md border border-border bg-bg-card px-3.5 pb-2.5 pt-2" data-testid="qe-est-totals">
           {sheet.totals.map((row, i) => (
             <div
               key={i}

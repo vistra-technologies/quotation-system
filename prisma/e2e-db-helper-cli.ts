@@ -383,7 +383,7 @@ async function main() {
         if (!org) return [];
         const [projects, inquiries, companies, items, users, roles] = await Promise.all([
           db.project.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
-          db.inquiry.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
+          db.inquiry.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true, createdAt: true } }),
           db.externalCompany.findMany({ where: { organizationId: org.id, name: { startsWith: prefix } }, select: { id: true, name: true } }),
           // case-/padding-tolerant (see matchesSweepPrefix): candidates by an insensitive `contains`, then anchored in JS
           db.inventoryItem
@@ -394,7 +394,8 @@ async function main() {
         ]);
         return [
           ...projects.map((r) => ({ kind: "project", id: r.id, label: r.name })),
-          ...inquiries.map((r) => ({ kind: "inquiry", id: r.id, label: r.name })),
+          // createdAt (inquiries only, S33-27): lets orphan recovery age a row whose name carries no run timestamp
+          ...inquiries.map((r) => ({ kind: "inquiry", id: r.id, label: r.name, createdAt: r.createdAt.toISOString() })),
           ...companies.map((r) => ({ kind: "externalCompany", id: r.id, label: r.name })),
           ...items.map((r) => ({ kind: "inventoryItem", id: r.id, label: normalizeSweepCode(r.code) })),
           ...users.map((r) => ({ kind: "user", id: r.id, label: r.username })),
