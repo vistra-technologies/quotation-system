@@ -9,10 +9,12 @@ const BLOCKED_KEYS = new Set(["-", "+", "e", "E"]);
 
 /** A plain non-negative decimal: digits with an optional fraction ("5", "5.", ".5", "12.50"). No sign, no exponent. */
 export function isPlainNonNegativeNumber(text: string): boolean {
-  return /^(\d+\.?\d*|\.\d+)$/.test(text.trim());
+  return /^(\d+\.?\d*|\.\d+)$/.test(text);
 }
 
 export function blockNumericKeys(e: KeyboardEvent<HTMLInputElement>): void {
+  // Ctrl/Meta/Alt chords (browser zoom with Ctrl+"-" / Ctrl+"+", Ctrl+E) must keep working.
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (BLOCKED_KEYS.has(e.key)) e.preventDefault();
 }
 
