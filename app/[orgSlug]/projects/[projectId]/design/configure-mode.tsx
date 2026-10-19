@@ -229,7 +229,7 @@ export function ConfigureMode({
         click handler (design-workspace.tsx) which would clear the panel selection.
       */}
       <div
-        className="flex shrink-0 flex-nowrap items-center gap-2.5"
+        className="flex shrink-0 flex-wrap items-center gap-2.5"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Back button — mirrors .icon-back */}
@@ -255,7 +255,7 @@ export function ConfigureMode({
           }}
           title={nameValue}
           aria-label="Partition name"
-          className="min-w-0 flex-1 text-ellipsis rounded-[6px] border border-transparent bg-transparent px-[5px] py-[3px] text-[16px] font-extrabold text-text-heading hover:border-border hover:bg-[#fafaf6] focus:border-primary focus:bg-[#fafaf6] focus:outline-none"
+          className="min-w-0 shrink-0 rounded-[6px] border border-transparent bg-transparent px-[5px] py-[3px] text-[16px] font-extrabold text-text-heading hover:border-border hover:bg-[#fafaf6] focus:border-primary focus:bg-[#fafaf6] focus:outline-none"
         />
 
         {/*
