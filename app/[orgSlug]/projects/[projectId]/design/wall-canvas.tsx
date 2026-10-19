@@ -90,6 +90,9 @@ export function WallCanvas({
     // A divider next to a locked panel cannot be dragged (it would change the locked width).
     const lockedNeighbours = [left, right].filter((p) => p.locked).map((p) => p.id);
     if (lockedNeighbours.length > 0) {
+      // Capture the pointer so the release (and its click) stay on the divider: a click that lands on the
+      // canvas card instead would deselect and clear the notice we are about to show.
+      e.currentTarget.setPointerCapture(e.pointerId);
       onLockedAttempt?.(lockedNeighbours);
       return;
     }

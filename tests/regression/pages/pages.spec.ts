@@ -622,8 +622,9 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
     test.setTimeout(240_000);
     const c = { as, f, run };
     const slug = run.testOrg.slug;
-    const w = await readyWall(f, as.admin, url);
+    // S31-7: the DOOR codes must be Test-Org dropdown choices BEFORE the project (and its snapshot) exists
     const door = await sharedItems(c, "DOOR");
+    const w = await readyWall(f, as.admin, url);
     const gA = await addSelection(as.admin, slug, w.projectId, "GLASS", `${run.prefix}B4 Glass A`, await glassConfig(f));
     await addSelection(as.admin, slug, w.projectId, "GLASS", `${run.prefix}B4 Glass B`, await glassConfig(f));
     const dSingle = await addSelection(as.admin, slug, w.projectId, "DOOR", `${run.prefix}B4 Door single`, doorCfg(door));
@@ -706,11 +707,15 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       await doorOf(1).click({ button: "right" });
       await expect(item(/Left hinge/)).toBeDisabled();
       await o.page.keyboard.press("Escape");
-      // split / unite are greyed in a locked panel's menu
-      await panels.nth(1).click({ button: "right" });
+      // split / unite are greyed in a locked panel's menu (P4 is glass, so its panel menu is reachable)
+      await panels.nth(3).click({ button: "right" });
+      await item("Lock panel").click();
+      await expect(locks).toHaveCount(3);
+      await panels.nth(3).click({ button: "right" });
       await expect(item("Split the panel")).toBeDisabled();
       await expect(item(/Unite/)).toBeDisabled();
-      await o.page.keyboard.press("Escape");
+      await item("Unlock panel").click();
+      await expect(locks).toHaveCount(2);
       // toolbar Remove on a locked panel: refused with the notice, the wall is unchanged
       await panels.nth(1).click();
       await o.page.getByRole("button", { name: "− Remove Panel" }).click();
