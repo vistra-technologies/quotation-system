@@ -217,16 +217,11 @@ function sumPanelWidths(bodyText: string): number {
 
 /**
  * The Configure-mode header's displayed partition width (mm, the live sum of the draft panel
- * widths). configure-mode.tsx renders it as a read-only <span> next to the "Width" label; an
- * <input> only exists after clicking the pencil ("Edit width"), and this helper only READS the
- * value, so it reads the span and never enters edit mode (which would also risk committing).
- * The label's CSS uppercase is presentational — the DOM text is "Width".
+ * widths). Stage 34 (D-11): the wall width is an always-live <input aria-label="Partition width">;
+ * this helper only READS its value (it never focuses it, so it never enters edit mode).
  */
 async function widthFieldValue(page: Page): Promise<string> {
-  return page
-    .getByText("Width", { exact: true })
-    .locator("xpath=following-sibling::div[1]/span[1]")
-    .innerText();
+  return page.getByLabel("Partition width").inputValue();
 }
 
 /** Select every panel chip: plain-click chip 2 (replaces any prior selection; a plain click on the

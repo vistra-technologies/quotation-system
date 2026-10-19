@@ -316,22 +316,10 @@ function DesignWorkspaceInner({
       // Stage 22: only panels that own a glass cell count — a glass panel, or a door panel with a
       // transom (door height < wall height). A full-height door has no glass cell in v2, so its
       // null panel.selectionId is normal and must not mark the partition dirty on open.
-      const panels = partition.design?.panels ?? [];
-      const needsGlass = (p: (typeof panels)[number]) =>
-        !p.selectionId &&
-        (p.type === "glass" ||
-          (p.door ? (p.door.outerFrame?.h ?? partition.heightMm) < partition.heightMm : false));
-      const unglazedIds = panels.filter(needsGlass).map((p) => p.id);
-      if (unglazedIds.length > 0) {
-        const firstGlass = selections.find((s) => s.componentType.code === "GLASS");
-        if (firstGlass) {
-          dispatch({
-            type: "SET_GLASS",
-            panelIds: unglazedIds,
-            selectionId: firstGlass.id,
-          });
-        }
-      }
+      // Stage 34 S34-7 client mirror: the same default-glass rule as the server fill (shared predicate in
+      // lib/partition-design.ts). FILL_DEFAULT_GLASS only fills nulls and ignores locks.
+      const firstGlass = selections.find((s) => s.componentType.code === "GLASS");
+      if (firstGlass) dispatch({ type: "FILL_DEFAULT_GLASS", glassId: firstGlass.id });
     } catch (err) {
       console.error("Failed to open partition in Configure mode", err);
       return;

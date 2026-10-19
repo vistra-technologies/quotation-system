@@ -21,7 +21,16 @@
 
 import React, { createContext, useContext, useReducer } from "react";
 import { redirectToLogin } from "./login-redirect";
-import { panelsToV2, pickTransomGlass } from "@/lib/partition-design";
+import { fillDefaultGlassPanels, panelsToV2, pickTransomGlass } from "@/lib/partition-design";
+import {
+  planAddPanel,
+  planEqualize,
+  planRemove,
+  planSetWidths,
+  planWallWidth,
+  type WidthPlan,
+  type WidthRefusal,
+} from "@/lib/panel-widths";
 import { makeDoorResolver, toPanelViewRow } from "./partition-view";
 import type {
   DesignDoor,
@@ -55,6 +64,16 @@ export interface DraftState {
    * Track B's S21-B2 dispatches SET_ROOM_NAME from room-name-input.tsx.
    */
   pendingRoomNameEdits: Record<string, string>;
+  /**
+   * Stage 34 (D-12): the last refused edit, shown as a one-line notice over the canvas card's bottom
+   * padding. Set when a width/lock rule refuses an action (the draft is left unchanged); cleared by the
+   * next successful edit, a selection change, a load/save, or CLEAR_NOTICE.
+   */
+  notice: DraftNotice | null;
+}
+
+export interface DraftNotice {
+  code: WidthRefusal;
 }
 
 const initialDraftState: DraftState = {
@@ -64,6 +83,7 @@ const initialDraftState: DraftState = {
   isDirty: false,
   selection: null,
   pendingRoomNameEdits: {},
+  notice: null,
 };
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -137,7 +157,19 @@ export type DraftAction =
   // which redistribute the remaining width across non-target panels before
   // dispatching so the sum is preserved exactly (last-panel-absorbs-remainder
   // pattern, matching SET_PARTITION_WIDTH). Unlisted panels are left unchanged.
-  | { type: "SET_PANEL_WIDTHS_MAP"; widths: Record<string, number> };
+  | { type: "SET_PANEL_WIDTHS_MAP"; widths: Record<string, number> }
+
+  // ── Stage 34: lock flag, default-glass fill, refusal notice ─────────────────
+  // SET_PANEL_LOCKED: lock / unlock the listed panels.
+  | { type: "SET_PANEL_LOCKED"; panelIds: string[]; locked: boolean }
+  // UNLOCK_ALL: clear every lock on the wall.
+  | { type: "UNLOCK_ALL" }
+  // FILL_DEFAULT_GLASS: give every unassigned glass cell the project's default glass. Ignores locks
+  // (filling a null cell is not a "change"); a no-op when nothing is unassigned.
+  | { type: "FILL_DEFAULT_GLASS"; glassId: string | null }
+  // SET_NOTICE / CLEAR_NOTICE: show / clear a refusal notice (e.g. the wall-width field's own refusals).
+  | { type: "SET_NOTICE"; code: WidthRefusal }
+  | { type: "CLEAR_NOTICE" };
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
 
@@ -154,10 +186,39 @@ function mutatePanels(
       design: { ...state.draft.design, panels: fn(panels) },
     },
     isDirty: true,
+    notice: null,
   };
 }
 
-function draftReducer(state: DraftState, action: DraftAction): DraftState {
+/** A refused edit: the draft stays exactly as it was; only the notice changes. */
+function refuse(state: DraftState, code: WidthRefusal): DraftState {
+  return { ...state, notice: { code } };
+}
+
+/** Apply a successful width plan: new widths, plus the locks the edit implies. */
+function applyPlan(state: DraftState, plan: Extract<WidthPlan, { ok: true }>): DraftState {
+  return mutatePanels(state, (ps) =>
+    ps.map((p) => {
+      const w = plan.widths[p.id];
+      const lock = plan.lockIds.includes(p.id);
+      if (w === undefined && !lock) return p;
+      return { ...p, widthMm: w ?? p.widthMm, ...(lock ? { locked: true } : {}) };
+    }),
+  );
+}
+
+/** A copy of the panel with no lock (split halves and united panels start unlocked, D-4). */
+function unlocked(p: DesignPanel): DesignPanel {
+  const copy = { ...p };
+  delete copy.locked;
+  return copy;
+}
+
+function draftReducer(
+  state: DraftState,
+  action: DraftAction,
+  defaultGlassId: string | null,
+): DraftState {
   switch (action.type) {
     // ── Lifecycle ────────────────────────────────────────────────────────────
     case "LOAD_PARTITION":
@@ -169,6 +230,7 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
         isDirty: false,
         selection: null,
         pendingRoomNameEdits: {},
+        notice: null,
       };
 
     case "MARK_SAVED":
@@ -178,43 +240,37 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
         draft: action.partition,
         isDirty: false,
         pendingRoomNameEdits: {},
+        notice: null,
       };
 
     // ── Selection ────────────────────────────────────────────────────────────
     case "SET_SELECTION":
-      return { ...state, selection: action.selection };
+      return { ...state, selection: action.selection, notice: null };
 
     // ── Panel structural mutations ────────────────────────────────────────────
     case "ADD_PANEL": {
       if (!state.draft) return state;
       const panels = state.draft.design?.panels ?? [];
-      // Stage 21 QA bug #16/#20: the total partition width is locked — adding a
-      // panel must redivide the EXISTING total across the new panel count, not
-      // append a flat DEFAULT_PANEL_WIDTH_MM on top of it (which grew the total
-      // and misassigned the remaining space). Same last-absorbs-remainder
-      // pattern as SET_PARTITION_WIDTH so the sum is preserved exactly.
-      const existingTotal = panels.reduce((s, p) => s + p.widthMm, 0);
-      const newCount = panels.length + 1;
-      const base = Math.max(1, Math.floor(existingTotal / newCount));
+      if (panels.length === 0) return state;
+      // Stage 34 (S34-3): only UNLOCKED panels re-divide to make room (lib/panel-widths.ts); refused
+      // when none can absorb. The new panel inherits the wall's glass when it is uniform, else the
+      // project's default glass (S34-7 client mirror, D-13).
+      const plan = planAddPanel(panels);
+      if (!plan.ok) return refuse(state, plan.reason);
+      const uniform = panels.every((p) => p.selectionId === panels[0].selectionId)
+        ? panels[0].selectionId
+        : null;
       const newPanel: DesignPanel = {
         id: crypto.randomUUID(),
         type: "glass",
-        widthMm: base,
+        widthMm: plan.newWidthMm,
         heightMm: state.draft.heightMm,
-        selectionId:
-          panels.length > 0 && panels.every((p) => p.selectionId === panels[0].selectionId)
-            ? panels[0].selectionId
-            : null,
+        selectionId: uniform ?? defaultGlassId,
       };
-      return mutatePanels(state, (ps) => {
-        const resized = ps.map((p) => ({ ...p, widthMm: base }));
-        // The new panel gets whatever's left after the other (newCount - 1)
-        // panels take `base` each — NOT base + that remainder, which would
-        // double-count its own share and grow the total (the bug this was
-        // meant to fix in the first place).
-        const remainder = existingTotal - base * ps.length;
-        return [...resized, { ...newPanel, widthMm: Math.max(1, remainder) }];
-      });
+      return mutatePanels(state, (ps) => [
+        ...ps.map((p) => (plan.widths[p.id] !== undefined ? { ...p, widthMm: plan.widths[p.id] } : p)),
+        newPanel,
+      ]);
     }
 
     case "REMOVE_PANELS": {
@@ -224,19 +280,11 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
       if (survivors.length === 0) {
         return mutatePanels({ ...state, selection: null }, () => survivors);
       }
-      // Stage 21 QA bug #16: removing panels must redistribute the partition's
-      // existing total across the surviving panels, not just drop the removed
-      // panels' width and shrink the total.
-      const total = panels.reduce((s, p) => s + p.widthMm, 0);
-      const base = Math.max(1, Math.floor(total / survivors.length));
+      // The freed width goes to the unlocked survivors only (lib/panel-widths.ts).
+      const plan = planRemove(panels, action.panelIds);
+      if (!plan.ok) return refuse(state, plan.reason);
       return mutatePanels({ ...state, selection: null }, () =>
-        survivors.map((p, i) => ({
-          ...p,
-          widthMm:
-            i === survivors.length - 1
-              ? Math.max(1, total - base * (survivors.length - 1))
-              : base,
-        })),
+        survivors.map((p) => (plan.widths[p.id] !== undefined ? { ...p, widthMm: plan.widths[p.id] } : p)),
       );
     }
 
@@ -245,14 +293,16 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
       const panels = state.draft.design?.panels ?? [];
       const idx = panels.findIndex((p) => p.id === action.panelId);
       if (idx === -1) return state;
-      const orig = panels[idx];
+      const orig = unlocked(panels[idx]);
       const half = Math.floor(orig.widthMm / 2);
       const firstId = crypto.randomUUID();
       const secondId = crypto.randomUUID();
       // Reset type to "glass" on both halves — orig may have type:"door" if it was
       // a door panel; halves have door:null so they must also be type:"glass".
-      const a: DesignPanel = { ...orig, id: firstId, widthMm: half, type: "glass", door: null };
-      const b: DesignPanel = { ...orig, id: secondId, widthMm: orig.widthMm - half, type: "glass", door: null };
+      // A half with no glass to inherit gets the project's default glass (S34-7 client mirror).
+      const glass = orig.selectionId ?? defaultGlassId;
+      const a: DesignPanel = { ...orig, id: firstId, widthMm: half, type: "glass", door: null, selectionId: glass };
+      const b: DesignPanel = { ...orig, id: secondId, widthMm: orig.widthMm - half, type: "glass", door: null, selectionId: glass };
       return {
         ...mutatePanels(state, (ps) => [...ps.slice(0, idx), a, b, ...ps.slice(idx + 1)]),
         selection: { type: "panel", panelIds: [firstId] },
@@ -262,28 +312,11 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
     case "MAKE_EQUAL_WIDTH": {
       if (!state.draft) return state;
       const panels = state.draft.design?.panels ?? [];
-      // Only equalize the targeted panels — fall back to all panels when
-      // nothing specific was targeted (e.g. a single-panel right-click with no
-      // multi-selection). Panels outside panelIds are left untouched.
-      const targets = action.panelIds.length > 0
-        ? panels.filter((p) => action.panelIds.includes(p.id))
-        : panels;
-      if (targets.length < 2) return state;
-      const subtotal = targets.reduce((s, p) => s + p.widthMm, 0);
-      const base = Math.floor(subtotal / targets.length);
-      const targetIdSet = new Set(targets.map((p) => p.id));
-      let seen = 0;
-      return mutatePanels(state, (ps) =>
-        ps.map((p) => {
-          if (!targetIdSet.has(p.id)) return p;
-          seen += 1;
-          const isLastTarget = seen === targets.length;
-          return {
-            ...p,
-            widthMm: isLastTarget ? subtotal - base * (targets.length - 1) : base,
-          };
-        }),
-      );
+      // panelIds scopes the operation; empty = the whole wall. Only UNLOCKED panels are evened out
+      // and locks are kept; refused when fewer than two unlocked panels are in scope.
+      const plan = planEqualize(panels, action.panelIds.length > 0 ? action.panelIds : null);
+      if (!plan.ok) return refuse(state, plan.reason);
+      return applyPlan(state, plan);
     }
 
     case "UNITE_PANELS": {
@@ -295,7 +328,7 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
       const firstTarget = targets[0];
       const mergedId = crypto.randomUUID();
       const merged: DesignPanel = {
-        ...firstTarget,
+        ...unlocked(firstTarget),
         id: mergedId,
         widthMm: totalWidth,
         door: null,
@@ -309,34 +342,20 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
     }
 
     // ── Panel / partition dimension mutations ─────────────────────────────────
-    case "SET_PANEL_WIDTH":
-      return mutatePanels(state, (ps) =>
-        ps.map((p) =>
-          action.panelIds.includes(p.id) ? { ...p, widthMm: action.widthMm } : p,
-        ),
-      );
+    case "SET_PANEL_WIDTH": {
+      if (!state.draft) return state;
+      // Typed / standard width: targets get the width and lock; unlocked others absorb (D-10 minimums).
+      const plan = planSetWidths(state.draft.design?.panels ?? [], action.panelIds, action.widthMm);
+      if (!plan.ok) return refuse(state, plan.reason);
+      return applyPlan(state, plan);
+    }
 
     case "SET_PARTITION_WIDTH": {
       if (!state.draft) return state;
-      const panels = state.draft.design?.panels ?? [];
-      const oldTotal = panels.reduce((s, p) => s + p.widthMm, 0);
-      if (oldTotal === 0) return state;
-      const scale = action.widthMm / oldTotal;
-      // Scale each panel, then adjust the last panel by the remainder so the
-      // sum equals action.widthMm exactly. Independent per-panel Math.round()
-      // can produce a sum that differs by ±(N−1) mm, which would be persisted
-      // to the DB as the wrong dimension.
-      const scaled = panels.map((p) => Math.max(1, Math.round(p.widthMm * scale)));
-      const scaledSum = scaled.reduce((s, w) => s + w, 0);
-      const remainder = action.widthMm - scaledSum;
-      return mutatePanels(state, (ps) =>
-        ps.map((p, i) => ({
-          ...p,
-          widthMm: i === ps.length - 1
-            ? Math.max(1, scaled[i] + remainder)
-            : scaled[i],
-        })),
-      );
+      // Wall total: only unlocked panels resize (proportionally, last takes the remainder).
+      const plan = planWallWidth(state.draft.design?.panels ?? [], action.widthMm);
+      if (!plan.ok) return refuse(state, plan.reason);
+      return applyPlan(state, plan);
     }
 
     case "SET_PARTITION_HEIGHT": {
@@ -405,7 +424,11 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
           // H-7: a shorter door opens a glass strip above it; give it glass if the panel has none.
           const glass =
             clampedH < wallH && !p.selectionId
-              ? pickTransomGlass(ps, p.id, state.draft?.design?.defaults?.glassSelectionId)
+              ? pickTransomGlass(
+                  ps,
+                  p.id,
+                  state.draft?.design?.defaults?.glassSelectionId ?? defaultGlassId,
+                )
               : p.selectionId;
           return {
             ...p,
@@ -435,12 +458,55 @@ function draftReducer(state: DraftState, action: DraftAction): DraftState {
       };
 
     // ── Bulk panel width map ──────────────────────────────────────────────────
-    case "SET_PANEL_WIDTHS_MAP":
+    case "SET_PANEL_WIDTHS_MAP": {
+      // Divider drag only. Interim guard until Batch 4 blocks the drag itself: a locked panel's width
+      // never changes through this path.
+      const panels = state.draft?.design?.panels ?? [];
+      if (panels.some((p) => p.locked && action.widths[p.id] !== undefined)) return state;
       return mutatePanels(state, (ps) =>
         ps.map((p) =>
           action.widths[p.id] !== undefined ? { ...p, widthMm: action.widths[p.id]! } : p,
         ),
       );
+    }
+
+    // ── Stage 34: lock flag, default glass, notice ────────────────────────────
+    case "SET_PANEL_LOCKED": {
+      if (!state.draft) return state;
+      const panels = state.draft.design?.panels ?? [];
+      const wanted = action.panelIds.filter((id) => {
+        const p = panels.find((q) => q.id === id);
+        return p && !!p.locked !== action.locked;
+      });
+      if (wanted.length === 0) return { ...state, notice: null };
+      return mutatePanels(state, (ps) =>
+        ps.map((p) => (wanted.includes(p.id) ? (action.locked ? { ...p, locked: true } : unlocked(p)) : p)),
+      );
+    }
+
+    case "UNLOCK_ALL": {
+      if (!state.draft) return state;
+      const panels = state.draft.design?.panels ?? [];
+      if (!panels.some((p) => p.locked)) return { ...state, notice: null };
+      return mutatePanels(state, (ps) => ps.map(unlocked));
+    }
+
+    case "FILL_DEFAULT_GLASS": {
+      if (!state.draft) return state;
+      const filled = fillDefaultGlassPanels(
+        state.draft.design?.panels ?? [],
+        state.draft.heightMm,
+        action.glassId,
+      );
+      if (!filled.changed) return state;
+      return mutatePanels(state, () => filled.panels);
+    }
+
+    case "SET_NOTICE":
+      return { ...state, notice: { code: action.code } };
+
+    case "CLEAR_NOTICE":
+      return state.notice ? { ...state, notice: null } : state;
 
     // ── Edge stops ────────────────────────────────────────────────────────────
     case "SET_STOPS": {
@@ -495,7 +561,12 @@ export function DraftProvider({
    * document is converted to the panel view (Stage 22, D-5). */
   selections: SelectionRow[];
 }) {
-  const [state, dispatch] = useReducer(draftReducer, initialDraftState);
+  // The project's default glass (S34-7): the first GLASS Selection, in the API's orderIndex order.
+  const defaultGlassId = selections.find((s) => s.componentType.code === "GLASS")?.id ?? null;
+  const [state, dispatch] = useReducer(
+    (st: DraftState, action: DraftAction) => draftReducer(st, action, defaultGlassId),
+    initialDraftState,
+  );
 
   async function save(orgSlug: string, isSubdomain: boolean): Promise<SaveResult> {
     if (!state.partitionId || !state.draft) {

@@ -24,8 +24,10 @@
  *   D-2: panel Exclude/Include — not in this file, not in any context menu.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { planWallWidth } from "@/lib/panel-widths";
+import { TickIcon, UnlockIcon } from "./lock-icons";
 import { useUnit } from "./unit-context";
 import { WallCanvas } from "./wall-canvas";
 import { PanelContextMenu } from "./panel-context-menu";
@@ -62,10 +64,11 @@ export function ConfigureMode({
   // the instant it was backspaced to empty, before a new digit could be typed.
   const [widthText, setWidthText] = useState<string | null>(null);
   const [heightText, setHeightText] = useState<string | null>(null);
-  // Bug 11 (bugs-3.md): width/height are NOT directly editable by default.
-  // A small edit-icon activates editing; a checkmark/confirm-icon locks in
-  // the new value and fires commitWidth/commitHeight. "width" | "height" | null.
-  const [editingDimension, setEditingDimension] = useState<"width" | "height" | null>(null);
+  // Bug 11 (bugs-3.md): the HEIGHT is not directly editable by default. A small edit-icon activates
+  // editing; a checkmark/confirm-icon commits (commitHeight). Stage 34 (D-11): the WIDTH field is an
+  // always-live input instead (mockup v7) that applies only via its tick / Enter (applyWidth).
+  const [editingDimension, setEditingDimension] = useState<"height" | null>(null);
+  const widthInputRef = useRef<HTMLInputElement>(null);
 
   // Context-menu anchor state — only one can be open at a time.
   const [panelMenu, setPanelMenu] = useState<{
@@ -119,18 +122,32 @@ export function ConfigureMode({
     dispatch({ type: "SET_PARTITION_LABEL", label: trimmed });
   }
 
-  function commitWidth() {
+  // Wall total width (Stage 34 S34-2): applies ONLY via the tick or Enter. Blur and Escape discard the
+  // typed value. An invalid or refused value keeps the field open and shows the refusal notice.
+  function cancelWidth() {
+    setWidthText(null);
+    dispatch({ type: "CLEAR_NOTICE" });
+  }
+
+  function applyWidth() {
     const parsed = Number(widthText);
-    if (!widthText || isNaN(parsed) || parsed <= 0) {
-      setWidthText(null);
-      setEditingDimension(null);
+    if (widthText === null || widthText.trim() === "" || !Number.isFinite(parsed)) {
+      dispatch({ type: "SET_NOTICE", code: "INVALID" });
       return;
     }
     // fromDisplay converts from the current display unit back to mm; round to integer mm.
-    const newTotalMm = Math.max(1, Math.round(fromDisplay(parsed)));
-    setWidthText(null);
-    setEditingDimension(null);
+    const newTotalMm = Math.round(fromDisplay(parsed));
+    if (newTotalMm === panelWidthSum) {
+      widthInputRef.current?.blur(); // unchanged: just close
+      return;
+    }
+    const plan = planWallWidth(panels, newTotalMm);
+    if (!plan.ok) {
+      dispatch({ type: "SET_NOTICE", code: plan.reason });
+      return;
+    }
     dispatch({ type: "SET_PARTITION_WIDTH", widthMm: newTotalMm });
+    widthInputRef.current?.blur();
   }
 
   function commitHeight() {
@@ -183,6 +200,7 @@ export function ConfigureMode({
   // partition.widthMm may lag the live sum until Save (server re-derives it).
   const panelWidthSum = panels.reduce((s, p) => s + p.widthMm, 0);
   const widthDisplay = widthText !== null ? widthText : String(toDisplay(panelWidthSum));
+  const anyLocked = panels.some((p) => p.locked);
   const heightDisplay =
     heightText !== null ? heightText : String(toDisplay(partition.heightMm));
 
@@ -257,42 +275,54 @@ export function ConfigureMode({
               {t("fieldWidth")}
             </span>
             <div className="flex items-baseline gap-[3px]">
-              {editingDimension === "width" ? (
-                <input
-                  type="number"
-                  step="any"
-                  value={widthDisplay}
-                  autoFocus
-                  onChange={(e) => setWidthText(e.target.value)}
-                  onBlur={commitWidth}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") e.currentTarget.blur();
-                    if (e.key === "Escape") { setWidthText(null); setEditingDimension(null); }
-                  }}
-                  aria-label="Partition width"
-                  className="w-[50px] border-none bg-transparent p-0 text-[13.5px] font-bold text-text-heading focus:outline-none"
-                />
-              ) : (
-                <span className="text-[13.5px] font-bold text-text-heading">{widthDisplay}</span>
-              )}
-              <span className="text-[10.5px] font-semibold text-text-muted">{unit}</span>
-              {/* Edit/confirm icon button — R-11: onMouseDown preventDefault stops
-                  the button from stealing focus from the input. Without it the input
-                  fires onBlur (running commitWidth + setEditingDimension(null)) before
-                  the onClick fires, which then sees editingDimension===null and
-                  re-enters edit mode — the lock visually never sticks. */}
-              <button
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  if (editingDimension === "width") { commitWidth(); }
-                  else { setEditingDimension("width"); }
+              <input
+                ref={widthInputRef}
+                type="number"
+                step="any"
+                value={widthDisplay}
+                onFocus={() => {
+                  if (widthText === null) setWidthText(String(toDisplay(panelWidthSum)));
                 }}
-                title={editingDimension === "width" ? "Confirm width" : "Edit width"}
-                className="ml-1 flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-full border border-border bg-bg-white text-[10px] text-text-muted hover:border-primary hover:text-primary-dark"
-              >
-                {editingDimension === "width" ? "✓" : "✎"}
-              </button>
+                onChange={(e) => {
+                  setWidthText(e.target.value);
+                  if (state.notice) dispatch({ type: "CLEAR_NOTICE" });
+                }}
+                onBlur={cancelWidth}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    applyWidth();
+                  } else if (e.key === "Escape") {
+                    e.stopPropagation();
+                    e.nativeEvent.stopImmediatePropagation();
+                    e.currentTarget.blur();
+                  }
+                }}
+                aria-label="Partition width"
+                aria-invalid={state.notice && widthText !== null ? true : undefined}
+                className={
+                  "w-[56px] rounded-[4px] border bg-transparent px-[3px] py-0 text-[13.5px] font-bold text-text-heading focus:outline-none " +
+                  (state.notice && widthText !== null
+                    ? "border-red-600 bg-red-50"
+                    : "border-transparent hover:border-border focus:border-primary")
+                }
+              />
+              <span className="text-[10.5px] font-semibold text-text-muted">{unit}</span>
+              {/* Tick: shown only while editing. onMouseDown preventDefault keeps focus in the input
+                  (R-11) so its blur does not discard the draft before the click lands. */}
+              {widthText !== null && (
+                <button
+                  type="button"
+                  data-testid="wall-width-tick"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={applyWidth}
+                  title={t("applyWidthTick")}
+                  aria-label={t("applyWidthTick")}
+                  className="ml-1 flex h-[20px] w-[20px] flex-shrink-0 items-center justify-center rounded-[6px] border border-primary-dark bg-primary text-white hover:bg-primary-dark"
+                >
+                  <TickIcon size={11} />
+                </button>
+              )}
             </div>
           </div>
 
@@ -347,7 +377,7 @@ export function ConfigureMode({
         Clicking the wrap (not a panel) clears selection — panels stopPropagation.
       */}
       <div
-        className="flex flex-1 min-h-0 items-center justify-center rounded-[8px] border border-[var(--color-border-strong)] bg-bg-white px-[26px] py-[20px] shadow-[0_2px_10px_-4px_rgba(27,40,30,.10)]"
+        className="relative flex flex-1 min-h-0 items-center justify-center rounded-[8px] border border-[var(--color-border-strong)] bg-bg-white px-[26px] py-[20px] shadow-[0_2px_10px_-4px_rgba(27,40,30,.10)]"
         onClick={() => handleSelectionChange(null)}
       >
         <WallCanvas
@@ -359,7 +389,19 @@ export function ConfigureMode({
           onPanelContextMenu={openPanelMenu}
           onDoorContextMenu={openDoorMenu}
           onResizePanels={(widths) => dispatch({ type: "SET_PANEL_WIDTHS_MAP", widths })}
+          onUnlockPanel={(id) => dispatch({ type: "SET_PANEL_LOCKED", panelIds: [id], locked: false })}
         />
+        {/* Stage 34 (D-12): the refusal notice is a one-line overlay in this card's bottom padding, so it
+            never adds a row and the wall's drawn height cannot change. */}
+        {state.notice && (
+          <p
+            role="alert"
+            data-testid="canvas-notice"
+            className="pointer-events-none absolute inset-x-0 bottom-[2px] truncate px-[26px] text-center text-[11.5px] font-semibold leading-[16px] text-red-600"
+          >
+            {t(`widthRefusal${state.notice.code}`)}
+          </p>
+        )}
       </div>
 
       {/*
@@ -396,6 +438,31 @@ export function ConfigureMode({
           className="rounded-[6px] border border-border bg-bg-white px-3 py-[7px] text-[12px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t("splitPanel")}
+        </button>
+        <button
+          type="button"
+          data-testid="make-equal-widths"
+          onClick={() => dispatch({ type: "MAKE_EQUAL_WIDTH", panelIds: [] })}
+          className="whitespace-nowrap rounded-[6px] border border-border bg-bg-white px-3 py-[7px] text-[12px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark"
+        >
+          {t("makeEqualWidths")}
+        </button>
+        {/* Unlock all: the slot is ALWAYS rendered (invisible, not removed, when nothing is locked) so
+            showing it never re-wraps the toolbar. */}
+        <button
+          type="button"
+          data-testid="unlock-all"
+          onClick={() => dispatch({ type: "UNLOCK_ALL" })}
+          disabled={!anyLocked}
+          tabIndex={anyLocked ? 0 : -1}
+          aria-hidden={anyLocked ? undefined : true}
+          className={[
+            "flex items-center gap-[5px] whitespace-nowrap rounded-[6px] border border-primary-soft bg-primary-softer px-3 py-[7px] text-[12px] font-semibold text-primary-dark hover:border-primary",
+            anyLocked ? "" : "invisible",
+          ].join(" ")}
+        >
+          <UnlockIcon />
+          {t("unlockAll")}
         </button>
         <button
           type="button"

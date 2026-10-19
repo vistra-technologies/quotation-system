@@ -196,48 +196,101 @@ export function ContextMenu({ anchorX, anchorY, items, onClose }: ContextMenuPro
 // ─── Embedded apply-width row ─────────────────────────────────────────────────
 
 /**
- * Custom slot content for the "Apply width" row in the panel context menu
- * (mockup lines 1825-1844). The embedded number input accepts Enter to apply
- * without closing the menu prematurely — it only calls onApply on Enter/blur,
- * and onClose is NOT called by Enter (matching mockup behaviour: the user
- * sees the result first).
+ * Custom slot content for the "Apply width" row in the panel context menu.
+ *
+ * Stage 34 S34-2 (explicit apply): a typed value applies ONLY via the tick button or Enter. There is no
+ * blur commit; clicking outside, right-clicking elsewhere or Escape unmounts the menu and discards the
+ * draft. The caller decides what happens to the value: `onApply` receives the parsed number (NaN when
+ * the field is not a number), and the caller closes the menu on success or passes `error` to keep it
+ * open with an inline message.
  */
 interface ApplyWidthSlotProps {
   label: string;
+  tickLabel: string;
   initialValue: number;
   onApply: (widthMm: number) => void;
+  /** Inline error from the last refused apply (keeps the menu open). */
+  error?: string | null;
+  /** Called when the user edits the field (the caller clears its error). */
+  onDraftChange?: () => void;
+  disabled?: boolean;
+  disabledTitle?: string;
 }
 
-export function ApplyWidthSlot({ label, initialValue, onApply }: ApplyWidthSlotProps) {
+export function ApplyWidthSlot({
+  label,
+  tickLabel,
+  initialValue,
+  onApply,
+  error,
+  onDraftChange,
+  disabled,
+  disabledTitle,
+}: ApplyWidthSlotProps) {
   const [value, setValue] = useState(String(initialValue));
 
-  function commit() {
-    const parsed = parseFloat(value);
-    if (!isFinite(parsed) || parsed <= 0) return;
-    onApply(Math.round(parsed));
+  function apply() {
+    onApply(parseFloat(value));
   }
 
   return (
-    <div className="flex items-center justify-between gap-2.5 px-0.5 pb-2 pt-1">
-      <span className="text-[12.5px] font-semibold text-text-heading">{label}</span>
-      <input
-        type="number"
-        step="any"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
-            // Do NOT close the menu on Enter — user sees the result first
-          } else if (e.key === "Escape") {
-            e.stopPropagation(); // handled by parent context menu
-          }
-        }}
-        onBlur={commit}
-        className="w-[76px] rounded-[6px] border border-[var(--color-border-strong)] px-[7px] py-[5px] text-right text-[12.5px] text-text-heading focus:border-primary focus:outline-none"
-      />
+    <div className="pb-2 pt-1" title={disabled ? disabledTitle : undefined}>
+      <div className="flex items-center justify-between gap-2.5 px-0.5">
+        <span className="text-[12.5px] font-semibold text-text-heading">{label}</span>
+        <span className="flex items-center gap-1.5">
+          <input
+            type="number"
+            step="any"
+            value={value}
+            disabled={disabled}
+            aria-label={`${label} (mm)`}
+            aria-invalid={error ? true : undefined}
+            onChange={(e) => {
+              setValue(e.target.value);
+              onDraftChange?.();
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                apply();
+              } else if (e.key === "Escape") {
+                e.stopPropagation(); // handled by parent context menu
+              }
+            }}
+            className={
+              "w-[76px] rounded-[6px] border px-[7px] py-[5px] text-right text-[12.5px] text-text-heading focus:outline-none " +
+              (error
+                ? "border-red-600 bg-red-50"
+                : "border-[var(--color-border-strong)] focus:border-primary") +
+              (disabled ? " cursor-not-allowed opacity-50" : "")
+            }
+          />
+          <button
+            type="button"
+            data-testid="apply-width-tick"
+            title={tickLabel}
+            aria-label={tickLabel}
+            disabled={disabled}
+            // mousedown is cancelled so the input keeps focus until the click lands.
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              apply();
+            }}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-[6px] border border-primary-dark bg-primary text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M5 12.5l4.5 4.5L19 7.5" />
+            </svg>
+          </button>
+        </span>
+      </div>
+      {error && (
+        <p role="alert" className="mt-1.5 px-0.5 text-[11.5px] font-semibold text-red-600">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -245,19 +298,20 @@ export function ApplyWidthSlot({ label, initialValue, onApply }: ApplyWidthSlotP
 // ─── Standard-width buttons row ───────────────────────────────────────────────
 
 /**
- * Custom slot content for the "Apply standard width" section in the panel
- * context menu (mockup lines 1846-1866).
+ * Custom slot content for the "Apply standard width" section in the panel context menu. The caller
+ * applies the width and closes the menu on success (or shows its inline error and keeps it open).
  */
 interface StandardWidthSlotProps {
   label: string;
   widths: number[];
   onApply: (widthMm: number) => void;
-  onClose: () => void;
+  disabled?: boolean;
+  disabledTitle?: string;
 }
 
-export function StandardWidthSlot({ label, widths, onApply, onClose }: StandardWidthSlotProps) {
+export function StandardWidthSlot({ label, widths, onApply, disabled, disabledTitle }: StandardWidthSlotProps) {
   return (
-    <div className="pb-1">
+    <div className="pb-1" title={disabled ? disabledTitle : undefined}>
       <p className="px-2.5 py-1 text-[10px] font-bold uppercase tracking-[.05em] text-text-muted">
         {label}
       </p>
@@ -267,8 +321,9 @@ export function StandardWidthSlot({ label, widths, onApply, onClose }: StandardW
             key={w}
             type="button"
             data-testid={`standard-width-${i}`}
-            onClick={() => { onApply(w); onClose(); }}
-            className="flex-1 rounded-[8px] border border-primary-soft bg-primary-softer px-1 py-2 text-[12px] font-bold text-primary-dark hover:border-primary hover:bg-[#e2ebe3]"
+            disabled={disabled}
+            onClick={() => onApply(w)}
+            className="flex-1 rounded-[8px] border border-primary-soft bg-primary-softer px-1 py-2 text-[12px] font-bold text-primary-dark hover:border-primary hover:bg-[#e2ebe3] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {w}
           </button>

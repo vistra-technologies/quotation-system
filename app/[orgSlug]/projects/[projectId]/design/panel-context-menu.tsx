@@ -1,40 +1,27 @@
 "use client";
 
 /**
- * Panel right-click context menu — S21-D3.
+ * Panel right-click context menu — S21-D3, reworked for Stage 34 (explicit apply + lock).
  *
  * Built on Track 0's ContextMenu primitive (components/context-menu.tsx).
- * Mockup ref: lines 431-462 (CSS), 1413-1469 (split/unite/equal-width logic),
- *             1736 (contextmenu binding), 1754-1869 (menu render).
  *
  * Items (in order):
- *   1. ⊞ Make equal width  — MAKE_EQUAL_WIDTH (preserves sum by design)
- *   2. ✂ Split the panel   — SPLIT_PANEL      (a.width + b.width = orig.width)
- *   3. ↔ Unite panels       — UNITE_PANELS     (merged.width = sum of targets)
+ *   1. Lock panel / Unlock panel — SET_PANEL_LOCKED (Stage 34 S34-3)
+ *   2. Make equal width          — MAKE_EQUAL_WIDTH (unlocked panels only; D-14 scope)
+ *   3. Split the panel           — SPLIT_PANEL
+ *   4. Unite panels              — UNITE_PANELS
  *   [divider]
- *   4. Apply width input    — SET_PANEL_WIDTHS_MAP (sum-preserving, see below)
- *   5. Standard-width row   — 25% / 35% / 50% of the partition's total width
+ *   5. Apply width input + tick  — SET_PANEL_WIDTH (applies only via tick / Enter, S34-2)
+ *   6. Standard-width row        — 25% / 35% / 50% of the wall's width, same action
  *
  * No Exclude/Include item — removed per D-2 deviation.
  *
- * Sum invariant for Apply Width / Standard Width
- * -----------------------------------------------
- * The mockup naively sets targets' widths without adjusting neighbors, which
- * changes partition.widthMm on Save.  Per the stage spec, we must preserve
- *   sum(panels[].widthMm) === current total
- * after each operation.  We do this by:
- *   1. Computing newTargetTotal = newWidth × targetCount.
- *   2. Distributing the remainder (total − newTargetTotal) proportionally
- *      across non-target panels, with the last non-target absorbing the
- *      integer rounding residual (same last-absorbs-remainder pattern as
- *      SET_PARTITION_WIDTH in the reducer).
- *   3. Dispatching SET_PANEL_WIDTHS_MAP with the full width map so the
- *      reducer applies all changes in one atomic update.
- *
- * If the requested width is infeasible (all panels selected, or would push
- * non-targets below 1 mm each), Apply Width and Standard Widths are disabled.
+ * All width redistribution lives in lib/panel-widths.ts (one module, unit tested); this menu only
+ * pre-validates with the same planner so a refusal shows inline and keeps the menu open. The reducer
+ * runs the planner again and is the authority.
  */
 
+import { useState } from "react";
 import { useTranslations } from "next-intl";
 import {
   ContextMenu,
@@ -42,8 +29,10 @@ import {
   StandardWidthSlot,
   type ContextMenuEntry,
 } from "@/components/context-menu";
+import { planSetWidths } from "@/lib/panel-widths";
 import { useDraftContext } from "./design-draft-context";
 import { MIN_SPLIT_WIDTH_MM } from "./configure-constants";
+import { LockIcon, UnlockIcon } from "./lock-icons";
 import type { DesignPanel } from "./types";
 
 // Standard-width quick buttons — proportional to the partition's current
@@ -62,97 +51,18 @@ interface PanelContextMenuProps {
 
 /**
  * Returns true iff the given panel IDs form a contiguous (adjacent) run in the
- * panels array — mirrors mockup's `isContiguousSelection` (lines 1413-1445).
- *
- * Ported verbatim per task spec:
+ * panels array — mirrors mockup's `isContiguousSelection`.
  *   - Single-panel (or empty) selection returns false (not "trivially contiguous").
  *   - Any panelId not found in panels (indices.length !== panelIds.length) returns false.
  */
 function isContiguousSelection(panels: DesignPanel[], panelIds: string[]): boolean {
   if (panelIds.length < 2) return false;
   const indices = panelIds.map((id) => panels.findIndex((p) => p.id === id)).sort((a, b) => a - b);
-  // Guard: all IDs must exist in panels (mirrors mockup lines 1440-1445).
   if (indices.length !== panelIds.length || indices[0] === -1) return false;
   for (let i = 1; i < indices.length; i++) {
     if (indices[i] !== indices[i - 1] + 1) return false;
   }
   return true;
-}
-
-/**
- * Compute a sum-preserving width map for Apply Width / Standard Width operations.
- *
- * Given:
- *   - panels:             the full current panel array
- *   - targetIds:          the panels whose width we want to set
- *   - newWidthPerTarget:  the requested width (mm) for each target
- *
- * Returns a Record<panelId, widthMm> for ALL panels (targets + non-targets)
- * such that sum of all values === sum of original panel widths.
- *
- * Returns null when the operation is infeasible:
- *   - All panels are targets (no non-targets to absorb the residual).
- *   - The non-target remainder after setting targets would be < 1 mm per
- *     non-target panel (would create zero-width or negative panels).
- */
-function computeSumPreservingWidths(
-  panels: DesignPanel[],
-  targetIds: string[],
-  newWidthPerTarget: number,
-): Record<string, number> | null {
-  const total = panels.reduce((s, p) => s + p.widthMm, 0);
-  const nonTargets = panels.filter((p) => !targetIds.includes(p.id));
-
-  if (nonTargets.length === 0) return null; // no room to redistribute
-
-  const newTargetTotal = newWidthPerTarget * targetIds.length;
-  const newNonTargetTotal = total - newTargetTotal;
-
-  // Each non-target must be at least 1 mm after redistribution.
-  if (newNonTargetTotal < nonTargets.length) return null;
-
-  const result: Record<string, number> = {};
-
-  // Set all targets to the requested width.
-  for (const id of targetIds) {
-    result[id] = newWidthPerTarget;
-  }
-
-  // Redistribute newNonTargetTotal among non-targets, proportional to their
-  // current widths, with the last non-target absorbing the integer remainder —
-  // same pattern as SET_PARTITION_WIDTH in design-draft-context.tsx.
-  const oldNonTargetTotal = nonTargets.reduce((s, p) => s + p.widthMm, 0);
-
-  if (oldNonTargetTotal === 0) {
-    // Distribute equally (pathological: all non-targets had 0 width).
-    const base = Math.floor(newNonTargetTotal / nonTargets.length);
-    nonTargets.forEach((p, i) => {
-      result[p.id] =
-        i === nonTargets.length - 1
-          ? newNonTargetTotal - base * (nonTargets.length - 1)
-          : base;
-    });
-  } else {
-    const scale = newNonTargetTotal / oldNonTargetTotal;
-    // Do NOT clamp intermediates with Math.max(1, …): clamping an intermediate
-    // upward inflates scaledSum, makes adjustment negative, and drives the last
-    // absorber below 1 (which was then also clamped, silently breaking the sum).
-    // Instead: compute raw rounded values, let the last absorber carry the residual,
-    // and reject as infeasible if the last absorber's final value would be < 1 mm.
-    const scaled = nonTargets.map((p) => Math.round(p.widthMm * scale));
-    const scaledSum = scaled.reduce((s, w) => s + w, 0);
-    const adjustment = newNonTargetTotal - scaledSum;
-    const lastValue = scaled[nonTargets.length - 1] + adjustment;
-    // Infeasibility: rounding of intermediates can shift enough residual onto the
-    // last absorber to push it below 1 mm even when the budget check passed.
-    if (lastValue < 1) return null;
-    nonTargets.forEach((p, i) => {
-      result[p.id] =
-        i === nonTargets.length - 1 ? lastValue : scaled[i];
-    });
-  }
-
-  return result;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -165,6 +75,8 @@ export function PanelContextMenu({
 }: PanelContextMenuProps) {
   const t = useTranslations("design");
   const { state, dispatch } = useDraftContext();
+  // Inline refusal text for the width rows (keeps the menu open, S34-2).
+  const [error, setError] = useState<string | null>(null);
 
   const panels = state.draft?.design?.panels ?? [];
 
@@ -178,6 +90,8 @@ export function PanelContextMenu({
       : [panelId];
   const primaryPanel = panels.find((p) => p.id === panelId);
   const multi = targetIds.length > 1;
+  const targets = panels.filter((p) => targetIds.includes(p.id));
+  const allLocked = targets.length > 0 && targets.every((p) => p.locked);
 
   // Enablement checks
   const canSplit =
@@ -192,19 +106,46 @@ export function PanelContextMenu({
   const totalWidthMm = panels.reduce((s, p) => s + p.widthMm, 0);
   const standardWidths = STANDARD_WIDTH_FRACTIONS.map((f) => Math.round(totalWidthMm * f));
 
-  function dispatchApplyWidth(newWidth: number) {
-    const widthMap = computeSumPreservingWidths(panels, targetIds, newWidth);
-    if (!widthMap) return; // infeasible
-    dispatch({ type: "SET_PANEL_WIDTHS_MAP", widths: widthMap });
+  /** Apply a width to the targets: pre-validate, then dispatch and close; else show the error. */
+  function applyWidth(widthMm: number, skipIfUnchanged: boolean) {
+    if (!Number.isFinite(widthMm)) {
+      setError(t("widthRefusalINVALID"));
+      return;
+    }
+    const width = Math.round(widthMm);
+    // ✓ with an unchanged value just closes (no lock).
+    if (skipIfUnchanged && width === primaryWidth) {
+      onClose();
+      return;
+    }
+    const plan = planSetWidths(panels, targetIds, width);
+    if (!plan.ok) {
+      setError(t(`widthRefusal${plan.reason}`));
+      return;
+    }
+    if (Object.keys(plan.widths).length > 0 || plan.lockIds.length > 0) {
+      dispatch({ type: "SET_PANEL_WIDTH", panelIds: targetIds, widthMm: width });
+    }
+    onClose();
   }
 
   // Build menu items
   const items: ContextMenuEntry[] = [
     {
       type: "item",
+      icon: allLocked ? <UnlockIcon /> : <LockIcon />,
+      label: allLocked
+        ? multi ? t("ctxUnlockPanels") : t("ctxUnlockPanel")
+        : multi ? t("ctxLockPanels") : t("ctxLockPanel"),
+      onClick: () =>
+        dispatch({ type: "SET_PANEL_LOCKED", panelIds: targetIds, locked: !allLocked }),
+    },
+    {
+      type: "item",
       icon: "⊞",
       label: t("ctxMakeEqualWidth"),
-      onClick: () => dispatch({ type: "MAKE_EQUAL_WIDTH", panelIds: targetIds }),
+      // Multi-select: only the selected panels. Single panel: the whole wall (D-14).
+      onClick: () => dispatch({ type: "MAKE_EQUAL_WIDTH", panelIds: multi ? targetIds : [] }),
     },
     {
       type: "item",
@@ -245,11 +186,11 @@ export function PanelContextMenu({
       content: (
         <ApplyWidthSlot
           label={t("ctxApplyWidth")}
+          tickLabel={t("applyWidthTick")}
           initialValue={primaryWidth}
-          onApply={(w) => {
-            dispatchApplyWidth(w);
-            onClose();
-          }}
+          error={error}
+          onDraftChange={() => setError(null)}
+          onApply={(w) => applyWidth(w, true)}
         />
       ),
     },
@@ -259,8 +200,7 @@ export function PanelContextMenu({
         <StandardWidthSlot
           label={t("ctxStandardWidth")}
           widths={standardWidths}
-          onApply={(w) => dispatchApplyWidth(w)}
-          onClose={onClose}
+          onApply={(w) => applyWidth(w, false)}
         />
       ),
     },

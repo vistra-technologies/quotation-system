@@ -28,6 +28,7 @@ import { useRef, useState } from "react";
 import { isDoubleLeafConfig } from "@/lib/door-leaf";
 import { MIN_PANEL_WIDTH_MM } from "./configure-constants";
 import { useUnit } from "./unit-context";
+import { LockIcon } from "./lock-icons";
 import type { DraftSelection } from "./design-draft-context";
 import type { DesignPanel, SelectionRow } from "./types";
 
@@ -45,6 +46,8 @@ interface WallCanvasProps {
   onDoorContextMenu?: (panelId: string, x: number, y: number) => void;
   /** Divider drag / arrow-key nudge: new widthMm for the two neighbouring panels (sum preserved). */
   onResizePanels?: (widths: Record<string, number>) => void;
+  /** Click on a locked panel's lock icon: unlock that panel (Stage 34). */
+  onUnlockPanel?: (panelId: string) => void;
 }
 
 export function WallCanvas({
@@ -56,6 +59,7 @@ export function WallCanvas({
   onPanelContextMenu,
   onDoorContextMenu,
   onResizePanels,
+  onUnlockPanel,
 }: WallCanvasProps) {
   const { formatLen } = useUnit();
 
@@ -226,7 +230,24 @@ export function WallCanvas({
                       className="pointer-events-none absolute inset-0 z-[3] shadow-[0_0_0_3px_var(--color-primary-dark)_inset]"
                     />
                   )}
-                  <div className="relative z-[1] pointer-events-none">
+                  {/* Stage 34: a locked panel shows a lock; clicking it unlocks that panel. */}
+                  {panel.locked && (
+                    <button
+                      type="button"
+                      data-testid="panel-lock"
+                      title="Unlock panel"
+                      aria-label={`Unlock panel P${index + 1}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUnlockPanel?.(panel.id);
+                      }}
+                      onContextMenu={(e) => e.stopPropagation()}
+                      className="absolute right-1.5 top-1.5 z-[5] flex h-[22px] w-[22px] items-center justify-center rounded-[6px] border border-primary-soft bg-bg-white text-primary-dark hover:border-primary hover:bg-[#e2ebe3]"
+                    >
+                      <LockIcon />
+                    </button>
+                  )}
+                  <div className={"relative z-[1] pointer-events-none" + (panel.locked ? " pr-6" : "")}>
                     {/* .panel-label: P{n} · {width} — mockup line 1699 */}
                     <div
                       className="text-[11.5px] font-bold"

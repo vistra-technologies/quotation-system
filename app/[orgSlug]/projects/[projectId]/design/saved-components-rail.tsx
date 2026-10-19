@@ -24,6 +24,7 @@ import { useTranslations } from "next-intl";
 // both constants unused in this file. configure-constants.ts is unchanged.
 import { useDraftContext } from "./design-draft-context";
 import { useUnit } from "./unit-context";
+import { RailWidthField } from "./rail-width-field";
 import type { DesignPanel, SelectionRow } from "./types";
 
 interface SavedComponentsRailProps {
@@ -150,6 +151,9 @@ export function SavedComponentsRail({ selections }: SavedComponentsRailProps) {
             onClick={toggleDoor}
           />
         )}
+
+        {/* Stage 34: Width of the solo-selected panel (explicit apply, locks on apply) */}
+        {selectedPanel && <RailWidthField key={selectedPanel.id} panel={selectedPanel} />}
 
         {/* C3: Door Height slider — only when one door-bearing panel is selected */}
         {hasDoorHeightControl && soloPanelId && (

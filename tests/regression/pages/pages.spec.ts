@@ -520,11 +520,12 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       // 4. Change a real value through the canvas UI (width 2000 → 2100 mm) and Save. From here on there is NO
       //    page.goto / reload: the pills must re-lock through the page's own router.refresh() (the Stage 25
       //    bug class: a Design save path that forgets it leaves Summary/Quotation open on a stale design).
-      await o.page.getByTitle("Edit width", { exact: true }).click();
+      //    Stage 34 (D-11): the wall width is an always-live input; a typed value applies ONLY via its tick or Enter.
       const width = o.page.getByLabel("Partition width");
       await expect(width).toHaveValue("2000"); // mm display — the unit the API speaks
       await width.fill("2100");
-      await o.page.getByTitle("Confirm width", { exact: true }).click();
+      await o.page.getByRole("button", { name: "Apply width", exact: true }).click();
+      await expect(width).toHaveValue("2100");
       const save = o.page.getByRole("button", { name: "Save changes" });
       await expect(save).toBeEnabled();
       const [patch] = await Promise.all([
@@ -547,6 +548,69 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       // 5. And the locked URLs bounce again.
       await o.page.goto(orgTarget(run, `/projects/${w.projectId}/summary`));
       await expectLands(() => orgPathOf(run, o.page.url()), `/projects/${w.projectId}`);
+    });
+  });
+
+  test("Design canvas (Stage 34): typed widths apply only via the tick / Enter; a typed width locks its panel, the others absorb, and the lock survives Save + reload", async ({ browser, run, f, as, url }) => {
+    test.setTimeout(180_000);
+    const w = await readyWall(f, as.admin, url);
+    const cell = (id: string) => [{ id, heightMm: 2400, selectionId: w.selectionId }];
+    const put = await as.admin.patch(url(`/partitions/${w.partitionId}`), {
+      data: { heightMm: 2400, design: { schemaVersion: 2, sections: [
+        { id: "s1", widthMm: 800, cells: cell("c1") }, { id: "s2", widthMm: 800, cells: cell("c2") }, { id: "s3", widthMm: 800, cells: cell("c3") },
+      ] } },
+    });
+    expect(put.status(), await put.text()).toBe(200);
+    await withPage({ browser, run }, "admin", undefined, async (o) => {
+      await o.page.goto(orgTarget(run, `/projects/${w.projectId}/design?partition=${w.partitionId}`));
+      await expect(o.page.getByRole("button", { name: "Back to Room Layout" })).toBeVisible();
+      const panels = o.page.locator("[role='button'][aria-selected]").filter({ visible: true });
+      await expect(panels).toHaveCount(3);
+      const widths = async () => (await panels.allInnerTexts()).map((t) => Number(/P\d+ · (\d+) mm/.exec(t)?.[1]));
+      const locks = o.page.getByTestId("panel-lock").filter({ visible: true });
+      const menu = () => o.page.getByRole("menu");
+      const input = () => menu().locator("input[type='number']");
+
+      // Escape discards a typed value (nothing applied, nothing locked)
+      await panels.nth(0).click({ button: "right" });
+      await input().fill("1500");
+      await o.page.keyboard.press("Escape");
+      await expect(menu()).toHaveCount(0);
+      expect(await widths()).toEqual([800, 800, 800]);
+      await expect(locks).toHaveCount(0);
+
+      // Enter applies: P1 = 1000, the others absorb, P1 shows the lock
+      await panels.nth(0).click({ button: "right" });
+      await input().fill("1000");
+      await input().press("Enter");
+      expect(await widths()).toEqual([1000, 700, 700]);
+      await expect(locks).toHaveCount(1);
+
+      // The tick applies P2 = 1000: P1 stays 1000, only P3 changes
+      await panels.nth(1).click({ button: "right" });
+      await input().fill("1000");
+      await menu().getByRole("button", { name: "Apply width", exact: true }).click();
+      expect(await widths()).toEqual([1000, 1000, 400]);
+      await expect(locks).toHaveCount(2);
+
+      // Every other panel locked: the typed value is refused inline and the menu stays open
+      await panels.nth(2).click({ button: "right" });
+      await input().fill("500");
+      await input().press("Enter");
+      await expect(menu().getByRole("alert")).toHaveText("Unlock a panel to absorb the difference");
+      await o.page.keyboard.press("Escape");
+      expect(await widths()).toEqual([1000, 1000, 400]);
+
+      // Save + reload: widths and locks survive
+      await o.page.getByRole("button", { name: "Save changes" }).click();
+      await expect(o.page.getByRole("button", { name: "Saved", exact: true })).toBeVisible({ timeout: 15_000 });
+      const pr = await as.admin.get(url(`/partitions/${w.partitionId}`));
+      const sections = ((await pr.json()) as { partition: { design: { sections: Array<{ widthMm: number; locked?: boolean }> } } }).partition.design.sections;
+      expect(sections.map((s) => [s.widthMm, s.locked ?? false])).toEqual([[1000, true], [1000, true], [400, false]]);
+      await o.page.reload();
+      await expect(panels).toHaveCount(3);
+      expect(await widths()).toEqual([1000, 1000, 400]);
+      await expect(locks).toHaveCount(2);
     });
   });
 });
