@@ -39,6 +39,19 @@ export type AddPanelPlan =
   | { ok: true; widths: Record<string, number>; newWidthMm: number }
   | { ok: false; reason: WidthRefusal };
 
+/**
+ * True when what the user typed is what the field showed (in DISPLAY units) for `widthMm`. Decide
+ * "unchanged" here, before converting to mm: `toDisplay` rounds (0.1 in, 0.01 m), so a round-trip of an
+ * untouched value can differ from the exact mm and would otherwise apply a drift and lock the panel.
+ */
+export function isUnchangedDisplayValue(
+  typed: number,
+  widthMm: number,
+  toDisplay: (mm: number) => number,
+): boolean {
+  return typed === toDisplay(widthMm);
+}
+
 const refuse = (reason: WidthRefusal): { ok: false; reason: WidthRefusal } => ({ ok: false, reason });
 
 /**

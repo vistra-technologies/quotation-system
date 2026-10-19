@@ -11,7 +11,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { planSetWidths } from "@/lib/panel-widths";
+import { isUnchangedDisplayValue, planSetWidths } from "@/lib/panel-widths";
 import { useDraftContext } from "./design-draft-context";
 import { useUnit } from "./unit-context";
 import { LockIcon, TickIcon } from "./lock-icons";
@@ -39,11 +39,12 @@ export function RailWidthField({ panel }: { panel: DesignPanel }) {
       setError(t("widthRefusalINVALID"));
       return;
     }
-    const mm = Math.round(fromDisplay(parsed));
-    if (mm === panel.widthMm) {
+    // Unchanged is decided in display units (see isUnchangedDisplayValue): no drift, no lock.
+    if (isUnchangedDisplayValue(parsed, panel.widthMm, toDisplay)) {
       revert();
       return;
     }
+    const mm = Math.round(fromDisplay(parsed));
     const panels = state.draft?.design?.panels ?? [];
     const plan = planSetWidths(panels, [panel.id], mm);
     if (!plan.ok) {

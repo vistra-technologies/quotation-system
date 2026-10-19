@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import {
   MIN_PANEL_MM,
   absorbDelta,
+  isUnchangedDisplayValue,
   planAddPanel,
   planEqualize,
   planRemove,
@@ -225,5 +226,22 @@ describe("invariants over a seeded table", () => {
         if (plan !== plans[1]) assert.equal(total(after), t);
       }
     }
+  });
+});
+
+describe("isUnchangedDisplayValue (display-unit unchanged check)", () => {
+  // the same rounding as unit-context.tsx's toDisplay
+  const inches = (mm: number) => Math.round((mm / 25.4) * 10) / 10;
+  const metres = (mm: number) => Math.round(mm / 10) / 100;
+  test("an untouched value in inches / metres is unchanged even though the mm round trip drifts", () => {
+    assert.equal(isUnchangedDisplayValue(inches(1000), 1000, inches), true); // shows 39.4
+    assert.equal(Math.round(inches(1000) * 25.4), 1001, "the round trip would have applied 1001");
+    assert.equal(isUnchangedDisplayValue(metres(2405), 2405, metres), true); // shows 2.41
+    assert.equal(Math.round(metres(2405) * 1000), 2410);
+  });
+  test("a really edited value is changed; mm is exact", () => {
+    assert.equal(isUnchangedDisplayValue(39.5, 1000, inches), false);
+    assert.equal(isUnchangedDisplayValue(1000, 1000, (mm) => mm), true);
+    assert.equal(isUnchangedDisplayValue(1001, 1000, (mm) => mm), false);
   });
 });

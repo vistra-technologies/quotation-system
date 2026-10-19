@@ -26,7 +26,7 @@
 
 import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { planWallWidth } from "@/lib/panel-widths";
+import { isUnchangedDisplayValue, planWallWidth } from "@/lib/panel-widths";
 import { TickIcon, UnlockIcon } from "./lock-icons";
 import { useUnit } from "./unit-context";
 import { WallCanvas } from "./wall-canvas";
@@ -136,11 +136,12 @@ export function ConfigureMode({
       return;
     }
     // fromDisplay converts from the current display unit back to mm; round to integer mm.
-    const newTotalMm = Math.round(fromDisplay(parsed));
-    if (newTotalMm === panelWidthSum) {
+    // Unchanged is decided in display units (see isUnchangedDisplayValue): no drift, no resize.
+    if (isUnchangedDisplayValue(parsed, panelWidthSum, toDisplay)) {
       widthInputRef.current?.blur(); // unchanged: just close
       return;
     }
+    const newTotalMm = Math.round(fromDisplay(parsed));
     const plan = planWallWidth(panels, newTotalMm);
     if (!plan.ok) {
       dispatch({ type: "SET_NOTICE", code: plan.reason });
@@ -419,37 +420,42 @@ export function ConfigureMode({
         <button
           type="button"
           onClick={addPanel}
-          className="whitespace-nowrap rounded-[6px] border border-border bg-bg-white px-2.5 py-[7px] text-[11.5px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark"
+          title={t("addPanel")}
+          aria-label={t("addPanel")}
+          className="whitespace-nowrap rounded-[6px] border border-border bg-bg-white px-2 py-[7px] text-[11.5px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark"
         >
-          {t("addPanel")}
+          {t("toolbarAdd")}
         </button>
         <button
           type="button"
           onClick={removeSelectedPanels}
           disabled={removeDisabled}
-          className="whitespace-nowrap rounded-[6px] border border-border bg-bg-white px-2.5 py-[7px] text-[11.5px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
+          title={t("removePanel")}
+          aria-label={t("removePanel")}
+          className="whitespace-nowrap rounded-[6px] border border-border bg-bg-white px-2 py-[7px] text-[11.5px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {t("removePanel")}
+          {t("toolbarRemove")}
         </button>
         <button
           type="button"
           onClick={splitSelectedPanel}
           disabled={splitDisabled}
-          className="whitespace-nowrap rounded-[6px] border border-border bg-bg-white px-2.5 py-[7px] text-[11.5px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
+          title={t("splitPanel")}
+          aria-label={t("splitPanel")}
+          className="whitespace-nowrap rounded-[6px] border border-border bg-bg-white px-2 py-[7px] text-[11.5px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {t("splitPanel")}
+          {t("toolbarSplit")}
         </button>
-        {/* Stage 34 (D-15): Make equal widths and Unlock all are icon-only (tooltip + aria-label) because
-            the centre card is ~550 px wide at 1440 px and four text buttons plus Save cannot share one row. */}
+        {/* Stage 34 (D-15): text buttons. The first three use short visible labels (full meaning in the
+            tooltip / aria-label) so the whole toolbar fits one row at 1440 px. */}
         <button
           type="button"
           data-testid="make-equal-widths"
           onClick={() => dispatch({ type: "MAKE_EQUAL_WIDTH", panelIds: [] })}
           title={t("makeEqualWidths")}
-          aria-label={t("makeEqualWidths")}
-          className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[6px] border border-border bg-bg-white text-[14px] text-text-heading hover:border-primary hover:text-primary-dark"
+          className="whitespace-nowrap rounded-[6px] border border-border bg-bg-white px-2 py-[7px] text-[11.5px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark"
         >
-          ⊞
+          {t("makeEqualWidths")}
         </button>
         {/* Unlock all: the slot is ALWAYS rendered (invisible, not removed, when nothing is locked) so
             showing it never re-wraps the toolbar. */}
@@ -461,13 +467,13 @@ export function ConfigureMode({
           tabIndex={anyLocked ? 0 : -1}
           aria-hidden={anyLocked ? undefined : true}
           title={t("unlockAll")}
-          aria-label={t("unlockAll")}
           className={[
-            "flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[6px] border border-primary-soft bg-primary-softer text-primary-dark hover:border-primary",
+            "flex items-center gap-1 whitespace-nowrap rounded-[6px] border border-primary-soft bg-primary-softer px-2 py-[7px] text-[11.5px] font-semibold text-primary-dark hover:border-primary",
             anyLocked ? "" : "invisible",
           ].join(" ")}
         >
-          <UnlockIcon />
+          <UnlockIcon size={12} />
+          {t("unlockAll")}
         </button>
         <button
           type="button"

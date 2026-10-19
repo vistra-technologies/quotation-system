@@ -25,6 +25,7 @@
  */
 
 import { useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { isDoubleLeafConfig } from "@/lib/door-leaf";
 import { MIN_PANEL_WIDTH_MM } from "./configure-constants";
 import { useUnit } from "./unit-context";
@@ -61,6 +62,7 @@ export function WallCanvas({
   onResizePanels,
   onUnlockPanel,
 }: WallCanvasProps) {
+  const t = useTranslations("design");
   const { formatLen } = useUnit();
 
   const totalWidthMm = panels.reduce((sum, p) => sum + p.widthMm, 0) || 1;
@@ -235,8 +237,8 @@ export function WallCanvas({
                     <button
                       type="button"
                       data-testid="panel-lock"
-                      title="Unlock panel"
-                      aria-label={`Unlock panel P${index + 1}`}
+                      title={t("unlockPanelAria", { n: `P${index + 1}` })}
+                      aria-label={t("unlockPanelAria", { n: `P${index + 1}` })}
                       onClick={(e) => {
                         e.stopPropagation();
                         onUnlockPanel?.(panel.id);

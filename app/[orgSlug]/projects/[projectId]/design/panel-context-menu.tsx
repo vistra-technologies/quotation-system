@@ -107,17 +107,14 @@ export function PanelContextMenu({
   const standardWidths = STANDARD_WIDTH_FRACTIONS.map((f) => Math.round(totalWidthMm * f));
 
   /** Apply a width to the targets: pre-validate, then dispatch and close; else show the error. */
-  function applyWidth(widthMm: number, skipIfUnchanged: boolean) {
+  function applyWidth(widthMm: number) {
     if (!Number.isFinite(widthMm)) {
       setError(t("widthRefusalINVALID"));
       return;
     }
     const width = Math.round(widthMm);
-    // ✓ with an unchanged value just closes (no lock).
-    if (skipIfUnchanged && width === primaryWidth) {
-      onClose();
-      return;
-    }
+    // The planner decides "unchanged" for ALL targets: an empty plan just closes (no lock), and in a
+    // multi-selection the targets that differ still get the width.
     const plan = planSetWidths(panels, targetIds, width);
     if (!plan.ok) {
       setError(t(`widthRefusal${plan.reason}`));
@@ -190,7 +187,7 @@ export function PanelContextMenu({
           initialValue={primaryWidth}
           error={error}
           onDraftChange={() => setError(null)}
-          onApply={(w) => applyWidth(w, true)}
+          onApply={(w) => applyWidth(w)}
         />
       ),
     },
@@ -200,7 +197,7 @@ export function PanelContextMenu({
         <StandardWidthSlot
           label={t("ctxStandardWidth")}
           widths={standardWidths}
-          onApply={(w) => applyWidth(w, false)}
+          onApply={(w) => applyWidth(w)}
         />
       ),
     },

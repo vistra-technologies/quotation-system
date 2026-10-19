@@ -526,6 +526,7 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       await width.fill("2100");
       await o.page.getByRole("button", { name: "Apply width", exact: true }).click();
       await expect(width).toHaveValue("2100");
+      await expect(o.page.getByTestId("wall-width-tick")).toHaveCount(0); // applied and closed, not refused
       const save = o.page.getByRole("button", { name: "Save changes" });
       await expect(save).toBeEnabled();
       const [patch] = await Promise.all([
