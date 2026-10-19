@@ -413,13 +413,13 @@ export function ConfigureMode({
         handler immediately clear that selection.
       */}
       <div
-        className="flex shrink-0 items-center gap-2"
+        className="flex shrink-0 flex-nowrap items-center gap-1.5"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
           onClick={addPanel}
-          className="rounded-[6px] border border-border bg-bg-white px-3 py-[7px] text-[12px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark"
+          className="whitespace-nowrap rounded-[6px] border border-border bg-bg-white px-2.5 py-[7px] text-[11.5px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark"
         >
           {t("addPanel")}
         </button>
@@ -427,7 +427,7 @@ export function ConfigureMode({
           type="button"
           onClick={removeSelectedPanels}
           disabled={removeDisabled}
-          className="rounded-[6px] border border-border bg-bg-white px-3 py-[7px] text-[12px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
+          className="whitespace-nowrap rounded-[6px] border border-border bg-bg-white px-2.5 py-[7px] text-[11.5px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t("removePanel")}
         </button>
@@ -435,17 +435,21 @@ export function ConfigureMode({
           type="button"
           onClick={splitSelectedPanel}
           disabled={splitDisabled}
-          className="rounded-[6px] border border-border bg-bg-white px-3 py-[7px] text-[12px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
+          className="whitespace-nowrap rounded-[6px] border border-border bg-bg-white px-2.5 py-[7px] text-[11.5px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t("splitPanel")}
         </button>
+        {/* Stage 34 (D-15): Make equal widths and Unlock all are icon-only (tooltip + aria-label) because
+            the centre card is ~550 px wide at 1440 px and four text buttons plus Save cannot share one row. */}
         <button
           type="button"
           data-testid="make-equal-widths"
           onClick={() => dispatch({ type: "MAKE_EQUAL_WIDTH", panelIds: [] })}
-          className="whitespace-nowrap rounded-[6px] border border-border bg-bg-white px-3 py-[7px] text-[12px] font-semibold text-text-heading hover:border-primary hover:text-primary-dark"
+          title={t("makeEqualWidths")}
+          aria-label={t("makeEqualWidths")}
+          className="flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[6px] border border-border bg-bg-white text-[14px] text-text-heading hover:border-primary hover:text-primary-dark"
         >
-          {t("makeEqualWidths")}
+          ⊞
         </button>
         {/* Unlock all: the slot is ALWAYS rendered (invisible, not removed, when nothing is locked) so
             showing it never re-wraps the toolbar. */}
@@ -456,20 +460,21 @@ export function ConfigureMode({
           disabled={!anyLocked}
           tabIndex={anyLocked ? 0 : -1}
           aria-hidden={anyLocked ? undefined : true}
+          title={t("unlockAll")}
+          aria-label={t("unlockAll")}
           className={[
-            "flex items-center gap-[5px] whitespace-nowrap rounded-[6px] border border-primary-soft bg-primary-softer px-3 py-[7px] text-[12px] font-semibold text-primary-dark hover:border-primary",
+            "flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-[6px] border border-primary-soft bg-primary-softer text-primary-dark hover:border-primary",
             anyLocked ? "" : "invisible",
           ].join(" ")}
         >
           <UnlockIcon />
-          {t("unlockAll")}
         </button>
         <button
           type="button"
           disabled={!isDirty}
           onClick={onSave}
           className={[
-            "ml-auto rounded-pill border px-5 py-2.5 text-[12.5px] font-bold transition-colors",
+            "ml-auto whitespace-nowrap rounded-pill border px-4 py-2.5 text-[12.5px] font-bold transition-colors",
             isDirty
               ? "border-primary-dark bg-primary text-white hover:bg-primary-dark"
               : "cursor-default border-text-muted bg-text-muted text-white opacity-55",
