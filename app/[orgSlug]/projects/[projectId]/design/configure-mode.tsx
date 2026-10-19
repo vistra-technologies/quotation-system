@@ -318,9 +318,9 @@ export function ConfigureMode({
                   onClick={applyWidth}
                   title={t("applyWidthTick")}
                   aria-label={t("applyWidthTick")}
-                  className="ml-1 flex h-[20px] w-[20px] flex-shrink-0 items-center justify-center rounded-[6px] border border-primary-dark bg-primary text-white hover:bg-primary-dark"
+                  className="ml-1 flex h-[18px] w-[18px] flex-shrink-0 items-center justify-center rounded-full border border-primary-dark bg-primary text-white hover:bg-primary-dark"
                 >
-                  <TickIcon size={11} />
+                  <TickIcon size={10} />
                 </button>
               )}
             </div>
