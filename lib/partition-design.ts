@@ -479,6 +479,8 @@ export function fillDefaultGlass(
   if (!glassId) return { sections, changed: false };
   let changed = false;
   const next = sections.map((section) => {
+    // Stored JSON can be malformed (Phase A tolerates it too): never throw on a section without cells.
+    if (!section || !Array.isArray(section.cells)) return section;
     let sectionChanged = false;
     const cells = section.cells.map((cell, i) => {
       if (cell.selectionId || !isGlassCell(section, i)) return cell;

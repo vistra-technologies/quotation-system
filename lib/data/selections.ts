@@ -179,7 +179,7 @@ export async function createSelection(
   // Same transaction as the create; a design change invalidates the calculation (D-17).
   return prisma.$transaction(async (tx) => {
     const glassBefore = await tx.selection.count({
-      where: { projectId: input.projectId, componentType: { code: "GLASS" } },
+      where: { organizationId: session.organizationId, projectId: input.projectId, componentType: { code: "GLASS" } },
     });
     const created = await tx.selection.create({
       data: {
@@ -192,7 +192,7 @@ export async function createSelection(
       },
     });
     if (glassBefore === 0) {
-      const defaultGlassId = await findDefaultGlassSelectionId(tx, input.projectId);
+      const defaultGlassId = await findDefaultGlassSelectionId(tx, session.organizationId, input.projectId);
       if (defaultGlassId === created.id) {
         const filled = await fillProjectNullGlass(
           tx,

@@ -218,7 +218,7 @@ export async function updatePartition(
       delete nextDesign.panels; // legacy v1 key — a v2 write replaces it
       nextDesign.schemaVersion = 2;
       // Stage 34 S34-7: a null glass cell is saved as the project's default glass (door cells never).
-      const defaultGlassId = await findDefaultGlassSelectionId(prisma, existing.room.floor.projectId);
+      const defaultGlassId = await findDefaultGlassSelectionId(prisma, session.organizationId, existing.room.floor.projectId);
       nextDesign.sections = fillDefaultGlass(patch.design.sections, defaultGlassId).sections;
     }
   }

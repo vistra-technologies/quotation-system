@@ -684,6 +684,23 @@ describe("MISSING_PARAM — test 14: blank hasFrame → MISSING_PARAM naming 'ha
   });
 });
 
+describe("MISSING_PARAM — Stage 34 AC4: message names room/wall/saved component by label, never by id", () => {
+  const input = makeDoorInput(doorConfig({ frameCode: "" }));
+  input.selections = [{ id: "sel-door", label: "Main Door", componentTypeId: "ct-door", config: doorConfig({ frameCode: "" }) }];
+  const mp = buildMaterials(input).collector.report().problems.find(p => p.kind === "MISSING_PARAM" && p.locus?.fieldKey === "frameCode");
+
+  test("message uses Room/wall/component labels and carries no id", () => {
+    assert.ok(mp);
+    assert.match(mp.message, /Room "Room 1", wall "Wall 1"/);
+    assert.match(mp.message, /"Main Door"/);
+    assert.doesNotMatch(mp.message, /sel-door|p1|r1/);
+  });
+  test("the ids stay in the locus", () => {
+    assert.equal(mp!.locus?.selectionId, "sel-door");
+    assert.equal(mp!.locus?.partitionId, "p1");
+  });
+});
+
 // ─── Deduplication and exhaustiveness (tests 15–16) ──────────────────────────
 
 describe("MISSING_PARAM deduplication — test 15: three cells same blank field → occurrenceCount=3", () => {

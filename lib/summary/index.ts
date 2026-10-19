@@ -108,11 +108,11 @@ function build(input: SummaryInput): Summary {
     const hit = resolved.get(selectionId);
     if (hit) return hit;
     const sel = selectionById.get(selectionId);
-    if (!sel) throw new SummaryFailure(`${where}: selection ${selectionId} not found`);
+    if (!sel) throw new SummaryFailure(`${where}: the selected component no longer exists in this project`);
     const type = typeById.get(sel.componentTypeId);
     if (!type) {
       throw new SummaryFailure(
-        `${where}: component type ${sel.componentTypeId} is not in the project's config snapshot`,
+        `${where}: the type of component "${sel.label ?? "?"}" is not in the project's config snapshot`,
       );
     }
     const slot = slots[type.code];
@@ -144,19 +144,21 @@ function build(input: SummaryInput): Summary {
         const design = p.design;
         const sections = isRecord(design) && Array.isArray(design.sections) ? design.sections : null;
         if (!sections) {
-          throw new SummaryFailure(`partition "${p.label}" (${p.id}): design has no sections[]`);
+          throw new SummaryFailure(`Room "${room.label}", wall "${p.label}": design has no sections`);
         }
         const glass: GlassRow[] = [];
         const doorGroups = new Map<string, DoorRow>();
 
-        for (const section of sections) {
+        for (let sI = 0; sI < sections.length; sI++) {
+          const section = sections[sI];
           if (!isRecord(section) || !Array.isArray(section.cells) || !isPositiveFinite(section.widthMm)) {
-            throw new SummaryFailure(`partition "${p.label}" (${p.id}): malformed section`);
+            throw new SummaryFailure(`Room "${room.label}", wall "${p.label}", section ${sI}: malformed section`);
           }
           const widthMm = section.widthMm;
-          for (const cell of section.cells) {
-            const cellId = isRecord(cell) && typeof cell.id === "string" ? cell.id : "?";
-            const where = `partition "${p.label}" (${p.id}), cell ${cellId}`;
+          for (let cI = 0; cI < section.cells.length; cI++) {
+            const cell = section.cells[cI];
+            // Human location only (no ids in the text, Stage 34 S34-7); section/cell numbers are 0-based like Phase A.
+            const where = `Room "${room.label}", wall "${p.label}", section ${sI}, cell ${cI}`;
             if (!isRecord(cell) || !isPositiveFinite(cell.heightMm)) {
               throw new SummaryFailure(`${where}: malformed cell`);
             }

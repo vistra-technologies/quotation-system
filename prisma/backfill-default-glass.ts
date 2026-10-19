@@ -151,7 +151,7 @@ async function main() {
           where: { organizationId: p.organizationId, room: { floor: { projectId: p.id } } },
           select: { design: true },
         });
-        const glassId = await findDefaultGlassSelectionId(prisma, p.id);
+        const glassId = await findDefaultGlassSelectionId(prisma, p.organizationId, p.id);
         const plan = planProjectFill(p.status, glassId !== null, parts.map((x) => x.design));
         counts[plan.cls]++;
         if (plan.cls === "NOTHING") continue;
@@ -168,7 +168,7 @@ async function main() {
         }
         // Re-read + write in one tx so a concurrent edit cannot be overwritten.
         const done = await prisma.$transaction(async (tx) => {
-          const g = await findDefaultGlassSelectionId(tx, p.id);
+          const g = await findDefaultGlassSelectionId(tx, p.organizationId, p.id);
           if (!g) return { partitions: 0, cells: 0 };
           const r = await fillProjectNullGlass(tx, p.organizationId, p.id, g);
           if (r.partitions > 0) await invalidateProjectCalculation(tx, p.id);

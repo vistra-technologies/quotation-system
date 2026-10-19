@@ -274,7 +274,9 @@ describe("buildSummary", () => {
     );
     assert.equal(r.status, "FAILED");
     assert.match(r.errorDetail!, /doorType/);
-    assert.match(r.errorDetail!, /p1/);
+    assert.match(r.errorDetail!, /Room A/);
+    assert.match(r.errorDetail!, /wall "N"/);
+    assert.doesNotMatch(r.errorDetail!, /p1/); // Stage 34: labels, never ids
   });
 
   test("slot summaryParams naming a key the config lacks -> null, not a throw", () => {
@@ -294,9 +296,8 @@ describe("buildSummary", () => {
       input([partition("p-x", "North", [section("s1", 1000, [cell("cell-7", 2000, null)])])]),
     );
     assert.equal(r.status, "FAILED");
-    assert.match(r.errorDetail!, /North/);
-    assert.match(r.errorDetail!, /p-x/);
-    assert.match(r.errorDetail!, /cell-7/);
+    assert.match(r.errorDetail!, /Room "Room A", wall "North", section 0, cell 0/);
+    assert.doesNotMatch(r.errorDetail!, /p-x|cell-7/); // Stage 34: no ids in the text
     assert.ok(!JSON.stringify(r).includes("Unassigned"));
     assert.deepEqual(r.summary.floors, []);
   });

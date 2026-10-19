@@ -521,7 +521,7 @@ export async function replaceSides(
           // Stage 34 S34-7: a project that already has a glass Selection converts WITH its default glass;
           // none yet -> cells stay null (the first glass Selection back-fills them, selections.ts).
           if (defaultGlassId === undefined) {
-            defaultGlassId = await findDefaultGlassSelectionId(tx, room.floor.projectId);
+            defaultGlassId = await findDefaultGlassSelectionId(tx, session.organizationId, room.floor.projectId);
           }
           seedDesign.sections = fillDefaultGlass(seedDesign.sections, defaultGlassId).sections;
           await tx.partition.update({

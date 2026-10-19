@@ -357,6 +357,15 @@ describe("fillDefaultGlass (Stage 34 S34-7)", () => {
     assert.equal(JSON.stringify(input), snapshot);
   });
 
+  test("a stored section without a cells array is skipped, not thrown on", () => {
+    const bad = { id: "bad", widthMm: 900 } as unknown as DesignSectionV2;
+    const good = sec("s2", cell("c1", null));
+    const r = fillDefaultGlass([bad, good], "G");
+    assert.equal(r.changed, true);
+    assert.equal(r.sections[0], bad);
+    assert.equal(r.sections[1].cells[0].selectionId, "G");
+  });
+
   test("isGlassCell: three-cell sections have no glass cell by this rule", () => {
     assert.equal(isGlassCell(sec("s", cell("a", null), cell("b", null), cell("c", null)), 0), false);
   });

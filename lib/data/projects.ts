@@ -471,6 +471,7 @@ function buildMaterialsInputHelper(
     selections: loaded.input.selections.map((s) => ({
       id: s.id,
       componentTypeId: s.componentTypeId,
+      label: s.label,
       config: s.config,
     })),
   };

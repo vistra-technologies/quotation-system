@@ -46,6 +46,7 @@ export interface MaterialsInput {
   selections: Array<{
     id: string;
     componentTypeId: string;
+    label?: string;
     config: unknown;
   }>;
 }
@@ -102,7 +103,7 @@ export function buildMaterials(input: MaterialsInput): MaterialsResult {
   const selectionMap = new Map(
     input.selections.map(s => [
       s.id,
-      { componentTypeId: s.componentTypeId, config: isRecord(s.config) ? s.config : {} },
+      { componentTypeId: s.componentTypeId, config: isRecord(s.config) ? s.config : {}, label: s.label },
     ]),
   );
   const componentTypeCodeMap = new Map(

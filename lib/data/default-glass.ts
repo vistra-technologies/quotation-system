@@ -10,10 +10,11 @@ type Db = Pick<Prisma.TransactionClient, "selection" | "partition">;
 
 export async function findDefaultGlassSelectionId(
   client: Pick<Prisma.TransactionClient, "selection">,
+  organizationId: string,
   projectId: string,
 ): Promise<string | null> {
   const row = await client.selection.findFirst({
-    where: { projectId, componentType: { code: "GLASS" } },
+    where: { organizationId, projectId, componentType: { code: "GLASS" } },
     orderBy: [{ orderIndex: "asc" }, { createdAt: "asc" }],
     select: { id: true },
   });
@@ -56,6 +57,7 @@ export async function fillProjectNullGlass(
 function countNullGlass(sections: DesignSectionV2[]): number {
   let n = 0;
   for (const s of sections) {
+    if (!s || !Array.isArray(s.cells)) continue;
     s.cells.forEach((c, i) => {
       if (!c.selectionId && isGlassCell(s, i)) n++;
     });

@@ -66,7 +66,7 @@ export interface EvalInput {
   snapshot: ConfigSnapshot;
   floors: EvalFloor[];
   /** selectionId → { componentTypeId, config } */
-  selectionMap: Map<string, { componentTypeId: string; config: Record<string, unknown> }>;
+  selectionMap: Map<string, { componentTypeId: string; config: Record<string, unknown>; label?: string }>;
   /** componentTypeId → ComponentType.code (slot code) */
   componentTypeCodeMap: Map<string, string>;
   /** partitionId → ParsedDesign (for neighborDesignResolver) */
@@ -219,7 +219,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
                 collector.add({
                   kind: "MISSING_PARAM",
                   scope: "SELECTION",
-                  message: `Formula "${formula.id}": param "${key}" is blank on selection "${cell.selectionId}" (${slotCode})`,
+                  message: `Room "${room.label}", wall "${partition.label}": formula "${formula.id}": param "${key}" is blank on "${sel.label ?? slotCode}" (${slotCode})`,
                   locus: {
                     floorId: floor.id,
                     roomId: room.id,
@@ -271,7 +271,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
                 collector.add({
                   kind: "NON_FINITE_QUANTITY",
                   scope: "FORMULA_SET",
-                  message: `Formula "${formula.id}": quantity is not finite (${quantity}) for selection "${cell.selectionId}"`,
+                  message: `Room "${room.label}", wall "${partition.label}": formula "${formula.id}": quantity is not finite (${quantity}) for "${sel.label ?? slotCode}"`,
                   locus: {
                     floorId: floor.id,
                     roomId: room.id,
@@ -318,7 +318,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
         // Build slot → first Selection config map (section order, then cell order) for this partition.
         // Confirmed with human (partition.md "No mixed-glass partitions"): every cell in a partition
         // resolves to the same param values, so using the first cell of each slot type is sufficient.
-        const slotFirstSel = new Map<string, { selectionId: string; config: Record<string, unknown> }>();
+        const slotFirstSel = new Map<string, { selectionId: string; config: Record<string, unknown>; label?: string }>();
         for (const section of parsedDesign.sections) {
           for (const cell of section.cells) {
             if (!cell.selectionId) continue;
@@ -326,7 +326,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
             if (!sel) continue;
             const slotCode = componentTypeCodeMap.get(sel.componentTypeId);
             if (!slotCode || slotFirstSel.has(slotCode)) continue;
-            slotFirstSel.set(slotCode, { selectionId: cell.selectionId, config: sel.config });
+            slotFirstSel.set(slotCode, { selectionId: cell.selectionId, config: sel.config, label: sel.label });
           }
         }
 
@@ -368,7 +368,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
             collector.add({
               kind: "MISSING_PARAM",
               scope: "SELECTION",
-              message: `Formula "${formula.id}": param "${key}" is blank on selection "${selInfo.selectionId}" (${formula.slot})`,
+              message: `Room "${room.label}", wall "${partition.label}": formula "${formula.id}": param "${key}" is blank on "${selInfo.label ?? formula.slot}" (${formula.slot})`,
               locus: {
                 floorId: floor.id,
                 roomId: room.id,
@@ -414,7 +414,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
             collector.add({
               kind: "NON_FINITE_QUANTITY",
               scope: "FORMULA_SET",
-              message: `Formula "${formula.id}": quantity is not finite (${quantity}) for partition "${partition.id}"`,
+              message: `Room "${room.label}", wall "${partition.label}": formula "${formula.id}": quantity is not finite (${quantity})`,
               locus: {
                 floorId: floor.id,
                 roomId: room.id,

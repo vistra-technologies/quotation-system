@@ -36,6 +36,7 @@ import {
   readCalculation,
   readProjectState,
   rgrSetProjectStatus,
+  rgrSetSelectionConfig,
 } from "../../e2e/db-helpers";
 
 covers("GET /api/v1/orgs/[orgSlug]/projects");
@@ -396,10 +397,10 @@ test.describe("projects: submit design / calculation / recompute", () => {
     }
     expect(rep.problems[0]).toMatchObject({ kind: "CELL_UNASSIGNED", scope: "DESIGN", locus: expect.objectContaining({ partitionId: w.partitionId }) });
     expect(rep.error.startsWith(rep.problems[0].message)).toBe(true);
-    // Stage 34 S34-7 (AC4): DESIGN problems carry floor + room names in the locus and name the room/wall in the text � no UUIDs
+    // Stage 34 S34-7 (AC4): DESIGN problems carry floor + room names in the locus and name the room/wall in the text — no UUIDs
     const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    for (const p of rep.problems) expect(p.message, p.message).not.toMatch(uuid); // every scope
     for (const p of rep.problems.filter((x) => x.scope === "DESIGN")) {
-      expect(p.message, p.message).not.toMatch(uuid);
       expect(p.locus).toMatchObject({ floorName: expect.stringContaining("F"), roomName: expect.stringContaining("R"), floorId: expect.any(String), roomId: expect.any(String) });
       expect(p.message).toContain(`Room "${String(p.locus!.roomName)}", wall "${String(p.locus!.partitionLabel)}"`);
     }
@@ -408,6 +409,19 @@ test.describe("projects: submit design / calculation / recompute", () => {
     const c = await as.admin.get(url(`/projects/${w.projectId}/calculation`));
     expect(c.status()).toBe(404);
     expect(await c.json()).toEqual({ error: "No calculation found for this project" });
+  });
+
+  test("submit-design problem path: a blank saved-component field (SELECTION scope) is reported by labels, never UUIDs (S34-7 AC4)", async ({ as, f, url }) => {
+    const w = await readyWall(f, as.admin, url);
+    await rgrSetSelectionConfig(w.selectionId, {}); // bypasses API validation: every field blank
+    const r = await as.member.post(url(`/projects/${w.projectId}/submit-design`));
+    expect(r.status(), await r.text()).toBe(422);
+    const rep = await json<{ problems: Problem[]; error: string }>(r);
+    const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    expect(rep.problems.length).toBeGreaterThanOrEqual(1);
+    expect(rep.problems.some((p) => p.scope !== "DESIGN"), "the blank field must surface as a non-DESIGN problem").toBe(true);
+    for (const p of rep.problems) expect(p.message, p.message).not.toMatch(uuid);
+    expect(rep.error).not.toMatch(uuid);
   });
 
   test("submit-design happy path → 200; calculation GET shape without materialByRoom (present in the DB)", async ({ as, f, url }) => {
