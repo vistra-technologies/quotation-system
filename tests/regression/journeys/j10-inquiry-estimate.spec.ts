@@ -91,6 +91,29 @@ test("J10: Quick Estimate on inquiries — attach on New Inquiry, Create, detail
       await addLine(page, dialog.getByRole("button", { name: "Add item" }), "m²");
       await page.locator("[data-qty]").first().fill("10");
       await dialog.getByLabel("Unit rate").first().fill("1000");
+      // Stage 34 Q1: -, +, e, E are blocked on keydown and a non-plain-number paste is rejected, on all four fields
+      const guarded = [
+        page.locator("[data-qty]").first(),
+        dialog.getByLabel("Unit rate").first(),
+        dialog.getByLabel("Discount", { exact: true }),
+        dialog.getByLabel("Tax", { exact: true }),
+      ];
+      for (const field of guarded) {
+        const before = await field.inputValue();
+        await field.focus();
+        for (const key of ["-", "+", "e", "E"]) await field.press(key);
+        expect(await field.inputValue()).toBe(before);
+        const pasteAllowed = (text: string) =>
+          field.evaluate((el, t) => {
+            const dt = new DataTransfer();
+            dt.setData("text", t);
+            return el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+          }, text);
+        expect(await pasteAllowed("-5")).toBe(false);
+        expect(await pasteAllowed("1e3")).toBe(false);
+        expect(await pasteAllowed("5")).toBe(true);
+        expect(await field.inputValue()).toBe(before);
+      }
       const attach = dialog.getByRole("button", { name: "Attach to inquiry" });
       await expect(attach).toBeEnabled();
       await attach.click();
@@ -187,6 +210,13 @@ test("J10: Quick Estimate on inquiries — attach on New Inquiry, Create, detail
       expect(est?.lines).toHaveLength(1);
       expect(est?.lines[0]).toMatchObject({ qty: 10, unitPrice: 1000 });
       await expect.poll(() => draftLines(page)).toBe(0); // cleared after the success
+
+      // Stage 34 Q4: the list has an Estimate column right after Status, showing the grand total
+      const header = page.getByRole("columnheader");
+      await expect(header.filter({ hasText: /^Status$/ })).toHaveCount(1);
+      const headers = await header.allTextContents();
+      expect(headers[headers.indexOf("Status") + 1]).toBe("Estimate");
+      await expect(page.getByRole("row").filter({ hasText: name })).toContainText("INR 10,000.00");
     });
 
     // ── 8-12. Detail page ────────────────────────────────────────────────────────────────────────────────

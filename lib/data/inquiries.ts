@@ -1,9 +1,14 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { loadConfigSnapshot } from "@/lib/config-snapshot";
 import { resolveFormulaSetPin } from "@/lib/data/formula-pin";
-import { ownedInquiryWhere } from "@/lib/data/ownership";
+import { ownedInquiryWhere, ownedProjectWhere } from "@/lib/data/ownership";
 import { prisma } from "@/lib/prisma";
-import { stampQuickEstimate, type ParsedQuickEstimate } from "@/lib/quick-estimate/inquiry-estimate";
+import {
+  estimateTotalOf,
+  stampQuickEstimate,
+  type InquiryQuickEstimateV1,
+  type ParsedQuickEstimate,
+} from "@/lib/quick-estimate/inquiry-estimate";
 import { withSequenceRetry } from "@/lib/sequence-retry";
 import type { SessionData } from "@/lib/session";
 
@@ -163,16 +168,29 @@ export async function listInquiriesPaginated(
       orderBy: { createdAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
-      // Stage 33: the saved estimate (up to ~40 KB) is read on the single GET only.
-      omit: { quickEstimate: true },
+      // Stage 34 D-8: the saved estimate is read again, but only to compute `estimateTotal` below; it is
+      // dropped from the returned rows (the list never returns the snapshot or its lines).
       include: {
         externalCompany: { select: { id: true, name: true } },
         createdBy: { select: { id: true, name: true, username: true } },
+        // Stage 34 Q2: the most recent project this caller may see (ownership filter, so a link never 404s).
+        projects: {
+          where: ownedProjectWhere(session),
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { id: true },
+        },
       },
     }),
   ]);
 
-  return { inquiries, total };
+  const rows = inquiries.map(({ quickEstimate, projects, ...row }) => ({
+    ...row,
+    estimateTotal: estimateTotalOf(quickEstimate as InquiryQuickEstimateV1 | null),
+    projectId: projects[0]?.id ?? null,
+  }));
+
+  return { inquiries: rows, total };
 }
 
 /**
@@ -180,14 +198,24 @@ export async function listInquiriesPaginated(
  * Returns null if not found or if it belongs to a different org.
  */
 export async function getInquiryById(session: SessionData, inquiryId: string) {
-  return prisma.inquiry.findFirst({
+  const row = await prisma.inquiry.findFirst({
     where: { id: inquiryId, ...ownedInquiryWhere(session) },
     include: {
       // country included so the edit page can derive GST conditional (D20) without an extra fetch
       externalCompany: { select: { id: true, name: true, country: true } },
       createdBy: { select: { id: true, username: true } },
+      // Stage 34 Q2: the most recent project this caller may see (ownership filter, so a link never 404s).
+      projects: {
+        where: ownedProjectWhere(session),
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { id: true, projectNumber: true, name: true },
+      },
     },
   });
+  if (!row) return null;
+  const { projects, ...inquiry } = row;
+  return { ...inquiry, project: projects[0] ?? null };
 }
 
 // ─── Mutations ──────────────────────────────────────────────────────────────

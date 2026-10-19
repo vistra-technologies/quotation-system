@@ -6,6 +6,7 @@
  * Validation rejects out-of-range input (it never clamps), so an API caller is told.
  */
 import {
+  computeEstimate,
   round2,
   validateValueLine,
   type DiscountMode,
@@ -39,6 +40,18 @@ export interface InquiryQuickEstimateV1 {
   lines: Array<{ itemName: string; variantText: string; unit: EstimateUnit; qty: number; unitPrice: number }>;
   updatedAt: string;
   updatedByName: string;
+}
+
+/**
+ * Stage 34 Q4: the inquiry list's per-row total. Computed from the stored snapshot (totals are never stored); the
+ * list returns only this, never the snapshot or its lines. Null when there is no estimate.
+ */
+export function estimateTotalOf(
+  stored: Pick<InquiryQuickEstimateV1, "currency" | "discountMode" | "discountValue" | "taxPct" | "lines"> | null,
+): { currency: string; grandTotal: number } | null {
+  if (!stored || !Array.isArray(stored.lines)) return null;
+  const r = computeEstimate(stored.lines, { mode: stored.discountMode, value: stored.discountValue }, stored.taxPct);
+  return { currency: stored.currency, grandTotal: r.grandTotal };
 }
 
 export type ParseQuickEstimateResult = { ok: true; value: ParsedQuickEstimate } | { ok: false; error: string };

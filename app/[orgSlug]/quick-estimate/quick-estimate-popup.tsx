@@ -14,6 +14,7 @@ import { ComponentChip } from "./component-chip";
 import type { InquiryMode } from "./estimate-provider";
 import { ExportPreview } from "./export-preview";
 import { ItemPicker } from "./item-picker";
+import { numericInputGuards } from "./numeric-input";
 import type { EstimateState } from "./use-estimate-state";
 import { useFocusTrap } from "./use-focus-trap";
 import "./quick-estimate.css";
@@ -98,6 +99,7 @@ function LineRow({ line, result, currency, types, pickerOpen, onTogglePicker, on
           aria-invalid={qtyBad || undefined}
           value={line.qty}
           disabled={!hasItem}
+          {...numericInputGuards}
           onChange={(e) => state.setQty(line.id, e.target.value)}
         />
         <span className="qe-unit">{line.unit ?? ""}</span>
@@ -114,6 +116,7 @@ function LineRow({ line, result, currency, types, pickerOpen, onTogglePicker, on
           aria-label={t("unitRate")}
           value={line.rate}
           disabled={!hasItem}
+          {...numericInputGuards}
           onChange={(e) => state.setRate(line.id, e.target.value)}
         />
         <span className="qe-unit">{line.unit ? `/${line.unit}` : ""}</span>
@@ -399,6 +402,7 @@ export function QuickEstimatePopup({ orgName, types, state, onClose, inquiryMode
                               step="any"
                               inputMode="decimal"
                               value={draft.discountValue}
+                              {...numericInputGuards}
                               onChange={(e) => state.setDiscountValue(e.target.value)}
                             />
                             <span className="qe-ctl-u" role="group" aria-label={t("discountType")}>
@@ -437,6 +441,7 @@ export function QuickEstimatePopup({ orgName, types, state, onClose, inquiryMode
                               step="any"
                               inputMode="decimal"
                               value={draft.taxPct}
+                              {...numericInputGuards}
                               onChange={(e) => state.setTaxPct(e.target.value)}
                             />
                             <span className="qe-ctl-u"><span>%</span></span>

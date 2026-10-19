@@ -4,6 +4,8 @@ import { internalFetch } from "@/lib/internal-fetch";
 import { getTranslations } from "next-intl/server";
 import { orgHref } from "@/lib/orgHref";
 import { creatorCell } from "@/lib/creator-display";
+import { isSupportedCurrency } from "@/lib/currency";
+import { formatMoney } from "@/lib/quick-estimate/format";
 import {
   ListPageControls,
   ListPagePagination,
@@ -26,6 +28,9 @@ interface InquiryListItem {
   // null once the creator was deleted (Stage 31 S31-4); createdByName is then the name snapshot.
   createdBy: { id: string; name: string; username: string } | null;
   createdByName: string | null;
+  // Stage 34 Q2/Q4: the latest visible project (converted rows) and the computed estimate total, or null.
+  projectId: string | null;
+  estimateTotal: { currency: string; grandTotal: number } | null;
 }
 
 interface ExternalCompanyOption {
@@ -235,6 +240,9 @@ export default async function InquiriesPage({
                   Status
                 </th>
                 <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
+                  Estimate
+                </th>
+                <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
                   Created On
                 </th>
                 <th className="px-3 py-[10px] text-left text-[10px] font-extrabold uppercase tracking-[0.06em] text-text-muted">
@@ -274,7 +282,23 @@ export default async function InquiriesPage({
                   </td>
                   {/* Status badge */}
                   <td className="px-3 py-[11px]">
-                    {statusBadge(inquiry.status)}
+                    <span className="inline-flex items-center gap-2">
+                      {statusBadge(inquiry.status)}
+                      {inquiry.status === "CONVERTED" && inquiry.projectId && (
+                        <Link
+                          href={`${base}/projects/${inquiry.projectId}`}
+                          className="text-xs font-semibold text-primary-dark hover:underline"
+                        >
+                          Go to project
+                        </Link>
+                      )}
+                    </span>
+                  </td>
+                  {/* Estimate — Stage 34 Q4: grand total of the attached Quick Estimate, blank when none */}
+                  <td className="px-3 py-[11px] text-[13px] text-text-body">
+                    {inquiry.estimateTotal && isSupportedCurrency(inquiry.estimateTotal.currency)
+                      ? formatMoney(inquiry.estimateTotal.grandTotal, inquiry.estimateTotal.currency)
+                      : null}
                   </td>
                   {/* Created On */}
                   <td className="px-3 py-[11px] text-[13px] text-text-muted">

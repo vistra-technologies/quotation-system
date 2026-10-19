@@ -244,6 +244,7 @@
     "editPageSubtitle": "Update the details for this inquiry.",
     "submitEdit": "Save Changes",
     "backToInquiry": "← Back to Inquiry",
+    "goToProject": "Go to project",
     "editAction": "Edit",
     "fieldExternalCompanyReadOnly": "Company",
     "sectionProjectInfo": "Project Information",

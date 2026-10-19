@@ -557,3 +557,75 @@ test.describe("inquiries: quickEstimate", () => {
     expect(after.status).toBe("NEW");
   });
 });
+
+// Stage 34 Q2 / Q4: `project` on the detail GET, `projectId` + `estimateTotal` on the list rows.
+test.describe("inquiries: Stage 34 project link and estimate total", () => {
+  type ListRow = Record<string, unknown> & { id: string };
+  const rowFor = async (g: { get: (u: string) => Promise<APIResponse> }, u: string, id: string) =>
+    (await json<{ inquiries: ListRow[] }>(await g.get(u))).inquiries.find((x) => x.id === id);
+
+  test("Q2: detail `project` is null while NEW, then {id, projectNumber, name} once converted; the list row carries projectId; deleting the project clears both", async ({ as, run, ledger, url }) => {
+    const archCoId = await distributorCompanyId({ run, as });
+    const { id, body } = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-q2"), currency: "AED", externalCompanyId: archCoId });
+    expect(id, JSON.stringify(body)).not.toBeNull();
+    const name = (body.inquiry as Inquiry).name;
+    const search = url(`/inquiries?search=${encodeURIComponent(name)}`);
+    type Detail = Inquiry & { project: { id: string; projectNumber: number; name: string } | null };
+    const detail = async (g: { get: (u: string) => Promise<APIResponse> }) => (await json<{ inquiry: Detail }>(await g.get(url(`/inquiries/${id}`)))).inquiry;
+
+    expect((await detail(as.admin)).project).toBeNull();
+    expect((await rowFor(as.admin, search, id!))?.projectId).toBeNull();
+
+    const c = await as.admin.post(url(`/inquiries/${id}/convert`));
+    expect(c.status(), await c.text()).toBe(201);
+    const project = ((await c.json()) as { project: { id: string; projectNumber: number; name: string } }).project;
+    ledger.add({ kind: "project", id: project.id, orgSlug: run.testOrg.slug, label: project.name });
+
+    for (const who of [as.admin, as.member, as.distributor, as.architect]) {
+      // internal users and the inquiry's own company (distributor, architect) all own the project
+      expect((await detail(who)).project).toEqual({ id: project.id, projectNumber: project.projectNumber, name: project.name });
+      expect((await rowFor(who, search, id!))?.projectId).toBe(project.id);
+    }
+    expect(Object.keys((await detail(as.admin)).project!).sort()).toEqual(["id", "name", "projectNumber"]);
+
+    const del = await as.admin.delete(url(`/projects/${project.id}`));
+    expect(del.status(), await del.text()).toBe(200);
+    ledger.remove(project.id);
+    expect((await detail(as.admin)).project).toBeNull();
+    expect((await rowFor(as.admin, search, id!))?.projectId).toBeNull();
+  });
+
+  test("Q2: another company's external user gets 404 for a converted inquiry, so its project is never exposed", async ({ as, f, run, ledger, url }) => {
+    const otherCo = await f.externalCompany();
+    const { id } = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-q2-idor"), currency: "AED", externalCompanyId: otherCo.id });
+    const c = await as.admin.post(url(`/inquiries/${id}/convert`));
+    expect(c.status(), await c.text()).toBe(201);
+    const project = ((await c.json()) as { project: { id: string; name: string } }).project;
+    ledger.add({ kind: "project", id: project.id, orgSlug: run.testOrg.slug, label: project.name });
+    const r = await as.distributor.get(url(`/inquiries/${id}`));
+    expect(r.status(), await r.text()).toBe(404);
+    expect(JSON.stringify(await r.json())).not.toContain(project.id);
+    expect(await listIds(as.distributor, url(`/inquiries?search=${encodeURIComponent((await json<{ inquiry: Inquiry }>(await as.admin.get(url(`/inquiries/${id}`)))).inquiry.name)}`), "inquiries")).toEqual([]);
+  });
+
+  test("Q4: list rows carry estimateTotal = computeEstimate of the stored snapshot (null without one) and never quickEstimate or lines", async ({ as, run, ledger, url }) => {
+    // 12.5 m2 x 3200 = 40,000.00; amount discount 100 -> 39,900.00; tax 5% = 1,995.00 -> 41,895.00
+    const withEst = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-q4"), currency: "AED", quickEstimate: est() });
+    const without = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-q4-none"), currency: "AED" });
+    expect(withEst.id && without.id).toBeTruthy();
+    const a = await rowFor(as.admin, url(`/inquiries?search=${encodeURIComponent((withEst.body.inquiry as Inquiry).name)}`), withEst.id!);
+    expect(a?.estimateTotal).toEqual({ currency: "AED", grandTotal: 41895 });
+    expect(a).not.toHaveProperty("quickEstimate");
+    expect(JSON.stringify(a)).not.toContain("variantText");
+    const b = await rowFor(as.admin, url(`/inquiries?search=${encodeURIComponent((without.body.inquiry as Inquiry).name)}`), without.id!);
+    expect(b?.estimateTotal).toBeNull();
+    expect(b).not.toHaveProperty("quickEstimate");
+
+    // a percentage discount and a replaced estimate are recomputed on read
+    const r = await as.admin.patch(url(`/inquiries/${withEst.id}`), { data: { quickEstimate: est({ discountMode: "pct", discountValue: 10 }) } });
+    expect(r.status(), await r.text()).toBe(200);
+    // 40,000 - 10% = 36,000; tax 5% = 1,800 -> 37,800
+    const a2 = await rowFor(as.admin, url(`/inquiries?search=${encodeURIComponent((withEst.body.inquiry as Inquiry).name)}`), withEst.id!);
+    expect(a2?.estimateTotal).toEqual({ currency: "AED", grandTotal: 37800 });
+  });
+});

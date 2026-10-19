@@ -45,6 +45,8 @@ interface InquiryDetail {
   endClientGstNumber: string | null;
   // Stage 33 S33-17: the stored Quick Estimate snapshot, or null.
   quickEstimate: InquiryQuickEstimateV1 | null;
+  // Stage 34 Q2: the latest project this caller may see, or null.
+  project: { id: string; projectNumber: number; name: string } | null;
 }
 
 /** Shared read-only field renderer for the 3-card detail layout. */
@@ -207,6 +209,16 @@ export default async function InquiryDetailPage({
             inquiryId={inquiryId}
             disabled={isClosed}
           />
+
+          {/* Go to project — Stage 34 Q2: converted inquiries only, Edit-button style */}
+          {inquiry.status === "CONVERTED" && inquiry.project && (
+            <Link
+              href={`${base}/projects/${inquiry.project.id}`}
+              className="inline-flex items-center rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
+            >
+              {t("goToProject")}
+            </Link>
+          )}
         </div>
       </div>
 

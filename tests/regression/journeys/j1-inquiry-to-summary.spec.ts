@@ -102,6 +102,19 @@ test("J1: inquiry → edit → convert → Configuration → Design canvas → S
       expect(snap!.componentTypes.map((t) => t.code)).toEqual(expect.arrayContaining(["GLASS", "DOOR"]));
       // a fresh project: only Details / Configuration open
       await expect.poll(() => pillState(o, false), { timeout: 20_000 }).toEqual({ "Project Details": "open", Configuration: "open", Design: "locked", Summary: "locked", Quotation: "locked" });
+      // Stage 34 Q3: the footer is Delete project + Reset project only; "Update configuration" is gone
+      await expect(page.getByRole("button", { name: "Delete project" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Reset project" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Update configuration", exact: true })).toHaveCount(0);
+      // Stage 34 Q2: the converted inquiry's detail page and list row both link to the project
+      await page.goto(orgTarget(run, `/inquiries/${inquiryId}`));
+      const goDetail = page.getByRole("link", { name: "Go to project", exact: true });
+      await expect(goDetail).toHaveAttribute("href", new RegExp(`/projects/${projectId}$`));
+      await page.goto(orgTarget(run, `/inquiries?search=${encodeURIComponent(name)}`));
+      const goRow = page.getByRole("row").filter({ hasText: name }).getByRole("link", { name: "Go to project", exact: true });
+      await expect(goRow).toHaveAttribute("href", new RegExp(`/projects/${projectId}$`));
+      await goRow.click();
+      await expectLands(() => orgPathOf(run, page.url()), `/projects/${projectId}`, "Go to project opens the project");
     });
 
     // ── 4. Configuration: two saved components ────────────────────────────────
