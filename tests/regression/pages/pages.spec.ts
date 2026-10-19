@@ -26,7 +26,10 @@ import { test, expect } from "../api/sa-helpers";
 import { coversPage } from "../fixtures/covers";
 import type { Role } from "../fixtures/run-state";
 import { deniedRolesFor, ROLES, ROLE_PERMISSIONS } from "../api/permissions";
-import { distributorCompanyId } from "../api/project-helpers";
+import { distributorCompanyId, glassConfig } from "../api/project-helpers";
+import { addSelection, sharedItems } from "../journeys/journey-helpers";
+import { doorCfg } from "../engine/materials";
+import { rgrSetSelectionConfig } from "../../e2e/db-helpers";
 import { isSubdomain, orgUrl } from "../../e2e/helpers";
 import {
   PAGES, CROSS_ORG_TEXT, DASHBOARD_TEXT, ORG_LOGIN_TEXT, SA_LOGIN_TEXT,
@@ -612,6 +615,144 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       await expect(panels).toHaveCount(3);
       expect(await widths()).toEqual([1000, 1000, 400]);
       await expect(locks).toHaveCount(2);
+    });
+  });
+
+  test("Design canvas (Stage 34 B4): divider snap + lock, a locked panel is frozen (notice + Unlock), glass change keeps locked panels, door menus start with Lock, one menu at a time, layout holds", async ({ browser, run, f, as, url }) => {
+    test.setTimeout(240_000);
+    const c = { as, f, run };
+    const slug = run.testOrg.slug;
+    const w = await readyWall(f, as.admin, url);
+    const door = await sharedItems(c, "DOOR");
+    const gA = await addSelection(as.admin, slug, w.projectId, "GLASS", `${run.prefix}B4 Glass A`, await glassConfig(f));
+    await addSelection(as.admin, slug, w.projectId, "GLASS", `${run.prefix}B4 Glass B`, await glassConfig(f));
+    const dSingle = await addSelection(as.admin, slug, w.projectId, "DOOR", `${run.prefix}B4 Door single`, doorCfg(door));
+    const dDouble = await addSelection(as.admin, slug, w.projectId, "DOOR", `${run.prefix}B4 Door double`, doorCfg(door));
+    await rgrSetSelectionConfig(dDouble, { ...doorCfg(door), isDoubleLeaf: "Yes" }); // the Test Org's DOOR type has no such field: DB write, Test Org only
+    const cell = (id: string, sel: string, hinging?: string) => [{ id, heightMm: 2400, selectionId: sel, ...(hinging ? { hinging } : {}) }];
+    const put = await as.admin.patch(url(`/partitions/${w.partitionId}`), {
+      data: { heightMm: 2400, design: { schemaVersion: 2, sections: [
+        { id: "s1", widthMm: 750, cells: cell("c1", gA) },
+        { id: "s2", widthMm: 750, cells: cell("c2", dSingle, "left") },
+        { id: "s3", widthMm: 750, cells: cell("c3", dDouble, "left") },
+        { id: "s4", widthMm: 750, cells: cell("c4", gA) },
+      ] } },
+    });
+    expect(put.status(), await put.text()).toBe(200);
+    await withPage({ browser, run }, "admin", undefined, async (o) => {
+      await o.page.setViewportSize({ width: 1440, height: 900 });
+      await o.page.goto(orgTarget(run, `/projects/${w.projectId}/design?partition=${w.partitionId}`));
+      await expect(o.page.getByRole("button", { name: "Back to Room Layout" })).toBeVisible();
+      const panels = o.page.locator("[role='button'][aria-selected]").filter({ visible: true });
+      await expect(panels).toHaveCount(4);
+      const widths = async () => (await panels.allInnerTexts()).map((t) => Number(/P\d+ · (\d+) mm/.exec(t)?.[1]));
+      const locks = o.page.getByTestId("panel-lock").filter({ visible: true });
+      const notice = o.page.getByTestId("canvas-notice").filter({ visible: true });
+      const menus = o.page.getByRole("menu");
+      const item = (name: string | RegExp) => menus.getByRole("menuitem", { name });
+      const doorOf = (i: number) => panels.nth(i).locator("div.absolute").first();
+      const dividers = o.page.getByRole("separator").filter({ visible: true });
+      const wallHeight = async () => Math.round((await panels.first().boundingBox())!.height * 10) / 10;
+      const headerBox = () => o.page.getByLabel("Partition name").locator("xpath=..");
+      const h0 = await wallHeight();
+      const hdr0 = Math.round((await headerBox().boundingBox())!.height);
+
+      // AC4 snapping: drag the P1|P2 divider (pair 1500 mm). 1005 is inside the 1000 pull: snapped; 750 (the
+      // start) is free; release at 1000 -> P1 = 1000 and BOTH neighbours become locked.
+      const first = (await panels.first().boundingBox())!;
+      const lastBox = (await panels.last().boundingBox())!;
+      const pxPerMm = (lastBox.x + lastBox.width - first.x) / 3000;
+      const dv = (await dividers.nth(0).boundingBox())!;
+      const grab = { x: dv.x + dv.width / 2, y: dv.y + dv.height / 2 };
+      const toLeft = (mm: number) => o.page.mouse.move(grab.x + (mm - 750) * pxPerMm, grab.y, { steps: 4 });
+      await o.page.mouse.move(grab.x, grab.y);
+      await o.page.mouse.down();
+      await toLeft(1005);
+      await expect(dividers.nth(0)).toHaveAttribute("data-snapped", "true");
+      await expect(dividers.nth(0)).toHaveAttribute("data-snap-step", "1000");
+      await toLeft(750);
+      await expect(dividers.nth(0)).not.toHaveAttribute("data-snapped", "true");
+      await toLeft(1000);
+      await o.page.mouse.up();
+      expect(await widths()).toEqual([1000, 500, 750, 750]);
+      await expect(locks).toHaveCount(2);
+      expect(await wallHeight()).toBe(h0);
+      await o.page.getByTestId("unlock-all").click();
+      await expect(locks).toHaveCount(0);
+
+      // AC3: every door menu starts with Lock panel; the double leaf has no hinge items
+      await doorOf(1).click({ button: "right" });
+      await expect(menus).toHaveCount(1);
+      await expect(menus.getByRole("menuitem").first()).toHaveText(/Lock panel/);
+      await expect(item(/hinge/i)).toHaveCount(2);
+      // one menu at a time: a panel menu replaces the door menu, a door menu replaces the panel menu
+      await panels.nth(0).click({ button: "right" });
+      await expect(menus).toHaveCount(1);
+      await expect(item("Split the panel")).toBeVisible();
+      await doorOf(2).click({ button: "right" });
+      await expect(menus).toHaveCount(1);
+      await expect(menus.getByRole("menuitem").first()).toHaveText(/Lock panel/);
+      await expect(item(/hinge/i)).toHaveCount(0);
+      await item("Lock panel").click(); // locks P3 (the double-leaf door)
+      await expect(locks).toHaveCount(1);
+      await doorOf(2).click({ button: "right" });
+      await expect(menus.getByRole("menuitem").first()).toHaveText(/Unlock panel/);
+      await o.page.keyboard.press("Escape");
+
+      // AC1: a locked panel is frozen. Lock P2 (single door) from its door menu: the hinge items grey out.
+      await doorOf(1).click({ button: "right" });
+      await item("Lock panel").click();
+      await expect(locks).toHaveCount(2);
+      await doorOf(1).click({ button: "right" });
+      await expect(item(/Left hinge/)).toBeDisabled();
+      await o.page.keyboard.press("Escape");
+      // split / unite are greyed in a locked panel's menu
+      await panels.nth(1).click({ button: "right" });
+      await expect(item("Split the panel")).toBeDisabled();
+      await expect(item(/Unite/)).toBeDisabled();
+      await o.page.keyboard.press("Escape");
+      // toolbar Remove on a locked panel: refused with the notice, the wall is unchanged
+      await panels.nth(1).click();
+      await o.page.getByRole("button", { name: "− Remove Panel" }).click();
+      await expect(panels).toHaveCount(4);
+      await expect(notice).toHaveText(/Panel is locked/);
+      expect(await widths()).toEqual([1000, 500, 750, 750]);
+      expect(await wallHeight()).toBe(h0); // the notice never changes the wall's drawn height
+      expect(Math.round((await headerBox().boundingBox())!.height)).toBe(hdr0);
+      // a divider next to a locked panel can't be dragged
+      const dvb = (await dividers.nth(0).boundingBox())!;
+      await o.page.mouse.move(dvb.x + dvb.width / 2, dvb.y + dvb.height / 2);
+      await o.page.mouse.down();
+      await o.page.mouse.move(dvb.x + 60, dvb.y + dvb.height / 2, { steps: 5 });
+      await o.page.mouse.up();
+      expect(await widths()).toEqual([1000, 500, 750, 750]);
+      await expect(dividers.nth(0)).toHaveAttribute("data-blocked", "true");
+      await expect(notice).toHaveText(/Panel is locked/);
+      // Unlock from the notice unlocks the panel the attempt was about
+      await notice.getByRole("button", { name: /Unlock/ }).click();
+      await expect(locks).toHaveCount(1);
+
+      // AC2: a glass change applies to unlocked panels only; the locked P3 keeps its glass; no "applies to every panel" caption
+      await expect(o.page.getByText("Applies to every panel on this wall")).toHaveCount(0);
+      await panels.nth(0).click();
+      await o.page.getByText(`${run.prefix}B4 Glass B`, { exact: true }).click();
+      await expect(notice).toHaveText(/locked panel kept its glass/);
+      // multi-select Remove skips locked panels and counts them: P3 (locked) + P4
+      await panels.nth(2).click();
+      await panels.nth(3).click({ modifiers: ["Control"] });
+      await o.page.getByRole("button", { name: "− Remove Panel" }).click();
+      await expect(panels).toHaveCount(3);
+      await expect(notice).toHaveText(/1 locked panel skipped/);
+      expect(await wallHeight()).toBe(h0);
+
+      // AC5: a 120-character wall name keeps the header on one row and the wall the same height
+      const nameInput = o.page.getByLabel("Partition name");
+      await nameInput.fill("W".repeat(120));
+      await nameInput.blur();
+      expect(Math.round((await headerBox().boundingBox())!.height)).toBe(hdr0);
+      expect(await wallHeight()).toBe(h0);
+      const bar = await o.page.getByRole("button", { name: "Add Panel" }).locator("xpath=..").boundingBox();
+      expect(bar!.height).toBeLessThan(50); // one toolbar row at 1440
     });
   });
 });

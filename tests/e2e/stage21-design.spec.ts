@@ -393,11 +393,20 @@ test.describe("Configure mode Save/Discard + width-sum invariant", () => {
     // Multi-select all panels and make-equal-width.
     const count = await selectAllPanels(page);
     await panelButtons.nth(count - 1).click({ button: "right" });
-    await page.getByText("Make equal width").click();
+    await page.getByRole("menuitem", { name: "Make equal width" }).click(); // not the toolbar's "Make equal widths"
     await page.waitForTimeout(300);
     body = await page.locator("body").innerText();
     width = Number(await widthFieldValue(page));
     expect(sumPanelWidths(body)).toBe(width);
+
+    // Stage 34: the standard-width button locked panel 1 and a locked panel blocks Unite. The menu item
+    // is greyed; Unlock all clears the lock; then the unchanged Unite-all step runs.
+    await selectAllPanels(page);
+    await panelButtons.nth(count - 1).click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Unite panels" })).toBeDisabled();
+    await page.keyboard.press("Escape");
+    await page.getByTestId("unlock-all").click();
+    await expect(page.getByTestId("panel-lock").filter({ visible: true })).toHaveCount(0);
 
     // Unite all panels back into one.
     await selectAllPanels(page);

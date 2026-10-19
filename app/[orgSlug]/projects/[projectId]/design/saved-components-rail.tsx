@@ -133,7 +133,6 @@ export function SavedComponentsRail({ selections }: SavedComponentsRailProps) {
         {glassSelections.length > 0 && (
           <ComponentSection
             title={t("sectionPartitions")}
-            note={t("appliesEveryPanel")}
             comps={glassSelections}
             enabled={true}
             isActive={isGlassActive}

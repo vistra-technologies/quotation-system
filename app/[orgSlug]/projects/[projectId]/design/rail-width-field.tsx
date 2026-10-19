@@ -6,7 +6,7 @@
  * Explicit apply: the value applies ONLY via the tick (shown while editing) or Enter. Blur and Escape
  * discard the typed value; an invalid or refused value keeps the field open with an inline error.
  * A tick with an unchanged value just closes (no lock). A locked panel shows the value read-only with
- * a lock icon (Batch 4 adds the "Panel is locked · Unlock" message on an attempt).
+ * a lock icon; focusing or clicking it shows "Panel is locked · Unlock" (NOTIFY_LOCKED).
  */
 
 import { useState } from "react";
@@ -70,7 +70,15 @@ export function RailWidthField({ panel }: { panel: DesignPanel }) {
           aria-invalid={error ? true : undefined}
           title={panel.locked ? t("panelIsLocked") : undefined}
           onFocus={() => {
-            if (!panel.locked && text === null) setText(String(toDisplay(panel.widthMm)));
+            // A locked panel's width can't be typed: say so (Stage 34 Batch 4) instead of opening an edit.
+            if (panel.locked) {
+              dispatch({ type: "NOTIFY_LOCKED", panelIds: [panel.id] });
+              return;
+            }
+            if (text === null) setText(String(toDisplay(panel.widthMm)));
+          }}
+          onClick={() => {
+            if (panel.locked) dispatch({ type: "NOTIFY_LOCKED", panelIds: [panel.id] });
           }}
           onChange={(e) => {
             setText(e.target.value);

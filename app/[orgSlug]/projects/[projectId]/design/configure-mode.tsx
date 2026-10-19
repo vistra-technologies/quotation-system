@@ -32,8 +32,10 @@ import { useUnit } from "./unit-context";
 import { WallCanvas } from "./wall-canvas";
 import { PanelContextMenu } from "./panel-context-menu";
 import { DoorContextMenu } from "./door-context-menu";
+import { CanvasNotice } from "./canvas-notice";
+import { isDoubleLeafConfig } from "@/lib/door-leaf";
 import { MIN_SPLIT_WIDTH_MM } from "./configure-constants";
-import { useDraftContext } from "./design-draft-context";
+import { isLockNotice, useDraftContext } from "./design-draft-context";
 import type { DraftSelection } from "./design-draft-context";
 import type { SelectionRow } from "./types";
 
@@ -227,7 +229,7 @@ export function ConfigureMode({
         click handler (design-workspace.tsx) which would clear the panel selection.
       */}
       <div
-        className="flex shrink-0 flex-wrap items-center gap-2.5"
+        className="flex shrink-0 flex-nowrap items-center gap-2.5"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Back button — mirrors .icon-back */}
@@ -253,7 +255,7 @@ export function ConfigureMode({
           }}
           title={nameValue}
           aria-label="Partition name"
-          className="min-w-0 shrink-0 rounded-[6px] border border-transparent bg-transparent px-[5px] py-[3px] text-[16px] font-extrabold text-text-heading hover:border-border hover:bg-[#fafaf6] focus:border-primary focus:bg-[#fafaf6] focus:outline-none"
+          className="min-w-0 flex-1 text-ellipsis rounded-[6px] border border-transparent bg-transparent px-[5px] py-[3px] text-[16px] font-extrabold text-text-heading hover:border-border hover:bg-[#fafaf6] focus:border-primary focus:bg-[#fafaf6] focus:outline-none"
         />
 
         {/*
@@ -300,10 +302,10 @@ export function ConfigureMode({
                   }
                 }}
                 aria-label="Partition width"
-                aria-invalid={state.notice && widthText !== null ? true : undefined}
+                aria-invalid={state.notice && !isLockNotice(state.notice) && widthText !== null ? true : undefined}
                 className={
                   "w-[56px] rounded-[4px] border bg-transparent px-[3px] py-0 text-[13.5px] font-bold text-text-heading focus:outline-none " +
-                  (state.notice && widthText !== null
+                  (state.notice && !isLockNotice(state.notice) && widthText !== null
                     ? "border-red-600 bg-red-50"
                     : "border-transparent hover:border-border focus:border-primary")
                 }
@@ -391,18 +393,14 @@ export function ConfigureMode({
           onDoorContextMenu={openDoorMenu}
           onResizePanels={(widths) => dispatch({ type: "SET_PANEL_WIDTHS_MAP", widths })}
           onUnlockPanel={(id) => dispatch({ type: "SET_PANEL_LOCKED", panelIds: [id], locked: false })}
+          onLockedAttempt={(ids) => dispatch({ type: "NOTIFY_LOCKED", panelIds: ids })}
         />
         {/* Stage 34 (D-12): the refusal notice is a one-line overlay in this card's bottom padding, so it
             never adds a row and the wall's drawn height cannot change. */}
-        {state.notice && (
-          <p
-            role="alert"
-            data-testid="canvas-notice"
-            className="pointer-events-none absolute inset-x-0 bottom-[2px] truncate px-[26px] text-center text-[11.5px] font-semibold leading-[16px] text-red-600"
-          >
-            {t(`widthRefusal${state.notice.code}`)}
-          </p>
-        )}
+        <CanvasNotice
+          notice={state.notice}
+          onUnlock={(ids) => dispatch({ type: "SET_PANEL_LOCKED", panelIds: ids, locked: false })}
+        />
       </div>
 
       {/*
@@ -504,6 +502,11 @@ export function ConfigureMode({
       )}
       {doorMenu && (
         <DoorContextMenu
+          isDouble={isDoubleLeafConfig(
+            selections.find(
+              (s) => s.id === panels.find((p) => p.id === doorMenu.panelId)?.door?.selectionId,
+            )?.config,
+          )}
           panelId={doorMenu.panelId}
           x={doorMenu.x}
           y={doorMenu.y}

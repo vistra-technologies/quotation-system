@@ -27,6 +27,7 @@
 import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { isDoubleLeafConfig } from "@/lib/door-leaf";
+import { snapDivider } from "@/lib/divider-snap";
 import { MIN_PANEL_WIDTH_MM } from "./configure-constants";
 import { useUnit } from "./unit-context";
 import { LockIcon } from "./lock-icons";
@@ -49,6 +50,8 @@ interface WallCanvasProps {
   onResizePanels?: (widths: Record<string, number>) => void;
   /** Click on a locked panel's lock icon: unlock that panel (Stage 34). */
   onUnlockPanel?: (panelId: string) => void;
+  /** Pointer-down / arrow on a divider next to a locked panel: the canvas never moves it (Stage 34). */
+  onLockedAttempt?: (lockedPanelIds: string[]) => void;
 }
 
 export function WallCanvas({
@@ -61,6 +64,7 @@ export function WallCanvas({
   onDoorContextMenu,
   onResizePanels,
   onUnlockPanel,
+  onLockedAttempt,
 }: WallCanvasProps) {
   const t = useTranslations("design");
   const { formatLen } = useUnit();
@@ -71,6 +75,9 @@ export function WallCanvas({
   const rowRef = useRef<HTMLDivElement>(null);
   const [live, setLive] = useState<Record<string, number> | null>(null);
   const widthOf = (p: DesignPanel) => live?.[p.id] ?? p.widthMm;
+  // Stage 34: while a drag is snapped (1000 mm / 100 mm), the divider turns amber and the snapped
+  // neighbour label(s) are highlighted. `sides`: 0 = left neighbour, 1 = right neighbour.
+  const [snap, setSnap] = useState<{ index: number; step: 1000 | 100; sides: (0 | 1)[] } | null>(null);
   // A neighbour pair can't shrink below 100 mm, unless it is already narrower, in which case it holds.
   const clampLeft = (left: number, pair: number, a: number, b: number) =>
     Math.max(Math.min(MIN_PANEL_WIDTH_MM, a), Math.min(pair - Math.min(MIN_PANEL_WIDTH_MM, b), left));
@@ -80,6 +87,12 @@ export function WallCanvas({
     e.stopPropagation();
     const left = panels[i]!;
     const right = panels[i + 1]!;
+    // A divider next to a locked panel cannot be dragged (it would change the locked width).
+    const lockedNeighbours = [left, right].filter((p) => p.locked).map((p) => p.id);
+    if (lockedNeighbours.length > 0) {
+      onLockedAttempt?.(lockedNeighbours);
+      return;
+    }
     const pair = left.widthMm + right.widthMm;
     const startX = e.clientX;
     const mmPerPx = totalWidthMm / (rowRef.current?.getBoundingClientRect().width || 1);
@@ -87,7 +100,11 @@ export function WallCanvas({
     target.setPointerCapture(e.pointerId);
     let latest: Record<string, number> | null = null;
     const onMove = (ev: PointerEvent) => {
-      const l = clampLeft(Math.round(left.widthMm + (ev.clientX - startX) * mmPerPx), pair, left.widthMm, right.widthMm);
+      let l = clampLeft(Math.round(left.widthMm + (ev.clientX - startX) * mmPerPx), pair, left.widthMm, right.widthMm);
+      // Pull to a round width (lib/divider-snap.ts); free past the threshold.
+      const snapped = snapDivider({ leftMm: l, pairMm: pair, mmPerPx });
+      if (snapped) l = clampLeft(snapped.leftMm, pair, left.widthMm, right.widthMm);
+      setSnap(snapped && l === snapped.leftMm ? { index: i, step: snapped.step, sides: snapped.sides } : null);
       latest = { [left.id]: l, [right.id]: pair - l };
       setLive(latest);
     };
@@ -96,6 +113,7 @@ export function WallCanvas({
       target.removeEventListener("pointerup", onUp);
       target.removeEventListener("pointercancel", onUp);
       setLive(null);
+      setSnap(null);
       if (latest && latest[left.id] !== left.widthMm) onResizePanels?.(latest);
     };
     target.addEventListener("pointermove", onMove);
@@ -108,6 +126,11 @@ export function WallCanvas({
     e.preventDefault();
     const left = panels[i]!;
     const right = panels[i + 1]!;
+    const lockedNeighbours = [left, right].filter((p) => p.locked).map((p) => p.id);
+    if (lockedNeighbours.length > 0) {
+      onLockedAttempt?.(lockedNeighbours);
+      return;
+    }
     const pair = left.widthMm + right.widthMm;
     const l = clampLeft(left.widthMm + (e.key === "ArrowRight" ? 1 : -1), pair, left.widthMm, right.widthMm);
     if (l !== left.widthMm) onResizePanels?.({ [left.id]: l, [right.id]: pair - l });
@@ -156,8 +179,9 @@ export function WallCanvas({
                     flexBasis: `${(widthOf(panel) / totalWidthMm) * 100}%`,
                   }}
                   className={[
-                    // Base panel styles — mirrors .panel (mockup lines 379-382)
-                    "relative flex cursor-pointer flex-col items-start overflow-hidden",
+                    // Base panel styles — mirrors .panel (mockup lines 379-382). `@container`: a narrow
+                    // panel moves its lock icon in flow (D-21) so it can't clip the width label.
+                    "@container relative flex cursor-pointer flex-col items-start overflow-hidden",
                     "border-r border-r-[rgba(27,40,30,.16)]",
                     // Dividers follow the panels in the row, so :last-child can't be used.
                     index === panels.length - 1 ? "border-r-0" : "",
@@ -244,15 +268,22 @@ export function WallCanvas({
                         onUnlockPanel?.(panel.id);
                       }}
                       onContextMenu={(e) => e.stopPropagation()}
-                      className="absolute right-1.5 top-1.5 z-[5] flex h-[22px] w-[22px] items-center justify-center rounded-[6px] border border-primary-soft bg-bg-white text-primary-dark hover:border-primary hover:bg-[#e2ebe3]"
+                      className="absolute right-1.5 top-1.5 z-[5] flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[6px] border border-primary-soft bg-bg-white text-primary-dark hover:border-primary hover:bg-[#e2ebe3] @max-[130px]:relative @max-[130px]:right-auto @max-[130px]:top-auto @max-[130px]:order-2 @max-[130px]:mt-1"
                     >
                       <LockIcon />
                     </button>
                   )}
-                  <div className={"relative z-[1] pointer-events-none" + (panel.locked ? " pr-6" : "")}>
-                    {/* .panel-label: P{n} · {width} — mockup line 1699 */}
+                  <div className={"relative z-[1] pointer-events-none" + (panel.locked ? " pr-6 @max-[130px]:pr-0" : "")}>
+                    {/* .panel-label: P{n} · {width} — mockup line 1699. Highlighted while a divider drag
+                        snaps this width to a round value (Stage 34). */}
                     <div
-                      className="text-[11.5px] font-bold"
+                      data-snap-hit={snap && (snap.index === index ? snap.sides.includes(0) : snap.index + 1 === index && snap.sides.includes(1)) ? "true" : undefined}
+                      className={
+                        "text-[11.5px] font-bold" +
+                        (snap && (snap.index === index ? snap.sides.includes(0) : snap.index + 1 === index && snap.sides.includes(1))
+                          ? " -ml-1 rounded-[4px] bg-[#FBF1DF] pl-1 shadow-[0_0_0_1px_#E8C98F_inset]"
+                          : "")
+                      }
                       style={{ color: "var(--color-panel-label)" }}
                     >
                       P{index + 1} · {formatLen(widthOf(panel))}
@@ -279,8 +310,8 @@ export function WallCanvas({
                           "repeating-linear-gradient(180deg,#eef4ec 0px,#eef4ec 3px,#e4ede1 3px,#e4ede1 4px)",
                       }}
                       onContextMenu={(e) => {
-                        // A double-leaf door has no hinge side to switch: let the panel menu handle it.
-                        if (isDouble) return;
+                        // Every door (single or double leaf) opens the door menu; a double leaf's menu has
+                        // Lock / Unlock only (no hinge side to switch). Stage 34.
                         e.preventDefault();
                         // stopPropagation prevents the panel contextmenu from also firing
                         e.stopPropagation();
@@ -331,6 +362,9 @@ export function WallCanvas({
             {panels.slice(0, -1).map((panel, i) => {
               const edgePct =
                 (panels.slice(0, i + 1).reduce((sum, p) => sum + widthOf(p), 0) / totalWidthMm) * 100;
+              // A divider next to a locked panel can't be dragged (Stage 34).
+              const blocked = !!panel.locked || !!panels[i + 1]?.locked;
+              const isSnapped = snap?.index === i;
               return (
                 <div
                   key={`divider-${panel.id}`}
@@ -339,14 +373,32 @@ export function WallCanvas({
                   aria-label={`Resize P${i + 1} and P${i + 2}`}
                   tabIndex={0}
                   style={{ left: `${edgePct}%` }}
-                  className="group absolute inset-y-0 z-[4] -ml-[7px] w-[14px] cursor-col-resize touch-none"
+                  title={blocked ? t("panelIsLocked") : undefined}
+                  data-snapped={isSnapped ? "true" : undefined}
+                  data-snap-step={isSnapped ? snap.step : undefined}
+                  data-blocked={blocked ? "true" : undefined}
+                  className={
+                    "group absolute inset-y-0 z-[4] -ml-[7px] w-[14px] touch-none " +
+                    (blocked ? "cursor-not-allowed" : "cursor-col-resize")
+                  }
                   onPointerDown={(e) => startDividerDrag(e, i)}
                   onKeyDown={(e) => nudgeDivider(e, i)}
                   onClick={(e) => e.stopPropagation()}
                   onContextMenu={(e) => e.stopPropagation()}
                 >
-                  <span className="absolute inset-y-0 left-1/2 -ml-px w-0.5 bg-primary opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
-                  <span className="absolute left-1/2 top-1/2 -ml-[3px] -mt-[17px] h-[34px] w-[6px] rounded-[3px] border-[1.5px] border-primary bg-bg-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+                  {/* Snapped: amber guide line, thicker at 1000 mm (mockup v7 .panel-resize.snapped). */}
+                  <span
+                    className={
+                      "absolute inset-y-0 left-1/2 transition-opacity " +
+                      (isSnapped
+                        ? (snap.step === 1000 ? "-ml-[1.5px] w-[3px]" : "-ml-px w-0.5") + " opacity-100"
+                        : "-ml-px w-0.5 opacity-0 " + (blocked ? "" : "group-hover:opacity-100 group-focus-visible:opacity-100"))
+                    }
+                    style={{ background: isSnapped ? "var(--color-panel-label)" : "var(--color-primary)" }}
+                  />
+                  {!blocked && (
+                    <span className="absolute left-1/2 top-1/2 -ml-[3px] -mt-[17px] h-[34px] w-[6px] rounded-[3px] border-[1.5px] border-primary bg-bg-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
+                  )}
                 </div>
               );
             })}

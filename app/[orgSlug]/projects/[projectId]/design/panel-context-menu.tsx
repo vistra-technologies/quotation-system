@@ -94,13 +94,24 @@ export function PanelContextMenu({
   const allLocked = targets.length > 0 && targets.every((p) => p.locked);
 
   // Enablement checks
+  // Stage 34 (D-17/D-18): items that would change a locked panel are greyed ("Panel is locked"); the
+  // reducer's freeze guard (lib/panel-freeze.ts) is the authority, this only mirrors it for UX.
+  const lockedTitle = t("panelIsLocked");
   const canSplit =
     !multi &&
     !!primaryPanel &&
+    !primaryPanel.locked &&
     primaryPanel.widthMm >= MIN_SPLIT_WIDTH_MM;
 
   const contiguous = isContiguousSelection(panels, targetIds);
-  const canUnite = panels.length > 1 && (multi ? contiguous : panels.length >= 2);
+  // Single panel: unite with the first UNLOCKED neighbour (next, then previous); multi: the whole
+  // contiguous range must be unlocked.
+  const panelIdx = panels.findIndex((p) => p.id === panelId);
+  const uniteNeighbourIdx = [panelIdx + 1, panelIdx - 1].find((k) => k >= 0 && k < panels.length && !panels[k]!.locked);
+  const uniteLocked = multi
+    ? targets.some((p) => p.locked)
+    : !!primaryPanel?.locked || uniteNeighbourIdx === undefined;
+  const canUnite = panels.length > 1 && (multi ? contiguous : panels.length >= 2) && !uniteLocked;
 
   const primaryWidth = primaryPanel?.widthMm ?? 0;
   const totalWidthMm = panels.reduce((s, p) => s + p.widthMm, 0);
@@ -115,7 +126,14 @@ export function PanelContextMenu({
     const width = Math.round(widthMm);
     // The planner decides "unchanged" for ALL targets: an empty plan just closes (no lock), and in a
     // multi-selection the targets that differ still get the width.
-    const plan = planSetWidths(panels, targetIds, width);
+    // Locked targets are skipped (the reducer's freeze guard narrows the same way and the canvas notice
+    // counts them); with nothing left to edit the menu says so inline.
+    const editableIds = targetIds.filter((id) => !panels.find((p) => p.id === id)?.locked);
+    if (editableIds.length === 0) {
+      setError(t("panelIsLocked"));
+      return;
+    }
+    const plan = planSetWidths(panels, editableIds, width);
     if (!plan.ok) {
       setError(t(`widthRefusal${plan.reason}`));
       return;
@@ -153,6 +171,7 @@ export function PanelContextMenu({
         dispatch({ type: "SPLIT_PANEL", panelId: primaryPanel.id });
       },
       disabled: !canSplit,
+      disabledTitle: primaryPanel?.locked ? lockedTitle : undefined,
     },
     {
       type: "item",
@@ -162,20 +181,23 @@ export function PanelContextMenu({
         if (multi) {
           dispatch({ type: "UNITE_PANELS", panelIds: targetIds });
         } else {
-          // Single panel: unite with its neighbor (first available)
-          const idx = panels.findIndex((p) => p.id === panelId);
-          if (idx === -1) return;
-          const neighborIdx = idx < panels.length - 1 ? idx + 1 : idx - 1;
-          const neighborId = panels[neighborIdx]?.id;
+          // Single panel: unite with its first unlocked neighbour (D-18), in index order.
+          const idx = panelIdx;
+          if (idx === -1 || uniteNeighbourIdx === undefined) return;
+          const neighborId = panels[uniteNeighbourIdx]?.id;
           if (!neighborId) return;
-          // Unite the two in index order
           const orderedIds =
-            idx < neighborIdx ? [panelId, neighborId] : [neighborId, panelId];
+            idx < uniteNeighbourIdx ? [panelId, neighborId] : [neighborId, panelId];
           dispatch({ type: "UNITE_PANELS", panelIds: orderedIds });
         }
       },
       disabled: !canUnite,
-      disabledTitle: multi && !contiguous ? t("ctxOnlyAdjacentUnite") : undefined,
+      disabledTitle:
+        multi && !contiguous
+          ? t("ctxOnlyAdjacentUnite")
+          : uniteLocked
+            ? lockedTitle
+            : undefined,
     },
     { type: "divider" },
     {

@@ -22,6 +22,7 @@
 import React, { createContext, useContext, useReducer } from "react";
 import { redirectToLogin } from "./login-redirect";
 import { fillDefaultGlassPanels, panelsToV2, pickTransomGlass } from "@/lib/partition-design";
+import { freezeCheck, type FreezeAction } from "@/lib/panel-freeze";
 import {
   planAddPanel,
   planEqualize,
@@ -72,8 +73,22 @@ export interface DraftState {
   notice: DraftNotice | null;
 }
 
+/** Stage 34 Batch 4: the lock notices. PANEL_LOCKED = "Panel is locked", LOCKED_SKIPPED = "N locked panels
+ *  skipped", GLASS_KEPT = "N locked panels kept their glass". */
+export type LockNoticeCode = "PANEL_LOCKED" | "LOCKED_SKIPPED" | "GLASS_KEPT";
+
 export interface DraftNotice {
-  code: WidthRefusal;
+  code: WidthRefusal | LockNoticeCode;
+  /** Lock notices: the locked panels the message is about (the "Unlock" link unlocks these). */
+  ids?: string[];
+  /** LOCKED_SKIPPED / GLASS_KEPT: how many locked panels were skipped / kept their glass. */
+  skipped?: number;
+  /** LOCKED_SKIPPED: how many panels the action was aimed at. */
+  total?: number;
+}
+
+export function isLockNotice(n: DraftNotice | null): n is DraftNotice & { code: LockNoticeCode } {
+  return !!n && (n.code === "PANEL_LOCKED" || n.code === "LOCKED_SKIPPED" || n.code === "GLASS_KEPT");
 }
 
 const initialDraftState: DraftState = {
@@ -169,7 +184,10 @@ export type DraftAction =
   | { type: "FILL_DEFAULT_GLASS"; glassId: string | null }
   // SET_NOTICE / CLEAR_NOTICE: show / clear a refusal notice (e.g. the wall-width field's own refusals).
   | { type: "SET_NOTICE"; code: WidthRefusal }
-  | { type: "CLEAR_NOTICE" };
+  | { type: "CLEAR_NOTICE" }
+  // NOTIFY_LOCKED (Batch 4): show "Panel is locked · Unlock" for an attempt that never reaches a mutating
+  // action (a divider next to a locked panel, the read-only rail width field).
+  | { type: "NOTIFY_LOCKED"; panelIds: string[] };
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
 
@@ -214,7 +232,42 @@ function unlocked(p: DesignPanel): DesignPanel {
   return copy;
 }
 
+/**
+ * The ONE freeze guard (Stage 34 S34-3 / Batch 4): lib/panel-freeze.ts decides, for every action, whether
+ * a locked panel blocks it, narrows it to the unlocked panels, or lets it through. Buttons and menus only
+ * grey themselves for UX; nothing else tests `locked` in front of a mutating action.
+ */
 function draftReducer(
+  state: DraftState,
+  action: DraftAction,
+  defaultGlassId: string | null,
+): DraftState {
+  const verdict = freezeCheck(state.draft?.design?.panels ?? [], action as unknown as FreezeAction);
+  if (verdict.kind === "block") {
+    return { ...state, notice: { code: "PANEL_LOCKED", ids: verdict.lockedIds } };
+  }
+  if (verdict.kind === "narrow") {
+    const narrowed = { ...action, panelIds: verdict.panelIds } as DraftAction;
+    const next = verdict.panelIds.length > 0 ? reduceAction(state, narrowed, defaultGlassId) : state;
+    if (verdict.note === "GLASS_KEPT") {
+      // Applied to unlocked panels; the note is set last because a mutation clears the notice.
+      return {
+        ...next,
+        notice:
+          verdict.keptCount > 0 ? { code: "GLASS_KEPT", ids: verdict.skipped, skipped: verdict.keptCount } : null,
+      };
+    }
+    // A planner refusal (e.g. no absorber) already set its own notice: keep that.
+    if (next.notice) return next;
+    return {
+      ...next,
+      notice: { code: "LOCKED_SKIPPED", ids: verdict.skipped, skipped: verdict.skipped.length, total: verdict.total },
+    };
+  }
+  return reduceAction(state, action, defaultGlassId);
+}
+
+function reduceAction(
   state: DraftState,
   action: DraftAction,
   defaultGlassId: string | null,
@@ -459,13 +512,14 @@ function draftReducer(
 
     // ── Bulk panel width map ──────────────────────────────────────────────────
     case "SET_PANEL_WIDTHS_MAP": {
-      // Divider drag only. Interim guard until Batch 4 blocks the drag itself: a locked panel's width
-      // never changes through this path.
+      // Divider drag / nudge only. A divider next to a locked panel cannot move (the canvas blocks it; this
+      // is the backstop), and a move LOCKS both neighbours it sets (Stage 34 S34-3).
       const panels = state.draft?.design?.panels ?? [];
-      if (panels.some((p) => p.locked && action.widths[p.id] !== undefined)) return state;
+      const lockedHit = panels.filter((p) => p.locked && action.widths[p.id] !== undefined).map((p) => p.id);
+      if (lockedHit.length > 0) return { ...state, notice: { code: "PANEL_LOCKED", ids: lockedHit } };
       return mutatePanels(state, (ps) =>
         ps.map((p) =>
-          action.widths[p.id] !== undefined ? { ...p, widthMm: action.widths[p.id]! } : p,
+          action.widths[p.id] !== undefined ? { ...p, widthMm: action.widths[p.id]!, locked: true } : p,
         ),
       );
     }
@@ -504,6 +558,13 @@ function draftReducer(
 
     case "SET_NOTICE":
       return { ...state, notice: { code: action.code } };
+
+    case "NOTIFY_LOCKED": {
+      const lockedIds = action.panelIds.filter(
+        (id) => !!state.draft?.design?.panels?.find((p) => p.id === id)?.locked,
+      );
+      return lockedIds.length > 0 ? { ...state, notice: { code: "PANEL_LOCKED", ids: lockedIds } } : state;
+    }
 
     case "CLEAR_NOTICE":
       return state.notice ? { ...state, notice: null } : state;
