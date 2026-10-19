@@ -227,15 +227,18 @@ test.describe("selections: delete / tenancy / roles / status", () => {
     await ok(await as.admin.patch(url(`/partitions/${w.partitionId}`), { data: { design: { ...design([{ w: 1000, cells: [[2400, s.id]] }, { w: 1000, cells: [[1200, s.id], [1200, null]] }]), stops: { top: s.id } } } }));
     await ok(await as.admin.patch(url(`/partitions/${p2}`), { data: { design: design([{ w: 1000, cells: [[2400, s.id]] }]) } }));
 
+    // Stage 34 S34-7: a null glass cell is saved as the default glass (= s, the first GLASS), so "release" the
+    // cells by pointing them at a second glass Selection instead of leaving them null.
+    const s2 = (await ok<{ selection: Selection }>(await as.admin.post(url("/selections"), { data: { projectId: w.projectId, componentTypeId: glass, label: nm({ run }, "S2"), config: {} } }), 201)).selection;
     const inUse = (n: number) => `This component is used on ${n} wall/panel(s) in Design — remove those assignments first.`;
     await rejected(await as.member.delete(url(`/selections/${s.id}`)), 409, inUse(4));
-    await ok(await as.admin.patch(url(`/partitions/${p2}`), { data: { design: design([{ w: 1000, cells: [[2400, null]] }]) } }));
-    await ok(await as.admin.patch(url(`/partitions/${w.partitionId}`), { data: { design: { ...design([{ w: 2000, cells: [[2400, null]] }]), stops: { top: s.id } } } }));
+    await ok(await as.admin.patch(url(`/partitions/${p2}`), { data: { design: design([{ w: 1000, cells: [[2400, s2.id]] }]) } }));
+    await ok(await as.admin.patch(url(`/partitions/${w.partitionId}`), { data: { design: { ...design([{ w: 2000, cells: [[2400, s2.id]] }]), stops: { top: s.id } } } }));
     await rejected(await as.member.delete(url(`/selections/${s.id}`)), 409, inUse(1));
     await ok(await as.admin.patch(url(`/partitions/${w.partitionId}`), { data: { design: { stops: { top: null } } } }));
 
     expect(await ok(await as.member.delete(url(`/selections/${s.id}`)))).toEqual({ id: s.id });
-    expect((await ok<{ selections: Selection[] }>(await as.admin.get(url(`/selections?projectId=${w.projectId}`)))).selections).toEqual([]);
+    expect((await ok<{ selections: Selection[] }>(await as.admin.get(url(`/selections?projectId=${w.projectId}`)))).selections.map((x) => x.id)).toEqual([s2.id]);
     await rejected(await as.admin.delete(url(`/selections/${s.id}`)), 404, "Selection not found or access denied");
     await rejected(await as.admin.patch(url(`/selections/${s.id}`), { data: { label: "rgr-gone" } }), 404, "Selection not found or access denied");
   });

@@ -23,6 +23,9 @@ import {
   PartitionDesignError,
   type ParseStoredOptions,
   pickTransomGlass,
+  fillDefaultGlass,
+  isGlassCell,
+  type DesignSectionV2,
 } from "../../lib/partition-design";
 
 const noDoors: ParseStoredOptions["isDoorSelection"] = () => false;
@@ -295,4 +298,66 @@ test("isDesignMm: integers in 1..MAX_DESIGN_MM only", async () => {
   for (const bad of [0, -1, 1.5, MAX_DESIGN_MM + 1, NaN, Infinity, "5", null, undefined]) {
     assert.equal(isDesignMm(bad), false, String(bad));
   }
+});
+
+describe("fillDefaultGlass (Stage 34 S34-7)", () => {
+  const cell = (id: string, selectionId: string | null, hinging?: "left" | "right") => ({
+    id,
+    heightMm: 1000,
+    selectionId,
+    ...(hinging ? { hinging } : {}),
+  });
+  const sec = (id: string, ...cells: ReturnType<typeof cell>[]): DesignSectionV2 => ({ id, widthMm: 900, cells });
+
+  test("fills a null one-cell glass section", () => {
+    const input = [sec("s1", cell("c1", null))];
+    const r = fillDefaultGlass(input, "G");
+    assert.equal(r.changed, true);
+    assert.equal(r.sections[0].cells[0].selectionId, "G");
+  });
+
+  test("keeps an already-assigned cell", () => {
+    const input = [sec("s1", cell("c1", "OTHER"))];
+    const r = fillDefaultGlass(input, "G");
+    assert.equal(r.changed, false);
+    assert.equal(r.sections, input);
+  });
+
+  test("never touches a one-cell door section (hinging)", () => {
+    const input = [sec("s1", cell("c1", null, "left"))];
+    const r = fillDefaultGlass(input, "G");
+    assert.equal(r.changed, false);
+    assert.equal(r.sections[0].cells[0].selectionId, null);
+  });
+
+  test("transom section: cells[0] glass filled, cells[1] door untouched", () => {
+    const input = [sec("s1", cell("c1", null), cell("c2", null, "right"))];
+    const r = fillDefaultGlass(input, "G");
+    assert.equal(r.sections[0].cells[0].selectionId, "G");
+    assert.equal(r.sections[0].cells[1].selectionId, null);
+  });
+
+  test("null glassId is a no-op returning the same array", () => {
+    const input = [sec("s1", cell("c1", null))];
+    const r = fillDefaultGlass(input, null);
+    assert.equal(r.changed, false);
+    assert.equal(r.sections, input);
+  });
+
+  test("ignores a locked flag on a cell", () => {
+    const locked = { ...cell("c1", null), locked: true } as ReturnType<typeof cell>;
+    const r = fillDefaultGlass([sec("s1", locked)], "G");
+    assert.equal(r.sections[0].cells[0].selectionId, "G");
+  });
+
+  test("does not mutate its input", () => {
+    const input = [sec("s1", cell("c1", null))];
+    const snapshot = JSON.stringify(input);
+    fillDefaultGlass(input, "G");
+    assert.equal(JSON.stringify(input), snapshot);
+  });
+
+  test("isGlassCell: three-cell sections have no glass cell by this rule", () => {
+    assert.equal(isGlassCell(sec("s", cell("a", null), cell("b", null), cell("c", null)), 0), false);
+  });
 });

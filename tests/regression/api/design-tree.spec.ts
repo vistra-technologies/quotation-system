@@ -26,6 +26,7 @@ import {
   design,
   sharedWall,
   foreignTree,
+  typeId,
   PLAIN3,
   plain4,
   type Floor,
@@ -479,10 +480,16 @@ test.describe("partitions: design v2", () => {
     };
     const p1 = (await ok<{ partition: Partition }>(await as.member.patch(P, { data: { design: d1 } }))).partition;
     expect(p1.widthMm).toBe(2000);
-    expect(p1.design).toEqual(d1);
+    // Stage 34 S34-7: the null transom glass cell (b0) is saved as the project's default glass; the door cell (b1) is untouched
+    expect(p1.design).toEqual({
+      ...d1,
+      sections: [d1.sections[0], { ...d1.sections[1], cells: [{ id: "b0", heightMm: 1000, selectionId: sel.id }, d1.sections[1].cells[1]] }],
+    });
     // Partition.widthMm is DERIVED from the sections (Stage 18 invariant 3) — no "must equal the wall" rule
     const p2 = (await ok<{ partition: Partition }>(await as.admin.patch(P, { data: { design: design([{ w: 1500, cells: [[2400, sel.id]] }, { w: 1000, cells: [[2400, null]] }]) } }))).partition;
     expect(p2.widthMm).toBe(2500);
+    // ...and a null one-cell glass section saved by the PATCH is stored as the default glass too (S34-7)
+    expect((p2.design as { sections: { cells: { selectionId: string | null }[] }[] }).sections[1].cells[0].selectionId).toBe(sel.id);
 
     await rejected(await as.admin.patch(P, { data: { design: design([{ w: 2000, cells: [[1000, null], [1300, null]] }]) } }), 400, "design.sections[0] cell heights sum to 2300mm but the partition height is 2400mm");
     // D-9: a heightMm-only PATCH on a v2 row whose cells don't sum to it is a 400
@@ -725,5 +732,66 @@ test.describe("design tree: invalidation audit, tenancy, roles, status", () => {
     await rejected(await as.admin.get(url("/rooms")), 400, "floorId query parameter is required");
     await rejected(await as.admin.get(url("/partitions")), 400, "roomId query parameter is required");
     await rejected(await as.admin.get(url("/floors?projectId=")), 400, "projectId query parameter is required");
+  });
+});
+
+// Stage 34 S34-7: default glass. A glass cell with no Selection is stored as the project's default glass (its
+// first GLASS Selection: lowest orderIndex, then oldest); door cells are never auto-filled.
+test.describe("partitions: default glass (Stage 34)", () => {
+  type Design = { sections: { cells: { selectionId: string | null; hinging?: string }[] }[] };
+  const cellsOf = (p: Partition) => (p.design as Design).sections.flatMap((s) => s.cells.map((c) => c.selectionId));
+  const addGlass = async (as: Ctx["as"], run: Ctx["run"], url: (p: string) => string, projectId: string, label: string, orderIndex: number) =>
+    (await ok<{ selection: { id: string } }>(await as.admin.post(url("/selections"), { data: { projectId, componentTypeId: await typeId(as.admin, run, "GLASS"), label: nm({ run }, label), config: {}, orderIndex } }), 201)).selection.id;
+  const addWall = async (as: Ctx["as"], url: (p: string) => string, w: { roomId: string; partitionId: string }, label: string) => {
+    const r = await ok<{ room: { sides: { partitionId: string | null }[] } }>(
+      await as.admin.patch(url(`/rooms/${w.roomId}/sides`), { data: { sides: [{ kind: "PARTITION", turnDegrees: 90, partitionId: w.partitionId }, newSide(label, 2400, 1500), ...PLAIN3.slice(1)] } }),
+    );
+    return r.room.sides[1].partitionId!;
+  };
+  const getPartition = async (as: Ctx["as"], url: (p: string) => string, id: string) => (await ok<{ partition: Partition }>(await as.admin.get(url(`/partitions/${id}`)))).partition;
+
+  test("convert: no glass Selection -> cells stay null; with glass -> the lowest-orderIndex glass fills all 3 sections", async ({ as, f, run, url }) => {
+    const w = await f.wall();
+    expect(cellsOf(await getPartition(as, url, w.partitionId))).toEqual([null, null, null]); // AC1: none -> null
+    const first = await addGlass(as, run, url, w.projectId, "G-first", 5);
+    expect(cellsOf(await getPartition(as, url, w.partitionId))).toEqual([first, first, first]); // first glass back-fills (AC3)
+    const lower = await addGlass(as, run, url, w.projectId, "G-lower", 1); // not the first glass: changes nothing
+    expect(cellsOf(await getPartition(as, url, w.partitionId))).toEqual([first, first, first]);
+    const p2 = await addWall(as, url, w, nm({ run }, "W2"));
+    expect(cellsOf(await getPartition(as, url, p2))).toEqual([lower, lower, lower]); // AC1: lowest orderIndex wins
+  });
+
+  test("PATCH design: null one-cell and null transom glass are stored as the default glass; a null door cell stays null", async ({ as, f, url }) => {
+    const w = await f.wall();
+    const g = (await f.selection(w.projectId, "GLASS", { category: "Single" })).id;
+    const p = (await ok<{ partition: Partition }>(await as.admin.patch(url(`/partitions/${w.partitionId}`), {
+      data: {
+        design: {
+          schemaVersion: 2,
+          sections: [
+            { id: "a", widthMm: 700, cells: [{ id: "a0", heightMm: 2400, selectionId: null }] },
+            { id: "b", widthMm: 700, cells: [{ id: "b0", heightMm: 400, selectionId: null }, { id: "b1", heightMm: 2000, selectionId: null, hinging: "left" }] },
+            { id: "c", widthMm: 600, cells: [{ id: "c0", heightMm: 2400, selectionId: null, hinging: "right" }] },
+          ],
+        },
+      },
+    }))).partition;
+    expect(cellsOf(p)).toEqual([g, g, null, null]); // AC2
+    expect(p.widthMm).toBe(2000);
+  });
+
+  test("the first glass Selection fills the project's null glass cells and invalidates the calculation; a second glass does not", async ({ as, f, run, url }) => {
+    const w = await f.wall();
+    await rgrSetDesignSubmittedAt(w.projectId);
+    await rgrInsertCalculation(w.projectId);
+    expect(await readProjectState(w.projectId)).toMatchObject({ designSubmittedAt: expect.any(String), calcCount: 1 });
+    const first = await addGlass(as, run, url, w.projectId, "G1", 0);
+    expect(cellsOf(await getPartition(as, url, w.partitionId))).toEqual([first, first, first]);
+    expect(await readProjectState(w.projectId)).toMatchObject({ designSubmittedAt: null, calcCount: 0 }); // AC3
+    await rgrSetDesignSubmittedAt(w.projectId);
+    await rgrInsertCalculation(w.projectId);
+    await addGlass(as, run, url, w.projectId, "G2", 0);
+    expect(cellsOf(await getPartition(as, url, w.partitionId))).toEqual([first, first, first]);
+    expect(await readProjectState(w.projectId)).toMatchObject({ designSubmittedAt: expect.any(String), calcCount: 1 });
   });
 });

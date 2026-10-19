@@ -396,6 +396,13 @@ test.describe("projects: submit design / calculation / recompute", () => {
     }
     expect(rep.problems[0]).toMatchObject({ kind: "CELL_UNASSIGNED", scope: "DESIGN", locus: expect.objectContaining({ partitionId: w.partitionId }) });
     expect(rep.error.startsWith(rep.problems[0].message)).toBe(true);
+    // Stage 34 S34-7 (AC4): DESIGN problems carry floor + room names in the locus and name the room/wall in the text — no UUIDs
+    const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    for (const p of rep.problems.filter((x) => x.scope === "DESIGN")) {
+      expect(p.message, p.message).not.toMatch(uuid);
+      expect(p.locus).toMatchObject({ floorName: expect.stringContaining("F"), roomName: expect.stringContaining("R"), floorId: expect.any(String), roomId: expect.any(String) });
+      expect(p.message).toContain(`Room "${String(p.locus!.roomName)}", wall "${String(p.locus!.partitionLabel)}"`);
+    }
 
     expect(await readProjectState(w.projectId)).toMatchObject({ designSubmittedAt: null, calcCount: 0 });
     const c = await as.admin.get(url(`/projects/${w.projectId}/calculation`));

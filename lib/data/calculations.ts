@@ -181,6 +181,15 @@ export function runPhaseA(
   for (const floor of floors) {
     for (const room of floor.rooms) {
       for (const partition of room.partitions) {
+        // Stage 34 S34-7: every problem names where it is (floor/room/wall) — no UUIDs in the text.
+        const where = {
+          floorId: floor.id,
+          floorName: floor.label,
+          roomId: room.id,
+          roomName: room.label,
+          partitionId: partition.id,
+          partitionLabel: partition.label,
+        };
         const design = partition.design;
         const sections =
           isRecord(design) && Array.isArray(design.sections) ? design.sections : null;
@@ -192,10 +201,9 @@ export function runPhaseA(
           collector.add({
             kind: "CELL_UNASSIGNED",
             scope: "DESIGN",
-            message: `Partition "${partition.label}" (${partition.id}): design has not been started`,
+            message: `Room "${room.label}", wall "${partition.label}": design has not been started`,
             locus: {
-              partitionId: partition.id,
-              partitionLabel: partition.label,
+              ...where,
               sectionIndex: 0,
               cellIndex: 0,
             },
@@ -209,10 +217,9 @@ export function runPhaseA(
             collector.add({
               kind: "CELL_UNASSIGNED",
               scope: "DESIGN",
-              message: `Partition "${partition.label}" (${partition.id}): design section ${sI} is malformed`,
+              message: `Room "${room.label}", wall "${partition.label}", section ${sI}: design is malformed`,
               locus: {
-                partitionId: partition.id,
-                partitionLabel: partition.label,
+                ...where,
                 sectionIndex: sI,
                 cellIndex: 0,
               },
@@ -228,10 +235,9 @@ export function runPhaseA(
               collector.add({
                 kind: "CELL_UNASSIGNED",
                 scope: "DESIGN",
-                message: `Partition "${partition.label}" (${partition.id}), section ${sI}, cell ${cI}: no selection assigned`,
+                message: `Room "${room.label}", wall "${partition.label}", section ${sI}, cell ${cI}: no selection assigned`,
                 locus: {
-                  partitionId: partition.id,
-                  partitionLabel: partition.label,
+                  ...where,
                   sectionIndex: sI,
                   cellIndex: cI,
                 },
@@ -240,10 +246,9 @@ export function runPhaseA(
               collector.add({
                 kind: "SELECTION_MISSING",
                 scope: "DESIGN",
-                message: `Partition "${partition.label}" (${partition.id}), section ${sI}, cell ${cI}: selection "${selectionId}" does not exist in this project`,
+                message: `Room "${room.label}", wall "${partition.label}", section ${sI}, cell ${cI}: the selected component no longer exists in this project`,
                 locus: {
-                  partitionId: partition.id,
-                  partitionLabel: partition.label,
+                  ...where,
                   sectionIndex: sI,
                   cellIndex: cI,
                   selectionId,
@@ -255,10 +260,9 @@ export function runPhaseA(
                 collector.add({
                   kind: "SELECTION_TYPE_UNKNOWN",
                   scope: "DESIGN",
-                  message: `Partition "${partition.label}" (${partition.id}), section ${sI}, cell ${cI}: selection "${selectionId}" has componentTypeId "${sel.componentTypeId}" not found in config snapshot`,
+                  message: `Room "${room.label}", wall "${partition.label}", section ${sI}, cell ${cI}: the type of the selected component is not in the project configuration snapshot`,
                   locus: {
-                    partitionId: partition.id,
-                    partitionLabel: partition.label,
+                    ...where,
                     sectionIndex: sI,
                     cellIndex: cI,
                     selectionId,

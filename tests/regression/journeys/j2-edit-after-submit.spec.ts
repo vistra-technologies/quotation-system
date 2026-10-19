@@ -10,7 +10,8 @@
  *   C. label-only edits (wall, saved component, room, floor, project) do NOT invalidate — and the stored summary
  *      keeps the OLD labels until a Recompute picks the new ones up;
  *   D. a saved-component config edit invalidates; re-submit → the glass KPI shows the new thickness;
- *   E. adding a wall invalidates and makes the design unsubmittable (CELL_UNASSIGNED on the new wall) until
+ *   E. adding a wall invalidates; the new wall is converted WITH the project's default glass (Stage 34 S34-7), so
+ *      only an unassigned DOOR cell (never auto-filled) makes the design unsubmittable (CELL_UNASSIGNED) until
  *      it is designed; removing it again invalidates again; the summary follows (2 walls → 1 wall).
  * (The Design-canvas save path that re-locks the pills without a reload is pages.spec.ts's wizard test.)
  */
@@ -137,6 +138,12 @@ test("J2: edits after Submit Design — invalidation, Recompute gate, pills, and
       const p2 = after[1].partitionId!;
       expect(p2).toBeTruthy();
       await expectInvalidated("wall added");
+
+      // S34-7: the new wall's three seeded glass sections already carry the project's default glass (gSel)
+      const fresh = (await (await as.admin.get(T(c, `/partitions/${p2}`))).json()) as { partition: { design: { sections: { cells: { selectionId: string | null }[] }[] } } };
+      expect(fresh.partition.design.sections.flatMap((s) => s.cells.map((x) => x.selectionId))).toEqual([gSel, gSel, gSel]);
+      // an unassigned DOOR cell is never auto-filled: it keeps the design unsubmittable
+      await patchPartition(p2, { heightMm: 2600, design: { schemaVersion: 2, sections: [{ id: "d0", widthMm: 1500, cells: [{ id: "d0-c0", heightMm: 2600, selectionId: null, hinging: "left" }] }] } });
 
       const blocked = await refused(await as.admin.post(T(c, `/projects/${projectId}/submit-design`)));
       expect(new Set(blocked.problems.map((p) => [p.kind, p.scope, p.locus?.partitionId].join("|")))).toEqual(new Set([`CELL_UNASSIGNED|DESIGN|${p2}`]));

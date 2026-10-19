@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { invalidateProjectCalculation } from "@/lib/data/formula-pin";
 import type { SessionData } from "@/lib/session";
 import { ownedProjectWhere } from "@/lib/data/ownership";
+import { fillProjectNullGlass, findDefaultGlassSelectionId } from "@/lib/data/default-glass";
 import { getComponentTypeById } from "@/lib/data/components";
 import { isComponentTypeFullyConfigured } from "@/lib/configurator-gating";
 import { parseFieldsSchema, parseFieldOptionsConfig } from "@/lib/parse-field-config";
@@ -173,15 +174,36 @@ export async function createSelection(
     assertValidConfig(componentType.fieldsSchema, componentType.fieldOptionsConfig, input.config);
   }
 
-  return prisma.selection.create({
-    data: {
-      organizationId: session.organizationId,
-      projectId: input.projectId,
-      componentTypeId: input.componentTypeId,
-      label: input.label,
-      config: input.config,
-      orderIndex: input.orderIndex,
-    },
+  // Stage 34 S34-7: the project's FIRST glass Selection becomes the default glass, so it fills every
+  // still-null glass cell of the project's existing partitions (a later glass Selection changes nothing).
+  // Same transaction as the create; a design change invalidates the calculation (D-17).
+  return prisma.$transaction(async (tx) => {
+    const glassBefore = await tx.selection.count({
+      where: { projectId: input.projectId, componentType: { code: "GLASS" } },
+    });
+    const created = await tx.selection.create({
+      data: {
+        organizationId: session.organizationId,
+        projectId: input.projectId,
+        componentTypeId: input.componentTypeId,
+        label: input.label,
+        config: input.config,
+        orderIndex: input.orderIndex,
+      },
+    });
+    if (glassBefore === 0) {
+      const defaultGlassId = await findDefaultGlassSelectionId(tx, input.projectId);
+      if (defaultGlassId === created.id) {
+        const filled = await fillProjectNullGlass(
+          tx,
+          session.organizationId,
+          input.projectId,
+          created.id,
+        );
+        if (filled.partitions > 0) await invalidateProjectCalculation(tx, input.projectId);
+      }
+    }
+    return created;
   });
 }
 

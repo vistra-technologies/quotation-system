@@ -452,3 +452,42 @@ export function seedSectionsDesign(
     })),
   };
 }
+
+// ─── Default glass (Stage 34 S34-7) ──────────────────────────────────────────
+
+/**
+ * A glass cell, as opposed to a door cell: a door cell carries `hinging`. A one-cell section is glass
+ * unless it has `hinging`; in a two-cell section (transom over a door) `cells[0]` is the glass strip
+ * and `cells[1]` is the door.
+ */
+export function isGlassCell(section: DesignSectionV2, cellIndex: number): boolean {
+  const cell = section.cells[cellIndex];
+  if (!cell || cell.hinging) return false;
+  if (section.cells.length === 1) return true;
+  return section.cells.length === 2 && cellIndex === 0;
+}
+
+/**
+ * Fill every unassigned glass cell with `glassId` (the project's default glass Selection). Never touches
+ * a cell that already has a selection, a door cell, or anything when `glassId` is null. Non-mutating:
+ * returns the input array itself when nothing changes.
+ */
+export function fillDefaultGlass(
+  sections: DesignSectionV2[],
+  glassId: string | null | undefined,
+): { sections: DesignSectionV2[]; changed: boolean } {
+  if (!glassId) return { sections, changed: false };
+  let changed = false;
+  const next = sections.map((section) => {
+    let sectionChanged = false;
+    const cells = section.cells.map((cell, i) => {
+      if (cell.selectionId || !isGlassCell(section, i)) return cell;
+      sectionChanged = true;
+      return { ...cell, selectionId: glassId };
+    });
+    if (!sectionChanged) return section;
+    changed = true;
+    return { ...section, cells };
+  });
+  return changed ? { sections: next, changed } : { sections, changed: false };
+}

@@ -3,10 +3,12 @@ import { invalidateProjectCalculation } from "@/lib/data/formula-pin";
 import type { Prisma } from "@/app/generated/prisma/client";
 import type { SessionData } from "@/lib/session";
 import { ownedProjectWhere } from "@/lib/data/ownership";
+import { findDefaultGlassSelectionId } from "@/lib/data/default-glass";
 import {
   PartitionDesignError,
   assertSectionHeights,
   collectSelectionIds,
+  fillDefaultGlass,
   sumSectionWidths,
   type DesignSectionV2,
   type DesignStops,
@@ -215,7 +217,9 @@ export async function updatePartition(
     if (patch.design.sections !== undefined) {
       delete nextDesign.panels; // legacy v1 key — a v2 write replaces it
       nextDesign.schemaVersion = 2;
-      nextDesign.sections = patch.design.sections;
+      // Stage 34 S34-7: a null glass cell is saved as the project's default glass (door cells never).
+      const defaultGlassId = await findDefaultGlassSelectionId(prisma, existing.room.floor.projectId);
+      nextDesign.sections = fillDefaultGlass(patch.design.sections, defaultGlassId).sections;
     }
   }
 
@@ -261,7 +265,7 @@ export async function updatePartition(
     // Derive widthMm from the sections whenever they're being written —
     // server-authoritative, never trusts a client-supplied widthMm.
     if (patch.design?.sections !== undefined) {
-      data.widthMm = sumSectionWidths(patch.design.sections);
+      data.widthMm = sumSectionWidths(mergedSections ?? patch.design.sections);
     }
     data.design = nextDesign as unknown as Prisma.InputJsonValue;
   }

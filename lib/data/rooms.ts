@@ -4,7 +4,8 @@ import type { Prisma } from "@/app/generated/prisma/client";
 import type { SessionData } from "@/lib/session";
 import { ownedProjectWhere } from "@/lib/data/ownership";
 import { createPartitionInTx } from "@/lib/data/partitions";
-import { seedSectionsDesign } from "@/lib/partition-design";
+import { fillDefaultGlass, seedSectionsDesign } from "@/lib/partition-design";
+import { findDefaultGlassSelectionId } from "@/lib/data/default-glass";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -438,6 +439,8 @@ export async function replaceSides(
     // (whether because it was converted back to PLAIN or removed outright)
     // gets its Partition row deleted exactly once, regardless of position.
     const finalSides: RoomSide[] = [];
+    // Stage 34 S34-7: the project's default glass, resolved lazily once per call (only a convert needs it).
+    let defaultGlassId: string | null | undefined;
     for (let i = 0; i < newSides.length; i++) {
       const incoming = newSides[i];
       const previousAtSamePos = previousSides[i];
@@ -515,6 +518,12 @@ export async function replaceSides(
             3,
             () => crypto.randomUUID(),
           );
+          // Stage 34 S34-7: a project that already has a glass Selection converts WITH its default glass;
+          // none yet -> cells stay null (the first glass Selection back-fills them, selections.ts).
+          if (defaultGlassId === undefined) {
+            defaultGlassId = await findDefaultGlassSelectionId(tx, room.floor.projectId);
+          }
+          seedDesign.sections = fillDefaultGlass(seedDesign.sections, defaultGlassId).sections;
           await tx.partition.update({
             where: { id: partition.id },
             data: { design: seedDesign as unknown as Prisma.InputJsonValue },
