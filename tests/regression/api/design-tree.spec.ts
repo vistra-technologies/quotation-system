@@ -212,6 +212,12 @@ registerNegatives([
       { name: "stops not an object", body: { design: { stops: "top" } }, status: 400 },
       { name: "stops.top a number", body: { design: { stops: { top: 1 } } }, status: 400 },
       { name: "defaults.glassSelectionId a number", body: { design: { defaults: { glassSelectionId: 1 } } }, status: 400 },
+      // Stage 34 S34-3: a section's `locked` is true or false, nothing else
+      ...[null, "true", 1, 0, {}].map((locked) => ({
+        name: `section locked ${JSON.stringify(locked)}`,
+        body: { design: { schemaVersion: 2, sections: [{ id: "s", widthMm: 2000, locked, cells: [{ id: "c", heightMm: 2400, selectionId: null }] }] } },
+        status: 400,
+      })),
     ],
   },
 ]);
@@ -530,6 +536,32 @@ test.describe("partitions: design v2", () => {
     const l = (await ok<{ partition: Partition }>(await as.member.patch(P, { data: { label: ` ${L} ` } }))).partition;
     expect(l).toMatchObject({ label: L, widthMm: 2000, heightMm: 2400 });
     expect(l.design).toEqual(s.design);
+  });
+
+  test("Stage 34 locked: true is stored and returned, false is stored absent, junk is 400; label-only PATCH keeps it, a re-send without it clears it", async ({ as, f, url }) => {
+    const w = await f.wall();
+    const sel = await f.selection(w.projectId, "GLASS", { category: "Single" });
+    const P = url(`/partitions/${w.partitionId}`);
+    const base = design([{ w: 1000, cells: [[2400, sel.id]] }, { w: 1000, cells: [[2400, sel.id]] }]);
+    type Secs = { sections: Array<{ locked?: unknown }> };
+    const withLocks = (a: unknown, b: unknown) => ({
+      ...base,
+      sections: base.sections.map((s, i) => ({ ...s, ...((i === 0 ? a : b) === undefined ? {} : { locked: i === 0 ? a : b }) })),
+    });
+    const put = await ok<{ partition: Partition }>(await as.admin.patch(P, { data: { design: withLocks(true, false) } }));
+    const s1 = (put.partition.design as unknown as Secs).sections;
+    expect(s1[0].locked).toBe(true);
+    expect(s1[1]).not.toHaveProperty("locked"); // false is stored as absent
+    expect(((await as.admin.get(P).then((r) => r.json())) as { partition: Partition }).partition.design).toEqual(put.partition.design);
+    expect((await readPartitionRow(w.partitionId)).design).toMatchObject({ sections: [expect.objectContaining({ locked: true }), expect.not.objectContaining({ locked: expect.anything() })] });
+    // junk is rejected and nothing is written
+    await rejected(await as.admin.patch(P, { data: { design: withLocks("yes", undefined) } }), 400, "design.sections[0].locked must be true or false");
+    // a label-only PATCH keeps the stored lock
+    await ok(await as.admin.patch(P, { data: { label: "rgr-lock-label" } }));
+    expect(((await readPartitionRow(w.partitionId)).design as unknown as Secs).sections[0].locked).toBe(true);
+    // re-sending sections without the flag is last-write-wins: the lock is cleared
+    const cleared = await ok<{ partition: Partition }>(await as.admin.patch(P, { data: { design: withLocks(undefined, undefined) } }));
+    expect((cleared.partition.design as unknown as Secs).sections.some((s) => "locked" in s)).toBe(false);
   });
 
   test("a stored v1 (panels) row: label-only PATCH keeps it; a v2 sections PATCH replaces panels and stamps schemaVersion 2", async ({ as, f, url }) => {

@@ -25,6 +25,9 @@ import {
   pickTransomGlass,
   fillDefaultGlass,
   isGlassCell,
+  fillDefaultGlassPanels,
+  panelNeedsGlass,
+  type DesignPanel,
   type DesignSectionV2,
 } from "../../lib/partition-design";
 
@@ -368,5 +371,99 @@ describe("fillDefaultGlass (Stage 34 S34-7)", () => {
 
   test("isGlassCell: three-cell sections have no glass cell by this rule", () => {
     assert.equal(isGlassCell(sec("s", cell("a", null), cell("b", null), cell("c", null)), 0), false);
+  });
+});
+
+describe("locked flag (Stage 34 S34-3)", () => {
+  const cellOf = (id: string) => ({ id, heightMm: 2400, selectionId: null });
+  const patch = (locked?: unknown) => ({
+    schemaVersion: 2,
+    sections: [{ id: "s1", widthMm: 1000, cells: [cellOf("c1")], ...(locked === undefined ? {} : { locked }) }],
+  });
+
+  test("true is kept, false and absent are stored as absent", () => {
+    assert.equal(parseDesignPatch(patch(true))!.sections![0].locked, true);
+    assert.equal("locked" in parseDesignPatch(patch(false))!.sections![0], false);
+    assert.equal("locked" in parseDesignPatch(patch())!.sections![0], false);
+  });
+
+  test("any other value is rejected", () => {
+    for (const bad of [null, "true", 1, 0, {}, []]) {
+      assert.throws(
+        () => parseDesignPatch(patch(bad)),
+        (err: unknown) => err instanceof PartitionDesignError && /sections\[0\]\.locked must be true or false/.test(err.message),
+        String(bad),
+      );
+    }
+  });
+
+  test("round trip keeps locked on glass, full-height door and transom sections; omits it when false", () => {
+    const wall = 2400;
+    const isDoor = (id: string) => id === "door";
+    const view = {
+      panels: [
+        { id: "g", type: "glass" as const, widthMm: 800, heightMm: wall, selectionId: "G", door: null, locked: true },
+        { id: "d", type: "door" as const, widthMm: 800, heightMm: wall, selectionId: null, locked: true,
+          door: { selectionId: "door", hinging: "left" as const, outerFrame: { w: 800, h: wall } } },
+        { id: "t", type: "door" as const, widthMm: 800, heightMm: wall, selectionId: "G", locked: true,
+          door: { selectionId: "door", hinging: "right" as const, outerFrame: { w: 800, h: 2000 } } },
+        { id: "u", type: "glass" as const, widthMm: 800, heightMm: wall, selectionId: "G", door: null, locked: false },
+      ],
+    };
+    const v2 = panelsToV2(view, wall);
+    assert.deepEqual(v2.sections!.map((s) => s.locked), [true, true, true, undefined]);
+    assert.equal("locked" in v2.sections![3], false);
+    const back = parseStoredDesign({ schemaVersion: 2, sections: v2.sections }, opts(3200, wall, isDoor));
+    assert.deepEqual(back.panels!.map((p) => !!p.locked), [true, true, true, false]);
+    // and the stored shape re-validates through the PATCH parser unchanged
+    assert.deepEqual(parseDesignPatch({ schemaVersion: 2, sections: v2.sections })!.sections, v2.sections);
+  });
+
+  test("fillDefaultGlass keeps locked", () => {
+    const s: DesignSectionV2[] = [{ id: "s", widthMm: 900, locked: true, cells: [{ id: "c", heightMm: 1000, selectionId: null }] }];
+    assert.equal(fillDefaultGlass(s, "G").sections[0].locked, true);
+  });
+});
+
+describe("fillDefaultGlassPanels (Stage 34 S34-7 client mirror)", () => {
+  const wall = 2400;
+  const glass = (id: string, selectionId: string | null): DesignPanel => ({ id, type: "glass", widthMm: 800, heightMm: wall, selectionId, door: null });
+  const door = (id: string, h: number, selectionId: string | null): DesignPanel => ({
+    id, type: "door", widthMm: 800, heightMm: wall, selectionId,
+    door: { selectionId: "door", hinging: "left", outerFrame: { w: 800, h } },
+  });
+
+  test("fills a null glass panel and a transom, never a full-height door, never overrides", () => {
+    const r = fillDefaultGlassPanels([glass("a", null), glass("b", "X"), door("c", wall, null), door("d", 2000, null), door("e", 2000, "Y")], wall, "G");
+    assert.equal(r.changed, true);
+    assert.deepEqual(r.panels.map((p) => p.selectionId), ["G", "X", null, "G", "Y"]);
+  });
+  test("null glass id: same array, unchanged; nothing to fill: same array", () => {
+    const input = [glass("a", null)];
+    assert.equal(fillDefaultGlassPanels(input, wall, null).panels, input);
+    const full = [glass("a", "X")];
+    assert.equal(fillDefaultGlassPanels(full, wall, "G").panels, full);
+  });
+  test("a locked panel's null glass is still filled (a fill is not a change)", () => {
+    const r = fillDefaultGlassPanels([{ ...glass("a", null), locked: true }], wall, "G");
+    assert.equal(r.panels[0].selectionId, "G");
+    assert.equal(r.panels[0].locked, true);
+  });
+  test("panelNeedsGlass rounds the door height like panelsToV2", () => {
+    assert.equal(panelNeedsGlass(door("d", 2399.6, null), wall), false); // rounds to 2400 = full height
+    assert.equal(panelNeedsGlass(door("d", 2399.4, null), wall), true);
+  });
+  test("parity with fillDefaultGlass on the stored shape", () => {
+    const sets: DesignPanel[][] = [
+      [glass("a", null), glass("b", "X")],
+      [door("c", wall, null), door("d", 1500, null), glass("e", null)],
+      [door("c", 0, null)],
+      [glass("a", "X")],
+    ];
+    for (const panels of sets) {
+      const viaPanels = panelsToV2({ panels: fillDefaultGlassPanels(panels, wall, "G").panels }, wall).sections;
+      const viaSections = fillDefaultGlass(panelsToV2({ panels }, wall).sections!, "G").sections;
+      assert.deepEqual(viaPanels, viaSections);
+    }
   });
 });

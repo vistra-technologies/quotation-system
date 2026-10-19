@@ -38,6 +38,9 @@ export interface DesignSectionV2 {
   id: string;
   widthMm: number;
   cells: DesignCellV2[];
+  /** Stage 34 S34-3: the panel is frozen. Present only as `true`; `false` is stored as absent.
+   * The server stores the flag and does not enforce the freeze. */
+  locked?: true;
 }
 
 export interface DesignStops {
@@ -89,6 +92,8 @@ export interface DesignPanel {
   /** Glass pointer. For a door panel this is the TRANSOM's glass (null when there is no transom). */
   selectionId: string | null;
   door?: DesignDoor | null;
+  /** Stage 34 S34-3: frozen panel (maps to the section's `locked`). */
+  locked?: boolean;
 }
 
 export interface PanelViewDesign {
@@ -198,7 +203,13 @@ function parseSections(raw: unknown): DesignSectionV2[] {
     if (totalWidth > MAX_DESIGN_MM) {
       fail(`design.sections widths sum to more than ${MAX_DESIGN_MM}mm`);
     }
-    return { id: rawSection.id, widthMm, cells };
+    const section: DesignSectionV2 = { id: rawSection.id, widthMm, cells };
+    // Stage 34 S34-3: `locked: true` is kept, `false`/absent is stored as absent, anything else is a 400.
+    if (rawSection.locked !== undefined && rawSection.locked !== false) {
+      if (rawSection.locked !== true) fail(`design.sections[${i}].locked must be true or false`);
+      section.locked = true;
+    }
+    return section;
   });
 }
 
@@ -320,6 +331,7 @@ export function parseStoredDesign(raw: unknown, opts: ParseStoredOptions): Panel
 
 function sectionToPanel(sec: DesignSectionV2, opts: ParseStoredOptions): DesignPanel {
   const wallHeightMm = opts.heightMm;
+  const lockedPart = sec.locked ? { locked: true } : {};
   const doorOf = (cell: DesignCellV2, transomSelectionId: string | null): DesignPanel => ({
     id: sec.id,
     type: "door",
@@ -331,6 +343,7 @@ function sectionToPanel(sec: DesignSectionV2, opts: ParseStoredOptions): DesignP
       hinging: cell.hinging ?? "left",
       outerFrame: { w: sec.widthMm, h: cell.heightMm },
     },
+    ...lockedPart,
   });
 
   if (sec.cells.length === 1) {
@@ -343,6 +356,7 @@ function sectionToPanel(sec: DesignSectionV2, opts: ParseStoredOptions): DesignP
       heightMm: wallHeightMm,
       selectionId: cell.selectionId,
       door: null,
+      ...lockedPart,
     };
   }
   if (sec.cells.length === 2) {
@@ -373,6 +387,12 @@ export function panelsToV2(
 
   out.schemaVersion = 2;
   out.sections = view.panels.map((p): DesignSectionV2 => {
+    const section = panelToSection(p);
+    return p.locked ? { ...section, locked: true } : section;
+  });
+  return out;
+
+  function panelToSection(p: DesignPanel): DesignSectionV2 {
     if (!p.door) {
       return {
         id: p.id,
@@ -403,8 +423,7 @@ export function panelsToV2(
         doorCell(`${p.id}-d`, doorH),
       ],
     };
-  });
-  return out;
+  }
 }
 
 /**
@@ -492,4 +511,35 @@ export function fillDefaultGlass(
     return { ...section, cells };
   });
   return changed ? { sections: next, changed } : { sections, changed: false };
+}
+
+// ─── Default glass, panel view (Stage 34 S34-7 client mirror) ─────────────────
+
+/**
+ * True when the panel owns a glass cell that is still unassigned: a glass panel, or a door panel
+ * shorter than the wall (its transom). Mirrors `isGlassCell` on the stored shape; a full-height door
+ * has no glass cell. Same rounding as `panelsToV2`, so both agree on where a transom exists.
+ */
+export function panelNeedsGlass(p: DesignPanel, wallHeightMm: number): boolean {
+  if (p.selectionId) return false;
+  if (!p.door) return true;
+  const doorH = Math.min(Math.max(1, Math.round(p.door.outerFrame?.h ?? wallHeightMm)), wallHeightMm);
+  return doorH < wallHeightMm;
+}
+
+/** Panel-view twin of `fillDefaultGlass`: fills every unassigned glass cell with `glassId`. Non-mutating;
+ * returns the input array itself when nothing changes. Ignores locks (a null cell is not a "change"). */
+export function fillDefaultGlassPanels(
+  panels: DesignPanel[],
+  wallHeightMm: number,
+  glassId: string | null | undefined,
+): { panels: DesignPanel[]; changed: boolean } {
+  if (!glassId) return { panels, changed: false };
+  let changed = false;
+  const next = panels.map((p) => {
+    if (!panelNeedsGlass(p, wallHeightMm)) return p;
+    changed = true;
+    return { ...p, selectionId: glassId };
+  });
+  return changed ? { panels: next, changed } : { panels, changed: false };
 }

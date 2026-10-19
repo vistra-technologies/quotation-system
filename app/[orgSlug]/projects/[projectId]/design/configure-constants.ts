@@ -1,3 +1,5 @@
+import { MIN_PANEL_MM } from "@/lib/panel-widths";
+
 /**
  * Configure mode's fixed real-world mm thresholds — mirrors
  * design-step-poc.html's fixed-inch constants (36in door-height min, 24in
@@ -21,4 +23,4 @@ export const DEFAULT_PANEL_WIDTH_MM = 610; // 24in * 25.4, rounded
 export const MIN_SPLIT_WIDTH_MM = 406; // 16in * 25.4, rounded
 
 /** Smallest panel a divider drag can produce (Hotfix 2026-10-01 H-5). */
-export const MIN_PANEL_WIDTH_MM = 100;
+export const MIN_PANEL_WIDTH_MM = MIN_PANEL_MM;
