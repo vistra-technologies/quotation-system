@@ -18,11 +18,11 @@ describe("snapDivider: 1000 mm pull (12 px)", () => {
     // pair 3300: right 1000 -> left 2300. Left 2310 is 5 px from there.
     assert.deepEqual(snapDivider({ leftMm: 2310, pairMm: 3300, mmPerPx: S }), { leftMm: 2300, step: 1000, sides: [1] });
   });
-  test("the 1000 pass beats a nearer 100 candidate", () => {
-    // left 1018: 1000 is 9 px away (<= 12) and 1000 is also the 100 candidate; step must report 1000.
-    const r = snapDivider({ leftMm: 1018, pairMm: 3000, mmPerPx: S });
-    assert.equal(r?.step, 1000);
-    assert.equal(r?.leftMm, 1000);
+  test("the 1000 pass beats a nearer 100 candidate (swapping the pass order would fail this)", () => {
+    // 10 mm per px, left 1080: 1000 is 8 px away (inside its 12 px pull) and 1100 is 2 px away (inside its
+    // 7 px pull, and nearer). The 1000 pass runs first, so it must win.
+    const r = snapDivider({ leftMm: 1080, pairMm: 3000, mmPerPx: 10 });
+    assert.deepEqual(r, { leftMm: 1000, step: 1000, sides: [0, 1] });
   });
 });
 

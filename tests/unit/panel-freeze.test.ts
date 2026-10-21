@@ -91,10 +91,31 @@ describe("freezeCheck: glass change applies to unlocked panels only", () => {
       keptCount: 2,
     });
   });
+  test("a locked full-height door has no glass cell: it is not counted as kept; a door with a transom is", () => {
+    const panels: FreezePanel[] = [
+      { id: "door", locked: true, selectionId: null, hasGlass: false },
+      { id: "transom", locked: true, selectionId: "g1", hasGlass: true },
+      { id: "free" },
+    ];
+    const v = freezeCheck(panels, { type: "SET_GLASS", panelIds: ["door", "transom", "free"], selectionId: "g2" });
+    assert.equal(v.kind === "narrow" && v.keptCount, 1);
+    const onlyDoor = freezeCheck(panels, { type: "SET_GLASS", panelIds: ["door", "free"], selectionId: "g2" });
+    assert.equal(onlyDoor.kind === "narrow" && onlyDoor.keptCount, 0);
+  });
   test("no locked panel: pass", () => {
     assert.deepEqual(freezeCheck(wall, { type: "SET_GLASS", panelIds: ["b", "d"], selectionId: "g9" }), {
       kind: "pass",
     });
+  });
+});
+
+describe("freezeCheck: divider width map", () => {
+  test("blocks when it sets a locked panel; passes otherwise", () => {
+    assert.deepEqual(freezeCheck(wall, { type: "SET_PANEL_WIDTHS_MAP", widths: { a: 100, b: 200 } }), {
+      kind: "block",
+      lockedIds: ["a"],
+    });
+    assert.deepEqual(freezeCheck(wall, { type: "SET_PANEL_WIDTHS_MAP", widths: { b: 100, d: 200 } }), { kind: "pass" });
   });
 });
 
@@ -109,7 +130,6 @@ describe("freezeCheck: not frozen (explicit pins)", () => {
     "SET_PANEL_LOCKED",
     "UNLOCK_ALL",
     "SET_STOPS",
-    "SET_PANEL_WIDTHS_MAP",
     "SOMETHING_ELSE",
   ]) {
     test(`${type} passes even when every panel is locked`, () => {

@@ -242,7 +242,17 @@ function draftReducer(
   action: DraftAction,
   defaultGlassId: string | null,
 ): DraftState {
-  const verdict = freezeCheck(state.draft?.design?.panels ?? [], action as unknown as FreezeAction);
+  const wallH = state.draft?.heightMm ?? 0;
+  const verdict = freezeCheck(
+    (state.draft?.design?.panels ?? []).map((p) => ({
+      id: p.id,
+      locked: p.locked,
+      selectionId: p.selectionId,
+      // glass panel, or a door with a transom (shorter than the wall): a full-height door has no glass cell
+      hasGlass: !p.door || (p.door.outerFrame?.h ?? wallH) < wallH,
+    })),
+    action as unknown as FreezeAction,
+  );
   if (verdict.kind === "block") {
     return { ...state, notice: { code: "PANEL_LOCKED", ids: verdict.lockedIds } };
   }
@@ -512,11 +522,8 @@ function reduceAction(
 
     // ── Bulk panel width map ──────────────────────────────────────────────────
     case "SET_PANEL_WIDTHS_MAP": {
-      // Divider drag / nudge only. A divider next to a locked panel cannot move (the canvas blocks it; this
-      // is the backstop), and a move LOCKS both neighbours it sets (Stage 34 S34-3).
-      const panels = state.draft?.design?.panels ?? [];
-      const lockedHit = panels.filter((p) => p.locked && action.widths[p.id] !== undefined).map((p) => p.id);
-      if (lockedHit.length > 0) return { ...state, notice: { code: "PANEL_LOCKED", ids: lockedHit } };
+      // Divider drag / nudge only. The freeze guard (lib/panel-freeze.ts) already refused a map that sets a
+      // locked panel; a move LOCKS both neighbours it sets (Stage 34 S34-3).
       return mutatePanels(state, (ps) =>
         ps.map((p) =>
           action.widths[p.id] !== undefined ? { ...p, widthMm: action.widths[p.id]!, locked: true } : p,

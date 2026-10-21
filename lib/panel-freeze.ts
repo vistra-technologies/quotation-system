@@ -5,7 +5,8 @@
  * neighbour), remove. The Design page reducer calls `freezeCheck` ONCE at the top of `draftReducer`, so
  * the freeze never depends on a button or menu greying itself. This table is the whole freeze list.
  *
- *   block  - the action names a locked panel (or a unite range containing one): refused whole, draft untouched.
+ *   block  - the action names a locked panel (or a unite range containing one, or a divider width map that
+ *            sets one): refused whole, draft untouched.
  *   narrow - a bulk action runs on the unlocked panels only; the locked ones are reported as skipped / kept.
  *   pass   - not frozen. Notably SET_PARTITION_HEIGHT (D-5: the wall-height clamp on a locked door is the one
  *            path that may still change a locked panel), FILL_DEFAULT_GLASS (filling a null cell is not a
@@ -16,6 +17,9 @@ export interface FreezePanel {
   id: string;
   locked?: boolean;
   selectionId?: string | null;
+  /** Does the panel show glass: a glass panel, or a door with a transom. A full-height door (single or
+   *  double leaf) has no glass cell. Undefined counts as true. Only used for the "kept their glass" count. */
+  hasGlass?: boolean;
 }
 
 export interface FreezeAction {
@@ -23,6 +27,8 @@ export interface FreezeAction {
   panelId?: string;
   panelIds?: string[];
   selectionId?: string | null;
+  /** SET_PANEL_WIDTHS_MAP (divider drag / nudge): panel id -> new width. */
+  widths?: Record<string, number>;
 }
 
 export type FreezeVerdict =
@@ -56,6 +62,13 @@ export function freezeCheck(panels: FreezePanel[], action: FreezeAction): Freeze
       : { kind: "pass" };
   }
 
+  // Divider drag / nudge: a divider next to a locked panel cannot move (the canvas blocks it too; this is the
+  // authority). The reducer case stamps `locked: true` on the panels it sets.
+  if (action.type === "SET_PANEL_WIDTHS_MAP") {
+    const lockedIds = Object.keys(action.widths ?? {}).filter(isLocked);
+    return lockedIds.length > 0 ? { kind: "block", lockedIds } : { kind: "pass" };
+  }
+
   if (action.type === "UNITE_PANELS") {
     const lockedIds = (action.panelIds ?? []).filter(isLocked);
     return lockedIds.length > 0 ? { kind: "block", lockedIds } : { kind: "pass" };
@@ -74,9 +87,11 @@ export function freezeCheck(panels: FreezePanel[], action: FreezeAction): Freeze
     const ids = action.panelIds ?? [];
     const skipped = ids.filter(isLocked);
     if (skipped.length === 0) return { kind: "pass" };
-    const keptCount = skipped.filter(
-      (id) => (panels.find((p) => p.id === id)?.selectionId ?? null) !== (action.selectionId ?? null),
-    ).length;
+    // Only a locked panel that actually has a glass cell can "keep its glass" (a full-height door has none).
+    const keptCount = skipped.filter((id) => {
+      const p = panels.find((q) => q.id === id);
+      return p?.hasGlass !== false && (p?.selectionId ?? null) !== (action.selectionId ?? null);
+    }).length;
     return {
       kind: "narrow",
       panelIds: ids.filter((id) => !isLocked(id)),

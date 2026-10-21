@@ -707,6 +707,32 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       await doorOf(1).click({ button: "right" });
       await expect(item(/Left hinge/)).toBeDisabled();
       await o.page.keyboard.press("Escape");
+      // rail paths on the locked single-door P2 (the notice shows in the canvas, D-16). `solo` selects P2 alone,
+      // which also clears any earlier notice.
+      const solo = async () => {
+        await panels.nth(0).click();
+        await panels.nth(1).click();
+        await expect(notice).toHaveCount(0);
+      };
+      const railItem = (label: string) => o.page.getByText(`${run.prefix}${label}`, { exact: true });
+      await solo();
+      await railItem("B4 Door double").click(); // swap the door
+      await expect(notice).toHaveText(/Panel is locked/);
+      await expect(doorOf(1)).toHaveCount(1);
+      await solo();
+      await railItem("B4 Door single").click(); // the active door again = remove it
+      await expect(notice).toHaveText(/Panel is locked/);
+      await expect(doorOf(1)).toHaveCount(1);
+      await solo();
+      const slider = o.page.locator("input[type='range']");
+      await slider.focus();
+      await o.page.keyboard.press("ArrowLeft"); // door height
+      await expect(notice).toHaveText(/Panel is locked/);
+      await expect(slider).toHaveValue("2400");
+      await solo();
+      await o.page.locator("#rail-width-input").click(); // the read-only Width field
+      await expect(notice).toHaveText(/Panel is locked/);
+      expect(await widths()).toEqual([1000, 500, 750, 750]);
       // split / unite are greyed in a locked panel's menu (P4 is glass, so its panel menu is reachable)
       await panels.nth(3).click({ button: "right" });
       await item("Lock panel").click();
@@ -737,11 +763,22 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       await notice.getByRole("button", { name: /Unlock/ }).click();
       await expect(locks).toHaveCount(1);
 
-      // AC2: a glass change applies to unlocked panels only; the locked P3 keeps its glass; no "applies to every panel" caption
+      // AC2: a glass change applies to unlocked panels only; no "applies to every panel" caption. With only the
+      // full-height double door (no glass cell) locked, nothing "kept its glass": no note.
       await expect(o.page.getByText("Applies to every panel on this wall")).toHaveCount(0);
       await panels.nth(0).click();
       await o.page.getByText(`${run.prefix}B4 Glass B`, { exact: true }).click();
-      await expect(notice).toHaveText(/locked panel kept its glass/);
+      await expect(notice).toHaveCount(0);
+      // lock the glass panel P4 (now Glass B), switch to Glass A: P4 keeps B and the note counts exactly it
+      await panels.nth(3).click({ button: "right" });
+      await item("Lock panel").click();
+      await o.page.getByText(`${run.prefix}B4 Glass A`, { exact: true }).click();
+      await expect(notice).toHaveText(/^1 locked panel kept its glass/);
+      await expect(panels.nth(3)).toContainText("Glass B");
+      await expect(panels.nth(0)).toContainText("Glass A");
+      await panels.nth(3).click({ button: "right" });
+      await item("Unlock panel").click();
+      await expect(locks).toHaveCount(1);
       // multi-select Remove skips locked panels and counts them: P3 (locked) + P4
       await panels.nth(2).click();
       await panels.nth(3).click({ modifiers: ["Control"] });
