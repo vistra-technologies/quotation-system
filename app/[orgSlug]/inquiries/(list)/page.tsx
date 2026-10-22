@@ -287,6 +287,7 @@ export default async function InquiriesPage({
                       {inquiry.status === "CONVERTED" && inquiry.projectId && (
                         <Link
                           href={`${base}/projects/${inquiry.projectId}`}
+                          prefetch={false}
                           className="text-xs font-semibold text-primary-dark hover:underline"
                         >
                           Go to project

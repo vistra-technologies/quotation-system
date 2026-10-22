@@ -214,6 +214,7 @@ export default async function InquiryDetailPage({
           {inquiry.status === "CONVERTED" && inquiry.project && (
             <Link
               href={`${base}/projects/${inquiry.project.id}`}
+              prefetch={false}
               className="inline-flex items-center rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
             >
               {t("goToProject")}

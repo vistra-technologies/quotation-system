@@ -137,7 +137,13 @@ test("J11: problem popup — rooms x walls grouped, collapsed, Expand/Collapse a
     await page.goto(orgUrl(slug, `/projects/${w.projectId}/summary`));
     const recompute = page.getByRole("button", { name: /^Recompute$/ });
     await expect.poll(() => isHydrated(recompute)).toBe(true);
-    await recompute.click();
+    const [recomputeResp] = await Promise.all([
+      page.waitForResponse((r) =>
+        r.request().method() === "POST" && r.url().includes(`/projects/${w.projectId}/recompute`)
+      ),
+      recompute.click(),
+    ]);
+    console.log("Recompute status:", recomputeResp.status(), await recomputeResp.text());
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible({ timeout: 20_000 });
     await expect(dialog.getByTestId("problem-row").first()).toBeVisible();
