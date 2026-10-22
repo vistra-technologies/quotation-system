@@ -512,7 +512,7 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       expect(await pillState(o)).toMatchObject({ Design: "open", Summary: "open", Quotation: "open" });
       await o.page.goto(orgTarget(run, `/projects/${w.projectId}/summary`));
       await expectLands(() => orgPathOf(run, o.page.url()), `/projects/${w.projectId}/summary`);
-      await expect(o.page.getByRole("button", { name: "Export PDF" })).toBeVisible();
+      await expect(o.page.getByRole("button", { name: "Export PDF" }).filter({ visible: true })).toBeVisible();
 
       // 3. Open the wall in the Design canvas's Configure mode (the problem popup's deep link). Before the edit
       //    the pills are still unlocked.

@@ -139,12 +139,13 @@ test("J11: problem popup — rooms x walls grouped, collapsed, Expand/Collapse a
     await expect.poll(() => isHydrated(recompute)).toBe(true);
     // Explicitly wait for the recompute response before asserting the popup (BUG-2 fix: ensures
     // the browser has received the 422 body before polling for the dialog).
-    await Promise.all([
+    const [recomputeResp] = await Promise.all([
       page.waitForResponse((r) =>
         r.request().method() === "POST" && r.url().includes(`/projects/${w.projectId}/recompute`)
       ),
       recompute.click(),
     ]);
+    expect(recomputeResp.status(), await recomputeResp.text()).toBe(422);
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible({ timeout: 20_000 });
     await expect(dialog.getByTestId("problem-row").first()).toBeVisible();
