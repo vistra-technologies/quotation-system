@@ -648,6 +648,57 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
     });
   });
 
+  test("Design canvas (Stage 34 B6): Duplicate room - icon + tooltip, prefilled prompt, a taken name keeps the prompt open with the error, success opens the copy, unsaved edits show the guard (Cancel keeps the copy listed but unopened)", async ({ browser, run, f, as, url }) => {
+    test.setTimeout(180_000);
+    const w = await readyWall(f, as.admin, url);
+    const rooms = async () => (await as.admin.get(url(`/rooms?floorId=${w.floorId}`))).json() as Promise<{ rooms: { id: string; label: string }[] }>;
+    const label = (await rooms()).rooms.find((r) => r.id === w.roomId)!.label;
+    await withPage({ browser, run }, "admin", undefined, async (o) => {
+      await o.page.goto(orgTarget(run, `/projects/${w.projectId}/design`));
+      const dup = o.page.getByTestId(`room-duplicate-${w.roomId}`).filter({ visible: true });
+      await expect(dup).toBeVisible();
+      await expect(dup).toHaveAttribute("title", "Duplicate");
+      await dup.click();
+      const name = o.page.getByLabel("Name of the copy");
+      await expect(name).toHaveValue(`${label} copy`);
+
+      // a taken name: 409 -> the error shows inside the prompt and the prompt stays open
+      await name.fill(label);
+      await o.page.getByRole("button", { name: "Duplicate", exact: true }).click();
+      await expect(o.page.getByText("Name already exists on this floor")).toBeVisible();
+      await expect(name).toBeVisible();
+      expect((await rooms()).rooms).toHaveLength(1);
+
+      // a free name: the copy is created, listed and opened
+      const copyName = `${label}-b6`;
+      await name.fill(copyName);
+      await o.page.getByRole("button", { name: "Duplicate", exact: true }).click();
+      await expect(name).toBeHidden();
+      await expect(o.page.getByText(copyName, { exact: true }).filter({ visible: true })).toBeVisible();
+      const copy = (await rooms()).rooms.find((r) => r.label === copyName)!;
+      expect(copy.id).not.toBe(w.roomId);
+      expect((await rooms()).rooms).toHaveLength(2);
+
+      // unsaved edits in Configure mode: opening a copy is a room switch -> the guard; Cancel keeps the copy listed, unopened
+      await o.page.goto(orgTarget(run, `/projects/${w.projectId}/design?partition=${w.partitionId}`));
+      await expect(o.page.getByRole("button", { name: "Back to Room Layout" })).toBeVisible();
+      const width = o.page.getByLabel("Partition width");
+      await width.fill("2100");
+      await o.page.getByRole("button", { name: "Apply width", exact: true }).click();
+      await expect(o.page.getByRole("button", { name: "Save changes" })).toBeEnabled();
+      await o.page.getByTestId(`room-duplicate-${w.roomId}`).filter({ visible: true }).click();
+      const second = `${label}-b6b`;
+      await o.page.getByLabel("Name of the copy").fill(second);
+      await o.page.getByRole("button", { name: "Duplicate", exact: true }).click();
+      await expect(o.page.getByText("Save changes?")).toBeVisible();
+      await o.page.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(o.page.getByText("Save changes?")).toBeHidden();
+      await expect(o.page.getByRole("button", { name: "Back to Room Layout" })).toBeVisible(); // still in Configure mode
+      await expect(o.page.getByText(second, { exact: true }).filter({ visible: true })).toBeVisible(); // copy is listed
+      expect((await rooms()).rooms.map((r) => r.label)).toContain(second);
+    });
+  });
+
   test("Design canvas (Stage 34 B4): divider snap + lock, a locked panel is frozen (notice + Unlock), glass change keeps locked panels, door menus start with Lock, one menu at a time, layout holds", async ({ browser, run, f, as, url }) => {
     test.setTimeout(240_000);
     const c = { as, f, run };

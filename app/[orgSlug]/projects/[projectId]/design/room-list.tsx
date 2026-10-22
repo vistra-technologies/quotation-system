@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
 import { NewRoomForm } from "./new-room-form";
+import { DuplicateRoomForm } from "./duplicate-room-form";
 import { PartitionPreview } from "./partition-preview";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { redirectToLogin } from "./login-redirect";
@@ -19,6 +20,8 @@ interface RoomListProps {
   selectedRoomId: string | null;
   onSelectRoom: (room: RoomRow) => void;
   onRoomCreated: (room: RoomRow) => void;
+  /** Stage 34 S34-5: called with the copy after a successful Duplicate (the workspace opens it through the unsaved-changes guard). */
+  onRoomDuplicated?: (room: RoomRow) => void;
   /**
    * Optional — called after a room is deleted so the parent can sync its state.
    * design-workspace.tsx is frozen (Track 0 contract) and does not pass this
@@ -90,6 +93,7 @@ export function RoomList({
   selectedRoomId,
   onSelectRoom,
   onRoomCreated,
+  onRoomDuplicated,
   onRoomDeleted,
   onSelectPartition,
   selectedPartitionId,
@@ -110,6 +114,8 @@ export function RoomList({
 
   const [expandedRoomIds, setExpandedRoomIds] = useState<Set<string>>(new Set());
   const [addingRoom, setAddingRoom] = useState(false);
+  // Stage 34 S34-5: the room whose inline Duplicate prompt is open (one at a time).
+  const [duplicatingRoomId, setDuplicatingRoomId] = useState<string | null>(null);
 
   // Room-confirm-delete state.
   const [confirmDeleteRoom, setConfirmDeleteRoom] = useState<RoomRow | null>(null);
@@ -330,6 +336,27 @@ export function RoomList({
                       </span>
                     </button>
 
+                    {/* Stage 34 S34-5: Duplicate room (two overlapping squares), beside the trash */}
+                    <button
+                      type="button"
+                      title={t("duplicateRoom")}
+                      aria-label={t("duplicateRoomAria", { name: draftState.pendingRoomNameEdits[room.id] ?? room.label })}
+                      data-testid={`room-duplicate-${room.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDuplicatingRoomId((cur) => (cur === room.id ? null : room.id));
+                      }}
+                      className={[
+                        "flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-text-muted hover:bg-primary-softer hover:text-primary-dark",
+                        duplicatingRoomId === room.id ? "bg-primary-softer text-primary-dark" : "",
+                      ].join(" ")}
+                    >
+                      <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <rect x="8" y="8" width="12" height="12" rx="2" />
+                        <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+                      </svg>
+                    </button>
+
                     {/* Delete room button */}
                     <button
                       type="button"
@@ -340,6 +367,21 @@ export function RoomList({
                       🗑
                     </button>
                   </div>
+
+                  {duplicatingRoomId === room.id && (
+                    <DuplicateRoomForm
+                      orgSlug={orgSlug}
+                      isSubdomain={isSubdomain}
+                      room={room}
+                      displayName={draftState.pendingRoomNameEdits[room.id] ?? room.label}
+                      onCancel={() => setDuplicatingRoomId(null)}
+                      onDuplicated={(copy) => {
+                        setDuplicatingRoomId(null);
+                        setExpandedRoomIds((prev) => new Set(prev).add(copy.id));
+                        onRoomDuplicated?.(copy);
+                      }}
+                    />
+                  )}
 
                   {/* Expanded body: partition rows */}
                   {expanded && (

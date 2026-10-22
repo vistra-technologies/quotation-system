@@ -492,6 +492,31 @@ export function seedDoorOnlyDesign(
   };
 }
 
+// ─── Duplicate room (Stage 34 S34-5) ─────────────────────────────────────────
+
+/**
+ * Deep copy of a stored `Partition.design` for a duplicated room: every section and cell gets a fresh
+ * id; everything else (widths, heights, `selectionId`, `hinging`, `locked`, `stops`, `defaults`,
+ * `measurements`, `distribution`) is kept verbatim. Non-mutating and shares no object with the input
+ * (`structuredClone` first; the JSONB holds JSON values only). A non-object (null) is returned as is;
+ * a legacy v1 `panels` doc or a malformed section is cloned without id changes, never thrown on.
+ */
+export function cloneDesignWithFreshIds(design: unknown, newId: () => string): unknown {
+  if (!isObject(design)) return design;
+  const copy = structuredClone(design) as Record<string, unknown>;
+  if (Array.isArray(copy.sections)) {
+    for (const section of copy.sections) {
+      if (!isObject(section)) continue;
+      section.id = newId();
+      if (!Array.isArray(section.cells)) continue;
+      for (const cell of section.cells) {
+        if (isObject(cell)) cell.id = newId();
+      }
+    }
+  }
+  return copy;
+}
+
 // ─── Default glass (Stage 34 S34-7) ──────────────────────────────────────────
 
 /**

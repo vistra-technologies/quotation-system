@@ -436,6 +436,22 @@ function DesignWorkspaceInner({
     setAddingRoomForEmptyState(false);
   }
 
+  // Stage 34 S34-5: the copy exists server-side already, so it always joins the list (and the pills
+  // re-lock); OPENING it is a room switch and goes through the unsaved-changes guard. Cancelling the
+  // guard leaves the copy listed but unopened (orchestrator ruling, D-32).
+  function handleRoomDuplicated(room: RoomRow) {
+    setFloors((prev) =>
+      prev.map((f) => (f.id === room.floorId ? { ...f, rooms: [...f.rooms, room] } : f)),
+    );
+    router.refresh();
+    runWithUnsavedGuard(() => {
+      setSelectedFloorId(room.floorId);
+      setSelectedRoomId(room.id);
+      setViewMode("layout");
+      setLayoutSideSelection(null);
+    });
+  }
+
   function handleRoomDeleted(roomId: string) {
     // Remove the room from workspace's floors state so re-renders don't resurrect it.
     setFloors((prev) =>
@@ -557,6 +573,7 @@ function DesignWorkspaceInner({
                   selectedRoomId={viewMode === "layout" ? selectedRoomId : null}
                   onSelectRoom={selectRoom}
                   onRoomCreated={handleRoomCreated}
+                  onRoomDuplicated={handleRoomDuplicated}
                   onRoomDeleted={handleRoomDeleted}
                   onSelectPartition={enterConfigureMode}
                   selectedPartitionId={viewMode === "configure" ? state.partitionId : null}

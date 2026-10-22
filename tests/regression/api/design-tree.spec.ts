@@ -1,6 +1,6 @@
 /**
  * Design tree: floors (GET/POST, PATCH/DELETE by id), rooms (GET/POST, collection PATCH = reorder,
- * PATCH/DELETE by id, PATCH sides), partitions (GET list, GET/PATCH by id).
+ * PATCH/DELETE by id, PATCH sides, POST duplicate), partitions (GET list, GET/PATCH by id).
  *
  * Gates (route source): every verb is "any authenticated org member" — no permission. Tenancy: each DAL
  * call scopes by the session's organizationId (+ the owning project's company for external users); list routes return [] for an unknown / foreign parent
@@ -52,6 +52,7 @@ covers("PATCH /api/v1/orgs/[orgSlug]/rooms");
 covers("PATCH /api/v1/orgs/[orgSlug]/rooms/[id]");
 covers("DELETE /api/v1/orgs/[orgSlug]/rooms/[id]");
 covers("PATCH /api/v1/orgs/[orgSlug]/rooms/[id]/sides");
+covers("POST /api/v1/orgs/[orgSlug]/rooms/[id]/duplicate");
 covers("GET /api/v1/orgs/[orgSlug]/partitions");
 covers("GET /api/v1/orgs/[orgSlug]/partitions/[id]");
 covers("PATCH /api/v1/orgs/[orgSlug]/partitions/[id]");
@@ -143,6 +144,20 @@ registerNegatives([
     path: () => `/rooms/${GHOST}`,
     unknownId: () => `/rooms/${GHOST}`,
     foreignId: async (c) => `/rooms/${(await foreignTree(c)).roomId}`,
+  },
+  {
+    key: "POST /api/v1/orgs/[orgSlug]/rooms/[id]/duplicate",
+    method: "POST",
+    // a REAL Test-Org room: the body gates run before the lookup
+    path: async (c) => `/rooms/${(await wall(c)).roomId}/duplicate`,
+    body: (c) => ({ label: nm(c, "negD") }),
+    unknownId: () => `/rooms/${GHOST}/duplicate`,
+    foreignId: async (c) => `/rooms/${(await foreignTree(c)).roomId}/duplicate`,
+    invalid: [
+      { name: "{} (label is required)", body: {}, status: 400 },
+      { name: "blank label", body: { label: "   " }, status: 400 },
+      { name: "non-string label", body: { label: 5 }, status: 400 },
+    ],
   },
   {
     key: "PATCH /api/v1/orgs/[orgSlug]/rooms/[id]/sides",
@@ -357,6 +372,110 @@ test.describe("rooms", () => {
     expect((await ok<{ rooms: Room[] }>(await as.admin.get(url(`/rooms?floorId=${w.floorId}`)))).rooms.map((r) => r.id)).toEqual([sibling.id]);
     await rejected(await as.admin.delete(url(`/rooms/${w.roomId}`)), 404, "Room not found or access denied");
     await rejected(await as.admin.patch(url(`/rooms/${w.roomId}/sides`), { data: { sides: plain4() } }), 404, "Room not found or access denied");
+  });
+});
+
+test.describe("rooms/:id/duplicate (Stage 34 S34-5)", () => {
+  /** Section/cell ids replaced by positions, so a copy can be compared to its source. */
+  const normalize = (d: Partition["design"]) =>
+    JSON.parse(JSON.stringify(d), (k, v) => (k === "id" ? "-" : v));
+  const designIds = (d: Partition["design"]) => (d?.sections ?? []).flatMap((s) => [s.id, ...s.cells.map((c) => c.id)]);
+
+  test("AC1: 201 copy on the same floor, MAX+1 orderIndex, isClosed, side order/kinds, new partitions (numbers, DRAFT), design deep-copied with fresh ids and locked/hinging/selection kept; source untouched; selections not copied", async ({ as, f, run, url }) => {
+    const w = await f.wall();
+    const t = wallAt(as.admin, url);
+    const sel = await f.selection(w.projectId, "GLASS", { category: "Single" });
+    await t.room(w.floorId, nm({ run }, "R-sib")); // so MAX+1 is not 1
+    const [W1, W2] = [nm({ run }, "W1"), nm({ run }, "W2")];
+    const src = await t.sides(
+      w.roomId,
+      [newSide(W1, 2400, 3000), { kind: "PLAIN", turnDegrees: 90, lengthMm: 1500, label: "rgr-plain" }, { ...newSide(W2, 2700, 1000), turnDegrees: 270 }, { kind: "PLAIN", turnDegrees: 90 }],
+      false,
+    );
+    const [p1, p2] = [src.sides[0].partitionId!, src.sides[2].partitionId!];
+    await ok(
+      await as.admin.patch(url(`/partitions/${p1}`), {
+        data: {
+          design: {
+            schemaVersion: 2,
+            defaults: { glassSelectionId: sel.id },
+            stops: { top: sel.id },
+            sections: [
+              { id: "a", widthMm: 1500, locked: true, cells: [{ id: "a0", heightMm: 2400, selectionId: sel.id }] },
+              { id: "b", widthMm: 1500, cells: [{ id: "b0", heightMm: 400, selectionId: sel.id }, { id: "b1", heightMm: 2000, selectionId: null, hinging: "right" }] },
+            ],
+          },
+        },
+      }),
+    );
+    const srcRoom = (await ok<{ rooms: Room[] }>(await as.admin.get(url(`/rooms?floorId=${w.floorId}`)))).rooms.find((r) => r.id === w.roomId)!;
+    const srcP1 = await t.partition(p1);
+    const srcP2 = await t.partition(p2);
+    const selCount = async () => (await ok<{ selections: unknown[] }>(await as.admin.get(url(`/selections?projectId=${w.projectId}`)))).selections.length;
+    const selBefore = await selCount();
+    const siblings = (await ok<{ rooms: Room[] }>(await as.admin.get(url(`/rooms?floorId=${w.floorId}`)))).rooms;
+    const maxIdx = Math.max(...siblings.map((r) => r.orderIndex));
+
+    const L = nm({ run }, "R-copy");
+    const copy = (await ok<{ room: Room }>(await as.member.post(url(`/rooms/${w.roomId}/duplicate`), { data: { label: ` ${L} ` } }), 201)).room;
+    expect(copy).toMatchObject({ floorId: w.floorId, label: L, orderIndex: maxIdx + 1, isClosed: false, organizationId: run.testOrg.id });
+    expect(copy.id).not.toBe(w.roomId);
+    expect(copy.sides.map((s) => [s.kind, s.turnDegrees, s.lengthMm, s.label])).toEqual(srcRoom.sides.map((s) => [s.kind, s.turnDegrees, s.lengthMm, s.label]));
+    const oldSideIds = new Set(srcRoom.sides.map((s) => s.id));
+    expect(copy.sides.every((s) => !oldSideIds.has(s.id))).toBe(true);
+    expect(new Set(copy.sides.map((s) => s.id)).size).toBe(4);
+
+    const [c1, c2] = [copy.sides[0].partitionId!, copy.sides[2].partitionId!];
+    expect([c1, c2]).not.toContain(p1);
+    expect([c1, c2]).not.toContain(p2);
+    const [cp1, cp2] = [await t.partition(c1), await t.partition(c2)];
+    expect(cp1).toMatchObject({ roomId: copy.id, label: W1, heightMm: 2400, widthMm: srcP1.widthMm, status: "DRAFT" });
+    expect(cp2).toMatchObject({ roomId: copy.id, label: W2, heightMm: 2700, widthMm: 1000, status: "DRAFT" });
+    expect(cp1.partitionNumber).toBeGreaterThan(Math.max(srcP1.partitionNumber, srcP2.partitionNumber));
+    expect(cp2.partitionNumber).toBeGreaterThan(cp1.partitionNumber);
+    expect(normalize(cp1.design)).toEqual(normalize(srcP1.design));
+    expect(normalize(cp2.design)).toEqual(normalize(srcP2.design));
+    expect(designIds(cp1.design).every((id) => !designIds(srcP1.design).includes(id))).toBe(true);
+    expect(new Set(designIds(cp1.design)).size).toBe(designIds(cp1.design).length);
+    expect(cp1.design!.sections![0]).toMatchObject({ locked: true });
+    expect(cp1.design!.sections![1].cells[1]).toMatchObject({ hinging: "right" });
+
+    // the source is untouched, and no Selection was copied
+    expect((await ok<{ rooms: Room[] }>(await as.admin.get(url(`/rooms?floorId=${w.floorId}`)))).rooms.find((r) => r.id === w.roomId)).toEqual(srcRoom);
+    expect(await t.partition(p1)).toEqual(srcP1);
+    expect(await t.partition(p2)).toEqual(srcP2);
+    expect(await selCount()).toBe(selBefore);
+  });
+
+  test("AC2: a taken label (the source's own, or a sibling's) is 409 DUPLICATE_ROOM_LABEL and creates nothing; a blank / missing label is 400", async ({ as, f, run, url }) => {
+    const w = await f.wall();
+    const t = wallAt(as.admin, url);
+    const sib = await t.room(w.floorId, nm({ run }, "R-sib"));
+    const roomsOf = async () => (await ok<{ rooms: Room[] }>(await as.admin.get(url(`/rooms?floorId=${w.floorId}`)))).rooms;
+    const before = await roomsOf();
+    const partsBefore = (await ok<{ partitions: Partition[] }>(await as.admin.get(url(`/partitions?roomId=${w.roomId}`)))).partitions;
+    for (const label of [before.find((r) => r.id === w.roomId)!.label, sib.label, ` ${sib.label} `]) {
+      const r = await as.member.post(url(`/rooms/${w.roomId}/duplicate`), { data: { label } });
+      expect(r.status(), await r.text()).toBe(409);
+      expect(await r.json()).toEqual({ error: "A room with this name already exists on this floor.", code: "DUPLICATE_ROOM_LABEL" });
+    }
+    await rejected(await as.admin.post(url(`/rooms/${w.roomId}/duplicate`), { data: { label: "  " } }), 400, "label is required");
+    await rejected(await as.admin.post(url(`/rooms/${w.roomId}/duplicate`), { data: {} }), 400, "label is required");
+    expect(await roomsOf()).toEqual(before);
+    expect((await ok<{ partitions: Partition[] }>(await as.admin.get(url(`/partitions?roomId=${w.roomId}`)))).partitions).toEqual(partsBefore);
+    // 404: a deleted room answers like a nonexistent one
+    await ok(await as.admin.delete(url(`/rooms/${sib.id}`)));
+    await rejected(await as.admin.post(url(`/rooms/${sib.id}/duplicate`), { data: { label: nm({ run }, "R-x") } }), 404, "Room not found or access denied");
+  });
+
+  test("AC3: duplicating on a submitted project clears designSubmittedAt and deletes the calculation; a 409 does not", async ({ as, f, run, url }) => {
+    const w = await f.wall();
+    await armSubmitted(w.projectId);
+    const label = (await ok<{ rooms: Room[] }>(await as.admin.get(url(`/rooms?floorId=${w.floorId}`)))).rooms[0].label;
+    await rejected(await as.admin.post(url(`/rooms/${w.roomId}/duplicate`), { data: { label } }), 409, "A room with this name already exists on this floor.");
+    expect(await readProjectState(w.projectId)).toMatchObject({ designSubmittedAt: expect.any(String), calcCount: 1 });
+    await ok(await as.member.post(url(`/rooms/${w.roomId}/duplicate`), { data: { label: nm({ run }, "R-copy") } }), 201);
+    expect(await readProjectState(w.projectId)).toMatchObject({ designSubmittedAt: null, calcCount: 0 });
   });
 });
 
@@ -720,6 +839,7 @@ test.describe("design tree: invalidation audit, tenancy, roles, status", () => {
       ["patch", `/rooms/${rm.id}`, `/rooms/${GHOST}`, { label: nm({ run }, "R-ren") }, { label: nm({ run }, "R-ren") }],
       ["patch", `/rooms/${rm.id}/sides`, `/rooms/${GHOST}/sides`, { sides: PLAIN3 }, { sides: PLAIN3 }],
       ["delete", `/rooms/${rm.id}`, `/rooms/${GHOST}`],
+      ["post", `/rooms/${rm.id}/duplicate`, `/rooms/${GHOST}/duplicate`, { label: nm({ run }, "R-dup") }, { label: nm({ run }, "R-dup") }],
       ["get", `/partitions?roomId=${rm.id}`, `/partitions?roomId=${GHOST}`],
       ["get", `/partitions/${pid}`, `/partitions/${GHOST}`],
       ["patch", `/partitions/${pid}`, `/partitions/${GHOST}`, { label: nm({ run }, "W-ren") }, { label: nm({ run }, "W-ren") }],
