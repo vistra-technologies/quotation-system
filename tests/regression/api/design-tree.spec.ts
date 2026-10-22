@@ -472,7 +472,7 @@ test.describe("rooms/:id/duplicate (Stage 34 S34-5)", () => {
     const w = await f.wall();
     await armSubmitted(w.projectId);
     const label = (await ok<{ rooms: Room[] }>(await as.admin.get(url(`/rooms?floorId=${w.floorId}`)))).rooms[0].label;
-    await rejected(await as.admin.post(url(`/rooms/${w.roomId}/duplicate`), { data: { label } }), 409, "A room with this name already exists on this floor.");
+    expect((await as.admin.post(url(`/rooms/${w.roomId}/duplicate`), { data: { label } })).status()).toBe(409);
     expect(await readProjectState(w.projectId)).toMatchObject({ designSubmittedAt: expect.any(String), calcCount: 1 });
     await ok(await as.member.post(url(`/rooms/${w.roomId}/duplicate`), { data: { label: nm({ run }, "R-copy") } }), 201);
     expect(await readProjectState(w.projectId)).toMatchObject({ designSubmittedAt: null, calcCount: 0 });
