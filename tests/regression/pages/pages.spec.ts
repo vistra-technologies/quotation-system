@@ -618,6 +618,36 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
     });
   });
 
+  test("Design canvas (Stage 34 B5): convert form with no door Selection - Door only is disabled with the (i) tooltip, and a client refusal (Panels 0) sends no request", async ({ browser, run, f, as, url }) => {
+    test.setTimeout(120_000);
+    const w = await readyWall(f, as.admin, url); // a glass Selection only: no DOOR in this project
+    await withPage({ browser, run }, "admin", undefined, async (o) => {
+      const sidePatches: string[] = [];
+      o.page.on("request", (r) => { if (r.method() === "PATCH" && /\/rooms\/[^/]+\/sides$/.test(r.url())) sidePatches.push(r.url()); });
+      await o.page.goto(orgTarget(run, `/projects/${w.projectId}/design`));
+      const sides = o.page.locator("svg polygon.cursor-pointer").filter({ visible: true });
+      await expect(sides).toHaveCount(4);
+      await sides.nth(1).click(); // side 0 is the wall; side 1 is still PLAIN
+      const convert = o.page.getByRole("button", { name: "Convert to Partition" });
+      await expect(convert).toBeVisible();
+      await expect(o.page.getByTestId("convert-panels").filter({ visible: true })).toHaveValue("3");
+      const doorOnly = o.page.getByTestId("convert-door-only").filter({ visible: true });
+      await expect(doorOnly).toBeDisabled();
+      const tip = o.page.getByTestId("convert-door-only-tip").filter({ visible: true });
+      const tipText = o.page.getByRole("tooltip").filter({ hasText: "No door is configured for this project" });
+      await expect(tipText).toBeHidden();
+      await tip.focus();
+      await expect(tipText).toBeVisible();
+      // client-side refusal: nothing is sent
+      await o.page.getByLabel("Width (mm)").fill("1500");
+      await o.page.getByLabel("Height (mm)").fill("2400");
+      await o.page.getByTestId("convert-panels").filter({ visible: true }).fill("0");
+      await convert.click();
+      await expect(o.page.getByTestId("convert-options-error")).toHaveText("Enter 1 to 20 panels");
+      expect(sidePatches, "a refused Panels value sends no sides PATCH").toEqual([]);
+    });
+  });
+
   test("Design canvas (Stage 34 B4): divider snap + lock, a locked panel is frozen (notice + Unlock), glass change keeps locked panels, door menus start with Lock, one menu at a time, layout holds", async ({ browser, run, f, as, url }) => {
     test.setTimeout(240_000);
     const c = { as, f, run };

@@ -43,6 +43,9 @@ describe("resolveConvertOptions", () => {
   test("doorOnly false behaves as absent: panelCount applies", () => {
     assert.deepEqual(resolveConvertOptions({ doorOnly: false, panelCount: 7, widthMm: 2100 }), { ok: true, count: 7, doorOnly: false });
     assert.deepEqual(resolveConvertOptions({ doorOnly: false, widthMm: 900 }), { ok: true, count: 3, doorOnly: false });
+    // D-24: false alone is absent, so a narrow wall is not refused (same as a body without the field)
+    assert.deepEqual(resolveConvertOptions({ doorOnly: false, widthMm: 250 }), { ok: true, count: 3, doorOnly: false });
+    assert.equal(resolveConvertOptions({ doorOnly: false, panelCount: 3, widthMm: 250 }).ok, false); // an explicit panelCount still opts in
   });
 });
 

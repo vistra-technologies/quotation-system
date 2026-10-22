@@ -191,14 +191,14 @@ export type ConvertOptions = { ok: true; count: number; doorOnly: boolean } | { 
 export function resolveConvertOptions(input: { panelCount?: unknown; doorOnly?: unknown; widthMm: number }): ConvertOptions {
   const { panelCount, doorOnly, widthMm } = input;
   const hasCount = panelCount !== undefined;
-  const hasDoorOnly = doorOnly !== undefined;
-  if (hasDoorOnly && typeof doorOnly !== "boolean") return { ok: false, error: "doorOnly must be a boolean." };
+  if (doorOnly !== undefined && typeof doorOnly !== "boolean") return { ok: false, error: "doorOnly must be a boolean." };
   if (hasCount && (typeof panelCount !== "number" || !Number.isInteger(panelCount) || panelCount < 1 || panelCount > MAX_CONVERT_PANELS)) {
     return { ok: false, error: `panelCount must be an integer between 1 and ${MAX_CONVERT_PANELS}.` };
   }
   const door = doorOnly === true;
   if (door && hasCount && panelCount !== 1) return { ok: false, error: "doorOnly cannot be combined with a panelCount other than 1." };
-  if (!hasCount && !hasDoorOnly) return { ok: true, count: DEFAULT_CONVERT_PANELS, doorOnly: false };
+  // D-24: `doorOnly: false` is treated as absent, so it does not opt into the width check on its own.
+  if (!hasCount && !door) return { ok: true, count: DEFAULT_CONVERT_PANELS, doorOnly: false };
   const count = door ? 1 : hasCount ? (panelCount as number) : DEFAULT_CONVERT_PANELS;
   if (Math.floor(widthMm / count) < MIN_PANEL_MM) {
     return { ok: false, error: `Each panel must be at least ${MIN_PANEL_MM} mm wide.` };

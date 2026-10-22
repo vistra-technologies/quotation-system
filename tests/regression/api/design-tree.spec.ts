@@ -915,6 +915,12 @@ test.describe("sides PATCH: convert options (Stage 34)", () => {
     expect(designOf(p).sections).toHaveLength(4);
   });
 
+  test("D-24: doorOnly false alone is treated as absent - a 250 mm wall converts to 3 panels (no 100 mm check), like a body without the field", async ({ as, f, run, url }) => {
+    const w = await f.wall();
+    const p = await created(as, url, await convert(as, url, w, nm({ run }, "Wf"), { doorOnly: false }, 250));
+    expect(designOf(p).sections.map((s) => s.widthMm)).toEqual([83, 83, 84]);
+  });
+
   test("panelCount / doorOnly on an element that keeps an existing partitionId -> 400", async ({ as, f, url }) => {
     const w = await f.wall();
     for (const extra of [{ panelCount: 2 }, { doorOnly: true }]) {
