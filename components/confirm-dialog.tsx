@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { Spinner } from "@/components/spinner";
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
@@ -53,6 +54,11 @@ interface ConfirmDialogProps {
    * Defaults to false (existing behaviour: overlay click triggers onCancel).
    */
   disableOverlayClose?: boolean;
+  /**
+   * Stage 34 S34-9 (D-43): while non-null, every button is disabled, the named button shows a spinner and
+   * Escape / overlay clicks are ignored. Default null = unchanged behaviour for every other caller.
+   */
+  pendingAction?: "confirm" | "third" | "cancel" | null;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -86,6 +92,7 @@ export function ConfirmDialog({
   confirmVariant = "danger",
   disableEscapeClose = false,
   disableOverlayClose = false,
+  pendingAction = null,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
@@ -101,7 +108,7 @@ export function ConfirmDialog({
   // Close on Escape key — only if not disabled (unsaved-changes modal requires
   // an explicit choice and must not dismiss on Escape).
   useEffect(() => {
-    if (!isOpen || disableEscapeClose) return;
+    if (!isOpen || disableEscapeClose || pendingAction) return;
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key !== "Escape") return;
       // Stop this Escape from also reaching any `document`-level keydown listener registered
@@ -119,12 +126,14 @@ export function ConfirmDialog({
     }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, disableEscapeClose, onCancel]);
+  }, [isOpen, disableEscapeClose, pendingAction, onCancel]);
 
   if (!isOpen) return null;
 
+  const pending = pendingAction !== null;
+
   function handleOverlayClick() {
-    if (!disableOverlayClose) onCancel();
+    if (!disableOverlayClose && !pendingAction) onCancel();
   }
 
   return (
@@ -169,7 +178,9 @@ export function ConfirmDialog({
             <button
               type="button"
               onClick={onCancel}
-              className="rounded-sm border border-border bg-bg-white px-4 py-2 text-sm font-bold text-text-body hover:border-[#b9c2ae]"
+              disabled={pending}
+              aria-busy={pendingAction === "cancel" || undefined}
+              className="rounded-sm border border-border bg-bg-white px-4 py-2 text-sm font-bold text-text-body hover:border-[#b9c2ae] disabled:cursor-default disabled:opacity-60"
             >
               {cancelLabel}
             </button>
@@ -181,13 +192,16 @@ export function ConfirmDialog({
             ref={confirmRef}
             type="button"
             onClick={onConfirm}
-            disabled={Boolean(errorMessage)}
+            disabled={Boolean(errorMessage) || pending}
+            aria-busy={pendingAction === "confirm" || undefined}
             className={
-              confirmVariant === "primary"
+              (confirmVariant === "primary"
                 ? "rounded-sm border border-primary-dark bg-primary px-4 py-2.5 text-sm font-bold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-primary"
-                : "rounded-sm border border-red-700 bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-red-600"
+                : "rounded-sm border border-red-700 bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-red-600") +
+              (pending ? " inline-flex items-center justify-center gap-2" : "")
             }
           >
+            {pendingAction === "confirm" && <Spinner tone="onPrimary" />}
             {confirmLabel}
           </button>
 
@@ -196,12 +210,19 @@ export function ConfirmDialog({
             <button
               type="button"
               onClick={thirdAction.onClick}
+              disabled={pending}
+              aria-busy={pendingAction === "third" || undefined}
               className={
-                thirdAction.variant === "danger"
+                (thirdAction.variant === "danger"
                   ? "rounded-sm border border-[var(--color-danger-border)] bg-bg-white px-4 py-2.5 text-sm font-bold text-[var(--color-status-failed-text)] hover:bg-[var(--color-danger-bg)]"
-                  : "rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:border-[#b9c2ae]"
+                  : "rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:border-[#b9c2ae]") +
+                " disabled:cursor-default disabled:opacity-60" +
+                (pending ? " inline-flex items-center justify-center gap-2" : "")
               }
             >
+              {pendingAction === "third" && (
+                <Spinner tone={thirdAction.variant === "danger" ? "danger" : "default"} />
+              )}
               {thirdAction.label}
             </button>
           )}
@@ -211,7 +232,9 @@ export function ConfirmDialog({
             <button
               type="button"
               onClick={onCancel}
-              className="rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:border-[#b9c2ae]"
+              disabled={pending}
+              aria-busy={pendingAction === "cancel" || undefined}
+              className="rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:border-[#b9c2ae] disabled:cursor-default disabled:opacity-60"
             >
               {cancelLabel}
             </button>

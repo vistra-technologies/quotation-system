@@ -14,7 +14,7 @@
  * dispatch actions via useDraftContext() from their own component files.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { UnitProvider } from "./unit-context";
@@ -30,6 +30,13 @@ import { RoomNameInput } from "./room-name-input";
 import { redirectToLogin } from "./login-redirect";
 import { makeDoorResolver, toPanelViewRow, toPanelViewRows } from "./partition-view";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { Spinner } from "@/components/spinner";
+import {
+  createRequestTracker,
+  findCachedPartition,
+  patchPartitionInCache,
+  roomSignature,
+} from "@/lib/room-partitions-cache";
 import { Toast, useToast } from "@/components/toast";
 import { ProblemPopup } from "../_problem-popup";
 import type { CalculationProblemReport } from "@/lib/materials/problems";
@@ -150,18 +157,32 @@ function DesignWorkspaceInner({
   );
   const [layoutSideSelection, setLayoutSideSelection] = useState<number | null>(null);
   const [addingRoomForEmptyState, setAddingRoomForEmptyState] = useState(false);
-  const [selectedRoomPartitions, setSelectedRoomPartitions] = useState<PartitionRow[]>([]);
-  // Stage 21 QA bug #18: the left-rail RoomList caches partitions locally and
-  // only fetches when not already cached, so a Configure-mode save (new
-  // panels/doors) didn't show up there until a full page refresh. Bumping
-  // this after every successful save lets RoomList patch its cache in place.
-  const [lastSavedPartition, setLastSavedPartition] = useState<PartitionRow | null>(null);
+  // Stage 34 S34-9 (D-38): ONE room-partitions cache, owned here (it used to be two: this component's and
+  // RoomList's, which fetched the same room twice). Panel-view rows keyed by room id; patched in place on every
+  // Configure-mode save (Stage 21 QA bug #18). Responses are written under their own room key, so a slow reply
+  // for room A can never render under room B; the tracker also drops an older reply for the same room.
+  const [partitionsByRoom, setPartitionsByRoom] = useState<Record<string, PartitionRow[]>>({});
+  const partitionsRef = useRef(partitionsByRoom);
+  useEffect(() => {
+    partitionsRef.current = partitionsByRoom;
+  }, [partitionsByRoom]);
+  const trackerRef = useRef(createRequestTracker());
+  const selectionsRef = useRef(selections);
+  useEffect(() => {
+    selectionsRef.current = selections;
+  }, [selections]);
+  // The partition being opened with a fetch in flight (row spinner + canvas overlay). Starts set for a deep link
+  // so the overlay shows from first paint.
+  const [openingPartitionId, setOpeningPartitionId] = useState<string | null>(initialPartitionId);
 
-  // Unsaved-changes modal state — shown when Back is clicked while isDirty.
+  // Unsaved-changes modal state — shown on Back and on any guarded switch while isDirty. `unsavedPending` is
+  // the button that is working (Save or Discard): all three buttons disable and the clicked one spins.
   const [unsavedModal, setUnsavedModal] = useState<{
     onSave: () => void;
     onDiscard: () => void;
   } | null>(null);
+  const [unsavedPending, setUnsavedPending] = useState<"save" | "discard" | null>(null);
+  const unsavedPendingRef = useRef<"save" | "discard" | null>(null);
 
   // Cancellation token for enterConfigureMode's async fetch — prevents the earlier
   // response from overwriting the state if the user clicks two partitions quickly.
@@ -170,6 +191,14 @@ function DesignWorkspaceInner({
 
   const selectedFloor = floors.find((f) => f.id === selectedFloorId) ?? null;
   const selectedRoom = selectedFloor?.rooms.find((r) => r.id === selectedRoomId) ?? null;
+  const selectedRoomPartitions = selectedRoom ? (partitionsByRoom[selectedRoom.id] ?? []) : [];
+  // The room has walls to fetch and nothing has arrived for it yet: show the placeholder, never another
+  // room's partitions. A stale entry (a convert added an id) keeps showing while the refetch runs.
+  const roomLoading =
+    viewMode === "layout" &&
+    selectedRoom !== null &&
+    selectedRoom.sides.some((s) => s.kind === "PARTITION") &&
+    partitionsByRoom[selectedRoom.id] === undefined;
 
   // Escape: clear context-menu-level selections (context menus added by D3/D4
   // handle Escape themselves first); then clear panel/edge selection via context.
@@ -194,41 +223,42 @@ function DesignWorkspaceInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch partitions for the selected room's PARTITION sides (layout-mode tooltip + left-rail preview).
-  useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-      if (!selectedRoom) {
-        if (!cancelled) setSelectedRoomPartitions([]);
-        return;
-      }
-      const hasPartitionSides = selectedRoom.sides.some((s) => s.kind === "PARTITION");
-      if (!hasPartitionSides) {
-        if (!cancelled) setSelectedRoomPartitions([]);
-        return;
-      }
+  /**
+   * The only room-partitions fetch (layout-mode canvas, tooltips, left-rail previews). Deduped by the tracker
+   * per room + set of partition ids; a changed set (a convert added a wall) fetches again.
+   */
+  const ensureRoomPartitions = useCallback(
+    async (room: RoomRow) => {
+      if (!room.sides.some((s) => s.kind === "PARTITION")) return;
+      const token = trackerRef.current.begin(room.id, roomSignature(room));
+      if (!token) return;
       try {
-        const res = await fetch(`/api/v1/orgs/${orgSlug}/partitions?roomId=${selectedRoom.id}`);
+        const res = await fetch(`/api/v1/orgs/${orgSlug}/partitions?roomId=${room.id}`);
         if (res.status === 401 || res.status === 403) {
           redirectToLogin(orgSlug, isSubdomain);
           return;
         }
-        const data = (res.ok ? await res.json() : { partitions: [] }) as {
-          partitions: PartitionRow[];
-        };
-        if (!cancelled) {
-          setSelectedRoomPartitions(toPanelViewRows(data.partitions, makeDoorResolver(selections)));
-        }
+        if (!res.ok) throw new Error(`partitions ${res.status}`);
+        const data = (await res.json()) as { partitions: PartitionRow[] };
+        if (!trackerRef.current.isCurrent(token)) return;
+        const rows = toPanelViewRows(data.partitions, makeDoorResolver(selectionsRef.current));
+        setPartitionsByRoom((prev) => ({ ...prev, [room.id]: rows }));
       } catch {
-        if (!cancelled) setSelectedRoomPartitions([]);
+        trackerRef.current.fail(token);
+        if (!trackerRef.current.isCurrent(token)) return;
+        // Settle the placeholder; the next switch to this room retries.
+        setPartitionsByRoom((prev) => (prev[room.id] ? prev : { ...prev, [room.id]: [] }));
       }
-    }
+    },
+    [orgSlug, isSubdomain],
+  );
 
-    void run();
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- `selections` is stable page props; adding it would refetch on every parent render.
-  }, [orgSlug, isSubdomain, selectedRoom]);
+  // Keyed on the room id + its partition-id signature, not the room object, so a rename does not refetch.
+  const selectedRoomSig = selectedRoom ? roomSignature(selectedRoom) : "";
+  useEffect(() => {
+    if (selectedRoom) void ensureRoomPartitions(selectedRoom);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedRoom is represented by its id + signature.
+  }, [selectedRoom?.id, selectedRoomSig, ensureRoomPartitions]);
 
   /**
    * Guard any navigation away from a dirty Configure-mode session — not just
@@ -243,40 +273,62 @@ function DesignWorkspaceInner({
       return;
     }
     setUnsavedModal({
+      // Stage 34 S34-9: the modal stays open, the clicked button spins and every button is disabled until the
+      // work finishes (unsavedPending). A second click while pending is ignored.
       onSave: async () => {
-        setSaveError(null);
-        const result = await save(orgSlug, isSubdomain);
-        if (!result.ok) {
-          setSaveError(result.error);
+        if (unsavedPendingRef.current) return;
+        unsavedPendingRef.current = "save";
+        setUnsavedPending("save");
+        try {
+          setSaveError(null);
+          const result = await save(orgSlug, isSubdomain);
+          if (!result.ok) {
+            setSaveError(result.error);
+            setUnsavedModal(null);
+            return;
+          }
+          // Re-fetch the server-rendered layout so Summary/Quotation pills reflect
+          // the cleared designSubmittedAt immediately — no manual page reload needed.
+          router.refresh();
+          setPartitionsByRoom((prev) => patchPartitionInCache(prev, result.partition));
+          result.updatedRooms.forEach(handleRoomRenamed);
           setUnsavedModal(null);
-          return;
+        } finally {
+          unsavedPendingRef.current = null;
+          setUnsavedPending(null);
         }
-        // Re-fetch the server-rendered layout so Summary/Quotation pills reflect
-        // the cleared designSubmittedAt immediately — no manual page reload needed.
-        router.refresh();
-        setSelectedRoomPartitions((prev) =>
-          prev.map((p) =>
-            p.id === result.partition.id
-              ? { id: result.partition.id, label: result.partition.label, heightMm: result.partition.heightMm, widthMm: result.partition.widthMm }
-              : p,
-          ),
-        );
-        setLastSavedPartition(result.partition);
-        result.updatedRooms.forEach(handleRoomRenamed);
-        setUnsavedModal(null);
         resumeAction();
       },
       onDiscard: async () => {
-        setUnsavedModal(null);
-        await discard(orgSlug, isSubdomain);
+        if (unsavedPendingRef.current) return;
+        unsavedPendingRef.current = "discard";
+        setUnsavedPending("discard");
+        try {
+          await discard(orgSlug, isSubdomain);
+          setUnsavedModal(null);
+        } finally {
+          unsavedPendingRef.current = null;
+          setUnsavedPending(null);
+        }
         resumeAction();
       },
     });
   }
 
-  /** Enter Configure mode: fetch partition → LOAD_PARTITION → switch view. */
+  /**
+   * Enter Configure mode. Re-clicking the open partition, or one already being opened, does nothing (S34-9).
+   * The guard runs first (a dirty draft asks Save / Discard / Cancel).
+   */
   function enterConfigureMode(partitionId: string) {
+    if (viewMode === "configure" && state.partitionId === partitionId) return;
+    if (openingPartitionId === partitionId) return;
     runWithUnsavedGuard(() => void doEnterConfigureMode(partitionId));
+  }
+
+  /** Drop a still-pending partition open (the user moved on); its late reply must not flip the view. */
+  function cancelPendingOpen() {
+    fetchCancelRef.current.cancelled = true;
+    setOpeningPartitionId(null);
   }
 
   async function doEnterConfigureMode(partitionId: string) {
@@ -285,19 +337,41 @@ function DesignWorkspaceInner({
     fetchCancelRef.current.cancelled = true;
     const token = { cancelled: false };
     fetchCancelRef.current = token;
+    // A cached row opens synchronously: no fetch and no pending state (D-42). Only a miss (problem-popup Go,
+    // ?partition= deep link, or a row whose design failed to parse) fetches and shows the pending UI.
+    const cached = findCachedPartition(partitionsRef.current, partitionId);
+    if (!cached?.design) setOpeningPartitionId(partitionId);
     try {
-      const res = await fetch(`/api/v1/orgs/${orgSlug}/partitions/${partitionId}`);
-      if (token.cancelled) return;
-      if (res.status === 401 || res.status === 403) {
-        redirectToLogin(orgSlug, isSubdomain);
-        return;
+      await openPartition(partitionId, token, cached?.design ? cached : undefined);
+    } finally {
+      if (!token.cancelled) setOpeningPartitionId(null);
+    }
+  }
+
+  async function openPartition(
+    partitionId: string,
+    token: { cancelled: boolean },
+    cachedRow: PartitionRow | undefined,
+  ) {
+    try {
+      let partition: PartitionRow;
+      if (cachedRow) {
+        // Already in the panel view (it came through toPanelViewRows / the save patch).
+        partition = cachedRow;
+      } else {
+        const res = await fetch(`/api/v1/orgs/${orgSlug}/partitions/${partitionId}`);
+        if (token.cancelled) return;
+        if (res.status === 401 || res.status === 403) {
+          redirectToLogin(orgSlug, isSubdomain);
+          return;
+        }
+        if (!res.ok) return;
+        const { partition: rawPartition } = (await res.json()) as { partition: PartitionRow };
+        if (token.cancelled) return;
+        // Stage 22 (D-6): stored v1/v2 design -> panel view, once, at this boundary. Throws on a
+        // malformed stored document -> caught below, Configure mode simply doesn't open.
+        partition = toPanelViewRow(rawPartition, makeDoorResolver(selections));
       }
-      if (!res.ok) return;
-      const { partition: rawPartition } = (await res.json()) as { partition: PartitionRow };
-      if (token.cancelled) return;
-      // Stage 22 (D-6): stored v1/v2 design -> panel view, once, at this boundary. Throws on a
-      // malformed stored document -> caught below, Configure mode simply doesn't open.
-      const partition = toPanelViewRow(rawPartition, makeDoorResolver(selections));
       dispatch({ type: "LOAD_PARTITION", partition });
       // Pre-select the first panel so Configure mode opens ready to edit
       // (assign a door/material) instead of requiring an explicit click first.
@@ -348,6 +422,7 @@ function DesignWorkspaceInner({
   }
 
   function doBackFromConfigureMode() {
+    cancelPendingOpen();
     setViewMode("layout");
     // No wall preselected on return — land on the plain "click a wall" state
     // instead of re-highlighting the wall just converted/configured.
@@ -369,19 +444,13 @@ function DesignWorkspaceInner({
     // The API's updatePartition() clears designSubmittedAt whenever design/heightMm
     // is in the PATCH body (D-14/D-17); the refresh propagates that to the pills.
     router.refresh();
-    setSelectedRoomPartitions((prev) =>
-      prev.map((p) =>
-        p.id === result.partition.id
-          ? { id: result.partition.id, label: result.partition.label, heightMm: result.partition.heightMm, widthMm: result.partition.widthMm }
-          : p,
-      ),
-    );
-    setLastSavedPartition(result.partition);
+    setPartitionsByRoom((prev) => patchPartitionInCache(prev, result.partition));
     result.updatedRooms.forEach(handleRoomRenamed);
   }
 
   function selectFloor(floorId: string) {
     runWithUnsavedGuard(() => {
+      cancelPendingOpen();
       setSelectedFloorId(floorId);
       const floor = floors.find((f) => f.id === floorId);
       const firstRoom = floor?.rooms[0] ?? null;
@@ -418,7 +487,10 @@ function DesignWorkspaceInner({
   }
 
   function selectRoom(room: RoomRow) {
+    // Re-click of the open room: nothing (no guard, no pending, no fetch).
+    if (room.id === selectedRoomId && viewMode === "layout") return;
     runWithUnsavedGuard(() => {
+      cancelPendingOpen();
       setSelectedRoomId(room.id);
       setViewMode("layout");
       setLayoutSideSelection(null);
@@ -451,6 +523,12 @@ function DesignWorkspaceInner({
   }
 
   function handleRoomDeleted(roomId: string) {
+    setPartitionsByRoom((prev) => {
+      if (!(roomId in prev)) return prev;
+      const next = { ...prev };
+      delete next[roomId];
+      return next;
+    });
     // Remove the room from workspace's floors state so re-renders don't resurrect it.
     setFloors((prev) =>
       prev.map((f) =>
@@ -534,17 +612,17 @@ function DesignWorkspaceInner({
           // Default: minmax(210px,250px) 1fr minmax(260px,300px)
           // Tailwind v4 arbitrary grid-template-columns:
           "[grid-template-columns:minmax(210px,250px)_minmax(360px,1fr)_minmax(260px,300px)]",
-          "gap-[18px] px-6 py-[18px]",
+          "gap-3 px-4 py-3",
           "max-w-[1480px] mx-auto w-full",
           // 1400px breakpoint
           "max-[1400px]:[grid-template-columns:minmax(196px,226px)_minmax(320px,1fr)_minmax(240px,270px)]",
-          "max-[1400px]:gap-[14px] max-[1400px]:px-[18px] max-[1400px]:py-[14px]",
+          "max-[1400px]:gap-[10px] max-[1400px]:px-3 max-[1400px]:py-[10px]",
           // 1180px breakpoint → single column
           "max-[1180px]:grid-cols-1",
         ].join(" ")}
       >
         {/* Column 1: left rail — floor bar + room list */}
-        <aside className="flex flex-col overflow-hidden rounded-[10px] border border-border bg-bg-card p-4">
+        <aside className="flex flex-col overflow-hidden rounded-[10px] border border-border bg-bg-card px-[10px] py-3">
           <FloorBar
             orgSlug={orgSlug}
             projectId={projectId}
@@ -576,8 +654,10 @@ function DesignWorkspaceInner({
                   onRoomDeleted={handleRoomDeleted}
                   onSelectPartition={enterConfigureMode}
                   selectedPartitionId={viewMode === "configure" ? state.partitionId : null}
-                  lastSavedPartition={lastSavedPartition}
-                  selections={selections}
+                  partitionsByRoom={partitionsByRoom}
+                  onEnsurePartitions={ensureRoomPartitions}
+                  pendingRoomId={roomLoading ? selectedRoomId : null}
+                  pendingPartitionId={openingPartitionId}
                 />
               ) : null}
             </>
@@ -613,7 +693,7 @@ function DesignWorkspaceInner({
 
         {/* Column 2: center — empty / layout / configure */}
         <div
-          className="flex flex-col overflow-hidden rounded-[10px] border border-border bg-bg-card"
+          className="relative flex flex-col overflow-hidden rounded-[10px] border border-border bg-bg-card"
           onClick={() => setLayoutSideSelection(null)}
         >
           {saveError && (
@@ -637,6 +717,29 @@ function DesignWorkspaceInner({
               className="flex flex-1 flex-col gap-4 overflow-y-auto p-6"
               onClick={(e) => e.stopPropagation()}
             >
+              {roomLoading ? (
+                // Stage 34 S34-9 (mockup v7 state 11): the previous room's walls are gone at once; the room name
+                // pulses above a dashed sage skeleton with a spinner.
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="animate-pulse text-base font-extrabold text-text-muted">
+                      {state.pendingRoomNameEdits[selectedRoom.id] ?? selectedRoom.label}
+                    </span>
+                  </div>
+                  <div
+                    role="status"
+                    aria-label={t("loadingPartitions")}
+                    data-testid="room-canvas-loading"
+                    className="relative flex min-h-0 flex-1 items-center justify-center rounded-[8px] border border-[var(--color-border-strong)] bg-bg-white px-[26px] py-[20px] shadow-[0_2px_10px_-4px_rgba(27,40,30,.10)]"
+                  >
+                    <div className="h-full min-h-[160px] w-full animate-pulse rounded-[4px] border border-dashed border-primary-soft bg-primary-softer" />
+                    <div className="absolute inset-0 flex items-center justify-center rounded-[8px] bg-[rgba(251,250,245,.72)]">
+                      <Spinner size={22} />
+                    </div>
+                  </div>
+                </>
+              ) : (
+              <>
               <div className="flex flex-wrap items-center gap-2">
                 <RoomNameInput
                   orgSlug={orgSlug}
@@ -674,6 +777,8 @@ function DesignWorkspaceInner({
               {/* Legend — sibling BELOW the canvas card, not nested inside it
                   (matches the mockup: it sits on the page background). */}
               <RoomFloorPlanLegend />
+              </>
+              )}
             </div>
           ) : (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
@@ -701,6 +806,18 @@ function DesignWorkspaceInner({
                     {t("newRoom")}
                   </button>
                 ))}
+            </div>
+          )}
+          {/* Stage 34 S34-9 (mockup v7 state 12): a partition open with a fetch in flight keeps the current view
+              under a light overlay until Configure opens. */}
+          {openingPartitionId && (
+            <div
+              role="status"
+              aria-label={t("loadingPartitions")}
+              data-testid="partition-open-overlay"
+              className="absolute inset-0 z-10 flex items-center justify-center rounded-[10px] bg-[rgba(251,250,245,.72)]"
+            >
+              <Spinner size={22} />
             </div>
           )}
         </div>
@@ -764,8 +881,13 @@ function DesignWorkspaceInner({
             onClick: () => unsavedModal.onDiscard(),
             variant: "danger",
           }}
+          pendingAction={
+            unsavedPending === "save" ? "confirm" : unsavedPending === "discard" ? "third" : null
+          }
           onConfirm={() => unsavedModal.onSave()}
-          onCancel={() => setUnsavedModal(null)}
+          onCancel={() => {
+            if (!unsavedPending) setUnsavedModal(null);
+          }}
         />
       )}
 

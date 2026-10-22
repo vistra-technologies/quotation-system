@@ -8,7 +8,7 @@ import { PartitionPreview } from "./partition-preview";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { redirectToLogin } from "./login-redirect";
 import { useDraftContext } from "./design-draft-context";
-import { makeDoorResolver, toPanelViewRows } from "./partition-view";
+import { Spinner } from "@/components/spinner";
 import type { PartitionRow, RoomRow, SelectionRow } from "./types";
 import { apiErrorMessage } from "@/lib/api-error-message";
 
@@ -20,7 +20,8 @@ interface RoomListProps {
   selectedRoomId: string | null;
   onSelectRoom: (room: RoomRow) => void;
   onRoomCreated: (room: RoomRow) => void;
-  /** Stage 34 S34-5: called with the copy after a successful Duplicate (the workspace opens it through the unsaved-changes guard). */
+  /** Stage 34 S34-5: called with the copy after a successful Duplicate. The unsaved-changes guard already ran
+   * before the request (D-32), so the workspace opens the copy directly. */
   onRoomDuplicated?: (room: RoomRow) => void;
   /** The workspace's unsaved-changes guard; the Duplicate request runs inside it (D-32). Defaults to running at once. */
   runWithUnsavedGuard?: (resume: () => void) => void;
@@ -54,16 +55,15 @@ interface RoomListProps {
    */
   selectedPartitionId?: string | null;
   /**
-   * The partition most recently saved from Configure mode, if any. RoomList's
-   * partitionsByRoom cache is otherwise only populated on first expand and
-   * never invalidated — without this, a save (new panels/doors) wouldn't show
-   * up in the left rail's per-partition preview until a full page reload
-   * (Stage 21 QA bug #18).
+   * Stage 34 S34-9 (D-38): the workspace owns the room-partitions cache (panel-view rows, patched in place on
+   * every Configure-mode save) and the single fetch path. RoomList only asks for expanded rooms.
    */
-  lastSavedPartition?: PartitionRow | null;
-  /** The project's Selections — used to normalize each fetched partition's stored v2 design
-   * to the panel view (Stage 22, D-6). */
-  selections: SelectionRow[];
+  partitionsByRoom: Record<string, PartitionRow[]>;
+  onEnsurePartitions: (room: RoomRow) => void;
+  /** The room whose partitions are loading (sage pending row + spinner after the walls count). */
+  pendingRoomId?: string | null;
+  /** The partition being opened (pending row + spinner). */
+  pendingPartitionId?: string | null;
   /**
    * A4↔B1 wiring note (for reviewers):
    * Track B's B1 empty-state CTA triggers `addingRoomForEmptyState` state in
@@ -100,8 +100,10 @@ export function RoomList({
   onRoomDeleted,
   onSelectPartition,
   selectedPartitionId,
-  lastSavedPartition,
-  selections,
+  partitionsByRoom,
+  onEnsurePartitions,
+  pendingRoomId,
+  pendingPartitionId,
 }: RoomListProps) {
   const t = useTranslations("design");
 
@@ -125,89 +127,29 @@ export function RoomList({
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  // Partitions fetched lazily per expanded room. The collection route returns
-  // the full Prisma row (including design JSONB), so PartitionPreview can render
-  // per-panel proportions.
-  const [partitionsByRoom, setPartitionsByRoom] = useState<
-    Record<string, PartitionRow[]>
-  >({});
-
-  // Coverage-checked refetch — only fetch when a room is expanded and its
-  // partition IDs aren't all cached yet (handles newly-converted sides).
+  // Ask the workspace for the partitions of every expanded room; its tracker dedupes (one request per room
+  // and set of partition ids), so this never doubles the selected room's own fetch (D-38).
   useEffect(() => {
     for (const room of rooms) {
-      if (!expandedRoomIds.has(room.id)) continue;
-      const partitionSideIds = room.sides
-        .filter((s): s is Extract<RoomRow["sides"][number], { kind: "PARTITION" }> => s.kind === "PARTITION")
-        .map((s) => s.partitionId);
-      if (partitionSideIds.length === 0) continue;
-
-      const cached = partitionsByRoom[room.id];
-      const fullyCovered =
-        cached !== undefined &&
-        partitionSideIds.every((id) => cached.some((p) => p.id === id));
-      if (fullyCovered) continue;
-
-      fetch(`/api/v1/orgs/${orgSlug}/partitions?roomId=${room.id}`)
-        .then((res) => {
-          if (res.status === 401 || res.status === 403) {
-            redirectToLogin(orgSlug, isSubdomain);
-            return { partitions: [] };
-          }
-          return res.ok ? res.json() : { partitions: [] };
-        })
-        .then((data: { partitions: PartitionRow[] }) => {
-          setPartitionsByRoom((prev) => ({
-            ...prev,
-            [room.id]: toPanelViewRows(data.partitions, makeDoorResolver(selections)),
-          }));
-        })
-        .catch(() => {
-          setPartitionsByRoom((prev) => ({ ...prev, [room.id]: [] }));
-        });
+      if (expandedRoomIds.has(room.id)) onEnsurePartitions(room);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- rooms changes per render; re-running on rooms/expandedRoomIds/partitionsByRoom changes is intentional.
-  }, [rooms, expandedRoomIds, orgSlug, isSubdomain]);
-
-  // Patch the cache in place whenever a Configure-mode save reports a fresh
-  // partition (bug #18) — replaces the stale cached row wherever it appears,
-  // instead of waiting for the "not fully covered" refetch check above (which
-  // never re-fires for a partition it already has, however stale). Compared
-  // by reference during render (matches this file's prevPartitionId pattern
-  // elsewhere) rather than in a useEffect, since design-workspace.tsx hands
-  // down a new PartitionRow object on every successful save.
-  const [appliedSavedPartition, setAppliedSavedPartition] = useState<PartitionRow | null>(null);
-  if (lastSavedPartition && lastSavedPartition !== appliedSavedPartition) {
-    setAppliedSavedPartition(lastSavedPartition);
-    setPartitionsByRoom((prev) => {
-      let changed = false;
-      const next: typeof prev = {};
-      for (const [roomId, partitions] of Object.entries(prev)) {
-        const idx = partitions.findIndex((p) => p.id === lastSavedPartition.id);
-        if (idx === -1) {
-          next[roomId] = partitions;
-          continue;
-        }
-        changed = true;
-        next[roomId] = [
-          ...partitions.slice(0, idx),
-          lastSavedPartition,
-          ...partitions.slice(idx + 1),
-        ];
-      }
-      return changed ? next : prev;
-    });
-  }
+  }, [rooms, expandedRoomIds, onEnsurePartitions]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   function toggleRoom(room: RoomRow) {
-    setExpandedRoomIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(room.id)) next.delete(room.id);
-      else next.add(room.id);
-      return next;
-    });
+    if (room.id === selectedRoomId) {
+      // Re-click of the open room (D-39): chevron toggle only, no select / fetch / pending.
+      setExpandedRoomIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(room.id)) next.delete(room.id);
+        else next.add(room.id);
+        return next;
+      });
+      return;
+    }
+    // Switching to a room always expands it (mockup v7).
+    setExpandedRoomIds((prev) => new Set(prev).add(room.id));
     onSelectRoom(room);
   }
 
@@ -275,19 +217,19 @@ export function RoomList({
         <button
           type="button"
           onClick={() => setAddingRoom(true)}
-          className="mb-3 flex w-full shrink-0 items-center justify-center gap-1.5 rounded-sm border border-dashed border-primary-soft px-3 py-2 text-center text-[12px] font-bold text-primary-dark hover:bg-primary-softer"
+          className="mb-2.5 flex w-full shrink-0 items-center justify-center gap-1.5 rounded-sm border border-dashed border-primary-soft px-3 py-[7px] text-center text-[12px] font-bold text-primary-dark hover:bg-primary-softer"
         >
           {t("newRoom")}
         </button>
       )}
 
       {/* "Rooms" section label — below Add Room zone, above count + list */}
-      <h2 className="mb-1 shrink-0 text-xs font-bold text-text-heading">
+      <h2 className="mb-0.5 shrink-0 text-xs font-bold text-text-heading">
         {t("wallsTitle")}
       </h2>
 
       {/* Rooms-count summary (mockup: #roomsCount) */}
-      <p className="mb-3 shrink-0 text-[11.5px] text-text-muted">
+      <p className="mb-1.5 mt-px shrink-0 text-[11.5px] text-text-muted">
         {t("roomsSummary", { rooms: visibleRooms.length, partitions: totalPartitions })}
       </p>
 
@@ -300,13 +242,14 @@ export function RoomList({
             {visibleRooms.map((room) => {
               const expanded = expandedRoomIds.has(room.id);
               const isActiveRoom = selectedRoomId === room.id;
+              const isPendingRoom = pendingRoomId === room.id;
               const partitionCount = room.sides.filter((s) => s.kind === "PARTITION").length;
               const totalSides = room.sides.length;
 
               return (
                 <li
                   key={room.id}
-                  className="border-t border-border first:border-t-0"
+                  className="border-t border-border py-[3px] first:border-t-0"
                 >
                   {/* Room group header row — S21-A2 */}
                   <div
@@ -319,7 +262,9 @@ export function RoomList({
                     <button
                       type="button"
                       onClick={() => toggleRoom(room)}
-                      className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1 py-1.5 text-left font-inherit"
+                      data-testid={`room-row-${room.id}`}
+                      data-pending={isPendingRoom ? "true" : undefined}
+                      className="flex min-w-0 flex-1 items-center gap-1.5 rounded-sm px-1 py-1 text-left font-inherit"
                     >
                       <span
                         className={[
@@ -330,13 +275,19 @@ export function RoomList({
                       >
                         ›
                       </span>
-                      <span className="min-w-0 flex-1 truncate text-[12.5px] font-bold text-text-heading">
+                      <span
+                        className={[
+                          "min-w-0 flex-1 truncate text-[12.5px] font-bold",
+                          isPendingRoom ? "text-primary-dark" : "text-text-heading",
+                        ].join(" ")}
+                      >
                         {/* R-8c: show pending rename if present, else saved label */}
                         {draftState.pendingRoomNameEdits[room.id] ?? room.label}
                       </span>
                       <span className="shrink-0 text-[11px] text-text-muted">
                         {t("convertedWalls", { converted: partitionCount, total: totalSides })}
                       </span>
+                      {isPendingRoom && <Spinner className="ml-1" />}
                     </button>
 
                     {/* Stage 34 S34-5: Duplicate room (two overlapping squares), beside the trash */}
@@ -389,9 +340,9 @@ export function RoomList({
 
                   {/* Expanded body: partition rows */}
                   {expanded && (
-                    <div className="ml-3 border-l border-border py-1 pl-3">
+                    <div className="ml-3 border-l border-border py-0.5 pl-2">
                       {room.sides.filter((s) => s.kind === "PARTITION").length === 0 ? (
-                        <p className="px-1 py-1 text-[11px] text-text-muted">
+                        <p className="px-1 pb-1.5 pt-px text-[11px] text-text-muted">
                           {t("noPartitionsYet")}
                         </p>
                       ) : (
@@ -420,9 +371,13 @@ export function RoomList({
                                   onSelectPartition?.(partition.id, sideIndex);
                                 }
                               }}
+                              data-testid={`partition-row-${partition.id}`}
+                              data-pending={pendingPartitionId === partition.id ? "true" : undefined}
                               className={[
-                                "mb-0.5 flex cursor-pointer flex-col gap-0.5 rounded-sm border-l-2 px-2.5 py-1.5 text-xs transition-colors",
-                                selectedPartitionId === partition.id
+                                "mb-0.5 flex cursor-pointer flex-col gap-0.5 rounded-sm border-l-2 py-[5px] pl-2 pr-2 text-xs transition-colors",
+                                pendingPartitionId === partition.id
+                                  ? "border-transparent bg-primary-softer"
+                                  : selectedPartitionId === partition.id
                                   ? "border-primary bg-primary-softer"
                                   : "border-transparent hover:border-primary-soft hover:bg-bg-hover",
                                 !onSelectPartition && "cursor-default",
@@ -430,14 +385,25 @@ export function RoomList({
                                 .filter(Boolean)
                                 .join(" ")}
                             >
-                              <div className="flex items-baseline justify-between gap-1.5">
-                                <span className="min-w-0 truncate text-[12px] font-bold text-text-heading">
+                              <div
+                                className={[
+                                  "flex justify-between gap-1.5",
+                                  pendingPartitionId === partition.id ? "items-center" : "items-baseline",
+                                ].join(" ")}
+                              >
+                                <span
+                                  className={[
+                                    "min-w-0 truncate text-[12px] font-bold",
+                                    pendingPartitionId === partition.id ? "text-primary-dark" : "text-text-heading",
+                                  ].join(" ")}
+                                >
                                   {partition.label}
                                 </span>
                                 <span className="shrink-0 text-[10.5px] text-text-muted">
                                   {(partition.design?.panels?.length ?? 0)}{" "}
                                   {(partition.design?.panels?.length ?? 0) === 1 ? "panel" : "panels"}
                                 </span>
+                                {pendingPartitionId === partition.id && <Spinner className="ml-1" />}
                               </div>
                               <PartitionPreview partition={partition} />
                             </div>

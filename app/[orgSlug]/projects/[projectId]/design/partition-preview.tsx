@@ -25,7 +25,7 @@ export function PartitionPreview({ partition }: PartitionPreviewProps) {
     // No panels yet (new partition, empty design) — flat-colour fallback.
     return (
       <div
-        className="mt-1 h-[38px] w-full overflow-hidden rounded-[3px] border border-border bg-primary-softer"
+        className="mt-1 h-[30px] w-full overflow-hidden rounded-[3px] border border-border bg-primary-softer"
         aria-hidden="true"
       />
     );
@@ -38,7 +38,7 @@ export function PartitionPreview({ partition }: PartitionPreviewProps) {
     // GLASS_PREVIEW_COLOR fallback) — individual panels stay transparent so
     // the tint shows through, divided only by their borders.
     <div
-      className="mt-1 flex h-[38px] w-full overflow-hidden rounded-[3px] border-[1.5px] border-border bg-primary-softer"
+      className="mt-1 flex h-[30px] w-full overflow-hidden rounded-[3px] border-[1.5px] border-border bg-primary-softer"
       aria-hidden="true"
     >
       {panels.map((panel) => (

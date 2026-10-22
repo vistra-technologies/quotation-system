@@ -242,7 +242,12 @@ export function RoomFloorPlan({
     // aspect ratio and never overflowing its container. The batch-3 viewBox
     // margin (-6 -6 212 212) is kept — it was a separate, correct fix for
     // stroke clipping at the polygon edges.
-    <div className="flex h-full w-full items-center justify-center p-4">
+    <div
+      data-testid="room-floor-plan"
+      data-room-id={room.id}
+      data-partition-ids={partitions.map((p) => p.id).join(",")}
+      className="flex h-full w-full items-center justify-center p-4"
+    >
       <div
         className="relative"
         style={{ aspectRatio: "1 / 1", maxHeight: "100%", maxWidth: "100%", width: "100%" }}

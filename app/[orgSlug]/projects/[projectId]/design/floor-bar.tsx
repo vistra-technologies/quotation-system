@@ -188,9 +188,9 @@ export function FloorBar({
   if (mode === "adding" || mode === "renaming") {
     const isAdding = mode === "adding";
     return (
-      <div className="mb-3 flex flex-col gap-1">
+      <div className="mb-2 flex flex-col gap-1">
         {error && <p className="text-[11px] text-red-700">{error}</p>}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-[5px]">
           <input
             type="text"
             autoFocus
@@ -232,7 +232,7 @@ export function FloorBar({
 
   return (
     <>
-      <div className="mb-3 flex items-center gap-1.5">
+      <div className="mb-2 flex items-center gap-[5px]">
         {/* Floor selector — min-w-0/flex-1 on the wrapper div (not on SelectField itself)
             so the trigger inherits the flex sizing of this row correctly. */}
         <div className="min-w-0 flex-1">

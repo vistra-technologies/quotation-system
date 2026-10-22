@@ -729,6 +729,199 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
     });
   });
 
+  test("Design canvas (Stage 34 B8): loading feedback - room switch shows the pending row + placeholder with one fetch per room and no cross-room bleed, cached partition opens with no fetch, re-clicks do nothing, the ?partition= deep link fetches once under the overlay, and the unsaved-changes modal spins, disables and ignores Escape / outside clicks while Save or Discard works", async ({ browser, run, f, as, url }) => {
+    test.setTimeout(240_000);
+    const w = await readyWall(f, as.admin, url);
+    // a second room with one converted wall, so there is something to switch to
+    const rb = await as.admin.post(url("/rooms"), { data: { floorId: w.floorId, label: `${run.prefix}RB` } });
+    expect(rb.status(), await rb.text()).toBe(201);
+    const roomB = ((await rb.json()) as { room: { id: string } }).room.id;
+    const sb = await as.admin.patch(url(`/rooms/${roomB}/sides`), {
+      data: {
+        sides: [
+          { kind: "PARTITION", turnDegrees: 90, label: `${run.prefix}Wall B`, heightMm: 2400, widthMm: 2000 },
+          { kind: "PLAIN", turnDegrees: 90 },
+          { kind: "PLAIN", turnDegrees: 90 },
+          { kind: "PLAIN", turnDegrees: 90 },
+        ],
+      },
+    });
+    expect(sb.status(), await sb.text()).toBe(200);
+    const partB = ((await sb.json()) as { room: { sides: { partitionId?: string }[] } }).room.sides[0].partitionId!;
+    const roomA = w.roomId;
+    const partA = w.partitionId;
+
+    await withPage({ browser, run }, "admin", undefined, async (o) => {
+      const page = o.page;
+      const reqs: string[] = [];
+      page.on("request", (r) => {
+        if (r.method() !== "GET") return;
+        const u = new URL(r.url());
+        if (u.pathname.includes("/api/v1/orgs/")) reqs.push(u.pathname + u.search);
+      });
+      const roomFetches = (id: string) => reqs.filter((u) => u.endsWith(`/partitions?roomId=${id}`)).length;
+      const partFetches = (id: string) => reqs.filter((u) => u.endsWith(`/partitions/${id}`)).length;
+      const gate = () => {
+        let release!: () => void;
+        const p = new Promise<void>((r) => (release = r));
+        return { p, release };
+      };
+      const plan = page.getByTestId("room-floor-plan").filter({ visible: true });
+      const loading = page.getByTestId("room-canvas-loading").filter({ visible: true });
+      const rowOf = (id: string) => page.getByTestId(`room-row-${id}`).filter({ visible: true });
+      const partRow = (id: string) => page.getByTestId(`partition-row-${id}`).filter({ visible: true });
+      const back = page.getByRole("button", { name: "Back to Room Layout" });
+
+      // 1. Room switch. Both rooms' partition lists are held back so the pending states can be seen.
+      const gateA = gate();
+      const gateB = gate();
+      await page.route(
+        (u) => u.pathname.endsWith("/partitions") && !!u.searchParams.get("roomId"),
+        async (route) => {
+          const id = new URL(route.request().url()).searchParams.get("roomId");
+          if (id === roomA) await gateA.p;
+          if (id === roomB) await gateB.p;
+          await route.continue();
+        },
+      );
+      await page.goto(orgTarget(run, `/projects/${w.projectId}/design`));
+      await expect(loading, "initial room: placeholder until its partitions arrive").toBeVisible();
+      await rowOf(roomB).click();
+      await expect(rowOf(roomB)).toHaveAttribute("data-pending", "true");
+      await expect(loading).toBeVisible();
+      await expect(plan, "the previous room's walls are gone at once").toHaveCount(0);
+      gateB.release();
+      await expect(plan).toHaveAttribute("data-room-id", roomB);
+      await expect(plan).toHaveAttribute("data-partition-ids", partB);
+      await expect(rowOf(roomB)).not.toHaveAttribute("data-pending", "true");
+      // race: room A's slow reply lands after B is selected and must not touch B's canvas
+      gateA.release();
+      await page.waitForTimeout(700);
+      await expect(plan).toHaveAttribute("data-room-id", roomB);
+      await expect(plan).toHaveAttribute("data-partition-ids", partB);
+      expect(roomFetches(roomB), "exactly one GET /partitions?roomId= for the first visit of B").toBe(1);
+      expect(roomFetches(roomA), "A: one request, not two (the duplicate fetch is gone)").toBe(1);
+      // back to A: its reply is cached -> no pending, no new request
+      const before = reqs.length;
+      await rowOf(roomA).click();
+      await expect(plan).toHaveAttribute("data-room-id", roomA);
+      await expect(plan).toHaveAttribute("data-partition-ids", partA);
+      await expect(rowOf(roomA)).not.toHaveAttribute("data-pending", "true");
+      await page.waitForTimeout(400);
+      expect(reqs.slice(before).filter((u) => u.includes("/partitions")), "revisiting a loaded room makes no request").toEqual([]);
+
+      // 2. Re-click of the open room: nothing is fetched or pending (the chevron only toggles)
+      const b2 = reqs.length;
+      await rowOf(roomA).click();
+      await rowOf(roomA).click();
+      await expect(rowOf(roomA)).not.toHaveAttribute("data-pending", "true");
+      await expect(plan).toHaveAttribute("data-room-id", roomA);
+      await page.waitForTimeout(400);
+      expect(reqs.slice(b2).filter((u) => u.includes("/partitions"))).toEqual([]);
+
+      // 3. A cached partition row opens Configure with no GET /partitions/{id} and no overlay left behind
+      await expect(partRow(partA)).toBeVisible();
+      await partRow(partA).click();
+      await expect(back).toBeVisible();
+      await expect(page.getByTestId("partition-open-overlay")).toHaveCount(0);
+      expect(partFetches(partA), "no GET /partitions/{id} for a cached row").toBe(0);
+      // re-click of the open partition: no fetch, no pending
+      await partRow(partA).click();
+      await page.waitForTimeout(400);
+      expect(partFetches(partA)).toBe(0);
+      await expect(partRow(partA)).not.toHaveAttribute("data-pending", "true");
+      await expect(back).toBeVisible();
+      await back.click();
+      await expect(back).toBeHidden();
+
+      // 4. ?partition= deep link: the fetch is held back, the overlay shows, then Configure opens (one fetch)
+      const gateP = gate();
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+      await page.route(
+        (u) => u.pathname.endsWith(`/partitions/${partB}`),
+        async (route) => {
+          if (route.request().method() === "GET") await gateP.p;
+          await route.continue();
+        },
+      );
+      const b4 = reqs.length;
+      await page.goto(orgTarget(run, `/projects/${w.projectId}/design?partition=${partB}`));
+      await expect(page.getByTestId("partition-open-overlay")).toBeVisible();
+      gateP.release();
+      await expect(back).toBeVisible();
+      await expect(page.getByTestId("partition-open-overlay")).toHaveCount(0);
+      expect(reqs.slice(b4).filter((u) => u.endsWith(`/partitions/${partB}`)), "deep link: exactly one fetch").toHaveLength(1);
+
+      // 5. Unsaved-changes modal: Save works while every button is disabled and Escape / outside clicks are ignored
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+      const dirty = async (mm: string) => {
+        await page.getByLabel("Partition width").fill(mm);
+        await page.getByRole("button", { name: "Apply width", exact: true }).click();
+        await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled();
+      };
+      const dialog = page.getByRole("dialog");
+      const saveBtn = page.getByRole("button", { name: "Save & Go Back", exact: true });
+      const discardBtn = page.getByRole("button", { name: "Discard Changes", exact: true });
+      const cancelBtn = dialog.getByRole("button", { name: "Cancel", exact: true });
+      await dirty("2100");
+      await back.click();
+      await expect(dialog, "the guard still blocks Back").toBeVisible();
+      await cancelBtn.click();
+      await expect(dialog).toBeHidden();
+      await expect(back).toBeVisible();
+
+      const gateS = gate();
+      await page.route(
+        (u) => u.pathname.endsWith(`/partitions/${partB}`),
+        async (route) => {
+          if (route.request().method() === "PATCH") await gateS.p;
+          await route.continue();
+        },
+      );
+      await rowOf(roomA).click(); // a room switch with unsaved edits -> the same modal
+      await expect(dialog).toBeVisible();
+      await saveBtn.click();
+      await expect(saveBtn).toHaveAttribute("aria-busy", "true");
+      await expect(saveBtn).toBeDisabled();
+      await expect(discardBtn).toBeDisabled();
+      await expect(cancelBtn).toBeDisabled();
+      await page.keyboard.press("Escape");
+      await page.mouse.click(4, 4);
+      await expect(dialog, "Escape and an outside click are ignored while pending").toBeVisible();
+      gateS.release();
+      await expect(dialog).toBeHidden();
+      await expect(plan).toHaveAttribute("data-room-id", roomA);
+      const saved = ((await (await as.admin.get(url(`/partitions?roomId=${roomB}`))).json()) as { partitions: { widthMm: number }[] }).partitions;
+      expect(saved.map((p) => p.widthMm), "Save & Go Back saved first").toEqual([2100]);
+
+      // 6. Discard spins the same way (the discard re-fetches the partition; that GET is held back)
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+      await page.goto(orgTarget(run, `/projects/${w.projectId}/design?partition=${partB}`));
+      await expect(back).toBeVisible();
+      await dirty("2300");
+      const gateD = gate();
+      await page.route(
+        (u) => u.pathname.endsWith(`/partitions/${partB}`),
+        async (route) => {
+          if (route.request().method() === "GET") await gateD.p;
+          await route.continue();
+        },
+      );
+      await rowOf(roomA).click();
+      await expect(dialog).toBeVisible();
+      await discardBtn.click();
+      await expect(discardBtn).toHaveAttribute("aria-busy", "true");
+      await expect(saveBtn).toBeDisabled();
+      await expect(discardBtn).toBeDisabled();
+      await expect(cancelBtn).toBeDisabled();
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeVisible();
+      gateD.release();
+      await expect(dialog).toBeHidden();
+      await expect(plan).toHaveAttribute("data-room-id", roomA);
+    });
+  });
+
   test("Design canvas (Stage 34 B4): divider snap + lock, a locked panel is frozen (notice + Unlock), glass change keeps locked panels, door menus start with Lock, one menu at a time, layout holds", async ({ browser, run, f, as, url }) => {
     test.setTimeout(240_000);
     const c = { as, f, run };
