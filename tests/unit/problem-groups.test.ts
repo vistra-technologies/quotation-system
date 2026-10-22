@@ -141,6 +141,12 @@ describe("summaries", () => {
   test("room summary: single wall, glass-only many walls, mixed", () => {
     const single = groupDesignProblems([p("r1", "p1"), p("r1", "p1")]);
     assert.equal(roomSummary(single.rooms[0]), "1 wall · 2 panels without glass");
+    const one = groupDesignProblems([p("r1", "p1")]);
+    assert.equal(roomSummary(one.rooms[0]), "1 wall · 1 panel without glass");
+    const oneMixed = groupDesignProblems([p("r1", "p1"), p("r1", "p1", { reason: "DOOR_CELL" })]);
+    assert.equal(roomSummary(oneMixed.rooms[0]), "1 wall · 2 problems");
+    const oneDoor = groupDesignProblems([p("r1", "p1", { reason: "DOOR_CELL" })]);
+    assert.equal(roomSummary(oneDoor.rooms[0]), "1 wall · 1 door without a component");
     const glassOnly = groupDesignProblems([p("r1", "p1"), p("r1", "p2"), p("r1", "p2")]);
     assert.equal(roomSummary(glassOnly.rooms[0]), "2 walls · 3 panels without glass");
     const mixed = groupDesignProblems([p("r1", "p1"), p("r1", "p2", { reason: "NOT_STARTED" })]);

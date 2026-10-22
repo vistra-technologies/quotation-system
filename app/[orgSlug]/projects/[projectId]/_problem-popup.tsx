@@ -497,7 +497,10 @@ function DesignGroup({
 }) {
   const s = SCOPE_STYLES.DESIGN;
   const groups = groupDesignProblems(problems, { floorCount });
-  const [openRooms, setOpenRooms] = useState<Set<string>>(() => new Set());
+  // Mockup state 4: a single room starts expanded (its only Go is not one extra click away).
+  const [openRooms, setOpenRooms] = useState<Set<string>>(
+    () => new Set(groups.rooms.length === 1 ? [groups.rooms[0].roomId] : []),
+  );
   const anyClosed = groups.rooms.some((r) => !openRooms.has(r.roomId));
 
   function toggleRoom(id: string) {

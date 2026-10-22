@@ -145,7 +145,8 @@ export function roomSummary(r: RoomGroup): string {
   const onlyGlass =
     looseN === 0 &&
     r.walls.every((w) => w.count === w.noGlass);
-  if (r.walls.length === 1 && looseN === 0) return `1 wall · ${wallSummary(r.walls[0])}`;
+  // Mockup rule: the per-cause detail only when the room has exactly one problem; otherwise counts.
+  if (r.walls.length === 1 && looseN === 0 && r.count === 1) return `1 wall · ${wallSummary(r.walls[0])}`;
   const wallsText = r.walls.length > 0 ? `${plural(r.walls.length, "wall", "walls")} · ` : "";
   const tail = onlyGlass
     ? `${plural(r.count, "panel", "panels")} without glass`

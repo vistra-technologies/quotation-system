@@ -276,15 +276,21 @@ test("UI: Submit Design button triggers problem popup with DESIGN scope group", 
   // The DESIGN scope group header must be visible ("Fix your design").
   await expect(dialog.locator("text=Fix your design")).toBeVisible();
 
-  // Stage 34 S34-7: DESIGN problems are grouped by room, collapsed by default. A room row is visible, its
-  // wall rows are not until it is expanded, and no UUID appears in the dialog text.
-  const room = dialog.locator('[data-testid="problem-room"]').first();
+  // Stage 34 S34-7: DESIGN problems are grouped by room. With several rooms they start collapsed (wall rows
+  // are not mounted until a room is expanded); a single room starts expanded (mockup state 4). No UUID text.
+  const rooms = dialog.locator('[data-testid="problem-room"]');
+  const room = rooms.first();
   await expect(room).toBeVisible();
-  await expect(room).toHaveAttribute("aria-expanded", "false");
-  await expect(dialog.locator('[data-testid="problem-wall"]')).toHaveCount(0);
-  await room.click();
-  await expect(room).toHaveAttribute("aria-expanded", "true");
-  await expect(dialog.locator('[data-testid="problem-wall"]').first()).toBeVisible();
+  if ((await rooms.count()) === 1) {
+    await expect(room).toHaveAttribute("aria-expanded", "true");
+    await expect(dialog.locator('[data-testid="problem-wall"]').first()).toBeVisible();
+  } else {
+    await expect(room).toHaveAttribute("aria-expanded", "false");
+    await expect(dialog.locator('[data-testid="problem-wall"]')).toHaveCount(0);
+    await room.click();
+    await expect(room).toHaveAttribute("aria-expanded", "true");
+    await expect(dialog.locator('[data-testid="problem-wall"]').first()).toBeVisible();
+  }
   expect(await dialog.innerText()).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
 });
 
