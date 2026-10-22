@@ -156,6 +156,17 @@ test("J1: inquiry → edit → convert → Configuration → Design canvas → S
       await expect(page.getByLabel("Width (mm)"), "lengths are entered in mm (no unit toggle since Stage 20 B5)").toBeVisible();
       await page.getByLabel("Width (mm)").fill("2000");
       await page.getByLabel("Height (mm)").fill("2400");
+      // Stage 34 S34-4: Panels (default 3) and Door only; this project has a DOOR Selection, so it is enabled
+      const panels = page.getByTestId("convert-panels").filter({ visible: true });
+      const doorOnly = page.getByTestId("convert-door-only").filter({ visible: true });
+      await expect(panels).toHaveValue("3");
+      await expect(doorOnly).toBeEnabled();
+      await doorOnly.check();
+      await expect(panels).toHaveValue("1");
+      await expect(panels).toBeDisabled();
+      await doorOnly.uncheck();
+      await expect(panels).toHaveValue("3");
+      await expect(panels).toBeEnabled();
       const [conv] = await Promise.all([
         page.waitForResponse((r) => r.request().method() === "PATCH" && /\/rooms\/[^/]+\/sides$/.test(r.url())),
         page.getByRole("button", { name: "Convert to Partition" }).click(),

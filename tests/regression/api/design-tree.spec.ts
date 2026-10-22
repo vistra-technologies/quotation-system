@@ -162,6 +162,9 @@ registerNegatives([
       { name: "lengthMm on a PARTITION side", body: (c: Ctx) => ({ sides: [{ ...newSide(nm(c, "negW")), lengthMm: 100 }, ...PLAIN3] }), status: 400 },
       { name: "new PARTITION without heightMm", body: (c: Ctx) => ({ sides: [{ kind: "PARTITION", turnDegrees: 90, label: nm(c, "negW"), widthMm: 2000 }, ...PLAIN3] }), status: 400 },
       { name: "new PARTITION without label", body: { sides: [{ kind: "PARTITION", turnDegrees: 90, heightMm: 2400, widthMm: 2000 }, ...PLAIN3] }, status: 400 },
+      // Stage 34 S34-4 convert options: validated in replaceSides, all before any Partition is created
+      { name: "panelCount 0", body: (c: Ctx) => ({ sides: [{ ...newSide(nm(c, "negW")), panelCount: 0 }, ...PLAIN3] }), status: 400 },
+      { name: 'doorOnly "yes" (not a boolean)', body: (c: Ctx) => ({ sides: [{ ...newSide(nm(c, "negW")), doorOnly: "yes" }, ...PLAIN3] }), status: 400 },
       { name: "partitionId that is not a side of this room (unknown)", body: { sides: [{ kind: "PARTITION", turnDegrees: 90, partitionId: GHOST }, ...PLAIN3] }, status: 400 },
       { name: "partitionId of an org-B partition", body: async (c: Ctx) => ({ sides: [{ kind: "PARTITION", turnDegrees: 90, partitionId: (await foreignTree(c)).partitionId }, ...PLAIN3] }), status: 400 },
       {
@@ -825,5 +828,101 @@ test.describe("partitions: default glass (Stage 34)", () => {
     await addGlass(as, run, url, w.projectId, "G2", 0);
     expect(cellsOf(await getPartition(as, url, w.partitionId))).toEqual([first, first, first]);
     expect(await readProjectState(w.projectId)).toMatchObject({ designSubmittedAt: expect.any(String), calcCount: 1 });
+  });
+});
+
+// Stage 34 S34-4 (D-22..D-25): the convert element's optional panelCount / doorOnly.
+test.describe("sides PATCH: convert options (Stage 34)", () => {
+  type Design = { sections: { widthMm: number; cells: { heightMm: number; selectionId: string | null; hinging?: string }[] }[] };
+  type W = { projectId: string; roomId: string; partitionId: string };
+  const designOf = (p: Partition) => p.design as Design;
+  const addSel = async (as: Ctx["as"], run: Ctx["run"], url: (p: string) => string, projectId: string, code: "GLASS" | "DOOR", label: string, orderIndex: number) =>
+    (await ok<{ selection: { id: string } }>(await as.admin.post(url("/selections"), { data: { projectId, componentTypeId: await typeId(as.admin, run, code), label: nm({ run }, label), config: {}, orderIndex } }), 201)).selection.id;
+  /** PATCH side 1 (PLAIN) into a new PARTITION carrying `extra`; the wall's own partition is kept. */
+  const convert = (as: Ctx["as"], url: (p: string) => string, w: W, label: string, extra: Record<string, unknown>, widthMm = 2000) =>
+    as.admin.patch(url(`/rooms/${w.roomId}/sides`), {
+      data: { sides: [{ kind: "PARTITION", turnDegrees: 90, partitionId: w.partitionId }, { ...newSide(label, 2400, widthMm), ...extra }, ...PLAIN3.slice(1)] },
+    });
+  const created = async (as: Ctx["as"], url: (p: string) => string, r: APIResponse): Promise<Partition> => {
+    const room = (await ok<{ room: { sides: { partitionId: string | null }[] } }>(r)).room;
+    return (await ok<{ partition: Partition }>(await as.admin.get(url(`/partitions/${room.sides[1].partitionId}`)))).partition;
+  };
+  /** A refused convert leaves the room as it was: still one Partition, side 1 still PLAIN. */
+  const untouched = async (as: Ctx["as"], url: (p: string) => string, w: W) => {
+    const list = await ok<{ partitions: { id: string }[] }>(await as.admin.get(url(`/partitions?roomId=${w.roomId}`)));
+    expect(list.partitions.map((p) => p.id)).toEqual([w.partitionId]);
+  };
+
+  test("AC1: no new fields -> 3 sections that sum to the width (back-compat)", async ({ as, f, run, url }) => {
+    const w = await f.wall();
+    const p = await created(as, url, await convert(as, url, w, nm({ run }, "Wd"), {}));
+    expect(designOf(p).sections.map((s) => s.widthMm)).toEqual([666, 666, 668]);
+    expect(designOf(p).sections.every((s) => s.cells.length === 1 && s.cells[0].heightMm === 2400)).toBe(true);
+  });
+
+  test("AC1: panelCount 1 and 5 seed that many sections (last absorbs the remainder), with the default glass", async ({ as, f, run, url }) => {
+    const w = await f.wall();
+    const glass = await addSel(as, run, url, w.projectId, "GLASS", "G", 0);
+    const one = await created(as, url, await convert(as, url, w, nm({ run }, "W1"), { panelCount: 1 }));
+    expect(designOf(one).sections.map((s) => s.widthMm)).toEqual([2000]);
+    expect(designOf(one).sections[0].cells[0].selectionId).toBe(glass);
+    const w5 = await f.wall("Wall B");
+    const glass5 = await addSel(as, run, url, w5.projectId, "GLASS", "G5", 0);
+    const five = await created(as, url, await convert(as, url, w5, nm({ run }, "W5"), { panelCount: 5 }, 2003));
+    expect(designOf(five).sections.map((s) => s.widthMm)).toEqual([400, 400, 400, 400, 403]);
+    expect(designOf(five).sections.flatMap((s) => s.cells.map((c) => c.selectionId))).toEqual(Array(5).fill(glass5));
+  });
+
+  test("AC1: panelCount 0, 21, 2.5, a string, or a panel under 100 mm -> 400, nothing created; exactly 100 mm is allowed", async ({ as, f, run, url }) => {
+    const w = await f.wall();
+    for (const bad of [0, 21, 2.5, "3", null]) {
+      await rejected(await convert(as, url, w, nm({ run }, "Wb"), { panelCount: bad }), 400, /panelCount must be an integer between 1 and 20/);
+      await untouched(as, url, w);
+    }
+    await rejected(await convert(as, url, w, nm({ run }, "Wb"), { panelCount: 16 }, 1500), 400, "Each panel must be at least 100 mm wide."); // 93 mm each
+    await untouched(as, url, w);
+    const edge = await created(as, url, await convert(as, url, w, nm({ run }, "W20"), { panelCount: 20 })); // 2000 / 20 = 100
+    expect(designOf(edge).sections).toHaveLength(20);
+  });
+
+  test("AC2: doorOnly -> one full-width, full-height door cell with the project's first DOOR Selection, hinged left", async ({ as, f, run, url }) => {
+    const w = await f.wall();
+    await addSel(as, run, url, w.projectId, "GLASS", "G", 0);
+    await addSel(as, run, url, w.projectId, "DOOR", "Dlate", 5); // created first, but not the first by orderIndex
+    const first = await addSel(as, run, url, w.projectId, "DOOR", "Dfirst", 1);
+    const p = await created(as, url, await convert(as, url, w, nm({ run }, "Wdoor"), { doorOnly: true }));
+    expect(designOf(p).sections).toHaveLength(1);
+    expect(designOf(p).sections[0].widthMm).toBe(2000);
+    expect(designOf(p).sections[0].cells).toEqual([expect.objectContaining({ heightMm: 2400, selectionId: first, hinging: "left" })]);
+    expect(designOf(p).sections[0].cells).toHaveLength(1);
+  });
+
+  test("AC2: doorOnly with no door Selection (even a glass one, or a door in another project) -> 400, nothing created", async ({ as, f, run, url }) => {
+    const w = await f.wall();
+    await addSel(as, run, url, w.projectId, "GLASS", "G", 0);
+    const other = await f.wall("Wall B");
+    await addSel(as, run, url, other.projectId, "DOOR", "Dother", 0); // a door in another project must not be picked
+    await rejected(await convert(as, url, w, nm({ run }, "Wnd"), { doorOnly: true }), 400, "This project has no door component. Add a door in Configuration first.");
+    await untouched(as, url, w);
+  });
+
+  test("AC2: doorOnly with panelCount > 1 -> 400; with panelCount 1 -> 200; doorOnly false uses panelCount", async ({ as, f, run, url }) => {
+    const w = await f.wall();
+    await addSel(as, run, url, w.projectId, "DOOR", "D", 0);
+    await rejected(await convert(as, url, w, nm({ run }, "Wx"), { doorOnly: true, panelCount: 3 }), 400, "doorOnly cannot be combined with a panelCount other than 1.");
+    await untouched(as, url, w);
+    const p = await created(as, url, await convert(as, url, w, nm({ run }, "Wy"), { doorOnly: false, panelCount: 4 }));
+    expect(designOf(p).sections).toHaveLength(4);
+  });
+
+  test("panelCount / doorOnly on an element that keeps an existing partitionId -> 400", async ({ as, f, url }) => {
+    const w = await f.wall();
+    for (const extra of [{ panelCount: 2 }, { doorOnly: true }]) {
+      await rejected(
+        await as.admin.patch(url(`/rooms/${w.roomId}/sides`), { data: { sides: [{ kind: "PARTITION", turnDegrees: 90, partitionId: w.partitionId, ...extra }, ...PLAIN3] } }),
+        400,
+        "panelCount and doorOnly are only valid on a new convert, not on an existing partition.",
+      );
+    }
   });
 });

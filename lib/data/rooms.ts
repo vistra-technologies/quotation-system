@@ -4,8 +4,9 @@ import type { Prisma } from "@/app/generated/prisma/client";
 import type { SessionData } from "@/lib/session";
 import { ownedProjectWhere } from "@/lib/data/ownership";
 import { createPartitionInTx } from "@/lib/data/partitions";
-import { fillDefaultGlass, seedSectionsDesign } from "@/lib/partition-design";
-import { findDefaultGlassSelectionId } from "@/lib/data/default-glass";
+import { fillDefaultGlass, seedDoorOnlyDesign, seedSectionsDesign } from "@/lib/partition-design";
+import { resolveConvertOptions } from "@/lib/panel-widths";
+import { findDefaultGlassSelectionId, findFirstDoorSelectionId } from "@/lib/data/default-glass";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -48,6 +49,9 @@ export type IncomingSide =
       label?: string;
       heightMm?: number;
       widthMm?: number;
+      // Stage 34 S34-4: optional convert options, validated in replaceSides (raw until then).
+      panelCount?: unknown;
+      doorOnly?: unknown;
     }
   | {
       kind: "PLAIN";
@@ -405,6 +409,11 @@ export async function replaceSides(
     for (const side of newSides) {
       if (side.kind === "PARTITION") {
         if (side.partitionId) {
+          if (side.panelCount !== undefined || side.doorOnly !== undefined) {
+            throw new InvalidSidesError(
+              "panelCount and doorOnly are only valid on a new convert, not on an existing partition.",
+            );
+          }
           if (seenPartitionIds.has(side.partitionId)) {
             throw new InvalidSidesError(
               `Duplicate partitionId in sides array: ${side.partitionId}`,
@@ -493,6 +502,19 @@ export async function replaceSides(
               "Converting a side to PARTITION requires label, heightMm, and widthMm.",
             );
           }
+          const options = resolveConvertOptions({
+            panelCount: incoming.panelCount,
+            doorOnly: incoming.doorOnly,
+            widthMm: incoming.widthMm,
+          });
+          if (!options.ok) throw new InvalidSidesError(options.error);
+          let doorSelectionId: string | null = null;
+          if (options.doorOnly) {
+            doorSelectionId = await findFirstDoorSelectionId(tx, session.organizationId, room.floor.projectId);
+            if (!doorSelectionId) {
+              throw new InvalidSidesError("This project has no door component. Add a door in Configuration first.");
+            }
+          }
           partitionsCreated = true;
           const partition = await createPartitionInTx(tx, {
             roomId,
@@ -501,7 +523,7 @@ export async function replaceSides(
             widthMm: incoming.widthMm,
             organizationId: session.organizationId,
           });
-          // Seed three equal-width sections (v2, one cell each) on conversion (S21 design-page
+          // Seed equal-width sections (3 by default; v2, one cell each) on conversion (S21 design-page
           // parity fix) instead of one full-width panel — matches the
           // finalized mockup's default Convert-to-Partition state
           // (design-page.html) and gives the user a realistic starting
@@ -512,14 +534,14 @@ export async function replaceSides(
           // IMPORTANT 1) — so the seeded widths must still sum exactly to
           // incoming.widthMm (last panel absorbs the remainder, same
           // split rule as the MAKE_EQUAL_WIDTH draft action).
-          const seedDesign = seedSectionsDesign(
-            incoming.widthMm,
-            incoming.heightMm,
-            3,
-            () => crypto.randomUUID(),
-          );
+          // Stage 34 S34-4: `panelCount` (default 3) equal sections, or `doorOnly` = one full-height door cell.
+          const seedDesign =
+            options.doorOnly && doorSelectionId
+              ? seedDoorOnlyDesign(incoming.widthMm, incoming.heightMm, doorSelectionId, () => crypto.randomUUID())
+              : seedSectionsDesign(incoming.widthMm, incoming.heightMm, options.count, () => crypto.randomUUID());
           // Stage 34 S34-7: a project that already has a glass Selection converts WITH its default glass;
           // none yet -> cells stay null (the first glass Selection back-fills them, selections.ts).
+          // A door cell has `hinging` and is never filled.
           if (defaultGlassId === undefined) {
             defaultGlassId = await findDefaultGlassSelectionId(tx, session.organizationId, room.floor.projectId);
           }

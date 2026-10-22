@@ -80,12 +80,12 @@ async function selection(c: C, projectId: string, code: "GLASS" | "DOOR", config
   return ((await r.json()) as { selection: { id: string } }).selection.id;
 }
 
-type SideIn = { kind: "PLAIN" } | { kind: "PARTITION"; widthMm: number; heightMm: number };
+type SideIn = { kind: "PLAIN" } | { kind: "PARTITION"; widthMm: number; heightMm: number; doorOnly?: true };
 const PLAIN = { kind: "PLAIN" } as const;
-const wall = (widthMm: number, heightMm: number): SideIn => ({ kind: "PARTITION", widthMm, heightMm });
+const wall = (widthMm: number, heightMm: number, doorOnly?: true): SideIn => ({ kind: "PARTITION", widthMm, heightMm, ...(doorOnly ? { doorOnly } : {}) });
 
 /** A ledgered project with one floor and one closed 4-sided room; returns the partition ids in side order. */
-async function project(c: C, sides: SideIn[]): Promise<{ projectId: string; partitionIds: string[] }> {
+async function project(c: C, sides: SideIn[], pre?: (projectId: string) => Promise<void>): Promise<{ projectId: string; partitionIds: string[] }> {
   const { id: projectId } = await c.f.project();
   const fl = await c.as.admin.post(U(c, "/floors"), { data: { projectId, label: `${c.run.prefix}F` } });
   expect(fl.status(), await fl.text()).toBe(201);
@@ -93,6 +93,7 @@ async function project(c: C, sides: SideIn[]): Promise<{ projectId: string; part
   const rm = await c.as.admin.post(U(c, "/rooms"), { data: { floorId, label: `${c.run.prefix}R` } });
   expect(rm.status(), await rm.text()).toBe(201);
   const roomId = ((await rm.json()) as { room: { id: string } }).room.id;
+  await pre?.(projectId); // e.g. a door Selection that a doorOnly convert needs to exist already
   const sd = await c.as.admin.patch(U(c, `/rooms/${roomId}/sides`), {
     data: {
       sides: sides.map((s, i) => (s.kind === "PLAIN" ? { kind: "PLAIN", turnDegrees: 90 } : { ...s, turnDegrees: 90, label: `${c.run.prefix}W${i}` })),
@@ -227,6 +228,34 @@ test.describe("calculation engine: exact material lists (copied tuples)", () => 
     // neither: "door.md worked example — neither" → no lines at all
     const neither = await doorOnly({ hasFrame: "No", hasLeaf: "No" });
     expect(neither.materialList).toEqual([]);
+  });
+
+  test("Stage 34 S34-4: a door-only wall (convert doorOnly, no design edit) submits and bills the door frame + leaf lines", async ({ as, f, run }) => {
+    const c = { as, f, run };
+    const d = await itemSet(c, "dA", "DOOR");
+    const { projectId, partitionIds: [p1] } = await project(c, [wall(2000, 3000, true), PLAIN, PLAIN, PLAIN], async (pid) => {
+      await selection(c, pid, "DOOR", doorCfg(d));
+    });
+    const stored = await as.admin.get(U(c, `/partitions/${p1}`));
+    const sections = ((await stored.json()) as { partition: { design: { sections: { widthMm: number; cells: { heightMm: number; hinging?: string }[] }[] } } }).partition.design.sections;
+    expect(sections.map((s) => [s.widthMm, s.cells.length, s.cells[0].heightMm, s.cells[0].hinging])).toEqual([[2000, 1, 3000, "left"]]);
+    const calc = await submit(c, projectId); // 200 + status OK + the pinned formula set
+    // the same door.md worked example as "frame + leaf" above: hinging is not read by the engine
+    expectLines(calc.materialList, d, {
+      doorFrame: { requirement: 8, quantity: 3 },
+      doorLeaf: { requirement: 10, quantity: 4 },
+      cornerConnBig: 3,
+      cornerConnSmallFrame: 2,
+      cornerConnSmallLeaf: 1,
+      lAngle: 4,
+      hinges: 4,
+      rubber25mm: { requirement: 18, quantity: 18 },
+      frameBumperGasket: 8,
+      frameBackGasket: { requirement: 12, quantity: 12 },
+      leafGlassGasket1: 10,
+      leafGlassGasket2: 10,
+    }, "door-only wall");
+    expect(calc.materialList, "a door-only wall fires no GLASS formula").toHaveLength(12);
   });
 
   test("wall with a door: full-height door reduces profileU; transom door does not; a corner door is not a door connector", async ({ as, f, run }) => {

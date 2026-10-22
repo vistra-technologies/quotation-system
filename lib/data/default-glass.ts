@@ -8,17 +8,35 @@ import { fillDefaultGlass, isGlassCell, type DesignSectionV2 } from "@/lib/parti
 /** Anything with the Prisma delegates used here: the app's client, a transaction, or the script's client. */
 type Db = Pick<Prisma.TransactionClient, "selection" | "partition">;
 
-export async function findDefaultGlassSelectionId(
+async function findFirstSelectionId(
   client: Pick<Prisma.TransactionClient, "selection">,
   organizationId: string,
   projectId: string,
+  code: "GLASS" | "DOOR",
 ): Promise<string | null> {
   const row = await client.selection.findFirst({
-    where: { organizationId, projectId, componentType: { code: "GLASS" } },
+    where: { organizationId, projectId, componentType: { code } },
     orderBy: [{ orderIndex: "asc" }, { createdAt: "asc" }],
     select: { id: true },
   });
   return row?.id ?? null;
+}
+
+export function findDefaultGlassSelectionId(
+  client: Pick<Prisma.TransactionClient, "selection">,
+  organizationId: string,
+  projectId: string,
+): Promise<string | null> {
+  return findFirstSelectionId(client, organizationId, projectId, "GLASS");
+}
+
+/** Stage 34 S34-4: the project's first DOOR Selection (same order rule), used by a door-only convert. */
+export function findFirstDoorSelectionId(
+  client: Pick<Prisma.TransactionClient, "selection">,
+  organizationId: string,
+  projectId: string,
+): Promise<string | null> {
+  return findFirstSelectionId(client, organizationId, projectId, "DOOR");
 }
 
 /**

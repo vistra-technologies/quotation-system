@@ -7,6 +7,7 @@ import { redirectToLogin } from "./login-redirect";
 import { useUnit } from "./unit-context";
 import type { RoomRow } from "./types";
 import { apiErrorMessage } from "@/lib/api-error-message";
+import { DEFAULT_CONVERT_PANELS, MAX_CONVERT_PANELS, MIN_PANEL_MM } from "@/lib/panel-widths";
 
 interface ConvertSideFormProps {
   orgSlug: string;
@@ -21,6 +22,8 @@ interface ConvertSideFormProps {
    * *current effective* name on every render (R-8c).
    */
   autoLabel: string;
+  /** Stage 34 S34-4: the project has a DOOR Selection, so "Door only" can be offered. */
+  hasDoorSelection: boolean;
   /** Array index of the PLAIN side being converted — identity is by array
    * index, not side.id (PLAIN side ids are not stable across reorders, per
    * review-item2-round2.md finding 9). */
@@ -56,6 +59,7 @@ export function ConvertSideForm({
   floorId,
   roomId,
   autoLabel,
+  hasDoorSelection,
   sideIndex,
   onCancel,
   onConverted,
@@ -92,6 +96,22 @@ export function ConvertSideForm({
   const [widthText, setWidthText] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Stage 34 S34-4: panel count (default 3) and Door only (one full-height door panel).
+  const [panelsText, setPanelsText] = useState(String(DEFAULT_CONVERT_PANELS));
+  const [doorOnly, setDoorOnly] = useState(false);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [lastPanelsText, setLastPanelsText] = useState(String(DEFAULT_CONVERT_PANELS));
+
+  function handleDoorOnlyChange(checked: boolean) {
+    setOptionsError(null);
+    if (checked) {
+      setLastPanelsText(panelsText);
+      setPanelsText("1");
+    } else {
+      setPanelsText(lastPanelsText);
+    }
+    setDoorOnly(checked);
+  }
 
   // If the unit changes (dead code since Stage 20 B5 removed the toggle),
   // clear raw text mirrors so the display re-derives from canonical mm.
@@ -128,6 +148,16 @@ export function ConvertSideForm({
     }
     const finalHeightMm = Math.round(heightMm);
     const finalWidthMm = Math.round(widthMm);
+    const count = doorOnly ? 1 : Number(panelsText);
+    if (panelsText.trim() === "" || !Number.isInteger(count) || count < 1 || count > MAX_CONVERT_PANELS) {
+      setOptionsError(t("panelsRange", { max: MAX_CONVERT_PANELS }));
+      return;
+    }
+    if (Math.floor(finalWidthMm / count) < MIN_PANEL_MM) {
+      setOptionsError(t("panelTooNarrow", { min: MIN_PANEL_MM }));
+      return;
+    }
+    setOptionsError(null);
 
     setSubmitting(true);
     setError(null);
@@ -169,6 +199,7 @@ export function ConvertSideForm({
             label: finalLabel,
             heightMm: finalHeightMm,
             widthMm: finalWidthMm,
+            ...(doorOnly ? { doorOnly: true } : { panelCount: count }),
           };
         }
         if (side.kind === "PARTITION") {
@@ -266,7 +297,69 @@ export function ConvertSideForm({
             className="w-[72px] border-0 border-b border-b-border bg-transparent px-0.5 py-0.5 text-[13.5px] font-bold text-text-heading focus:border-b-primary focus:outline-none"
           />
         </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[10.5px] font-bold uppercase tracking-[.03em] text-text-muted">
+            {t("fieldPanels")}
+          </span>
+          <input
+            type="number"
+            step="1"
+            min={1}
+            max={MAX_CONVERT_PANELS}
+            data-testid="convert-panels"
+            value={panelsText}
+            disabled={doorOnly}
+            onChange={(e) => {
+              setPanelsText(e.target.value);
+              setOptionsError(null);
+            }}
+            className="w-[52px] border-0 border-b border-b-border bg-transparent px-0.5 py-0.5 text-[13.5px] font-bold text-text-heading focus:border-b-primary focus:outline-none disabled:text-text-muted"
+          />
+        </label>
       </div>
+      {/* Stage 34 S34-4 (mockup v7 4a/4b): Door only checkbox; disabled with an (i) tip when the project
+          has no door Selection. */}
+      <div className="mb-4 flex items-center gap-2">
+        <label
+          className={`flex items-center gap-2 text-[13px] font-semibold ${
+            hasDoorSelection ? "cursor-pointer text-text-heading" : "cursor-not-allowed text-text-muted opacity-60"
+          }`}
+        >
+          <input
+            type="checkbox"
+            data-testid="convert-door-only"
+            checked={doorOnly}
+            disabled={!hasDoorSelection}
+            onChange={(e) => handleDoorOnlyChange(e.target.checked)}
+            className="m-0 h-[15px] w-[15px] accent-[var(--color-primary)]"
+          />
+          {t("doorOnly")}
+        </label>
+        {!hasDoorSelection && (
+          <span className="group relative inline-flex">
+            <span
+              tabIndex={0}
+              role="img"
+              aria-label={t("noDoorTip")}
+              data-testid="convert-door-only-tip"
+              className="inline-flex h-[15px] w-[15px] cursor-help items-center justify-center rounded-full border border-border text-[10px] font-bold italic text-text-muted focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              i
+            </span>
+            <span
+              role="tooltip"
+              className="pointer-events-none invisible absolute bottom-[calc(100%+6px)] left-0 z-30 w-max max-w-[220px] rounded-sm bg-text-heading px-2 py-1 text-[11px] font-medium text-bg-white opacity-0 shadow group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+            >
+              {t("noDoorTip")}
+            </span>
+          </span>
+        )}
+      </div>
+      {optionsError && (
+        <p data-testid="convert-options-error" className="-mt-2 mb-3 text-xs text-red-700 dark:text-red-400">
+          {optionsError}
+        </p>
+      )}
       {/* convert-actions: primary + muted cancel */}
       <div className="flex flex-wrap items-center gap-4">
         <button

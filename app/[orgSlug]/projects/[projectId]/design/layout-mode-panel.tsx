@@ -19,6 +19,8 @@ interface LayoutModePanelProps {
   room: RoomRow;
   sideIndex: number;
   partitions: PartitionRow[];
+  /** Stage 34 S34-4: the project has a DOOR Selection ("Door only" convert is available). */
+  hasDoorSelection: boolean;
   onCancel: () => void;
   onConverted: (room: RoomRow) => void;
   onConfigure: (partitionId: string, sideIndex: number) => void;
@@ -41,6 +43,7 @@ export function LayoutModePanel({
   room,
   sideIndex,
   partitions,
+  hasDoorSelection,
   onCancel,
   onConverted,
   onConfigure,
@@ -66,6 +69,7 @@ export function LayoutModePanel({
         floorId={floorId}
         roomId={room.id}
         autoLabel={autoLabel}
+        hasDoorSelection={hasDoorSelection}
         sideIndex={sideIndex}
         onCancel={onCancel}
         onConverted={onConverted}

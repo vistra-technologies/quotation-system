@@ -713,6 +713,7 @@ function DesignWorkspaceInner({
                   room={selectedRoom}
                   sideIndex={layoutSideSelection}
                   partitions={selectedRoomPartitions}
+                  hasDoorSelection={selections.some((s) => s.componentType.code === "DOOR")}
                   onCancel={() => setLayoutSideSelection(null)}
                   onConverted={handleSideConverted}
                   onConfigure={enterConfigureMode}

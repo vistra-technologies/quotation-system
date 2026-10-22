@@ -24,7 +24,8 @@ export const dynamic = "force-dynamic";
  * Auth: any authenticated org member (no specific RBAC permission required).
  * Body: { sides: IncomingSide[], isClosed? }
  *   Each element: { kind: "PLAIN", turnDegrees, lengthMm?, label? }
- *              or { kind: "PARTITION", turnDegrees, partitionId?, label?, heightMm?, widthMm? }
+ *              or { kind: "PARTITION", turnDegrees, partitionId?, label?, heightMm?, widthMm?,
+ *                   panelCount?, doorOnly? }   (the last two only on a new convert, Stage 34 S34-4)
  *   `partitionId` on a PARTITION element, when it matches an existing side on
  *   this room, keeps that Partition. When it is omitted entirely, the
  *   element is a new plain->partition convert and must carry label,
@@ -113,6 +114,9 @@ export const PATCH = withRoute(
         label: typeof el.label === "string" ? el.label : undefined,
         heightMm: typeof el.heightMm === "number" ? el.heightMm : undefined,
         widthMm: typeof el.widthMm === "number" ? el.widthMm : undefined,
+        // Stage 34 S34-4: raw pass-through; replaceSides validates (type, range, door, width).
+        panelCount: el.panelCount,
+        doorOnly: el.doorOnly,
       });
     } else if (el.kind === "PLAIN") {
       sides.push({

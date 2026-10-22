@@ -472,6 +472,26 @@ export function seedSectionsDesign(
   };
 }
 
+/** Fresh v2 design for a door-only convert (Stage 34 S34-4): one full-width section holding one
+ * full-height door cell with the project's first door Selection, hinged left. */
+export function seedDoorOnlyDesign(
+  widthMm: number,
+  heightMm: number,
+  doorSelectionId: string,
+  newId: () => string,
+): PartitionDesignV2 {
+  return {
+    schemaVersion: 2,
+    sections: [
+      {
+        id: newId(),
+        widthMm,
+        cells: [{ id: newId(), heightMm, selectionId: doorSelectionId, hinging: "left" }],
+      },
+    ],
+  };
+}
+
 // ─── Default glass (Stage 34 S34-7) ──────────────────────────────────────────
 
 /**
