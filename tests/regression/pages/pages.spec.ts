@@ -698,7 +698,7 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       await o.page.getByLabel("Name of the copy").fill(second);
       await dupBtn().click();
       await expect(guard).toBeVisible();
-      await o.page.getByRole("button", { name: "Cancel", exact: true }).click();
+      await o.page.getByText("Cancel", { exact: true }).click();
       await expect(guard).toBeHidden();
       await expect(o.page.getByRole("button", { name: "Back to Room Layout" })).toBeVisible();
       await expect(o.page.getByLabel("Name of the copy")).toBeVisible();
