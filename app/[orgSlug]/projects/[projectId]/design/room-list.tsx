@@ -9,7 +9,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { redirectToLogin } from "./login-redirect";
 import { useDraftContext } from "./design-draft-context";
 import { Spinner } from "@/components/spinner";
-import type { PartitionRow, RoomRow, SelectionRow } from "./types";
+import type { PartitionRow, RoomRow } from "./types";
 import { apiErrorMessage } from "@/lib/api-error-message";
 
 interface RoomListProps {

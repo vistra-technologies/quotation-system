@@ -166,6 +166,9 @@ function DesignWorkspaceInner({
   useEffect(() => {
     partitionsRef.current = partitionsByRoom;
   }, [partitionsByRoom]);
+  // Partitions whose cached row may be older than the server after a failed Save (e.g. the partition PATCH
+  // succeeded but a room rename failed): the next open treats them as a cache miss and refetches.
+  const staleIdsRef = useRef(new Set<string>());
   const trackerRef = useRef(createRequestTracker());
   const selectionsRef = useRef(selections);
   useEffect(() => {
@@ -283,6 +286,7 @@ function DesignWorkspaceInner({
           setSaveError(null);
           const result = await save(orgSlug, isSubdomain);
           if (!result.ok) {
+            if (state.partitionId) staleIdsRef.current.add(state.partitionId);
             setSaveError(result.error);
             setUnsavedModal(null);
             return;
@@ -290,6 +294,7 @@ function DesignWorkspaceInner({
           // Re-fetch the server-rendered layout so Summary/Quotation pills reflect
           // the cleared designSubmittedAt immediately — no manual page reload needed.
           router.refresh();
+          staleIdsRef.current.delete(result.partition.id);
           setPartitionsByRoom((prev) => patchPartitionInCache(prev, result.partition));
           result.updatedRooms.forEach(handleRoomRenamed);
           setUnsavedModal(null);
@@ -339,7 +344,8 @@ function DesignWorkspaceInner({
     fetchCancelRef.current = token;
     // A cached row opens synchronously: no fetch and no pending state (D-42). Only a miss (problem-popup Go,
     // ?partition= deep link, or a row whose design failed to parse) fetches and shows the pending UI.
-    const cached = findCachedPartition(partitionsRef.current, partitionId);
+    const found = findCachedPartition(partitionsRef.current, partitionId);
+    const cached = found && !staleIdsRef.current.has(partitionId) ? found : undefined;
     if (!cached?.design) setOpeningPartitionId(partitionId);
     try {
       await openPartition(partitionId, token, cached?.design ? cached : undefined);
@@ -371,6 +377,7 @@ function DesignWorkspaceInner({
         // Stage 22 (D-6): stored v1/v2 design -> panel view, once, at this boundary. Throws on a
         // malformed stored document -> caught below, Configure mode simply doesn't open.
         partition = toPanelViewRow(rawPartition, makeDoorResolver(selections));
+        staleIdsRef.current.delete(partitionId);
       }
       dispatch({ type: "LOAD_PARTITION", partition });
       // Pre-select the first panel so Configure mode opens ready to edit
@@ -436,6 +443,7 @@ function DesignWorkspaceInner({
     setSaveError(null);
     const result = await save(orgSlug, isSubdomain);
     if (!result.ok) {
+      if (state.partitionId) staleIdsRef.current.add(state.partitionId);
       setSaveError(result.error);
       return;
     }
@@ -444,6 +452,7 @@ function DesignWorkspaceInner({
     // The API's updatePartition() clears designSubmittedAt whenever design/heightMm
     // is in the PATCH body (D-14/D-17); the refresh propagates that to the pills.
     router.refresh();
+    staleIdsRef.current.delete(result.partition.id);
     setPartitionsByRoom((prev) => patchPartitionInCache(prev, result.partition));
     result.updatedRooms.forEach(handleRoomRenamed);
   }
