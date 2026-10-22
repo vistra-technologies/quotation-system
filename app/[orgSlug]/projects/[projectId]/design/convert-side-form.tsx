@@ -348,7 +348,7 @@ export function ConvertSideForm({
             </span>
             <span
               role="tooltip"
-              className="pointer-events-none invisible absolute bottom-[calc(100%+6px)] left-0 z-30 w-max max-w-[220px] rounded-sm bg-text-heading px-2 py-1 text-[11px] font-medium text-bg-white opacity-0 shadow group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+              className="pointer-events-none invisible absolute bottom-[calc(100%+6px)] right-[-6px] z-30 w-max max-w-[220px] rounded-sm bg-text-heading px-2 py-1 text-[11px] font-medium text-bg-white opacity-0 shadow group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
             >
               {t("noDoorTip")}
             </span>
