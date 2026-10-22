@@ -45,6 +45,12 @@ export interface CalculationProblem {
     fieldKey?: string;            // "frameCode", "hasFrame"
     formulaId?: string;           // "frameProfile"
   };
+  /**
+   * Stage 34 S34-7 (D-33): finer cause for DESIGN-scope CELL_UNASSIGNED, so the popup need not read the message.
+   * NOT_STARTED = the wall has no design; MALFORMED = a section without cells; GLASS_CELL / DOOR_CELL = a null cell
+   * (glass per `isGlassCell`, else a door cell). Not part of the dedupe key.
+   */
+  reason?: "NOT_STARTED" | "MALFORMED" | "GLASS_CELL" | "DOOR_CELL";
   /** The offending material code (UNRESOLVED_CODE / UNIT_MISMATCH / INACTIVE_ITEM). */
   code?: string;
   /** UNIT_MISMATCH — what the formula declared. */

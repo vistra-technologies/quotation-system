@@ -66,7 +66,7 @@ type Project = {
   organizationId: string;
 };
 type Snapshot = { takenAt: string; componentTypes: { id: string; code: string; name: string }[] };
-type Problem = { kind: string; scope: string; message: string; locus?: Record<string, unknown> };
+type Problem = { kind: string; scope: string; message: string; reason?: string; locus?: Record<string, unknown> };
 
 const nm = (c: Pick<Ctx, "run">, what: string) => `${c.run.prefix}${what}-${tag()}`;
 
@@ -409,6 +409,37 @@ test.describe("projects: submit design / calculation / recompute", () => {
     const c = await as.admin.get(url(`/projects/${w.projectId}/calculation`));
     expect(c.status()).toBe(404);
     expect(await c.json()).toEqual({ error: "No calculation found for this project" });
+  });
+
+  test("submit-design problem path: a not-started wall reports reason NOT_STARTED; null glass and null door cells report GLASS_CELL / DOOR_CELL (S34-7, D-33)", async ({ as, f, url }) => {
+    const w = await f.wall();
+    const first = await as.member.post(url(`/projects/${w.projectId}/submit-design`));
+    expect(first.status(), await first.text()).toBe(422);
+    const rep1 = await json<{ problems: Problem[] }>(first);
+    const mine = rep1.problems.filter((p) => p.locus?.partitionId === w.partitionId);
+    expect(mine.length).toBeGreaterThanOrEqual(1);
+    for (const p of mine) expect(p.reason).toBe("NOT_STARTED");
+
+    // No glass Selection in this project, so the server fill leaves the null glass cells alone.
+    const patch = await as.admin.patch(url(`/partitions/${w.partitionId}`), {
+      data: {
+        design: {
+          schemaVersion: 2,
+          sections: [
+            { id: "g", widthMm: 1000, cells: [{ id: "g0", heightMm: 2400, selectionId: null }] },
+            { id: "d", widthMm: 1000, cells: [{ id: "d0", heightMm: 400, selectionId: null }, { id: "d1", heightMm: 2000, selectionId: null, hinging: "right" }] },
+          ],
+        },
+      },
+    });
+    expect(patch.status(), await patch.text()).toBe(200);
+    const r = await as.member.post(url(`/projects/${w.projectId}/submit-design`));
+    expect(r.status(), await r.text()).toBe(422);
+    const rep = await json<{ problems: Problem[] }>(r);
+    const byCell = (s: number, c: number) => rep.problems.find((p) => p.locus?.sectionIndex === s && p.locus?.cellIndex === c && p.locus?.partitionId === w.partitionId);
+    expect(byCell(0, 0)?.reason).toBe("GLASS_CELL"); // one-cell section, no hinging
+    expect(byCell(1, 0)?.reason).toBe("GLASS_CELL"); // transom = cells[0] of a two-cell section
+    expect(byCell(1, 1)?.reason).toBe("DOOR_CELL"); // the door cell
   });
 
   test("submit-design problem path: a blank saved-component field (SELECTION scope) is reported by labels, never UUIDs (S34-7 AC4)", async ({ as, f, url }) => {

@@ -787,6 +787,7 @@ function DesignWorkspaceInner({
           projectId={projectId}
           isSubdomain={isSubdomain}
           onClose={() => setSubmitDesignReport(null)}
+          floorCount={floors.length}
           onNavigateToPartition={(partitionId) => {
             setSubmitDesignReport(null);
             enterConfigureMode(partitionId);

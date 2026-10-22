@@ -7,6 +7,10 @@
  * returns 422 + CalculationProblemReport.  Displays problems grouped by scope with locus-aware
  * "Go →" navigation links per the approved mockup (problem-popup-poc.html, 2026-09-24).
  *
+ * Stage 34 S34-7 (P2 mockup): DESIGN problems are grouped room -> wall by `locus` ids (see
+ * `lib/materials/problem-groups.ts`), collapsed by default, with Expand all / Collapse all, counts and one
+ * Go per wall. The floor name shows only when the project has more than one floor. Other scopes stay flat rows.
+ *
  * Link rules (resolved decisions):
  *   DESIGN   + locus.partitionId   → design?partition=[partitionId]  (configure mode deep-link)
  *   SELECTION + locus.selectionId  → design?partition=[locus.partitionId]  (always has partitionId)
@@ -18,13 +22,19 @@
  * same component can say "Design cannot be submitted" vs "Recompute failed".
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type {
   CalculationProblem,
   CalculationProblemReport,
   ProblemScope,
 } from "@/lib/materials/problems";
+import {
+  groupDesignProblems,
+  roomSummary,
+  wallSummary,
+  type RoomGroup,
+} from "@/lib/materials/problem-groups";
 
 // ─── Scope-specific visual config ────────────────────────────────────────────
 
@@ -356,6 +366,234 @@ function ProblemGroup({
   );
 }
 
+// ─── DESIGN scope: room -> wall (Stage 34 S34-7) ──────────────────────────────
+
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+      className={`h-[12px] w-[12px] flex-shrink-0 text-text-muted transition-transform motion-reduce:transition-none ${open ? "rotate-90" : ""}`}
+    >
+      <path d="M4 2l4 4-4 4" />
+    </svg>
+  );
+}
+
+const GO_BUTTON_CLASS =
+  "inline-flex flex-shrink-0 items-center gap-[4px] whitespace-nowrap rounded-[3px] border border-border bg-bg-white px-[10px] py-[5px] text-[11px] font-bold text-text-body hover:border-[var(--color-border-strong)] hover:bg-primary-softer hover:text-text-heading";
+
+function DesignRoom({
+  room,
+  open,
+  onToggle,
+  orgSlug,
+  projectId,
+  isSubdomain,
+  onClose,
+  style,
+  onNavigateToPartition,
+}: {
+  room: RoomGroup;
+  open: boolean;
+  onToggle: () => void;
+  orgSlug: string;
+  projectId: string;
+  isSubdomain: boolean;
+  onClose: () => void;
+  style: ScopeStyle;
+  onNavigateToPartition?: (partitionId: string) => void;
+}) {
+  return (
+    <div data-testid="problem-room-group" className="border-b border-border last:border-b-0">
+      <button
+        type="button"
+        data-testid="problem-room"
+        aria-expanded={open}
+        onClick={onToggle}
+        className="flex w-full items-center gap-[8px] bg-bg-white px-[14px] py-[10px] text-left text-text-body hover:bg-bg-hover"
+      >
+        <Chevron open={open} />
+        <span className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-[6px] gap-y-[1px]">
+          <span className="text-[12.5px] font-extrabold text-text-heading">{room.name}</span>
+          <span className="text-[11.5px] tabular-nums text-text-muted">{roomSummary(room)}</span>
+        </span>
+      </button>
+      {open && (
+        <div className="border-t border-border bg-bg-card">
+          {room.walls.map((w) => {
+            const href = orgPath(isSubdomain, orgSlug, `/projects/${projectId}/design?partition=${w.partitionId}`);
+            const label = `Go to ${room.name}, ${w.label}`;
+            return (
+              <div
+                key={w.partitionId}
+                data-testid="problem-wall"
+                className="flex items-center gap-[10px] border-b border-border py-[8px] pl-[34px] pr-[14px] last:border-b-0"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12px] font-bold text-text-heading">{w.label}</div>
+                  <div className="mt-[1px] text-[11px] leading-[1.4] text-text-muted">{wallSummary(w)}</div>
+                </div>
+                {onNavigateToPartition ? (
+                  <button
+                    type="button"
+                    data-testid="problem-wall-go"
+                    aria-label={label}
+                    onClick={() => {
+                      onNavigateToPartition(w.partitionId);
+                      onClose();
+                    }}
+                    className={GO_BUTTON_CLASS}
+                  >
+                    <GoArrowIcon />
+                    Go
+                  </button>
+                ) : (
+                  <Link href={href} data-testid="problem-wall-go" aria-label={label} onClick={onClose} className={GO_BUTTON_CLASS}>
+                    <GoArrowIcon />
+                    Go
+                  </Link>
+                )}
+              </div>
+            );
+          })}
+          {room.loose.map((p, i) => (
+            <ProblemRow
+              key={`loose-${i}`}
+              problem={p}
+              orgSlug={orgSlug}
+              projectId={projectId}
+              isSubdomain={isSubdomain}
+              onClose={onClose}
+              style={style}
+              onNavigateToPartition={onNavigateToPartition}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DesignGroup({
+  problems,
+  floorCount,
+  orgSlug,
+  projectId,
+  isSubdomain,
+  onClose,
+  onNavigateToPartition,
+}: {
+  problems: CalculationProblem[];
+  floorCount?: number;
+  orgSlug: string;
+  projectId: string;
+  isSubdomain: boolean;
+  onClose: () => void;
+  onNavigateToPartition?: (partitionId: string) => void;
+}) {
+  const s = SCOPE_STYLES.DESIGN;
+  const groups = groupDesignProblems(problems, { floorCount });
+  const [openRooms, setOpenRooms] = useState<Set<string>>(() => new Set());
+  const anyClosed = groups.rooms.some((r) => !openRooms.has(r.roomId));
+
+  function toggleRoom(id: string) {
+    setOpenRooms((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <div>
+      <div
+        className="flex items-center gap-[8px] rounded-t-[5px] px-[12px] py-[8px]"
+        style={{ background: s.headerBg, border: `1px solid ${s.headerBorder}`, borderBottom: "none" }}
+      >
+        <div
+          className="flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-[4px] text-white"
+          style={{ background: s.iconBg }}
+        >
+          <ScopeIcon scope="DESIGN" />
+        </div>
+        <span className="text-[12.5px] font-extrabold" style={{ color: s.titleColor }}>
+          {s.label}
+        </span>
+        <div className="ml-auto flex items-center gap-[10px]">
+          {groups.rooms.length > 1 && (
+            <button
+              type="button"
+              data-testid="problem-toggle-all"
+              onClick={() =>
+                setOpenRooms(anyClosed ? new Set(groups.rooms.map((r) => r.roomId)) : new Set())
+              }
+              className="cursor-pointer bg-transparent py-[2px] text-[11.5px] font-extrabold underline underline-offset-2"
+              style={{ color: s.titleColor }}
+            >
+              {anyClosed ? "Expand all" : "Collapse all"}
+            </button>
+          )}
+          <span
+            className="rounded-[20px] px-[8px] py-[2px] text-[11px] font-bold tabular-nums"
+            style={{ background: "#FFFFFF", color: s.countText, border: `1px solid ${s.countBorder}` }}
+          >
+            {groups.total}
+          </span>
+        </div>
+      </div>
+      <div
+        className="overflow-hidden rounded-b-[5px]"
+        style={{ border: `1px solid ${s.rowBorderColor}`, borderTop: "none" }}
+      >
+        {groups.rooms.map((room, idx) => {
+          const prev = groups.rooms[idx - 1];
+          const newFloor = groups.showFloor && (!prev || prev.floorId !== room.floorId);
+          return (
+            <div key={room.roomId}>
+              {newFloor && (
+                <div
+                  data-testid="problem-floor"
+                  className="border-b border-border bg-bg-card px-[14px] pb-[5px] pt-[7px] text-[10px] font-extrabold uppercase tracking-[0.07em] text-text-muted"
+                >
+                  {room.floorName}
+                </div>
+              )}
+              <DesignRoom
+                room={room}
+                open={openRooms.has(room.roomId)}
+                onToggle={() => toggleRoom(room.roomId)}
+                orgSlug={orgSlug}
+                projectId={projectId}
+                isSubdomain={isSubdomain}
+                onClose={onClose}
+                style={s}
+                onNavigateToPartition={onNavigateToPartition}
+              />
+            </div>
+          );
+        })}
+        {groups.loose.map((p, i) => (
+          <ProblemRow
+            key={`loose-${i}`}
+            problem={p}
+            orgSlug={orgSlug}
+            projectId={projectId}
+            isSubdomain={isSubdomain}
+            onClose={onClose}
+            style={s}
+            onNavigateToPartition={onNavigateToPartition}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export interface ProblemPopupProps {
@@ -375,6 +613,11 @@ export interface ProblemPopupProps {
    * Absent on the future Stage 26 Summary page, where a real cross-page navigation is correct.
    */
   onNavigateToPartition?: (partitionId: string) => void;
+  /**
+   * Stage 34 D-34: number of floors in the project, to decide whether the floor name shows with a room.
+   * The Design page passes it; absent (Summary page) the popup counts the distinct floors among the problems.
+   */
+  floorCount?: number;
 }
 
 const SCOPE_ORDER: ProblemScope[] = ["DESIGN", "SELECTION", "INVENTORY", "FORMULA_SET"];
@@ -393,6 +636,7 @@ export function ProblemPopup({
   isSubdomain,
   onClose,
   onNavigateToPartition,
+  floorCount,
 }: ProblemPopupProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -431,7 +675,7 @@ export function ProblemPopup({
         aria-modal="true"
         aria-labelledby="problem-popup-title"
         aria-describedby="problem-popup-subtitle"
-        className="mx-5 flex w-full max-w-[540px] flex-col overflow-hidden rounded-[8px] border border-border bg-bg-white shadow-[0_24px_48px_-16px_rgba(27,40,30,.4)]"
+        className="mx-5 flex w-full max-w-[560px] flex-col overflow-hidden rounded-[8px] border border-border bg-bg-white shadow-[0_24px_48px_-16px_rgba(27,40,30,.4)]"
         style={{ maxHeight: "calc(100vh - 80px)" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -469,6 +713,20 @@ export function ProblemPopup({
           {SCOPE_ORDER.map((scope) => {
             const problems = byScope.get(scope);
             if (!problems || problems.length === 0) return null;
+            if (scope === "DESIGN") {
+              return (
+                <DesignGroup
+                  key={scope}
+                  problems={problems}
+                  floorCount={floorCount}
+                  orgSlug={orgSlug}
+                  projectId={projectId}
+                  isSubdomain={isSubdomain}
+                  onClose={onClose}
+                  onNavigateToPartition={onNavigateToPartition}
+                />
+              );
+            }
             return (
               <ProblemGroup
                 key={scope}

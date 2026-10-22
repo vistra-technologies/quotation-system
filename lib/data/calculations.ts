@@ -21,6 +21,7 @@ import type { ConfigSnapshot } from "@/lib/config-snapshot";
 import { prisma } from "@/lib/prisma";
 import type { FormulaSetBody, MaterialByRoomEntry, MaterialListLine, Summary, SummaryInput, SummaryResult } from "@/lib/summary/types";
 import { ProblemCollector } from "@/lib/materials/problems";
+import { isGlassCell, type DesignSectionV2 } from "@/lib/partition-design";
 import { ownedProjectWhere } from "@/lib/data/ownership";
 import type { SessionData } from "@/lib/session";
 
@@ -201,6 +202,7 @@ export function runPhaseA(
           collector.add({
             kind: "CELL_UNASSIGNED",
             scope: "DESIGN",
+            reason: "NOT_STARTED",
             message: `Room "${room.label}", wall "${partition.label}": design has not been started`,
             locus: {
               ...where,
@@ -217,6 +219,7 @@ export function runPhaseA(
             collector.add({
               kind: "CELL_UNASSIGNED",
               scope: "DESIGN",
+              reason: "MALFORMED",
               message: `Room "${room.label}", wall "${partition.label}", section ${sI}: design is malformed`,
               locus: {
                 ...where,
@@ -235,6 +238,7 @@ export function runPhaseA(
               collector.add({
                 kind: "CELL_UNASSIGNED",
                 scope: "DESIGN",
+                reason: isGlassCell(section as unknown as DesignSectionV2, cI) ? "GLASS_CELL" : "DOOR_CELL",
                 message: `Room "${room.label}", wall "${partition.label}", section ${sI}, cell ${cI}: no selection assigned`,
                 locus: {
                   ...where,

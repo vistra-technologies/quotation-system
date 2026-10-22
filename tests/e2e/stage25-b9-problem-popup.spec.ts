@@ -276,10 +276,16 @@ test("UI: Submit Design button triggers problem popup with DESIGN scope group", 
   // The DESIGN scope group header must be visible ("Fix your design").
   await expect(dialog.locator("text=Fix your design")).toBeVisible();
 
-  // At least one problem row must be rendered (data-testid="problem-row" avoids
-  // matching the dialog header, which the previous ".flex.items-start" locator did).
-  const problemRows = dialog.locator('[data-testid="problem-row"]');
-  await expect(problemRows.first()).toBeVisible();
+  // Stage 34 S34-7: DESIGN problems are grouped by room, collapsed by default. A room row is visible, its
+  // wall rows are not until it is expanded, and no UUID appears in the dialog text.
+  const room = dialog.locator('[data-testid="problem-room"]').first();
+  await expect(room).toBeVisible();
+  await expect(room).toHaveAttribute("aria-expanded", "false");
+  await expect(dialog.locator('[data-testid="problem-wall"]')).toHaveCount(0);
+  await room.click();
+  await expect(room).toHaveAttribute("aria-expanded", "true");
+  await expect(dialog.locator('[data-testid="problem-wall"]').first()).toBeVisible();
+  expect(await dialog.innerText()).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
 });
 
 // ─── UI: Go button opens Configure mode (not just changes the URL) ────────────
@@ -298,7 +304,10 @@ test("UI: Go button in DESIGN scope group actually opens Configure mode", async 
   // Find the Go button — rendered as a <button> (not a <Link>) on the Design page
   // so the workspace enters Configure mode via enterConfigureMode() instead of a
   // URL-only navigation that would leave the view in Layout mode.
-  const goBtn = dialog.locator('button:has-text("Go")').first();
+  // Stage 34: one Go per wall, inside an expanded room.
+  const room = dialog.locator('[data-testid="problem-room"]').first();
+  if ((await room.getAttribute("aria-expanded")) !== "true") await room.click();
+  const goBtn = dialog.locator('[data-testid="problem-wall-go"]').first();
   await expect(goBtn).toBeVisible();
 
   // Click Go — closes the popup and calls enterConfigureMode(partitionId).
