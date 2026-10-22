@@ -411,14 +411,14 @@ test.describe("projects: submit design / calculation / recompute", () => {
     expect(await c.json()).toEqual({ error: "No calculation found for this project" });
   });
 
-  test("submit-design problem path: a not-started wall reports reason NOT_STARTED; null glass and null door cells report GLASS_CELL / DOOR_CELL (S34-7, D-33)", async ({ as, f, url }) => {
+  test("submit-design problem path: null glass and null door cells report reason GLASS_CELL / DOOR_CELL (S34-7, D-33)", async ({ as, f, url }) => {
     const w = await f.wall();
     const first = await as.member.post(url(`/projects/${w.projectId}/submit-design`));
     expect(first.status(), await first.text()).toBe(422);
     const rep1 = await json<{ problems: Problem[] }>(first);
     const mine = rep1.problems.filter((p) => p.locus?.partitionId === w.partitionId);
     expect(mine.length).toBeGreaterThanOrEqual(1);
-    for (const p of mine) expect(p.reason).toBe("NOT_STARTED");
+    for (const p of mine) expect(["GLASS_CELL", "DOOR_CELL"], `reason of ${p.message}`).toContain(p.reason); // the convert seeds a design with null cells
 
     // No glass Selection in this project, so the server fill leaves the null glass cells alone.
     const patch = await as.admin.patch(url(`/partitions/${w.partitionId}`), {
