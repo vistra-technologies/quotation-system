@@ -7,7 +7,7 @@ import {
   type BrowserContext,
 } from "@playwright/test";
 import { assertMutationAllowed } from "./guard";
-import { retryTransient } from "./retry";
+import { retryTransient, retryConnectionError } from "./retry";
 import { TEST_ORG } from "../env";
 import type { Role, RunState } from "./run-state";
 import { apiUrl } from "../../e2e/helpers";
@@ -47,14 +47,20 @@ export class Guarded {
     assertMutationAllowed(method, url, this.allowance.slugs, this.allowance.ids, o?.data);
   }
   get(url: string, o?: Body): Promise<APIResponse> {
-    return this.ctx.get(url, { headers: this.h(o) });
+    // GET is idempotent: safe to retry on connection errors.
+    return retryConnectionError(() => this.ctx.get(url, { headers: this.h(o) }), {
+      onRetry: (_err, ms, n) => console.warn(`[regression] GET ${url} → connection error; retry ${n} in ${ms}ms`),
+    });
   }
   post(url: string, o?: Body): Promise<APIResponse> {
     this.check("POST", url, o);
+    // POST creates are NOT retried on connection errors: a reset after the server processed the
+    // request but before it could respond would orphan a row (duplicate create).
     return this.ctx.post(url, { data: o?.data, headers: this.h(o) });
   }
   patch(url: string, o?: Body): Promise<APIResponse> {
     this.check("PATCH", url, o);
+    // PATCH: not retried — cannot know whether the mutation applied before the reset.
     return this.ctx.patch(url, { data: o?.data, headers: this.h(o) });
   }
   put(url: string, o?: Body): Promise<APIResponse> {
@@ -63,7 +69,10 @@ export class Guarded {
   }
   delete(url: string, o?: Body): Promise<APIResponse> {
     this.check("DELETE", url, o);
-    return this.ctx.delete(url, { data: o?.data, headers: this.h(o) });
+    // DELETE is idempotent (404 = already gone): safe to retry on connection errors.
+    return retryConnectionError(() => this.ctx.delete(url, { data: o?.data, headers: this.h(o) }), {
+      onRetry: (_err, ms, n) => console.warn(`[regression] DELETE ${url} → connection error; retry ${n} in ${ms}ms`),
+    });
   }
 }
 
@@ -77,13 +86,18 @@ export class SaClient extends Guarded {
       baseURL,
       extraHTTPHeaders: bypass ? { "x-vercel-protection-bypass": bypass } : {},
     });
-    // I5: bounded backoff on 429 (rate limit) / 5xx — a transient blip must not fail setup or strand a teardown
-    const { res } = await retryTransient(
-      async () => {
-        const r = await ctx.post("/api/v1/superadmin/login", { data: { username: user, password: pass } });
-        return { status: r.status(), res: r };
-      },
-      { onRetry: (s, ms, n) => console.warn(`[regression] SuperAdmin login → HTTP ${s}; retry ${n} in ${ms / 1000}s`) },
+    // I5: bounded backoff on 429/5xx (retryTransient) and on connection-level errors (retryConnectionError).
+    // Login is idempotent (creates a new session each attempt) so both levels are safe to retry.
+    const { res } = await retryConnectionError(
+      () =>
+        retryTransient(
+          async () => {
+            const r = await ctx.post("/api/v1/superadmin/login", { data: { username: user, password: pass } });
+            return { status: r.status(), res: r };
+          },
+          { onRetry: (s, ms, n) => console.warn(`[regression] SuperAdmin login → HTTP ${s}; retry ${n} in ${ms / 1000}s`) },
+        ),
+      { onRetry: (_err, ms, n) => console.warn(`[regression] SuperAdmin login → connection error; retry ${n} in ${ms / 1000}s`) },
     );
     if (res.status() !== 200) {
       await ctx.dispose();

@@ -21,3 +21,50 @@ export async function retryTransient<T extends { status: number }>(
   }
   return res;
 }
+
+/**
+ * True for network-level connection errors that are safe to retry on idempotent methods (GET, HEAD,
+ * DELETE). Checks both the error message (Playwright wraps the underlying Node error) and the .code
+ * property (bare Node errors).
+ */
+export function isConnectionError(err: unknown): boolean {
+  if (err instanceof Error) {
+    const msg = err.message;
+    if (
+      msg.includes("ECONNRESET") ||
+      msg.includes("ETIMEDOUT") ||
+      msg.includes("ECONNREFUSED") ||
+      msg.includes("EPIPE")
+    )
+      return true;
+  }
+  const code = err != null ? (err as NodeJS.ErrnoException).code : undefined;
+  return code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ECONNREFUSED" || code === "EPIPE";
+}
+
+/**
+ * Retry `attempt` on connection-level errors (ECONNRESET, ETIMEDOUT, …) — safe ONLY for idempotent
+ * methods (GET, HEAD, DELETE). Do NOT use for POST/PATCH/PUT creates: a reset after the server
+ * processed the request but before it could respond would orphan a row.
+ * Bounded: `delaysMs.length` retries at most. Each retry is logged via `onRetry`.
+ */
+export async function retryConnectionError<T>(
+  attempt: () => Promise<T>,
+  opts: {
+    delaysMs?: number[];
+    sleep?: (ms: number) => Promise<void>;
+    onRetry?: (err: unknown, waitMs: number, n: number) => void;
+  } = {},
+): Promise<T> {
+  const delays = opts.delaysMs ?? [1_000, 2_000, 4_000];
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let i = 0; ; i++) {
+    try {
+      return await attempt();
+    } catch (err) {
+      if (!isConnectionError(err) || i >= delays.length) throw err;
+      opts.onRetry?.(err, delays[i], i + 1);
+      await sleep(delays[i]);
+    }
+  }
+}

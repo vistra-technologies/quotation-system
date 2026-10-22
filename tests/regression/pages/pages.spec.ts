@@ -1129,10 +1129,10 @@ test.describe("pins", () => {
         }
         // ... and their own lists do not show them (anchored on the list's empty-filter state):
         await o.page.goto(orgTarget(run, `/projects?search=${encodeURIComponent(p.name)}`));
-        await expect(o.page.getByText("No projects match your filters."), who).toBeVisible();
+        await expect(o.page.getByText("No projects match your filters.").filter({ visible: true }), who).toBeVisible();
         await expect(o.page.getByText(p.name), who).toHaveCount(0);
         await o.page.goto(orgTarget(run, `/inquiries?search=${encodeURIComponent(inq.name)}`));
-        await expect(o.page.getByText("No inquiries match your filters."), who).toBeVisible();
+        await expect(o.page.getByText("No inquiries match your filters.").filter({ visible: true }), who).toBeVisible();
         await expect(o.page.getByText(inq.name), who).toHaveCount(0);
       });
     }
