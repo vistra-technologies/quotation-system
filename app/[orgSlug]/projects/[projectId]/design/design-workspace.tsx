@@ -436,20 +436,18 @@ function DesignWorkspaceInner({
     setAddingRoomForEmptyState(false);
   }
 
-  // Stage 34 S34-5: the copy exists server-side already, so it always joins the list (and the pills
-  // re-lock); OPENING it is a room switch and goes through the unsaved-changes guard. Cancelling the
-  // guard leaves the copy listed but unopened (orchestrator ruling, D-32).
+  // Stage 34 S34-5 (D-32): the unsaved-changes guard already ran BEFORE the duplicate request (RoomList passes
+  // runWithUnsavedGuard to the form: Save saves first so the copy has the edits, Discard copies the saved state,
+  // Cancel creates nothing), so the draft is clean here and the copy opens directly.
   function handleRoomDuplicated(room: RoomRow) {
     setFloors((prev) =>
       prev.map((f) => (f.id === room.floorId ? { ...f, rooms: [...f.rooms, room] } : f)),
     );
     router.refresh();
-    runWithUnsavedGuard(() => {
-      setSelectedFloorId(room.floorId);
-      setSelectedRoomId(room.id);
-      setViewMode("layout");
-      setLayoutSideSelection(null);
-    });
+    setSelectedFloorId(room.floorId);
+    setSelectedRoomId(room.id);
+    setViewMode("layout");
+    setLayoutSideSelection(null);
   }
 
   function handleRoomDeleted(roomId: string) {
@@ -574,6 +572,7 @@ function DesignWorkspaceInner({
                   onSelectRoom={selectRoom}
                   onRoomCreated={handleRoomCreated}
                   onRoomDuplicated={handleRoomDuplicated}
+                  runWithUnsavedGuard={runWithUnsavedGuard}
                   onRoomDeleted={handleRoomDeleted}
                   onSelectPartition={enterConfigureMode}
                   selectedPartitionId={viewMode === "configure" ? state.partitionId : null}

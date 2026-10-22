@@ -14,6 +14,11 @@ interface DuplicateRoomFormProps {
   /** The name the rail currently shows for the room (a pending rename wins over the saved label). */
   displayName: string;
   onCancel: () => void;
+  /**
+   * The workspace's unsaved-changes guard. The duplicate request runs inside it: Save saves first (so the copy
+   * includes the edits), Discard drops them, Cancel runs nothing and the prompt stays as it was (D-32).
+   */
+  runWithUnsavedGuard: (resume: () => void) => void;
   /** Called with the created copy on success. */
   onDuplicated: (room: RoomRow) => void;
 }
@@ -29,6 +34,7 @@ export function DuplicateRoomForm({
   room,
   displayName,
   onCancel,
+  runWithUnsavedGuard,
   onDuplicated,
 }: DuplicateRoomFormProps) {
   const t = useTranslations("design");
@@ -36,13 +42,17 @@ export function DuplicateRoomForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function submit() {
+  function submit() {
     const trimmed = label.trim();
     if (!trimmed) {
       setError(t("duplicateRoomNameRequired"));
       return;
     }
     if (submitting) return;
+    runWithUnsavedGuard(() => void send(trimmed));
+  }
+
+  async function send(trimmed: string) {
     setSubmitting(true);
     setError(null);
     try {
@@ -85,7 +95,7 @@ export function DuplicateRoomForm({
           aria-invalid={error ? true : undefined}
           onChange={(e) => setLabel(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") void submit();
+            if (e.key === "Enter") submit();
             else if (e.key === "Escape") {
               e.stopPropagation();
               onCancel();
@@ -100,7 +110,7 @@ export function DuplicateRoomForm({
         />
         <button
           type="button"
-          onClick={() => void submit()}
+          onClick={submit}
           disabled={submitting}
           className="shrink-0 rounded-sm bg-primary px-2.5 py-1.5 text-[12px] font-bold text-text-on-primary hover:bg-primary-dark disabled:opacity-50"
         >

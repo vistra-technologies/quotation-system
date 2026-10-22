@@ -648,7 +648,7 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
     });
   });
 
-  test("Design canvas (Stage 34 B6): Duplicate room - icon + tooltip, prefilled prompt, a taken name keeps the prompt open with the error, success opens the copy, unsaved edits show the guard (Cancel keeps the copy listed but unopened)", async ({ browser, run, f, as, url }) => {
+  test("Design canvas (Stage 34 B6): Duplicate room - icon + tooltip, prefilled prompt, a taken name keeps the prompt open with the error, success opens the copy, the unsaved-changes guard runs before the request (Cancel creates nothing, Save copies the saved edits, Discard copies the saved state)", async ({ browser, run, f, as, url }) => {
     test.setTimeout(180_000);
     const w = await readyWall(f, as.admin, url);
     const rooms = async () => (await as.admin.get(url(`/rooms?floorId=${w.floorId}`))).json() as Promise<{ rooms: { id: string; label: string }[] }>;
@@ -679,23 +679,53 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       expect(copy.id).not.toBe(w.roomId);
       expect((await rooms()).rooms).toHaveLength(2);
 
-      // unsaved edits in Configure mode: opening a copy is a room switch -> the guard; Cancel keeps the copy listed, unopened
-      await o.page.goto(orgTarget(run, `/projects/${w.projectId}/design?partition=${w.partitionId}`));
-      await expect(o.page.getByRole("button", { name: "Back to Room Layout" })).toBeVisible();
-      const width = o.page.getByLabel("Partition width");
-      await width.fill("2100");
-      await o.page.getByRole("button", { name: "Apply width", exact: true }).click();
-      await expect(o.page.getByRole("button", { name: "Save changes" })).toBeEnabled();
-      await o.page.getByTestId(`room-duplicate-${w.roomId}`).filter({ visible: true }).click();
+      // unsaved edits in Configure mode (D-32): the guard runs BEFORE the request.
+      const partsOf = async (roomId: string) => ((await (await as.admin.get(url(`/partitions?roomId=${roomId}`))).json()) as { partitions: { widthMm: number }[] }).partitions;
+      const dirtyWidth = async (mm: string) => {
+        await o.page.goto(orgTarget(run, `/projects/${w.projectId}/design?partition=${w.partitionId}`));
+        await expect(o.page.getByRole("button", { name: "Back to Room Layout" })).toBeVisible();
+        await o.page.getByLabel("Partition width").fill(mm);
+        await o.page.getByRole("button", { name: "Apply width", exact: true }).click();
+        await expect(o.page.getByRole("button", { name: "Save changes" })).toBeEnabled();
+        await o.page.getByTestId(`room-duplicate-${w.roomId}`).filter({ visible: true }).click();
+      };
+      const dupBtn = () => o.page.getByRole("button", { name: "Duplicate", exact: true });
+      const guard = o.page.getByText("Save changes?");
+
+      // Cancel: nothing is created, the prompt stays open, still in Configure mode
       const second = `${label}-b6b`;
+      await dirtyWidth("2100");
       await o.page.getByLabel("Name of the copy").fill(second);
-      await o.page.getByRole("button", { name: "Duplicate", exact: true }).click();
-      await expect(o.page.getByText("Save changes?")).toBeVisible();
+      await dupBtn().click();
+      await expect(guard).toBeVisible();
       await o.page.getByRole("button", { name: "Cancel", exact: true }).click();
-      await expect(o.page.getByText("Save changes?")).toBeHidden();
-      await expect(o.page.getByRole("button", { name: "Back to Room Layout" })).toBeVisible(); // still in Configure mode
-      await expect(o.page.getByText(second, { exact: true }).filter({ visible: true })).toBeVisible(); // copy is listed
-      expect((await rooms()).rooms.map((r) => r.label)).toContain(second);
+      await expect(guard).toBeHidden();
+      await expect(o.page.getByRole("button", { name: "Back to Room Layout" })).toBeVisible();
+      await expect(o.page.getByLabel("Name of the copy")).toBeVisible();
+      expect((await rooms()).rooms.map((r) => r.label)).not.toContain(second);
+
+      // Save: saves first, then duplicates, so the copy carries the edited width; the copy opens
+      await dupBtn().click();
+      await expect(guard).toBeVisible();
+      await o.page.getByRole("button", { name: "Save & Go Back", exact: true }).click();
+      await expect(o.page.getByRole("button", { name: "Back to Room Layout" })).toBeHidden();
+      const saved = (await rooms()).rooms.find((r) => r.label === second)!;
+      expect(saved, "Save then duplicate creates the copy").toBeTruthy();
+      expect((await partsOf(saved.id)).map((p) => p.widthMm)).toEqual([2100]);
+      expect((await partsOf(w.roomId)).map((p) => p.widthMm)).toEqual([2100]);
+
+      // Discard: the edit is dropped, the copy is of the saved state (2100), and it opens
+      const third = `${label}-b6c`;
+      await dirtyWidth("2300");
+      await o.page.getByLabel("Name of the copy").fill(third);
+      await dupBtn().click();
+      await expect(guard).toBeVisible();
+      await o.page.getByRole("button", { name: "Discard Changes", exact: true }).click();
+      await expect(o.page.getByRole("button", { name: "Back to Room Layout" })).toBeHidden();
+      const discarded = (await rooms()).rooms.find((r) => r.label === third)!;
+      expect(discarded, "Discard then duplicate creates the copy").toBeTruthy();
+      expect((await partsOf(discarded.id)).map((p) => p.widthMm)).toEqual([2100]);
+      expect((await partsOf(w.roomId)).map((p) => p.widthMm)).toEqual([2100]);
     });
   });
 

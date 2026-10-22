@@ -22,6 +22,8 @@ interface RoomListProps {
   onRoomCreated: (room: RoomRow) => void;
   /** Stage 34 S34-5: called with the copy after a successful Duplicate (the workspace opens it through the unsaved-changes guard). */
   onRoomDuplicated?: (room: RoomRow) => void;
+  /** The workspace's unsaved-changes guard; the Duplicate request runs inside it (D-32). Defaults to running at once. */
+  runWithUnsavedGuard?: (resume: () => void) => void;
   /**
    * Optional — called after a room is deleted so the parent can sync its state.
    * design-workspace.tsx is frozen (Track 0 contract) and does not pass this
@@ -94,6 +96,7 @@ export function RoomList({
   onSelectRoom,
   onRoomCreated,
   onRoomDuplicated,
+  runWithUnsavedGuard,
   onRoomDeleted,
   onSelectPartition,
   selectedPartitionId,
@@ -375,6 +378,7 @@ export function RoomList({
                       room={room}
                       displayName={draftState.pendingRoomNameEdits[room.id] ?? room.label}
                       onCancel={() => setDuplicatingRoomId(null)}
+                      runWithUnsavedGuard={runWithUnsavedGuard ?? ((resume) => resume())}
                       onDuplicated={(copy) => {
                         setDuplicatingRoomId(null);
                         setExpandedRoomIds((prev) => new Set(prev).add(copy.id));
