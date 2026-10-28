@@ -22,7 +22,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import { blockNumericKeys, sanitizeNumericPaste } from "@/lib/numeric-input";
+import { blockNumericBeforeInput, blockNumericDrop, blockNumericKeys, sanitizeNumericPaste } from "@/lib/numeric-input";
 
 // ─── Item types ──────────────────────────────────────────────────────────────
 
@@ -261,6 +261,8 @@ export function ApplyWidthSlot({
               }
             }}
             onPaste={sanitizeNumericPaste}
+            onBeforeInput={blockNumericBeforeInput}
+            onDrop={blockNumericDrop}
             className={
               "w-[76px] rounded-[6px] border px-[7px] py-[5px] text-right text-[12.5px] text-text-heading focus:outline-none " +
               (error

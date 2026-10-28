@@ -992,6 +992,14 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       await railWidthInput.focus();
       await o.page.keyboard.type("-");
       expect(await railWidthInput.inputValue(), "rail Width: '-' must be blocked").not.toContain("-");
+      // Also verify paste of '1400--' is rejected (paste guard covers multi-char junk).
+      await railWidthInput.fill("");
+      await railWidthInput.evaluate((el: HTMLInputElement) => {
+        const dt = new DataTransfer();
+        dt.setData("text/plain", "1400--");
+        el.dispatchEvent(new ClipboardEvent("paste", { bubbles: true, cancelable: true, clipboardData: dt }));
+      });
+      expect(await railWidthInput.inputValue(), "rail Width: paste of '1400--' must be blocked").not.toContain("--");
       await o.page.keyboard.press("Escape");
 
       // AC3: every door menu starts with Lock panel; the double leaf has no hinge items

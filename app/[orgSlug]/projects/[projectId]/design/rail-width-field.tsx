@@ -11,7 +11,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { blockNumericKeys, sanitizeNumericPaste } from "@/lib/numeric-input";
+import { blockNumericBeforeInput, blockNumericDrop, blockNumericKeys, sanitizeNumericPaste } from "@/lib/numeric-input";
 import { isUnchangedDisplayValue, planSetWidths } from "@/lib/panel-widths";
 import { useDraftContext } from "./design-draft-context";
 import { useUnit } from "./unit-context";
@@ -100,6 +100,8 @@ export function RailWidthField({ panel }: { panel: DesignPanel }) {
             }
           }}
           onPaste={sanitizeNumericPaste}
+          onBeforeInput={blockNumericBeforeInput}
+          onDrop={blockNumericDrop}
           className={
             "w-[86px] rounded-[6px] border px-[7px] py-[5px] text-right text-xs font-bold text-text-heading focus:outline-none " +
             (error

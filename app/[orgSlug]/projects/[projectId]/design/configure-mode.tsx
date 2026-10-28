@@ -26,7 +26,7 @@
 
 import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
-import { blockNumericKeys, sanitizeNumericPaste } from "@/lib/numeric-input";
+import { blockNumericBeforeInput, blockNumericDrop, blockNumericKeys, sanitizeNumericPaste } from "@/lib/numeric-input";
 import { isUnchangedDisplayValue, planWallWidth } from "@/lib/panel-widths";
 import { TickIcon, UnlockIcon } from "./lock-icons";
 import { useUnit } from "./unit-context";
@@ -304,6 +304,8 @@ export function ConfigureMode({
                   }
                 }}
                 onPaste={sanitizeNumericPaste}
+                onBeforeInput={blockNumericBeforeInput}
+                onDrop={blockNumericDrop}
                 aria-label="Partition width"
                 aria-invalid={state.notice && !isLockNotice(state.notice) && widthText !== null ? true : undefined}
                 className={
@@ -355,6 +357,8 @@ export function ConfigureMode({
                     if (e.key === "Escape") { setHeightText(null); setEditingDimension(null); }
                   }}
                   onPaste={sanitizeNumericPaste}
+                  onBeforeInput={blockNumericBeforeInput}
+                  onDrop={blockNumericDrop}
                   aria-label="Partition height"
                   className="w-[50px] border-none bg-transparent p-0 text-[13.5px] font-bold text-text-heading focus:outline-none"
                 />
