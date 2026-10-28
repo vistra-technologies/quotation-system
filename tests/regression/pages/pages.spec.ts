@@ -985,6 +985,15 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       await o.page.getByTestId("unlock-all").click();
       await expect(locks).toHaveCount(0);
 
+      // D-49: rail Width field rejects '-', '+', 'e', 'E' (fix-3 numeric guard).
+      // Select P1 alone so the rail Width field is shown for an unlocked panel.
+      await panels.nth(0).click();
+      const railWidthInput = o.page.locator("#rail-width-input");
+      await railWidthInput.focus();
+      await o.page.keyboard.type("-");
+      expect(await railWidthInput.inputValue(), "rail Width: '-' must be blocked").not.toContain("-");
+      await o.page.keyboard.press("Escape");
+
       // AC3: every door menu starts with Lock panel; the double leaf has no hinge items
       await doorOf(1).click({ button: "right" });
       await expect(menus).toHaveCount(1);

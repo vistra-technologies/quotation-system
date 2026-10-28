@@ -11,6 +11,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
+import { blockNumericKeys, sanitizeNumericPaste } from "@/lib/numeric-input";
 import { isUnchangedDisplayValue, planSetWidths } from "@/lib/panel-widths";
 import { useDraftContext } from "./design-draft-context";
 import { useUnit } from "./unit-context";
@@ -86,6 +87,7 @@ export function RailWidthField({ panel }: { panel: DesignPanel }) {
           }}
           onBlur={revert}
           onKeyDown={(e) => {
+            blockNumericKeys(e);
             if (e.key === "Enter") {
               e.preventDefault();
               if (!panel.locked) apply();
@@ -97,6 +99,7 @@ export function RailWidthField({ panel }: { panel: DesignPanel }) {
               e.currentTarget.blur();
             }
           }}
+          onPaste={sanitizeNumericPaste}
           className={
             "w-[86px] rounded-[6px] border px-[7px] py-[5px] text-right text-xs font-bold text-text-heading focus:outline-none " +
             (error

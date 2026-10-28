@@ -19,6 +19,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { blockNumericKeys, sanitizeNumericPaste } from "@/lib/numeric-input";
 // MIN_DOOR_HEIGHT_MM / DEFAULT_DOOR_HEIGHT_RATIO removed from import — Bug 12
 // changed the door default to full wall height and slider min to 0, making
 // both constants unused in this file. configure-constants.ts is unchanged.
@@ -416,6 +417,7 @@ function DoorHeightValue({
         onFocus={(e) => e.target.select()}
         onBlur={() => finish(true)}
         onKeyDown={(e) => {
+          blockNumericKeys(e);
           if (e.key === "Enter") finish(true);
           else if (e.key === "Escape") {
             // Don't let the workspace's document-level Escape handler also deselect the panel.
@@ -424,6 +426,7 @@ function DoorHeightValue({
             finish(false);
           }
         }}
+        onPaste={sanitizeNumericPaste}
         className="w-16 shrink-0 rounded border border-primary bg-bg-white px-1 py-0.5 text-right text-xs font-bold text-text-heading"
       />
     );

@@ -26,6 +26,7 @@
 
 import { useRef, useState } from "react";
 import { useTranslations } from "next-intl";
+import { blockNumericKeys, sanitizeNumericPaste } from "@/lib/numeric-input";
 import { isUnchangedDisplayValue, planWallWidth } from "@/lib/panel-widths";
 import { TickIcon, UnlockIcon } from "./lock-icons";
 import { useUnit } from "./unit-context";
@@ -292,6 +293,7 @@ export function ConfigureMode({
                 }}
                 onBlur={cancelWidth}
                 onKeyDown={(e) => {
+                  blockNumericKeys(e);
                   if (e.key === "Enter") {
                     e.preventDefault();
                     applyWidth();
@@ -301,6 +303,7 @@ export function ConfigureMode({
                     e.currentTarget.blur();
                   }
                 }}
+                onPaste={sanitizeNumericPaste}
                 aria-label="Partition width"
                 aria-invalid={state.notice && !isLockNotice(state.notice) && widthText !== null ? true : undefined}
                 className={
@@ -347,9 +350,11 @@ export function ConfigureMode({
                   onChange={(e) => setHeightText(e.target.value)}
                   onBlur={commitHeight}
                   onKeyDown={(e) => {
+                    blockNumericKeys(e);
                     if (e.key === "Enter") e.currentTarget.blur();
                     if (e.key === "Escape") { setHeightText(null); setEditingDimension(null); }
                   }}
+                  onPaste={sanitizeNumericPaste}
                   aria-label="Partition height"
                   className="w-[50px] border-none bg-transparent p-0 text-[13.5px] font-bold text-text-heading focus:outline-none"
                 />

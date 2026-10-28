@@ -203,22 +203,25 @@ export default async function InquiryDetailPage({
             </button>
           </form>
 
-          {/* Start Project — client component; behavior unchanged */}
-          <StartProjectButton
-            orgSlug={orgSlug}
-            inquiryId={inquiryId}
-            disabled={isClosed}
-          />
-
-          {/* Go to project — Stage 34 Q2: converted inquiries only, Edit-button style */}
-          {inquiry.status === "CONVERTED" && inquiry.project && (
+          {/* Start Project / Go to project — Stage 34 D-50: on a CONVERTED inquiry with a
+              linked project, the "Start Project" action is replaced by a "Go to project" link
+              in the same position with primary-button styling. On all other inquiries (NEW or
+              DISMISSED, or CONVERTED without a visible project) the original Start Project
+              button is shown. */}
+          {inquiry.status === "CONVERTED" && inquiry.project ? (
             <Link
               href={`${base}/projects/${inquiry.project.id}`}
               prefetch={false}
-              className="inline-flex items-center rounded-sm border border-border bg-bg-white px-4 py-2.5 text-sm font-bold text-text-body hover:bg-primary-softer hover:text-text-heading"
+              className="inline-flex items-center rounded-sm bg-primary px-4 py-2.5 text-sm font-bold text-text-on-primary hover:bg-primary-dark"
             >
               {t("goToProject")}
             </Link>
+          ) : (
+            <StartProjectButton
+              orgSlug={orgSlug}
+              inquiryId={inquiryId}
+              disabled={isClosed}
+            />
           )}
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isPlainNonNegativeNumber } from "@/app/[orgSlug]/quick-estimate/numeric-input";
+import { isPlainNonNegativeNumber } from "@/lib/numeric-input";
 
 test("accepts plain non-negative numbers", () => {
   for (const s of ["0", "5", "12.50", ".5", "5.", "1000000"]) assert.equal(isPlainNonNegativeNumber(s), true, s);

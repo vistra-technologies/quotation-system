@@ -22,6 +22,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { blockNumericKeys, sanitizeNumericPaste } from "@/lib/numeric-input";
 
 // ─── Item types ──────────────────────────────────────────────────────────────
 
@@ -251,6 +252,7 @@ export function ApplyWidthSlot({
             }}
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
+              blockNumericKeys(e);
               if (e.key === "Enter") {
                 e.preventDefault();
                 apply();
@@ -258,6 +260,7 @@ export function ApplyWidthSlot({
                 e.stopPropagation(); // handled by parent context menu
               }
             }}
+            onPaste={sanitizeNumericPaste}
             className={
               "w-[76px] rounded-[6px] border px-[7px] py-[5px] text-right text-[12.5px] text-text-heading focus:outline-none " +
               (error

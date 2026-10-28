@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
+import { blockNumericKeys, sanitizeNumericPaste } from "@/lib/numeric-input";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { redirectToLogin } from "./login-redirect";
 import { useUnit } from "./unit-context";
@@ -282,6 +283,8 @@ export function ConvertSideForm({
             step="any"
             value={widthDisplay}
             onChange={(e) => handleWidthChange(e.target.value)}
+            onKeyDown={blockNumericKeys}
+            onPaste={sanitizeNumericPaste}
             className="w-[72px] border-0 border-b border-b-border bg-transparent px-0.5 py-0.5 text-[13.5px] font-bold text-text-heading focus:border-b-primary focus:outline-none"
           />
         </label>
@@ -294,6 +297,8 @@ export function ConvertSideForm({
             step="any"
             value={heightDisplay}
             onChange={(e) => handleHeightChange(e.target.value)}
+            onKeyDown={blockNumericKeys}
+            onPaste={sanitizeNumericPaste}
             className="w-[72px] border-0 border-b border-b-border bg-transparent px-0.5 py-0.5 text-[13.5px] font-bold text-text-heading focus:border-b-primary focus:outline-none"
           />
         </label>
@@ -313,6 +318,8 @@ export function ConvertSideForm({
               setPanelsText(e.target.value);
               setOptionsError(null);
             }}
+            onKeyDown={blockNumericKeys}
+            onPaste={sanitizeNumericPaste}
             className="w-[52px] border-0 border-b border-b-border bg-transparent px-0.5 py-0.5 text-[13.5px] font-bold text-text-heading focus:border-b-primary focus:outline-none disabled:text-text-muted"
           />
         </label>
