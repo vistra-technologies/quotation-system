@@ -1,5 +1,6 @@
 import { isComponentTypeFullyConfigured } from "@/lib/configurator-gating";
-import type { FieldEntry } from "@/lib/types/field-entry";
+import { applyFieldVisibility } from "@/lib/field-visibility";
+import type { FieldEntry, ShowWhen } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import { UNIT_AREA, UNIT_PIECE, type EstimateUnit } from "./estimate";
 
@@ -16,6 +17,8 @@ export interface EstimateField {
   key: string;
   label: string;
   dependsOn?: string;
+  /** Stage 35 S35-6: visible only while its (basic) controller's chosen value is in `in`. */
+  showWhen?: ShowWhen;
 }
 
 /** A usable component type, trimmed to what the estimator needs. */
@@ -58,7 +61,12 @@ export function usableEstimateTypes(componentTypes: ComponentTypeInput[]): { ena
     if (!isComponentTypeFullyConfigured(basic, ct.fieldOptionsConfig)) continue;
     const basicFields = basic
       .filter((f) => CHOICE.has(f.type))
-      .map((f) => ({ key: f.key, label: f.label, ...(f.dependsOn ? { dependsOn: f.dependsOn } : {}) }));
+      .map((f) => ({
+        key: f.key,
+        label: f.label,
+        ...(f.dependsOn ? { dependsOn: f.dependsOn } : {}),
+        ...(f.showWhen ? { showWhen: f.showWhen } : {}),
+      }));
     const config = ct.fieldOptionsConfig ?? {};
     const options: FieldOptionsConfig = {};
     for (const f of basicFields) {
@@ -81,7 +89,9 @@ export const VARIANT_SEPARATOR = " · ";
 /**
  * Every combination of the type's basic fields, walking the `dependsOn` chain through the option config.
  * Full variants only (D-9): a type with no basic choice fields yields no options. A branch with no mapped
- * values yields nothing.
+ * values yields nothing. Stage 35 S35-6: before each field the one visibility pass runs over the choices made so
+ * far (the palette only knows basic fields, so a gated field whose controller is not one is never offered); a
+ * hidden field adds no part to the combination.
  */
 export function buildCombinations(type: EstimateType): EstimateOption[] {
   if (type.basicFields.length === 0) return [];
@@ -90,6 +100,10 @@ export function buildCombinations(type: EstimateType): EstimateOption[] {
     const entry = type.options[field.key];
     const next: Record<string, string>[] = [];
     for (const partial of partials) {
+      if (!applyFieldVisibility(type.basicFields, partial).visibleKeys.has(field.key)) {
+        next.push(partial);
+        continue;
+      }
       let values: string[] = [];
       if (!field.dependsOn) {
         values = entry && "options" in entry ? entry.options : [];
@@ -101,8 +115,9 @@ export function buildCombinations(type: EstimateType): EstimateOption[] {
     }
     partials = next;
   }
-  return partials.map((p) => {
-    const parts = type.basicFields.map((f) => p[f.key]);
+  // A combination with no chosen part (every field hidden) is not an option, same as "no basic choice fields".
+  return partials.filter((p) => Object.keys(p).length > 0).map((p) => {
+    const parts = type.basicFields.filter((f) => p[f.key] !== undefined).map((f) => p[f.key]);
     return { parts, text: parts.join(VARIANT_SEPARATOR) };
   });
 }

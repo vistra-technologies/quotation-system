@@ -16,7 +16,8 @@ export type CalculationProblemKind =
   | "UNRESOLVED_CODE"          // non-blank code, no matching InventoryItem in this org
   | "UNIT_MISMATCH"            // row found, wrong measurementUnit
   | "INACTIVE_ITEM"            // row found, active: false
-  | "NON_FINITE_QUANTITY";     // a quantity expression produced NaN/Infinity
+  | "NON_FINITE_QUANTITY"      // a quantity expression produced NaN/Infinity
+  | "HIDDEN_PARAM";            // a FIRING formula reads a field hidden by showWhen (formula-engine.md rule 8)
 
 /** Where the user has to go to fix the problem. Stage 25 groups the popup by this. */
 export type ProblemScope = "DESIGN" | "SELECTION" | "INVENTORY" | "FORMULA_SET";

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { applyFieldVisibility } from "@/lib/field-visibility";
+import { applyFieldVisibility, visibilityFieldsFromRaw } from "@/lib/field-visibility";
 import { collectDescendants } from "@/lib/configurator-gating";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
@@ -62,4 +62,18 @@ test("collectDescendants includes showWhen children, transitively, de-duplicated
   assert.deepEqual(collectDescendants(schema, "a").sort(), ["b", "c", "d", "e"]);
   assert.deepEqual(collectDescendants(schema, "c"), ["d"]);
   assert.deepEqual(collectDescendants(schema, "d"), []);
+});
+
+test("visibilityFieldsFromRaw reads raw snapshot JSON leniently (non-objects / keyless skipped, malformed showWhen dropped)", () => {
+  const out = visibilityFieldsFromRaw([
+    { key: "a" },
+    { key: "b", showWhen: { field: "a", in: ["1"] } },
+    { key: "c", showWhen: { field: "a", in: [1] } },
+    { key: "d", showWhen: [1] },
+    { label: "no key" },
+    "junk",
+    null,
+  ]);
+  assert.deepEqual(out, [{ key: "a" }, { key: "b", showWhen: { field: "a", in: ["1"] } }, { key: "c" }, { key: "d" }]);
+  assert.deepEqual(visibilityFieldsFromRaw("nope"), []);
 });

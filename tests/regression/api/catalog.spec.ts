@@ -523,6 +523,14 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     await rejected(await post(sw([{ field: "a", in: ["x"] }])), 400, /"showWhen" must be an object/);
     await rejected(await post([{ key: "a", label: "A", type: "field", required: false, basic: true, inventoryLinked: true }]), 400, /"inventoryLinked" is only valid on dropdown\/radio/);
     expect((await listTypes(orgB, run.orgB.slug)).length).toBe(before);
+    // review-b2-1 MINOR 1: org POST also ACCEPTS a valid showWhen / inventoryLinked, stores it and returns it
+    // (`inventoryLinked: false` is stored absent, S35-1)
+    const gatedPost = sw({ field: "a", in: ["x", "y"] }, { inventoryLinked: true });
+    const posted = (await ok<{ componentType: CT }>(await post(gatedPost), 201)).componentType;
+    expect(posted.fieldsSchema).toEqual(gatedPost);
+    expect((await listTypes(orgB, run.orgB.slug)).find((t) => t.id === posted.id)!.fieldsSchema).toEqual(gatedPost);
+    const unlinked = (await ok<{ componentType: CT }>(await post(sw({ field: "a", in: ["x"] }, { inventoryLinked: false })), 201)).componentType;
+    expect(unlinked.fieldsSchema).toEqual(sw({ field: "a", in: ["x"] }));
 
     const ct = await mkBType({ run, orgB });
     const rewired = CASCADE.map((f) => (f.key === "finish" ? { ...f, dependsOn: "doesNotExist" } : f));

@@ -420,3 +420,39 @@ test("sheet: only priced lines are rows; Discount and Tax rows are always presen
   const amount = buildSheet(lines, computeEstimate(lines, AMT(1000), 0), "USD", labels);
   assert.deepEqual(amount.totals[1], { label: "Discount", value: "- 1,000.00" }); // no % in amount mode
 });
+
+// ─── Stage 35 S35-6: a gated basic field is offered only when visible ───────────────────────────────────
+
+const GATED_FIELDS: FieldEntry[] = [
+  choice("category"),
+  choice("finish", { showWhen: { field: "category", in: ["Single glazed"] } }),
+  choice("hidden", { showWhen: { field: "nonBasic", in: ["x"] } }),
+  choice("nonBasic", { basic: false }),
+];
+const GATED_CONFIG: FieldOptionsConfig = {
+  category: { options: ["Single glazed", "Double glazed"] },
+  finish: { options: ["Matt", "Gloss"] },
+  hidden: { options: ["h1"] },
+  nonBasic: { options: ["x"] },
+};
+
+test("gated basic field: its values multiply the combinations only under the matching controller value", () => {
+  const t = usableEstimateTypes([glass({ fieldsSchema: GATED_FIELDS, fieldOptionsConfig: GATED_CONFIG })]).types[0];
+  assert.deepEqual(
+    buildCombinations(t).map((o) => o.text),
+    ["Single glazed · Matt", "Single glazed · Gloss", "Double glazed"],
+  );
+  assert.deepEqual(buildCombinations(t)[2].parts, ["Double glazed"]);
+});
+
+test("gated basic field whose controller is not a basic field is never offered", () => {
+  const t = usableEstimateTypes([glass({ fieldsSchema: GATED_FIELDS, fieldOptionsConfig: GATED_CONFIG })]).types[0];
+  assert.ok(!buildCombinations(t).some((o) => o.text.includes("h1")));
+});
+
+test("a type whose only basic field is hidden has no options", () => {
+  const fields = [choice("only", { showWhen: { field: "nonBasic", in: ["x"] } }), choice("nonBasic", { basic: false })];
+  const cfg: FieldOptionsConfig = { only: { options: ["o1"] }, nonBasic: { options: ["x"] } };
+  const t = usableEstimateTypes([glass({ fieldsSchema: fields, fieldOptionsConfig: cfg })]).types[0];
+  assert.deepEqual(buildCombinations(t), []);
+});

@@ -186,7 +186,7 @@ export function UpdateConfigWizard({ orgSlug, projectId, backHref, preview }: Pr
                 {s.blocking && <p className={bad}>{s.blocking}</p>}
                 {s.dropped.length > 0 && (
                   <p className="mb-2 text-text-muted">
-                    Will be removed (field no longer exists): {s.dropped.join(", ")}
+                    Will be removed (field no longer exists or is hidden): {s.dropped.join(", ")}
                   </p>
                 )}
                 {!s.blocking && s.issues.length === 0 && s.dropped.length === 0 && <p>No action needed.</p>}

@@ -984,3 +984,108 @@ describe("v1 fast-path", () => {
     assert.equal(result.collector.hasAny(), false);
   });
 });
+
+// ─── Stage 35 (formula-engine.md rule 8): hidden fields are absent; HIDDEN_PARAM for a FIRING formula ──────────
+
+const dd = (key: string, showWhen?: { field: string; in: string[] }) => ({
+  key, label: key, type: "dropdown", required: true, basic: false, ...(showWhen ? { showWhen } : {}),
+});
+const snapshotWith = (id: string, code: string, fieldsSchema: unknown[]): ConfigSnapshot => ({
+  takenAt: "2026-11-14T00:00:00.000Z",
+  componentTypes: [{ id, code, name: code, active: true, fieldsSchema: fieldsSchema as never, fieldOptionsConfig: {} }],
+});
+const hiddenProblems = (r: ReturnType<typeof buildMaterials>) => r.collector.report().problems.filter(p => p.kind === "HIDDEN_PARAM");
+
+describe("Stage 35 rule 8 — leaf fields hidden when hasLeaf = No", () => {
+  const snapshot = snapshotWith("ct-door", "DOOR", [
+    dd("hasFrame"), dd("hasLeaf"), dd("frameCode"),
+    dd("leafCode", { field: "hasLeaf", in: ["Yes"] }),
+    dd("leafGlassGasket1Code", { field: "hasLeaf", in: ["Yes"] }),
+  ]);
+  const run = (config: Record<string, unknown>) => buildMaterials({ ...makeDoorInput(config), snapshot });
+
+  test("hasLeaf=No with blank hidden leaf codes: same lines as before, no MISSING_PARAM, no HIDDEN_PARAM", () => {
+    const r = run(doorConfig({ hasLeaf: "No", leafCode: "", leafGlassGasket1Code: null }));
+    assert.equal(r.collector.hasAny(), false);
+    assert.equal(r.rawLines.find(l => l.formulaId === "doorLeaf"), undefined);
+    assert.equal(req(r.rawLines, "doorFrame"), 8);
+  });
+
+  test("a stale hidden value is ignored (no line, no problem)", () => {
+    const r = run(doorConfig({ hasLeaf: "No", leafCode: "STALE-LEAF" }));
+    assert.equal(r.collector.hasAny(), false);
+    assert.ok(!r.rawLines.some(l => l.code === "STALE-LEAF"));
+  });
+
+  test("hasLeaf=Yes: the leaf fields are visible and bill as today; a blank visible one is still MISSING_PARAM", () => {
+    const ok = run(doorConfig({ hasLeaf: "Yes" }));
+    assert.equal(ok.collector.hasAny(), false);
+    assert.equal(req(ok.rawLines, "doorLeaf"), 10);
+    const blank = run(doorConfig({ hasLeaf: "Yes", leafCode: "" }));
+    assert.ok(blank.collector.report().problems.some(p => p.kind === "MISSING_PARAM" && p.locus?.fieldKey === "leafCode"));
+    assert.equal(hiddenProblems(blank).length, 0);
+  });
+});
+
+describe("Stage 35 rule 8 — HIDDEN_PARAM only when the formula fires (CELL grain)", () => {
+  // authoring mismatch: doorFrame fires on hasFrame, but frameCode is gated on hasLeaf = Yes
+  const snapshot = snapshotWith("ct-door", "DOOR", [
+    dd("hasFrame"), dd("hasLeaf"), dd("frameCode", { field: "hasLeaf", in: ["Yes"] }),
+  ]);
+  const run = (config: Record<string, unknown>) => {
+    const input = makeDoorInput(config);
+    input.selections = [{ id: "sel-door", label: "Main Door", componentTypeId: "ct-door", config }];
+    return buildMaterials({ ...input, snapshot });
+  };
+
+  test("firing formula reads a hidden field: exactly one HIDDEN_PARAM, FORMULA_SET, naming formula + field; never MISSING_PARAM", () => {
+    const r = run(doorConfig({ hasLeaf: "No", frameCode: "STALE-FRAME" }));
+    const hp = hiddenProblems(r);
+    assert.equal(hp.length, 1);
+    assert.equal(hp[0].scope, "FORMULA_SET");
+    assert.equal(hp[0].locus?.formulaId, "doorFrame");
+    assert.equal(hp[0].locus?.fieldKey, "frameCode");
+    assert.match(hp[0].message, /formula "doorFrame" reads field "frameCode"/);
+    assert.match(hp[0].message, /"Main Door"/);
+    assert.equal(r.collector.report().problems.filter(p => p.kind === "MISSING_PARAM").length, 0);
+    assert.ok(!r.rawLines.some(l => l.code === "STALE-FRAME"), "the stale hidden value never reaches a line");
+  });
+
+  test("the formula is skipped (hasFrame = No): no HIDDEN_PARAM", () => {
+    const r = run(doorConfig({ hasFrame: "No", hasLeaf: "No" }));
+    assert.equal(r.collector.hasAny(), false);
+  });
+
+  test("the same field visible (hasLeaf = Yes): no problem, the line bills", () => {
+    const r = run(doorConfig({ hasLeaf: "Yes" }));
+    assert.equal(r.collector.hasAny(), false);
+    assert.equal(req(r.rawLines, "doorFrame"), 8);
+  });
+});
+
+describe("Stage 35 rule 8 — HIDDEN_PARAM at PARTITION grain", () => {
+  const snapshot = snapshotWith("ct-glass", "GLASS", [dd("category"), dd("u_profile", { field: "category", in: ["Alt"] })]);
+  const sides: RoomSide[] = [plainSide("s0"), partitionSide("s1", "p1"), plainSide("s2")];
+  const run = (config: Record<string, unknown>) =>
+    buildMaterials({
+      ...makeGlassInput(
+        sides,
+        [{ id: "p1", label: "Wall 1", widthMm: 4000, heightMm: 3000, design: glassDesign4Panel() }],
+        [{ id: "sel-glass", componentTypeId: "ct-glass", config }],
+      ),
+      snapshot,
+    });
+
+  test("profileU fires and reads the hidden u_profile: one HIDDEN_PARAM", () => {
+    const r = run(glassConfig({ category: "Single" }));
+    const hp = hiddenProblems(r);
+    assert.equal(hp.length, 1);
+    assert.equal(hp[0].locus?.formulaId, "profileU");
+    assert.equal(hp[0].locus?.fieldKey, "u_profile");
+    assert.equal(hp[0].scope, "FORMULA_SET");
+  });
+
+  test("visible when category = Alt: no problem", () => {
+    assert.equal(run(glassConfig({ category: "Alt" })).collector.hasAny(), false);
+  });
+});

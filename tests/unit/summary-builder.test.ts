@@ -387,3 +387,54 @@ describe("buildSummary", () => {
     assert.equal(JSON.stringify(buildSummary(i)), JSON.stringify(buildSummary(i)));
   });
 });
+
+// ─── Stage 35 S35-6: a required summary param is required only when visible ─────────────────────────────
+describe("buildSummary — field visibility (showWhen)", () => {
+  // doorType is required but only shown while category = Single
+  const gatedSnapshot = () => ({
+    takenAt: "2026-11-14T00:00:00.000Z",
+    componentTypes: [
+      {
+        id: DOOR_T,
+        code: "DOOR",
+        name: "Door",
+        active: true,
+        fieldsSchema: [
+          req("category"),
+          { ...req("doorType"), showWhen: { field: "category", in: ["Single"] } },
+          { key: "isDoubleLeaf", label: "isDoubleLeaf", type: "dropdown", required: false, basic: false, showWhen: { field: "category", in: ["Single"] } },
+        ],
+        fieldOptionsConfig: {},
+      },
+    ],
+  });
+  const doorWall = () => [partition("p1", "North", [section("s1", 900, [cell("c1", 2100, "d1")])])];
+  const run = (config: Record<string, unknown>) =>
+    buildSummary(input(doorWall(), { snapshot: gatedSnapshot(), selections: [{ id: "d1", componentTypeId: DOOR_T, config }] }));
+
+  test("blank hidden required param does not fail; the param reads null", () => {
+    const r = run({ category: "Double" });
+    assert.equal(r.status, "OK", JSON.stringify(r));
+    assert.equal(r.summary.floors[0].rooms[0].walls[0].doors[0].doorType, null);
+  });
+
+  test("a stale hidden value is ignored (doorType and isDoubleLeaf)", () => {
+    const r = run({ category: "Double", doorType: "Stale", isDoubleLeaf: "Yes" });
+    assert.equal(r.status, "OK");
+    const d = r.summary.floors[0].rooms[0].walls[0].doors[0];
+    assert.equal(d.doorType, null);
+    assert.equal(d.handing, "LH");
+  });
+
+  test("the same field visible and blank is still FAILED", () => {
+    const r = run({ category: "Single" });
+    assert.equal(r.status, "FAILED");
+    assert.match(r.errorDetail ?? "", /required field "doorType"/);
+  });
+
+  test("the same field visible and filled is read", () => {
+    const r = run({ category: "Single", doorType: "Flush" });
+    assert.equal(r.status, "OK");
+    assert.equal(r.summary.floors[0].rooms[0].walls[0].doors[0].doorType, "Flush");
+  });
+});

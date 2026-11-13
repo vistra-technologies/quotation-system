@@ -12,6 +12,7 @@
  */
 import type { ConfigSnapshot } from "../config-snapshot";
 import { isDoubleLeafConfig } from "../door-leaf";
+import { applyFieldVisibility, visibilityFieldsFromRaw } from "../field-visibility";
 import type {
   DoorRow,
   FormulaSlot,
@@ -48,7 +49,7 @@ interface ResolvedSelection {
   typeCode: string;
   slot: FormulaSlot;
   config: Record<string, unknown>;
-  required: Set<string>; // fieldsSchema keys the org marks required:true
+  required: Set<string>; // VISIBLE fieldsSchema keys the org marks required:true (Stage 35 S35-6)
 }
 
 /**
@@ -74,11 +75,12 @@ function readParam(
   return value;
 }
 
-function requiredKeys(fieldsSchema: unknown): Set<string> {
+/** Required keys of the type that are visible for this config (a hidden field is never required). */
+function requiredKeys(fieldsSchema: unknown, visibleKeys: Set<string>): Set<string> {
   const out = new Set<string>();
   if (Array.isArray(fieldsSchema)) {
     for (const f of fieldsSchema) {
-      if (isRecord(f) && typeof f.key === "string" && f.required === true) out.add(f.key);
+      if (isRecord(f) && typeof f.key === "string" && f.required === true && visibleKeys.has(f.key)) out.add(f.key);
     }
   }
   return out;
@@ -119,11 +121,17 @@ function build(input: SummaryInput): Summary {
     if (!slot || typeof slot.role !== "string") {
       throw new SummaryFailure(`${where}: component type ${type.code} has no slot in the formula set`);
     }
+    // Stage 35 S35-6: the one visibility pass over the snapshot type; hidden keys are dropped (a stale hidden
+    // value is ignored) and a hidden required summary param is not required.
+    const { visibleKeys, values } = applyFieldVisibility(
+      visibilityFieldsFromRaw(type.fieldsSchema),
+      isRecord(sel.config) ? sel.config : {},
+    );
     const r: ResolvedSelection = {
       typeCode: type.code,
       slot,
-      config: isRecord(sel.config) ? sel.config : {},
-      required: requiredKeys(type.fieldsSchema),
+      config: values,
+      required: requiredKeys(type.fieldsSchema, visibleKeys),
     };
     resolved.set(selectionId, r);
     return r;

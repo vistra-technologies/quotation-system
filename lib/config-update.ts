@@ -8,6 +8,7 @@
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import { collectDescendants, resolveOptions } from "@/lib/configurator-gating";
+import { applyFieldVisibility } from "@/lib/field-visibility";
 
 export type ConfigValue = string | boolean | number | null;
 export type SelectionConfig = Record<string, ConfigValue>;
@@ -21,9 +22,9 @@ export interface FieldIssue {
 }
 
 export interface ConfigCheck {
-  /** Config with keys no longer in the schema removed. */
+  /** Config with keys no longer in the schema, and keys of fields now hidden (S35-6), removed. */
   cleaned: SelectionConfig;
-  /** Keys that were removed because the field no longer exists. */
+  /** Keys that were removed because the field no longer exists or is now hidden by its `showWhen` rule. */
   dropped: string[];
   issues: FieldIssue[];
 }
@@ -38,6 +39,8 @@ function isEmpty(v: ConfigValue | undefined): boolean {
  * Validate one Selection config against the type's current schema/options.
  * Schema order is parent-before-dependent, so each choice field is checked against the options its
  * parent's stored value currently yields (cascade-aware).
+ * Stage 35 S35-6: the field-visibility pass runs after the unknown-key drop; a hidden field's key is dropped as
+ * stale, and only VISIBLE fields can be missing or invalid.
  */
 export function validateSelectionConfig(
   fieldsSchema: FieldEntry[],
@@ -45,12 +48,14 @@ export function validateSelectionConfig(
   config: SelectionConfig,
 ): ConfigCheck {
   const keys = new Set(fieldsSchema.map((f) => f.key));
-  const cleaned: SelectionConfig = {};
+  const known: SelectionConfig = {};
   const dropped: string[] = [];
   for (const [k, v] of Object.entries(config)) {
-    if (keys.has(k)) cleaned[k] = v;
+    if (keys.has(k)) known[k] = v;
     else dropped.push(k);
   }
+  const { visibleKeys, values: cleaned } = applyFieldVisibility(fieldsSchema, known);
+  for (const k of Object.keys(known)) if (!(k in cleaned)) dropped.push(k);
 
   const strValues: Record<string, string | boolean> = {};
   for (const [k, v] of Object.entries(cleaned)) {
@@ -59,7 +64,7 @@ export function validateSelectionConfig(
 
   const issues: FieldIssue[] = [];
   for (const field of fieldsSchema) {
-    if (field.type === "checkbox") continue;
+    if (field.type === "checkbox" || !visibleKeys.has(field.key)) continue;
     const value = cleaned[field.key];
     if (isEmpty(value)) {
       if (field.required) issues.push({ key: field.key, label: field.label, kind: "missing", oldValue: null });
@@ -115,6 +120,20 @@ function optionSets(f: FieldEntry, cfg: FieldOptionsConfig): Map<string, Set<str
   return out;
 }
 
+/** Identity of a field's `showWhen` (controller key + value set, order-insensitive), or null when it has none. */
+function showWhenId(f: FieldEntry): string | null {
+  const sw = f.showWhen;
+  return sw ? JSON.stringify([sw.field, [...sw.in].sort()]) : null;
+}
+
+/** "<controller label> is a, b" for display, or null when the field has no `showWhen`. */
+function showWhenText(f: FieldEntry, schema: FieldEntry[]): string | null {
+  const sw = f.showWhen;
+  if (!sw) return null;
+  const controller = schema.find((x) => x.key === sw.field)?.label ?? sw.field;
+  return `"${controller}" is ${sw.in.join(", ")}`;
+}
+
 /** Human-readable differences between the project's frozen types and the org's current ones. */
 export function diffConfigs(oldTypes: DiffType[], newTypes: DiffType[]): TypeChange[] {
   const out: TypeChange[] = [];
@@ -136,6 +155,24 @@ export function diffConfigs(oldTypes: DiffType[], newTypes: DiffType[]): TypeCha
           continue;
         }
         if (of.label !== f.label) items.push(`Field "${of.label}" renamed to "${f.label}"`);
+        // Stage 35 S35-6: a visibility-rule or inventory-link change surfaces the "Configuration update available" banner.
+        if (showWhenId(of) !== showWhenId(f)) {
+          const after = showWhenText(f, nt.fieldsSchema);
+          items.push(
+            after === null
+              ? `Field "${f.label}" is now always shown`
+              : !of.showWhen
+                ? `Field "${f.label}" is now shown only when ${after}`
+                : `Field "${f.label}" visibility rule changed: now shown only when ${after}`,
+          );
+        }
+        if (Boolean(of.inventoryLinked) !== Boolean(f.inventoryLinked)) {
+          items.push(
+            f.inventoryLinked
+              ? `Field "${f.label}" is now linked to inventory`
+              : `Field "${f.label}" is no longer linked to inventory`,
+          );
+        }
         if (!of.required && f.required) items.push(`Field "${f.label}" is now required`);
         if (of.required && !f.required) items.push(`Field "${f.label}" is now optional`);
         const a = optionSets(of, ot.fieldOptionsConfig);

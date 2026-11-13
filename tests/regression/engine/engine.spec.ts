@@ -35,6 +35,8 @@ import type { RunState } from "../fixtures/run-state";
 import { orgApi } from "../api/project-helpers";
 import { allowTestOrgCodes } from "../fixtures/test-org-codes";
 import { rgrSetSelectionConfig } from "../../e2e/db-helpers";
+import { withTestOrgConfigLock } from "../fixtures/config-window";
+import { globalStateFailuresFile, withRecordedGlobalState } from "../fixtures/global-state";
 import {
   codesOf, doorCfg, expectLines, glassCfg, makeItemSet, readCalc, refused, testOrgItems,
   type Calculation, type ItemSet,
@@ -85,8 +87,8 @@ const PLAIN = { kind: "PLAIN" } as const;
 const wall = (widthMm: number, heightMm: number, doorOnly?: true): SideIn => ({ kind: "PARTITION", widthMm, heightMm, ...(doorOnly ? { doorOnly } : {}) });
 
 /** A ledgered project with one floor and one closed 4-sided room; returns the partition ids in side order. */
-async function project(c: C, sides: SideIn[], pre?: (projectId: string) => Promise<void>): Promise<{ projectId: string; partitionIds: string[] }> {
-  const { id: projectId } = await c.f.project();
+async function project(c: C, sides: SideIn[], pre?: (projectId: string) => Promise<void>, existingProjectId?: string): Promise<{ projectId: string; partitionIds: string[] }> {
+  const projectId = existingProjectId ?? (await c.f.project()).id;
   const fl = await c.as.admin.post(U(c, "/floors"), { data: { projectId, label: `${c.run.prefix}F` } });
   expect(fl.status(), await fl.text()).toBe(201);
   const floorId = ((await fl.json()) as { floor: { id: string } }).floor.id;
@@ -409,5 +411,99 @@ test.describe("calculation engine: refusals keep the stored calculation", () => 
     }
     expect(calc.materialList).toHaveLength(10);
     expect(calc.errorDetail).toBeNull();
+  });
+});
+
+// ── Stage 35 S35-6 / G0-d / formula-engine.md rule 8: hidden fields (`showWhen`) on the live engine ─────────────
+// A project freezes its ComponentType config at creation, and selections / submit then use that FROZEN snapshot. So
+// the shared Test-Org DOOR schema is gated only for the few requests that create one project (under
+// TEST_ORG_CONFIG_LOCK, recorded and reverted, rule 10); everything after runs against the project's own snapshot.
+type DoorField = { key: string; type: string; showWhen?: { field: string; in: string[] } } & Record<string, unknown>;
+
+/** Create a project whose frozen DOOR schema has `gate(fields)` applied; the shared DOOR type is restored before this returns. */
+async function projectWithGatedDoor(c: C, gate: (fields: DoorField[]) => DoorField[]): Promise<string> {
+  const id = await typeId(c, "DOOR");
+  const path = U(c, `/component-types/${id}`);
+  const read = async () => {
+    const r = await c.as.admin.get(U(c, "/component-types"));
+    expect(r.status()).toBe(200);
+    return ((await r.json()) as { componentTypes: { id: string; fieldsSchema: DoorField[] }[] }).componentTypes.find((t) => t.id === id)!.fieldsSchema;
+  };
+  const write = async (v: unknown) => {
+    const r = await c.as.admin.patch(path, { data: { fieldsSchema: v } });
+    if (r.status() !== 200) throw new Error(`PATCH DOOR fieldsSchema → HTTP ${r.status()} ${await r.text()}`);
+  };
+  const original = await read();
+  expect(original.some((f) => f.showWhen), "the Test Org DOOR type has no showWhen of its own (a previous run left it gated?)").toBe(false);
+  const projectId = await withTestOrgConfigLock(c.run, () =>
+    withRecordedGlobalState(
+      { key: `Test Org ComponentType DOOR (${id}).fieldsSchema`, read, write },
+      async () => write(gate(original)),
+      async () => {
+        const created = (await c.f.project()).id;
+        // the freeze took the gating (otherwise every assertion below would pass for the wrong reason)
+        const snap = (await (await c.as.admin.get(U(c, `/projects/${created}`))).json()) as { project: { configSnapshot: { componentTypes: { code: string; fieldsSchema: DoorField[] }[] } } };
+        expect(snap.project.configSnapshot.componentTypes.find((t) => t.code === "DOOR")!.fieldsSchema.some((f) => f.showWhen)).toBe(true);
+        return created;
+      },
+      globalStateFailuresFile(c.run.storageDir),
+    ),
+  );
+  expect(await read(), "the shared DOOR schema is back to its original").toEqual(original);
+  return projectId;
+}
+
+const gateOn = (keys: string[]) => (fields: DoorField[]): DoorField[] => {
+  const at = (k: string) => fields.findIndex((f) => f.key === k);
+  for (const k of keys) expect(at("hasLeaf"), `hasLeaf comes before ${k} in the DOOR schema`).toBeLessThan(at(k));
+  return fields.map((f) => (keys.includes(f.key) ? { ...f, showWhen: { field: "hasLeaf", in: ["Yes"] } } : f));
+};
+
+test.describe("calculation engine: hidden fields (showWhen), Stage 35", () => {
+  test("AC3: a door with hasLeaf = No and its leaf fields hidden: selection stores no hidden key, a stale one is ignored, submit 200 with no leaf lines and no problem", async ({ as, f, run }) => {
+    const c = { as, f, run };
+    const d = await itemSet(c, "dA", "DOOR");
+    const leaf = ["leafCode", "cornerConnBigCode", "cornerConnSmallLeafCode", "leafGlassGasket1Code", "leafGlassGasket2Code"];
+    const gated = await projectWithGatedDoor(c, gateOn(leaf));
+    const { projectId, partitionIds: [p1] } = await project(c, [wall(2000, 3000), PLAIN, PLAIN, PLAIN], undefined, gated);
+    const cfg = doorCfg(d, { hasLeaf: "No" }); // carries every leaf code, as the unfiltered form would send
+    const r = await as.admin.post(U(c, "/selections"), { data: { projectId, componentTypeId: await typeId(c, "DOOR"), label: `${run.prefix}DOOR`, config: cfg, orderIndex: 0 } });
+    expect(r.status(), await r.text()).toBe(201);
+    const created = ((await r.json()) as { selection: { id: string; config: Record<string, string> } }).selection;
+    for (const k of leaf) expect(created.config, `hidden ${k} is not stored`).not.toHaveProperty(k);
+    expect(created.config.hasLeaf).toBe("No");
+    // a stale hidden value written behind the API (a Selection saved before the rule existed)
+    await rgrSetSelectionConfig(created.id, { ...cfg });
+    await setDesign(c, p1, 3000, design([[2000, [[3000, created.id]]]]));
+    const calc = await submit(c, projectId);
+    expectLines(calc.materialList, d, { doorFrame: 8, cornerConnSmallFrame: 2, lAngle: 4, hinges: 4, rubber25mm: 8, frameBumperGasket: 8, frameBackGasket: 12 }, "frame only, leaf fields hidden");
+    expect(codesOf(calc.materialList, d)).toHaveLength(7); // no leaf line, the stale leaf codes billed nothing
+    expect(calc.errorDetail).toBeNull();
+  });
+
+  test("a firing formula that reads a hidden field is refused with one HIDDEN_PARAM (FORMULA_SET, naming formula + field); a skipped formula is not", async ({ as, f, run }) => {
+    const c = { as, f, run };
+    const d = await itemSet(c, "dA", "DOOR");
+    // authoring mismatch on purpose: doorFrame fires on hasFrame, but frameCode is gated on hasLeaf = Yes
+    const gated = await projectWithGatedDoor(c, gateOn(["frameCode"]));
+    const { projectId, partitionIds: [p1] } = await project(c, [wall(2000, 3000), PLAIN, PLAIN, PLAIN], undefined, gated);
+    const selId = await selection(c, projectId, "DOOR", doorCfg(d, { hasLeaf: "No" })); // hasFrame = Yes
+    await setDesign(c, p1, 3000, design([[2000, [[3000, selId]]]]));
+
+    const body = await refused(await as.admin.post(U(c, `/projects/${projectId}/submit-design`)));
+    expect(body.problems.map((p) => ({ kind: p.kind, scope: p.scope, formulaId: p.locus?.formulaId, fieldKey: p.locus?.fieldKey }))).toEqual([
+      { kind: "HIDDEN_PARAM", scope: "FORMULA_SET", formulaId: "doorFrame", fieldKey: "frameCode" },
+    ]);
+    expect(body.problemCount).toBe(1);
+    expect(body.problems[0].message).toMatch(/formula "doorFrame" reads field "frameCode"/);
+    // blocks the write: no calculation, not submitted
+    expect((await as.admin.get(U(c, `/projects/${projectId}/calculation`))).status()).toBe(404);
+    const pj = (await (await as.admin.get(U(c, `/projects/${projectId}`))).json()) as { project: { designSubmittedAt: string | null } };
+    expect(pj.project.designSubmittedAt).toBeNull();
+
+    // the same hidden field with doorFrame skipped (hasFrame = No, hasLeaf = No): nothing fires -> no HIDDEN_PARAM, empty list
+    const skipped = await selection(c, projectId, "DOOR", doorCfg(d, { hasFrame: "No", hasLeaf: "No" }));
+    await setDesign(c, p1, 3000, design([[2000, [[3000, skipped]]]]));
+    expect((await submit(c, projectId)).materialList).toEqual([]);
   });
 });

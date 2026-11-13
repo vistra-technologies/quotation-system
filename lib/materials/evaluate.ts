@@ -4,7 +4,10 @@
  * PURE: no Prisma, no lib/data/* function calls — plain data in, plain data out, unit-testable.
  * Implements the CELL and PARTITION grain walks from formula-engine.md §3.
  *
- * Two key design decisions here:
+ * Key design decisions here:
+ *  0. Stage 35 (formula-engine.md rule 8): before any Proxy exists, each Selection's config is run through the
+ *     field-visibility pass against its snapshot type; hidden keys are removed (a stale value is ignored). A hidden
+ *     field is never MISSING_PARAM; a formula that FIRES and reads one records HIDDEN_PARAM (FORMULA_SET).
  *  1. The recording param Proxy (makeParamProxy): every param.* read goes through it so that a
  *     blank field records MISSING_PARAM and returns "" — the Proxy is the *only* path to param values.
  *  2. materialCode substitution is a plain {param.x} replace — never through expr-eval — so a blank
@@ -14,6 +17,7 @@ import { Parser } from "expr-eval";
 import type { FormulaSetBody } from "../summary/types";
 import type { ConfigSnapshot } from "../config-snapshot";
 import type { RoomSide } from "../data/rooms";
+import { applyFieldVisibility, visibilityFieldsFromRaw } from "../field-visibility";
 import { derivePartitionGeometry } from "./geometry";
 import type { ParsedDesign } from "./geometry";
 import { ProblemCollector } from "./problems";
@@ -86,10 +90,18 @@ export interface EvalInput {
 function makeParamProxy(
   config: Record<string, unknown>,
   onBlank: (key: string) => void,
+  hidden: ReadonlySet<string>,
+  onHidden: (key: string) => void,
 ): Record<string, unknown> {
   return new Proxy(config, {
     get(target, prop) {
       if (typeof prop !== "string") return undefined;
+      // A hidden field has no value (stripped before the Proxy) and is never "missing": the read is reported
+      // through onHidden, which the caller only turns into a problem if the formula goes on to fire.
+      if (hidden.has(prop)) {
+        onHidden(prop);
+        return "";
+      }
       const val = target[prop];
       if (val == null || (typeof val === "string" && val.trim() === "")) {
         onBlank(prop);
@@ -168,6 +180,36 @@ function isConditionTrue(condResult: number | null): boolean {
   return Boolean(condResult);
 }
 
+// ─── Hidden-field preparation (Stage 35) ──────────────────────────────────────
+
+interface PreparedSelection {
+  componentTypeId: string;
+  /** The Selection's config with every hidden key removed. */
+  config: Record<string, unknown>;
+  label?: string;
+  /** Schema keys hidden for this Selection's values. */
+  hidden: ReadonlySet<string>;
+}
+
+/** Run the one visibility pass for every Selection against its snapshot type's schema. */
+function prepareSelections(input: EvalInput): Map<string, PreparedSelection> {
+  const fieldsByType = new Map(
+    (input.snapshot.componentTypes ?? []).map((t) => [t.id, visibilityFieldsFromRaw(t.fieldsSchema)] as const),
+  );
+  const out = new Map<string, PreparedSelection>();
+  for (const [id, sel] of input.selectionMap) {
+    const fields = fieldsByType.get(sel.componentTypeId) ?? [];
+    const { visibleKeys, values } = applyFieldVisibility(fields, sel.config);
+    out.set(id, {
+      componentTypeId: sel.componentTypeId,
+      config: values,
+      label: sel.label,
+      hidden: new Set(fields.filter((f) => !visibleKeys.has(f.key)).map((f) => f.key)),
+    });
+  }
+  return out;
+}
+
 // ─── Main evaluator ───────────────────────────────────────────────────────────
 
 /**
@@ -177,7 +219,8 @@ function isConditionTrue(condResult: number | null): boolean {
  */
 export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawMaterialLine[] {
   const rawLines: RawMaterialLine[] = [];
-  const { formulaSetBody, floors, selectionMap, componentTypeCodeMap, designMap } = input;
+  const { formulaSetBody, floors, componentTypeCodeMap, designMap } = input;
+  const selectionMap = prepareSelections(input);
   const formulas = formulaSetBody.formulas ?? [];
   const cellFormulas = formulas.filter(f => f.grain === "CELL");
   const partitionFormulas = formulas.filter(f => f.grain === "PARTITION");
@@ -212,6 +255,26 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
             const cellBlankSeen = new Set<string>();
 
             for (const formula of applicable) {
+              // Hidden fields this formula reads; reported (HIDDEN_PARAM) only if the formula fires.
+              const hiddenReads = new Set<string>();
+              const flushHidden = () => {
+                for (const key of hiddenReads) {
+                  collector.add({
+                    kind: "HIDDEN_PARAM",
+                    scope: "FORMULA_SET",
+                    message: `Room "${room.label}", wall "${partition.label}": formula "${formula.id}" reads field "${key}", which is hidden on "${sel.label ?? slotCode}" (${slotCode}); the formula's condition and the field's Show-when rule disagree`,
+                    locus: {
+                      floorId: floor.id,
+                      roomId: room.id,
+                      partitionId: partition.id,
+                      selectionId: cell.selectionId!,
+                      componentTypeCode: slotCode,
+                      fieldKey: key,
+                      formulaId: formula.id,
+                    },
+                  });
+                }
+              };
               const paramProxy = makeParamProxy(sel.config, (key) => {
                 const blankKey = `${cell.selectionId}|${key}`;
                 if (cellBlankSeen.has(blankKey)) return; // already recorded for this cell
@@ -233,7 +296,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
                     formulaId: formula.id,
                   },
                 });
-              });
+              }, sel.hidden, (key) => hiddenReads.add(key));
               const readParam = makeReadParam(paramProxy);
 
               const cellScope = { widthMm: section.widthMm, heightMm: cell.heightMm };
@@ -280,6 +343,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
                     formulaId: formula.id,
                   },
                 });
+                flushHidden();
                 continue;
               }
 
@@ -288,7 +352,10 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
 
               // Substitute materialCode (reads through the same proxy — records MISSING_PARAM if blank)
               const code = substituteCode(formula.materialCode, readParam);
-              if (code === "") continue; // MISSING_PARAM already recorded; drop line
+              if (code === "") {
+                flushHidden();
+                continue; // MISSING_PARAM already recorded; drop line
+              }
 
               rawLines.push({
                 code,
@@ -302,6 +369,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
 
               // Accumulate into calcScope for downstream formulas in this cell's evaluation
               calcScope[formula.id] = req;
+              flushHidden();
             }
           }
         }
@@ -318,7 +386,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
         // Build slot → first Selection config map (section order, then cell order) for this partition.
         // Confirmed with human (partition.md "No mixed-glass partitions"): every cell in a partition
         // resolves to the same param values, so using the first cell of each slot type is sufficient.
-        const slotFirstSel = new Map<string, { selectionId: string; config: Record<string, unknown>; label?: string }>();
+        const slotFirstSel = new Map<string, { selectionId: string; config: Record<string, unknown>; label?: string; hidden: ReadonlySet<string> }>();
         for (const section of parsedDesign.sections) {
           for (const cell of section.cells) {
             if (!cell.selectionId) continue;
@@ -326,7 +394,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
             if (!sel) continue;
             const slotCode = componentTypeCodeMap.get(sel.componentTypeId);
             if (!slotCode || slotFirstSel.has(slotCode)) continue;
-            slotFirstSel.set(slotCode, { selectionId: cell.selectionId, config: sel.config, label: sel.label });
+            slotFirstSel.set(slotCode, { selectionId: cell.selectionId, config: sel.config, label: sel.label, hidden: sel.hidden });
           }
         }
 
@@ -361,6 +429,26 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
           const selInfo = slotFirstSel.get(formula.slot);
           if (!selInfo) continue; // no cell of this slot type in this partition → formula doesn't apply
 
+          // Hidden fields this formula reads; reported (HIDDEN_PARAM) only if the formula fires.
+          const hiddenReads = new Set<string>();
+          const flushHidden = () => {
+            for (const key of hiddenReads) {
+              collector.add({
+                kind: "HIDDEN_PARAM",
+                scope: "FORMULA_SET",
+                message: `Room "${room.label}", wall "${partition.label}": formula "${formula.id}" reads field "${key}", which is hidden on "${selInfo.label ?? formula.slot}" (${formula.slot}); the formula's condition and the field's Show-when rule disagree`,
+                locus: {
+                  floorId: floor.id,
+                  roomId: room.id,
+                  partitionId: partition.id,
+                  selectionId: selInfo.selectionId,
+                  componentTypeCode: formula.slot,
+                  fieldKey: key,
+                  formulaId: formula.id,
+                },
+              });
+            }
+          };
           const paramProxy = makeParamProxy(selInfo.config, (key) => {
             const blankKey = `${selInfo.selectionId}|${key}`;
             if (partitionBlankSeen.has(blankKey)) return; // already recorded for this partition
@@ -380,7 +468,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
                 formulaId: formula.id,
               },
             });
-          });
+          }, selInfo.hidden, (key) => hiddenReads.add(key));
           const readParam = makeReadParam(paramProxy);
 
           const scope: Record<string, unknown> = { param: paramProxy, partition: geometry, calc: calcScope };
@@ -422,13 +510,17 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
                 formulaId: formula.id,
               },
             });
+            flushHidden();
             continue;
           }
 
           const req = formula.unit === "metres" ? Math.round(quantity * 1000) / 1000 : quantity;
 
           const code = substituteCode(formula.materialCode, readParam);
-          if (code === "") continue; // MISSING_PARAM already recorded; drop line
+          if (code === "") {
+            flushHidden();
+            continue; // MISSING_PARAM already recorded; drop line
+          }
 
           rawLines.push({
             code,
@@ -441,6 +533,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
           });
 
           calcScope[formula.id] = req;
+          flushHidden();
         }
       }
     }

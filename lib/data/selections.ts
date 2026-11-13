@@ -69,13 +69,15 @@ export class SelectionConfigError extends Error {
   }
 }
 
+/** Validates `config` and returns it with every hidden key stripped (Stage 35 S35-4); the caller stores THAT. */
 function assertValidConfig(
   fieldsSchema: FieldEntry[],
   fieldOptionsConfig: FieldOptionsConfig | null,
   config: Record<string, string | boolean | number | null>,
-) {
+): Record<string, string | boolean | number | null> {
   const res = validateSelectionConfig(fieldsSchema, fieldOptionsConfig, config);
   if (!res.ok) throw new SelectionConfigError(`Invalid configuration: ${res.error}`);
+  return res.config;
 }
 
 interface SnapshotTypeLite {
@@ -136,6 +138,7 @@ export async function createSelection(
   });
   if (!project) throw new Error("Project not found or access denied.");
 
+  let config = input.config;
   const snapshotTypes = readSnapshotTypes(project.configSnapshot);
   if (snapshotTypes) {
     // Snapshot path. The snapshot only holds this org's types, but still confirm the live row
@@ -157,7 +160,7 @@ export async function createSelection(
       throw new Error("Component type is not fully configured — contact your admin.");
     }
     // Stage 31 S31-7: validate the VALUES against the same frozen snapshot type.
-    assertValidConfig(
+    config = assertValidConfig(
       parseFieldsSchema(snapType.fieldsSchema),
       parseFieldOptionsConfig(snapType.fieldOptionsConfig),
       input.config,
@@ -171,7 +174,7 @@ export async function createSelection(
     if (!isComponentTypeFullyConfigured(componentType.fieldsSchema, componentType.fieldOptionsConfig)) {
       throw new Error("Component type is not fully configured — contact your admin.");
     }
-    assertValidConfig(componentType.fieldsSchema, componentType.fieldOptionsConfig, input.config);
+    config = assertValidConfig(componentType.fieldsSchema, componentType.fieldOptionsConfig, input.config);
   }
 
   // Stage 34 S34-7: the project's FIRST glass Selection becomes the default glass, so it fills every
@@ -187,7 +190,7 @@ export async function createSelection(
         projectId: input.projectId,
         componentTypeId: input.componentTypeId,
         label: input.label,
-        config: input.config,
+        config,
         orderIndex: input.orderIndex,
       },
     });
@@ -240,12 +243,14 @@ export async function updateSelection(
   // Stage 31 S31-7: validate the new config values against the project's frozen snapshot type (the same
   // source create used), falling back to the live type only when there is no snapshot at all. A snapshot
   // that lacks the selection's type is rejected, exactly as create does.
+  // Stage 35 S35-4: the STORED config is the validated one with hidden keys stripped.
+  let config = input.config;
   if (input.config !== undefined) {
     const snapshotTypes = readSnapshotTypes(existing.project.configSnapshot);
     if (snapshotTypes) {
       const snapType = snapshotTypes.find((t) => t.id === existing.componentTypeId);
       if (!snapType) throw new SelectionConfigError("Component type not found or access denied.");
-      assertValidConfig(
+      config = assertValidConfig(
         parseFieldsSchema(snapType.fieldsSchema),
         parseFieldOptionsConfig(snapType.fieldOptionsConfig),
         input.config,
@@ -253,13 +258,13 @@ export async function updateSelection(
     } else {
       const live = await getComponentTypeById(session, existing.componentTypeId);
       if (!live) throw new SelectionConfigError("Component type not found or access denied.");
-      assertValidConfig(live.fieldsSchema, live.fieldOptionsConfig, input.config);
+      config = assertValidConfig(live.fieldsSchema, live.fieldOptionsConfig, input.config);
     }
   }
 
   const data = {
     ...(input.label !== undefined ? { label: input.label } : {}),
-    ...(input.config !== undefined ? { config: input.config } : {}),
+    ...(config !== undefined ? { config } : {}),
   };
 
   // Stage 23 D-19: a config change can change the summary's own grouping (glassType/thickness/category/

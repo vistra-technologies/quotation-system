@@ -342,3 +342,99 @@ test.describe("selections: delete / tenancy / roles / status", () => {
     expect(s.orderIndex).toBe(1);
   });
 });
+
+// Stage 35 S35-4 / S35-6 (Batch 3): field visibility (`showWhen`) on the server. Throwaway org B only (its own type,
+// project and selections go with org B at teardown) — no shared Test-Org state is touched.
+test.describe("selections: field visibility (showWhen), throwaway org B", () => {
+  type Cfg = Record<string, string>;
+  const fld = (key: string, over: Record<string, unknown> = {}) => ({ key, label: key[0].toUpperCase() + key.slice(1), type: "dropdown", required: true, basic: false, ...over });
+  const OPTIONS = { fieldOptionsConfig: { mode: { options: ["A", "B"] }, extra: { options: ["x", "y"] } } };
+
+  /** A configured org-B type, then a project frozen AFTER it, so the project's snapshot carries `fieldsSchema`. */
+  async function setup(c: { run: Ctx["run"]; orgB: Ctx["orgB"] }, fieldsSchema: unknown[]) {
+    const B = (p: string) => orgApi(c.run.orgB.slug, p);
+    const cats = (await ok<{ categories: { id: string }[] }>(await c.orgB.get(B("/component-categories")))).categories;
+    const type = (await ok<{ componentType: { id: string } }>(
+      await c.orgB.post(B("/component-types"), { data: { code: `RGRV${tag().toUpperCase()}`, name: `${c.run.prefix}vis-${tag()}`, categoryId: cats[0].id, fieldsSchema } }),
+      201,
+    )).componentType;
+    await ok(await c.orgB.put(B(`/component-types/${type.id}/field-values`), { data: OPTIONS }));
+    const project = (await ok<{ project: { id: string } }>(await c.orgB.post(B("/projects"), { data: { name: `${c.run.prefix}vis-${tag()}`, currency: "AED" } }), 201)).project;
+    const create = (config: Cfg | Record<string, unknown>, label = "S") =>
+      c.orgB.post(B("/selections"), { data: { projectId: project.id, componentTypeId: type.id, label: `${c.run.prefix}${label}-${tag()}`, config, orderIndex: 0 } });
+    const list = async () => (await ok<{ selections: Selection[] }>(await c.orgB.get(B(`/selections?projectId=${project.id}`)))).selections;
+    return { B, typeId: type.id, projectId: project.id, create, list };
+  }
+
+  const GATED = [
+    fld("mode", { basic: true }),
+    fld("extra", { showWhen: { field: "mode", in: ["A"] } }),
+    fld("note", { type: "field", required: false, showWhen: { field: "extra", in: ["x"] } }),
+  ];
+
+  test("AC1 create: a hidden key is stored stripped (even with an invalid value, no 400); a visible key keeps today's validation", async ({ run, orgB }) => {
+    const t = await setup({ run, orgB }, GATED);
+    // hidden controller value -> extra hidden (invalid value ignored, not rejected), note hidden by cascade
+    const a = (await ok<{ selection: Selection }>(await t.create({ mode: "B", extra: "bogus", note: "stale" }), 201)).selection;
+    expect(a.config).toEqual({ mode: "B" });
+    // everything visible -> kept verbatim
+    const b = (await ok<{ selection: Selection }>(await t.create({ mode: "A", extra: "x", note: "n" }), 201)).selection;
+    expect(b.config).toEqual({ mode: "A", extra: "x", note: "n" });
+    // cascade: the controller of `note` is itself hidden although its value matches
+    const c = (await ok<{ selection: Selection }>(await t.create({ mode: "B", extra: "x", note: "n" }), 201)).selection;
+    expect(c.config).toEqual({ mode: "B" });
+    // an invalid value under a VISIBLE field is still a 400, nothing created
+    const before = (await t.list()).length;
+    await rejected(await t.create({ mode: "A", extra: "bogus" }), 400, 'Invalid configuration: "extra" has a value that is not one of its configured options.');
+    await rejected(await t.create({ mode: "B", rgrNoSuchField: "x" }), 400, 'Invalid configuration: Unknown configuration field "rgrNoSuchField".');
+    expect((await t.list()).length).toBe(before);
+    // the stored rows (GET) never hold a hidden key
+    const stored = new Map((await t.list()).map((s) => [s.id, s.config]));
+    expect(stored.get(a.id)).toEqual({ mode: "B" });
+    expect(stored.get(c.id)).toEqual({ mode: "B" });
+  });
+
+  test("AC1 update: PATCH config strips hidden keys the same way; an invalid visible value is 400 and the stored config is unchanged", async ({ run, orgB }) => {
+    const t = await setup({ run, orgB }, GATED);
+    const s = (await ok<{ selection: Selection }>(await t.create({ mode: "A", extra: "x" }), 201)).selection;
+    const patch = (config: unknown) => orgB.patch(t.B(`/selections/${s.id}`), { data: { config } });
+    expect((await ok<{ selection: Selection }>(await patch({ mode: "B", extra: "x", note: "n" }))).selection.config).toEqual({ mode: "B" });
+    expect((await t.list()).find((x) => x.id === s.id)!.config).toEqual({ mode: "B" });
+    await rejected(await patch({ mode: "A", extra: "bogus" }), 400, 'Invalid configuration: "extra" has a value that is not one of its configured options.');
+    expect((await t.list()).find((x) => x.id === s.id)!.config).toEqual({ mode: "B" });
+    // a label-only PATCH leaves the config alone
+    await ok(await orgB.patch(t.B(`/selections/${s.id}`), { data: { label: `${run.prefix}renamed` } }));
+    expect((await t.list()).find((x) => x.id === s.id)!.config).toEqual({ mode: "B" });
+  });
+
+  test("AC2 config-update: required-missing only for visible fields, a stored hidden key is dropped, and a showWhen / inventoryLinked change raises the banner", async ({ run, orgB }) => {
+    // v1: ungated, so every config below is storable; the project freezes v1
+    const t = await setup({ run, orgB }, [fld("mode", { basic: true }), fld("extra"), fld("note", { type: "field", required: false })]);
+    const mk = async (config: Cfg, label: string) => (await ok<{ selection: Selection }>(await t.create(config, label), 201)).selection;
+    const visibleFilled = await mk({ mode: "A", extra: "x" }, "vis-ok");
+    const visibleBlank = await mk({ mode: "A" }, "vis-blank"); // extra required + visible after the edit
+    const hiddenStored = await mk({ mode: "B", extra: "y", note: "keep" }, "hid-stored"); // extra becomes hidden
+    const hiddenBlank = await mk({ mode: "B" }, "hid-blank"); // extra required but hidden: not missing
+    const cu = async () => await ok<{
+      needsUpdate: boolean;
+      changes: { typeName: string; items: string[] }[];
+      selections: { id: string; dropped: string[]; issues: { key: string; kind: string }[]; blocking: string | null }[];
+    }>(await orgB.get(t.B(`/projects/${t.projectId}/config-update`)));
+    expect((await cu()).needsUpdate).toBe(false);
+
+    // v2: extra is gated on mode = A and linked to inventory
+    const v2 = [fld("mode", { basic: true }), fld("extra", { showWhen: { field: "mode", in: ["A"] }, inventoryLinked: true }), fld("note", { type: "field", required: false })];
+    await ok(await orgB.patch(t.B(`/component-types/${t.typeId}`), { data: { fieldsSchema: v2 } }));
+
+    const p = await cu();
+    expect(p.needsUpdate).toBe(true);
+    const items = p.changes.flatMap((x) => x.items);
+    expect(items).toContain('Field "Extra" is now shown only when "Mode" is A');
+    expect(items).toContain('Field "Extra" is now linked to inventory');
+    const byId = new Map(p.selections.map((s) => [s.id, s]));
+    expect(byId.get(visibleBlank.id)).toMatchObject({ dropped: [], blocking: null, issues: [{ key: "extra", kind: "missing" }] });
+    expect(byId.get(hiddenStored.id)).toMatchObject({ dropped: ["extra"], blocking: null, issues: [] });
+    expect(byId.has(visibleFilled.id), "a visible, valid selection needs no action").toBe(false);
+    expect(byId.has(hiddenBlank.id), "a blank hidden required field is not missing").toBe(false);
+  });
+});

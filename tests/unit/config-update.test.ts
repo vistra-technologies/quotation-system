@@ -56,3 +56,57 @@ describe("diffConfigs", () => {
     assert.deepEqual(diffConfigs([mk(schema, cfg)], [mk(schema, cfg)]), []);
   });
 });
+
+// ─── Stage 35 S35-6 ──────────────────────────────────────────────────────────
+describe("validateSelectionConfig — field visibility", () => {
+  const gated: FieldEntry[] = [
+    { key: "hasLeaf", label: "Has Leaf", type: "dropdown", required: true, basic: false },
+    { key: "leafCode", label: "Leaf Code", type: "dropdown", required: true, basic: false, showWhen: { field: "hasLeaf", in: ["Yes"] } },
+  ];
+  const gcfg = { hasLeaf: { options: ["Yes", "No"] }, leafCode: { options: ["L1"] } };
+
+  test("a hidden required field is not missing", () => {
+    const r = validateSelectionConfig(gated, gcfg, { hasLeaf: "No" });
+    assert.deepEqual(r.issues, []);
+    assert.deepEqual(r.dropped, []);
+  });
+  test("a stored hidden key is dropped as stale, even with an invalid value (no issue)", () => {
+    const r = validateSelectionConfig(gated, gcfg, { hasLeaf: "No", leafCode: "OLD" });
+    assert.deepEqual(r.dropped, ["leafCode"]);
+    assert.deepEqual(r.cleaned, { hasLeaf: "No" });
+    assert.deepEqual(r.issues, []);
+  });
+  test("a visible required field is missing; a visible invalid value is flagged", () => {
+    assert.deepEqual(validateSelectionConfig(gated, gcfg, { hasLeaf: "Yes" }).issues.map((i) => [i.key, i.kind]), [["leafCode", "missing"]]);
+    assert.deepEqual(validateSelectionConfig(gated, gcfg, { hasLeaf: "Yes", leafCode: "OLD" }).issues.map((i) => [i.key, i.kind]), [["leafCode", "invalid"]]);
+  });
+  test("applyFieldChoice: changing the controller clears the gated field", () => {
+    assert.equal("leafCode" in applyFieldChoice(gated, { hasLeaf: "Yes", leafCode: "L1" }, "hasLeaf", "No"), false);
+  });
+});
+
+describe("diffConfigs — showWhen / inventoryLinked", () => {
+  const base: FieldEntry[] = [
+    { key: "hasLeaf", label: "Has Leaf", type: "dropdown", required: false, basic: false },
+    { key: "leafCode", label: "Leaf Code", type: "dropdown", required: false, basic: false },
+  ];
+  const mk = (fields: FieldEntry[]): DiffType => ({ id: "t1", code: "DOOR", name: "Door", active: true, fieldsSchema: fields, fieldOptionsConfig: {} });
+  const withLeaf = (over: Partial<FieldEntry>): FieldEntry[] => [base[0], { ...base[1], ...over }];
+  const items = (a: FieldEntry[], b: FieldEntry[]) => diffConfigs([mk(a)], [mk(b)])[0]?.items ?? [];
+
+  test("showWhen added / changed / removed", () => {
+    const gated = withLeaf({ showWhen: { field: "hasLeaf", in: ["Yes"] } });
+    assert.deepEqual(items(base, gated), ['Field "Leaf Code" is now shown only when "Has Leaf" is Yes']);
+    assert.deepEqual(items(gated, withLeaf({ showWhen: { field: "hasLeaf", in: ["Yes", "Maybe"] } })), ['Field "Leaf Code" visibility rule changed: now shown only when "Has Leaf" is Yes, Maybe']);
+    assert.deepEqual(items(gated, base), ['Field "Leaf Code" is now always shown']);
+  });
+  test("a reordered `in` list is not a change", () => {
+    const a = withLeaf({ showWhen: { field: "hasLeaf", in: ["Yes", "No"] } });
+    const b = withLeaf({ showWhen: { field: "hasLeaf", in: ["No", "Yes"] } });
+    assert.deepEqual(items(a, b), []);
+  });
+  test("inventoryLinked on / off", () => {
+    assert.deepEqual(items(base, withLeaf({ inventoryLinked: true })), ['Field "Leaf Code" is now linked to inventory']);
+    assert.deepEqual(items(withLeaf({ inventoryLinked: true }), base), ['Field "Leaf Code" is no longer linked to inventory']);
+  });
+});

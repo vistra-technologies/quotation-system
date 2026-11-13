@@ -12,9 +12,12 @@ import type { FieldEntry, ShowWhen } from "@/lib/types/field-entry";
  * controller hides everything it gates, regardless of any stale value left in `values`.
  */
 
+/** The part of a FieldEntry the pass reads. A full `FieldEntry[]` is accepted as is. */
+export type VisibilityField = Pick<FieldEntry, "key" | "showWhen">;
+
 /** Which field keys are visible for these values, plus `values` with every hidden key removed. */
 export function applyFieldVisibility<V = unknown>(
-  fieldsSchema: FieldEntry[],
+  fieldsSchema: ReadonlyArray<VisibilityField>,
   values: Record<string, V>,
 ): { visibleKeys: Set<string>; values: Record<string, V> } {
   const visibleKeys = new Set<string>();
@@ -53,4 +56,22 @@ export function readShowWhen(raw: unknown): ShowWhen | undefined {
   if (typeof o.field !== "string" || o.field === "" || !Array.isArray(o.in)) return undefined;
   if (!o.in.every((v) => typeof v === "string" && v !== "")) return undefined;
   return { field: o.field, in: [...(o.in as string[])] };
+}
+
+/**
+ * Raw stored `fieldsSchema` JSON (e.g. a `configSnapshot` type) -> the fields `applyFieldVisibility` reads.
+ * Lenient like the parsers: non-object entries and entries without a string `key` are skipped, a malformed
+ * `showWhen` is dropped (the field is then always visible).
+ */
+export function visibilityFieldsFromRaw(raw: unknown): VisibilityField[] {
+  if (!Array.isArray(raw)) return [];
+  const out: VisibilityField[] = [];
+  for (const item of raw) {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) continue;
+    const o = item as Record<string, unknown>;
+    if (typeof o.key !== "string") continue;
+    const showWhen = readShowWhen(o.showWhen);
+    out.push(showWhen ? { key: o.key, showWhen } : { key: o.key });
+  }
+  return out;
 }

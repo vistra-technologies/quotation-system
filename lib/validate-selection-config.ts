@@ -1,6 +1,7 @@
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import { resolveOptions } from "@/lib/configurator-gating";
+import { applyFieldVisibility } from "@/lib/field-visibility";
 
 /**
  * Pure validator for `Selection.config` values — Stage 31 S31-7.
@@ -11,6 +12,9 @@ import { resolveOptions } from "@/lib/configurator-gating";
  * snapshot).
  *
  * Rules:
+ *  - Stage 35 S35-4 / G0-d: the field-visibility pass runs FIRST and silently strips every hidden key (no 400, a
+ *    stale client must not fail a save); the rules below then apply to the visible keys only. The stripped config
+ *    is returned so the caller stores it: a stored `Selection.config` never holds a hidden key;
  *  - a key that is not in `fieldsSchema` is rejected;
  *  - a dropdown/radio value must be in the field's configured `options`; a dependent field's value must
  *    be in `valueMap[parentValue]`; a child set while its parent is blank is rejected;
@@ -19,7 +23,11 @@ import { resolveOptions } from "@/lib/configurator-gating";
  *  - non-choice (field / checkbox) values are not type-checked in this stage.
  */
 
-export type ValidateSelectionConfigResult = { ok: true } | { ok: false; key: string; error: string };
+export type SelectionConfigValues = Record<string, string | boolean | number | null>;
+
+export type ValidateSelectionConfigResult =
+  | { ok: true; config: SelectionConfigValues }
+  | { ok: false; key: string; error: string };
 
 const CHOICE_TYPES = new Set<FieldEntry["type"]>(["dropdown", "radio"]);
 
@@ -28,8 +36,9 @@ const isBlank = (v: unknown) => v === null || v === undefined || v === "";
 export function validateSelectionConfig(
   fieldsSchema: FieldEntry[],
   fieldOptionsConfig: FieldOptionsConfig | null,
-  config: Record<string, string | boolean | number | null>,
+  input: SelectionConfigValues,
 ): ValidateSelectionConfigResult {
+  const config = applyFieldVisibility(fieldsSchema, input).values;
   const byKey = new Map(fieldsSchema.map((f) => [f.key, f]));
   const cfg = fieldOptionsConfig ?? {};
 
@@ -49,5 +58,5 @@ export function validateSelectionConfig(
       return { ok: false, key, error: `"${key}" has a value that is not one of its configured options.` };
     }
   }
-  return { ok: true };
+  return { ok: true, config };
 }
