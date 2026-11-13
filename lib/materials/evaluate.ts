@@ -353,6 +353,9 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
               // Substitute materialCode (reads through the same proxy — records MISSING_PARAM if blank)
               const code = substituteCode(formula.materialCode, readParam);
               if (code === "") {
+                // A hidden code param: the formula's own problem is HIDDEN_PARAM. Its quantity is finite, so keep it in
+                // calcScope; downstream `calc.<id>` readers then do not add NON_FINITE_QUANTITY noise to the one real problem.
+                if (hiddenReads.size > 0) calcScope[formula.id] = req;
                 flushHidden();
                 continue; // MISSING_PARAM already recorded; drop line
               }
@@ -518,6 +521,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
 
           const code = substituteCode(formula.materialCode, readParam);
           if (code === "") {
+            if (hiddenReads.size > 0) calcScope[formula.id] = req; // see the CELL pass: no cascade noise from a HIDDEN_PARAM
             flushHidden();
             continue; // MISSING_PARAM already recorded; drop line
           }

@@ -1048,6 +1048,8 @@ describe("Stage 35 rule 8 — HIDDEN_PARAM only when the formula fires (CELL gra
     assert.match(hp[0].message, /formula "doorFrame" reads field "frameCode"/);
     assert.match(hp[0].message, /"Main Door"/);
     assert.equal(r.collector.report().problems.filter(p => p.kind === "MISSING_PARAM").length, 0);
+    // rubber25mm / frameBumperGasket read calc.doorFrame: the hidden code drops doorFrame's LINE, not its quantity, so no cascade
+    assert.deepEqual(r.collector.report().problems.map(p => p.kind), ["HIDDEN_PARAM"]);
     assert.ok(!r.rawLines.some(l => l.code === "STALE-FRAME"), "the stale hidden value never reaches a line");
   });
 

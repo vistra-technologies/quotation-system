@@ -420,7 +420,7 @@ test.describe("selections: field visibility (showWhen), throwaway org B", () => 
       changes: { typeName: string; items: string[] }[];
       selections: { id: string; dropped: string[]; issues: { key: string; kind: string }[]; blocking: string | null }[];
     }>(await orgB.get(t.B(`/projects/${t.projectId}/config-update`)));
-    expect((await cu()).needsUpdate).toBe(false);
+    expect((await cu()).changes, "nothing differs between the snapshot and the live type yet").toEqual([]);
 
     // v2: extra is gated on mode = A and linked to inventory
     const v2 = [fld("mode", { basic: true }), fld("extra", { showWhen: { field: "mode", in: ["A"] }, inventoryLinked: true }), fld("note", { type: "field", required: false })];
