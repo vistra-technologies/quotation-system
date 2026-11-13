@@ -37,7 +37,7 @@ covers("PATCH /api/v1/orgs/[orgSlug]/component-types/[typeId]");
 covers("GET /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values");
 covers("PUT /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values");
 
-type Field = { key: string; label: string; type: string; required?: boolean; basic?: boolean; options?: string[]; dependsOn?: string; hint?: string };
+type Field = { key: string; label: string; type: string; required?: boolean; basic?: boolean; options?: string[]; dependsOn?: string; hint?: string; showWhen?: { field: string; in: string[] }; inventoryLinked?: boolean };
 type Entry = { options: string[] } | { valueMap: Record<string, string[]> };
 type Config = Record<string, Entry>;
 type Category = { id: string; organizationId: string; name: string };
@@ -511,6 +511,17 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     await rejected(await post([{ bogus: 1 }]), 400, 'Field "#1": unknown type "undefined".');
     await rejected(await post([{ key: "a", label: "A", type: "dropdown", required: false, basic: true, options: ["x"] }]), 400, /"options" is no longer accepted here/);
     await rejected(await post([{ key: "a", label: "A", type: "dropdown", required: false, basic: true, dependsOn: "nope" }]), 400, 'Field "A": dependsOn references unknown field key "nope".');
+    // Stage 35 S35-2 / G0-a: showWhen is one { field, in[] } controller (earlier dropdown/radio); inventoryLinked only on dropdown/radio
+    const sw = (showWhen: unknown, extra: Record<string, unknown> = {}) => [
+      { key: "a", label: "A", type: "dropdown", required: false, basic: true, ...extra },
+      { key: "b", label: "B", type: "field", required: false, basic: true, showWhen },
+    ];
+    await rejected(await post(sw({ field: "zz", in: ["x"] })), 400, /showWhen references unknown field key "zz"/);
+    await rejected(await post(sw({ field: "b", in: ["x"] })), 400, /showWhen cannot reference the field itself/);
+    await rejected(await post(sw({ field: "a", in: [] })), 400, /showWhen\.in must be a non-empty array/);
+    await rejected(await post(sw({ field: "a", in: ["x"], and: { field: "a", in: ["y"] } })), 400, /exactly one controller/);
+    await rejected(await post(sw([{ field: "a", in: ["x"] }])), 400, /"showWhen" must be an object/);
+    await rejected(await post([{ key: "a", label: "A", type: "field", required: false, basic: true, inventoryLinked: true }]), 400, /"inventoryLinked" is only valid on dropdown\/radio/);
     expect((await listTypes(orgB, run.orgB.slug)).length).toBe(before);
 
     const ct = await mkBType({ run, orgB });
@@ -519,6 +530,12 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     await rejected(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: [{ ...CASCADE[0], options: ["Alu"] }] } }), 400, /"options" is no longer accepted here/);
     const stored = (await listTypes(orgB, run.orgB.slug)).find((t) => t.id === ct.id)!;
     expect(stored.fieldsSchema.find((f) => f.key === "finish")!.dependsOn).toBe("frame");
+    await rejected(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: sw({ field: "b", in: ["x"] }) } }), 400, /showWhen cannot reference the field itself/);
+    // a valid showWhen / inventoryLinked is accepted, stored and returned (Stage 35)
+    const gated = sw({ field: "a", in: ["x", "y"] }, { inventoryLinked: true });
+    const stored35 = (await ok<{ componentType: CT }>(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: gated } }))).componentType;
+    expect(stored35.fieldsSchema).toEqual(gated);
+    expect((await listTypes(orgB, run.orgB.slug)).find((t) => t.id === ct.id)!.fieldsSchema).toEqual(gated);
     // a valid schema (and a PATCH without fieldsSchema) still works
     await ok(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: CASCADE } }));
     await ok(await orgB.patch(B(`/component-types/${ct.id}`), { data: { active: true } }));

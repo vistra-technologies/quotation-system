@@ -2,6 +2,7 @@ import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
 import type { FieldEntry as _FieldEntry } from "@/lib/types/field-entry";
+import { normalizeFieldsSchemaForStore } from "@/lib/validate-fields-schema";
 import type {
   FieldOptionsEntry as _FieldOptionsEntry,
   FieldOptionsConfig as _FieldOptionsConfig,
@@ -193,7 +194,7 @@ export async function createComponentType(session: SessionData, input: Component
       code: input.code.toUpperCase().trim(),
       name: input.name.trim(),
       categoryId: input.categoryId,
-      fieldsSchema: input.fieldsSchema,
+      fieldsSchema: normalizeFieldsSchemaForStore(input.fieldsSchema) as unknown as Prisma.InputJsonValue,
       active: input.active ?? true,
       sortOrder,
     },
@@ -241,7 +242,7 @@ export async function updateComponentType(
       ...(input.name !== undefined ? { name: input.name.trim() } : {}),
       ...(input.code !== undefined ? { code: input.code.toUpperCase().trim() } : {}),
       ...(input.categoryId !== undefined ? { categoryId: input.categoryId } : {}),
-      ...(input.fieldsSchema !== undefined ? { fieldsSchema: input.fieldsSchema } : {}),
+      ...(input.fieldsSchema !== undefined ? { fieldsSchema: normalizeFieldsSchemaForStore(input.fieldsSchema) as unknown as Prisma.InputJsonValue } : {}),
       ...(input.active !== undefined ? { active: input.active } : {}),
     },
   });

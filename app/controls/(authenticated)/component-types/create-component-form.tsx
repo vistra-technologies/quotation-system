@@ -457,6 +457,11 @@ function validateJsonText(text: string): FieldEntry[] {
       if (obj.dependsOn !== undefined && obj.dependsOn !== null && obj.dependsOn !== "") {
         entry.dependsOn = String(obj.dependsOn);
       }
+      // Stage 35: raw pass-through so validateFieldsSchema (not a silent drop) decides.
+      if (obj.showWhen !== undefined && obj.showWhen !== null) entry.showWhen = obj.showWhen as FieldEntry["showWhen"];
+      if (obj.inventoryLinked !== undefined && obj.inventoryLinked !== false) {
+        entry.inventoryLinked = obj.inventoryLinked as FieldEntry["inventoryLinked"];
+      }
       // Stage 20: `options` is no longer accepted from SuperAdmin authoring — silently
       // dropped here (never copied onto `entry`), mirroring what parseFieldsSchema in
       // actions.ts already does on the real Save path. Pre-Stage-20 orgs still round-trip

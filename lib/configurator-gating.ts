@@ -33,30 +33,49 @@ export function isComponentTypeFullyConfigured(
 ): boolean {
   const config = fieldOptionsConfig ?? {};
   const resolvedValues = new Map<string, string[]>();
+  // Stage 35 G0-b: can this field actually be visible to a user? No `showWhen`, or its controller
+  // can be visible and can produce at least one value listed in `in`. A gated field that can never
+  // be visible needs no configuration; one that can be visible with no options fails the type.
+  const canBeVisible = new Map<string, boolean>();
 
   for (const field of fieldsSchema) {
+    const sw = field.showWhen;
+    const visible = !sw
+      ? true
+      : canBeVisible.get(sw.field) === true &&
+        (resolvedValues.get(sw.field) ?? []).some((v) => sw.in.includes(v));
+    canBeVisible.set(field.key, visible);
+
     if (!CHOICE_TYPES.has(field.type)) continue;
 
     if (!field.dependsOn) {
       const entry = config[field.key];
       const options = entry && "options" in entry ? entry.options : [];
-      if (options.length === 0) return false;
+      if (options.length === 0 && visible) return false;
       resolvedValues.set(field.key, options);
       continue;
     }
 
-    // Parent must already be resolved (earlier in the array, per decision #4). If it isn't â€”
-    // an invalid/dangling dependsOn, which server-side validation should already prevent â€” fail
+    // Parent must already be resolved (earlier in the array, per decision #4). If it isn't —
+    // an invalid/dangling dependsOn, which server-side validation should already prevent — fail
     // closed rather than silently treating the field as vacuously configured.
     const parentValues = resolvedValues.get(field.dependsOn);
     if (!parentValues) return false;
+    // A visible field whose dependsOn parent can never be visible has no options at runtime.
+    if (visible && canBeVisible.get(field.dependsOn) === false) return false;
 
     const entry = config[field.key];
     const valueMap = entry && "valueMap" in entry ? entry.valueMap : {};
+    // When the field is gated by the very field it depends on, only the parent values listed in
+    // `in` can ever show it; any other correlation is unknowable, so every parent value must map.
+    const required = sw && sw.field === field.dependsOn ? parentValues.filter((v) => sw.in.includes(v)) : parentValues;
     const produced: string[] = [];
     for (const parentVal of parentValues) {
       const vals = valueMap[parentVal];
-      if (!vals || vals.length === 0) return false;
+      if (!vals || vals.length === 0) {
+        if (visible && required.includes(parentVal)) return false;
+        continue;
+      }
       produced.push(...vals);
     }
     resolvedValues.set(field.key, [...new Set(produced)]);
@@ -96,18 +115,22 @@ export function resolveOptions(
 }
 
 /**
- * All field keys that transitively depend on `key` (children, grandchildren, ...), in a linear
- * `dependsOn` chain (decision: no diamond/multi-parent dependencies this stage). Used to clear
+ * All field keys that transitively depend on `key` (children, grandchildren, ...) through `dependsOn`
+ * or `showWhen` edges. A field with both edges to different parents is reachable from each (the
+ * result is de-duplicated). Used to clear
  * descendant values from an open form's state when their parent's selected value changes â€” no
  * orphaned stale values should survive in `Selection.config`.
  */
 export function collectDescendants(fieldsSchema: FieldEntry[], key: string): string[] {
   const childrenOf = new Map<string, string[]>();
   for (const f of fieldsSchema) {
-    if (!f.dependsOn) continue;
-    const siblings = childrenOf.get(f.dependsOn) ?? [];
-    siblings.push(f.key);
-    childrenOf.set(f.dependsOn, siblings);
+    // Stage 35 S35-3: a showWhen child is a descendant of its controller, same as a dependsOn child.
+    for (const parent of new Set([f.dependsOn, f.showWhen?.field])) {
+      if (!parent) continue;
+      const siblings = childrenOf.get(parent) ?? [];
+      siblings.push(f.key);
+      childrenOf.set(parent, siblings);
+    }
   }
 
   const result: string[] = [];
@@ -117,5 +140,5 @@ export function collectDescendants(fieldsSchema: FieldEntry[], key: string): str
     result.push(next);
     stack.push(...(childrenOf.get(next) ?? []));
   }
-  return result;
+  return [...new Set(result)];
 }

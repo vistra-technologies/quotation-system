@@ -10,6 +10,8 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { writeSuperAdminAudit } from "./audit";
+import { readShowWhen } from "@/lib/field-visibility";
+import { normalizeFieldsSchemaForStore } from "@/lib/validate-fields-schema";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import {
   checkComponentTypeGuard,
@@ -80,6 +82,10 @@ export function parseFieldsSchema(raw: unknown): FieldEntry[] {
       if (obj.dependsOn && typeof obj.dependsOn === "string") {
         entry.dependsOn = obj.dependsOn;
       }
+      // Stage 35 S35-1: pass through the visibility rule and the inventory-link flag (`false` stays absent).
+      const showWhen = readShowWhen(obj.showWhen);
+      if (showWhen) entry.showWhen = showWhen;
+      if (obj.inventoryLinked === true) entry.inventoryLinked = true;
       return entry;
     })
     .filter((x): x is FieldEntry => x !== null);
@@ -223,7 +229,7 @@ export async function createComponentTypeForOrg(
       code: input.code.toUpperCase().trim(),
       name: input.name.trim(),
       categoryId: input.categoryId,
-      fieldsSchema: input.fieldsSchema as unknown as Prisma.InputJsonValue,
+      fieldsSchema: normalizeFieldsSchemaForStore(input.fieldsSchema) as unknown as Prisma.InputJsonValue,
       active: input.active ?? true,
       sortOrder,
     },
@@ -277,7 +283,7 @@ export async function updateComponentTypeForOrg(
       ...(patch.code !== undefined ? { code: patch.code.toUpperCase().trim() } : {}),
       ...(patch.categoryId !== undefined ? { categoryId: patch.categoryId } : {}),
       ...(patch.fieldsSchema !== undefined
-        ? { fieldsSchema: patch.fieldsSchema as unknown as Prisma.InputJsonValue }
+        ? { fieldsSchema: normalizeFieldsSchemaForStore(patch.fieldsSchema) as unknown as Prisma.InputJsonValue }
         : {}),
       ...(patch.active !== undefined ? { active: patch.active } : {}),
     },

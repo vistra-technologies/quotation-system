@@ -29,7 +29,7 @@ covers("PATCH /api/v1/superadmin/component-types/[typeId]");
 covers("DELETE /api/v1/superadmin/component-types/[typeId]");
 covers("POST /api/v1/superadmin/component-types/[typeId]/reorder");
 
-type Field = { key: string; label: string; type: string; required: boolean; basic: boolean; dependsOn?: string; hint?: string };
+type Field = { key: string; label: string; type: string; required: boolean; basic: boolean; dependsOn?: string; hint?: string; showWhen?: { field: string; in: string[] }; inventoryLinked?: boolean };
 type CType = {
   id: string; organizationId: string; code: string; name: string; active: boolean; categoryId: string;
   category: { id: string; name: string }; fieldsSchema: Field[]; sortOrder: number; createdAt: string; updatedAt: string;
@@ -80,6 +80,19 @@ const INVALID_SCHEMAS: Array<[string, unknown[], RegExp]> = [
   ["dependsOn unknown key", [{ key: "b", label: "B", type: "dropdown", dependsOn: "zz" }], /references unknown field key "zz"/],
   ["dependsOn a later field", [{ key: "b", label: "B", type: "dropdown", dependsOn: "a" }, { key: "a", label: "A", type: "dropdown" }], /must reference a field earlier/],
   ["dependsOn a non-choice parent", [{ key: "a", label: "A", type: "checkbox" }, { key: "b", label: "B", type: "radio", dependsOn: "a" }], /must be a dropdown\/radio field/],
+  // Stage 35 S35-2 / G0-a: showWhen is one { field, in[] } controller; inventoryLinked only on dropdown/radio
+  ["showWhen controller later", [{ key: "b", label: "B", type: "field", showWhen: { field: "a", in: ["x"] } }, { key: "a", label: "A", type: "dropdown" }], /showWhen must reference a field earlier/],
+  ["showWhen itself", [{ key: "a", label: "A", type: "dropdown", showWhen: { field: "a", in: ["x"] } }], /showWhen cannot reference the field itself/],
+  ["showWhen unknown controller", [{ key: "b", label: "B", type: "field", showWhen: { field: "zz", in: ["x"] } }], /showWhen references unknown field key "zz"/],
+  ["showWhen on a field controller", [{ key: "a", label: "A", type: "field" }, { key: "b", label: "B", type: "field", showWhen: { field: "a", in: ["x"] } }], /showWhen controller "a" must be a dropdown\/radio field/],
+  ["showWhen on a checkbox controller", [{ key: "a", label: "A", type: "checkbox" }, { key: "b", label: "B", type: "field", showWhen: { field: "a", in: ["x"] } }], /showWhen controller "a" must be a dropdown\/radio field/],
+  ["showWhen empty in", [{ key: "a", label: "A", type: "dropdown" }, { key: "b", label: "B", type: "field", showWhen: { field: "a", in: [] } }], /showWhen\.in must be a non-empty array/],
+  ["showWhen non-string in", [{ key: "a", label: "A", type: "dropdown" }, { key: "b", label: "B", type: "field", showWhen: { field: "a", in: [1] } }], /showWhen\.in must contain only non-empty strings/],
+  ["showWhen duplicate in", [{ key: "a", label: "A", type: "dropdown" }, { key: "b", label: "B", type: "field", showWhen: { field: "a", in: ["x", "x"] } }], /showWhen\.in must not contain duplicate values/],
+  ["showWhen two controllers (array)", [{ key: "a", label: "A", type: "dropdown" }, { key: "b", label: "B", type: "field", showWhen: [{ field: "a", in: ["x"] }, { field: "a", in: ["y"] }] }], /"showWhen" must be an object/],
+  ["showWhen extra key (AND)", [{ key: "a", label: "A", type: "dropdown" }, { key: "c", label: "C", type: "dropdown" }, { key: "b", label: "B", type: "field", showWhen: { field: "a", in: ["x"], and: { field: "c", in: ["y"] } } }], /exactly one controller/],
+  ["inventoryLinked on a plain field", [{ key: "a", label: "A", type: "field", inventoryLinked: true }], /"inventoryLinked" is only valid on dropdown\/radio/],
+  ["inventoryLinked not a boolean", [{ key: "a", label: "A", type: "dropdown", inventoryLinked: "yes" }], /"inventoryLinked" must be a boolean/],
 ];
 
 test.describe("GET /api/v1/superadmin/component-categories", () => {
@@ -209,6 +222,25 @@ test.describe("SuperAdmin component types (org B)", () => {
     const reordered = (await json<{ componentType: CType }>(await sa.patch(url, { data: { orgId: run.orgB.id, fieldsSchema: [note, frame, finish] } }))).componentType;
     expect(reordered.fieldsSchema.map((f) => f.key)).toEqual(["rgrNote", "rgrFrame", "rgrFinish"]);
     expect((await getType(sa, mine.id, run.orgB.id)).fieldsSchema.map((f) => f.key)).toEqual(["rgrNote", "rgrFrame", "rgrFinish"]);
+  });
+
+  test("showWhen / inventoryLinked (Stage 35): POST and PATCH store and return them; GET round-trips; `false` is stored absent", async ({ sa, run }) => {
+    const schema: Field[] = [
+      { key: "rgrLeaf", label: "Leaf", type: "dropdown", required: false, basic: true, inventoryLinked: true },
+      { key: "rgrYes", label: "Yes only", type: "field", required: false, basic: true, showWhen: { field: "rgrLeaf", in: ["Yes"] } },
+      { key: "rgrNo", label: "No set", type: "radio", required: false, basic: true, showWhen: { field: "rgrLeaf", in: ["No", "N/A"] } },
+    ];
+    const mine = await newType(sa, run, { fieldsSchema: schema });
+    expect(mine.fieldsSchema).toEqual(schema);
+    expect((await getType(sa, mine.id, run.orgB.id)).fieldsSchema).toEqual(schema);
+    const url = `${SA}/component-types/${mine.id}`;
+    // GET body PATCHes back unchanged, flags intact
+    const back = (await json<{ componentType: CType }>(await sa.patch(url, { data: { orgId: run.orgB.id, fieldsSchema: mine.fieldsSchema } }))).componentType;
+    expect(back.fieldsSchema).toEqual(schema);
+    // inventoryLinked: false is accepted and stored absent
+    const off = (await json<{ componentType: CType }>(await sa.patch(url, { data: { orgId: run.orgB.id, fieldsSchema: [{ ...schema[0], inventoryLinked: false }, schema[1]] } }))).componentType;
+    expect(off.fieldsSchema.map((f) => Object.prototype.hasOwnProperty.call(f, "inventoryLinked"))).toEqual([false, false]);
+    expect(off.fieldsSchema[1].showWhen).toEqual({ field: "rgrLeaf", in: ["Yes"] });
   });
 
   test("PATCH rules: taken code → 409; bad schema / foreign category → 400; unknown type / org → 404; another org's view → 404 (unchanged)", async ({ sa, run }) => {

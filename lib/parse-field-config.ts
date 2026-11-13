@@ -1,3 +1,4 @@
+import { readShowWhen } from "@/lib/field-visibility";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 
@@ -40,6 +41,10 @@ export function parseFieldsSchema(raw: unknown): FieldEntry[] {
       if (obj.dependsOn && typeof obj.dependsOn === "string") {
         entry.dependsOn = obj.dependsOn;
       }
+      // Stage 35 S35-1: pass through the visibility rule and the inventory-link flag (`false` stays absent).
+      const showWhen = readShowWhen(obj.showWhen);
+      if (showWhen) entry.showWhen = showWhen;
+      if (obj.inventoryLinked === true) entry.inventoryLinked = true;
       return entry;
     })
     .filter((x): x is FieldEntry => x !== null);

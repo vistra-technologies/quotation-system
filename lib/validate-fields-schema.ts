@@ -11,7 +11,8 @@ import type { FieldEntry } from "@/lib/types/field-entry";
  *   1. No entry may carry an `options` key at all, regardless of type or
  *      emptiness â€” SuperAdmin no longer authors values, full stop. Values live
  *      in the org-owned `ComponentTypeOrgConfig` table instead.
- *   2. `dependsOn` is only valid on `dropdown`/`radio` fields, must name a key
+ *   2. (Stage 35: `showWhen` / `inventoryLinked` rules are enforced at the end of the per-entry loop below.)
+ *   3. `dependsOn` is only valid on `dropdown`/`radio` fields, must name a key
  *      that exists earlier in the same array (not later, not itself â€” this is
  *      what rules out cycles by construction), and that earlier field must
  *      itself be `dropdown`/`radio` (a `field`/`checkbox` field has no value
@@ -106,6 +107,67 @@ export function validateFieldsSchema(fields: FieldEntry[]): ValidateFieldsSchema
         };
       }
     }
+
+    // Stage 35 S35-2 / G0-a: showWhen is exactly { field, in[] } — one controller, no AND/OR.
+    if (f.showWhen !== undefined) {
+      const sw = f.showWhen as unknown;
+      const name = describeField(f, i);
+      if (typeof sw !== "object" || sw === null || Array.isArray(sw)) {
+        return { valid: false, error: `Field "${name}": "showWhen" must be an object { field, in }.` };
+      }
+      const extra = Object.keys(sw).filter((k) => k !== "field" && k !== "in");
+      if (extra.length > 0) {
+        return {
+          valid: false,
+          error: `Field "${name}": "showWhen" takes exactly one controller as { field, in } — unexpected key "${extra[0]}".`,
+        };
+      }
+      const { field: controller, in: values } = sw as { field?: unknown; in?: unknown };
+      if (typeof controller !== "string" || controller === "") {
+        return { valid: false, error: `Field "${name}": showWhen.field must be a non-empty field key.` };
+      }
+      if (controller === f.key) {
+        return { valid: false, error: `Field "${name}": showWhen cannot reference the field itself.` };
+      }
+      const controllerIndex = fields.findIndex((other) => other.key === controller);
+      if (controllerIndex === -1) {
+        return { valid: false, error: `Field "${name}": showWhen references unknown field key "${controller}".` };
+      }
+      if (controllerIndex >= i) {
+        return {
+          valid: false,
+          error: `Field "${name}": showWhen must reference a field earlier in the schema — "${controller}" is at position ${controllerIndex + 1}, this field is at position ${i + 1}.`,
+        };
+      }
+      if (!CHOICE_TYPES.has(fields[controllerIndex].type)) {
+        return {
+          valid: false,
+          error: `Field "${name}": showWhen controller "${controller}" must be a dropdown/radio field (found type "${fields[controllerIndex].type}").`,
+        };
+      }
+      if (!Array.isArray(values) || values.length === 0) {
+        return { valid: false, error: `Field "${name}": showWhen.in must be a non-empty array of values.` };
+      }
+      if (!values.every((v) => typeof v === "string" && v !== "")) {
+        return { valid: false, error: `Field "${name}": showWhen.in must contain only non-empty strings.` };
+      }
+      if (new Set(values as string[]).size !== values.length) {
+        return { valid: false, error: `Field "${name}": showWhen.in must not contain duplicate values.` };
+      }
+    }
+
+    // Stage 35 S35-2: inventoryLinked only on dropdown/radio. `false` is allowed (stored absent).
+    if (f.inventoryLinked !== undefined) {
+      if (typeof f.inventoryLinked !== "boolean") {
+        return { valid: false, error: `Field "${describeField(f, i)}": "inventoryLinked" must be a boolean.` };
+      }
+      if (f.inventoryLinked && !CHOICE_TYPES.has(f.type)) {
+        return {
+          valid: false,
+          error: `Field "${describeField(f, i)}": "inventoryLinked" is only valid on dropdown/radio fields (found type "${f.type}").`,
+        };
+      }
+    }
   }
 
   return { valid: true };
@@ -138,5 +200,24 @@ export function checkFieldsSchemaForWrite(raw: FieldEntry[]): ValidateFieldsSche
  */
 export function clearDependentsOf(fields: FieldEntry[], key: string): FieldEntry[] {
   if (!key) return fields;
-  return fields.map((f) => (f.dependsOn === key ? { ...f, dependsOn: undefined } : f));
+  return fields.map((f) => {
+    let next = f;
+    if (next.dependsOn === key) next = { ...next, dependsOn: undefined };
+    // Stage 35 S35-2: a showWhen whose controller is removed/renamed/retyped is cleared the same way.
+    if (next.showWhen?.field === key) next = { ...next, showWhen: undefined };
+    return next;
+  });
+}
+
+/**
+ * Stage 35 S35-1: `inventoryLinked: false` is stored absent. Applied at the data-layer write sites
+ * (after `checkFieldsSchemaForWrite`); everything else is stored as authored.
+ */
+export function normalizeFieldsSchemaForStore<T extends FieldEntry>(fields: T[]): T[] {
+  return fields.map((f) => {
+    if (f.inventoryLinked !== false) return f;
+    const rest = { ...f };
+    delete rest.inventoryLinked;
+    return rest;
+  });
 }

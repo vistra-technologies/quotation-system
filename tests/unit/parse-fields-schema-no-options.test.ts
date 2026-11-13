@@ -22,3 +22,26 @@ for (const [name, parse] of [["org parseFieldsSchema", parseOrg], ["superadmin p
     for (const f of out) assert.equal(Object.prototype.hasOwnProperty.call(f, "options"), false);
   });
 }
+
+// Stage 35 S35-1: both parsers pass showWhen / inventoryLinked through (round trip); `false` and malformed shapes stay absent.
+for (const [name, parse] of [["org parseFieldsSchema", parseOrg], ["superadmin parseFieldsSchema", parseSa]] as const) {
+  test(`${name} round-trips showWhen and inventoryLinked`, () => {
+    const gated = [
+      { key: "a", label: "A", type: "dropdown", required: false, basic: true, inventoryLinked: true },
+      { key: "b", label: "B", type: "field", required: false, basic: true, showWhen: { field: "a", in: ["X", "Y"] } },
+    ];
+    assert.deepEqual(parse(gated), gated);
+    assert.deepEqual(parse(parse(gated)), gated);
+  });
+  test(`${name} keeps inventoryLinked false and a malformed showWhen absent`, () => {
+    const out = parse([
+      { key: "a", label: "A", type: "dropdown", inventoryLinked: false, showWhen: { field: "", in: ["x"] } },
+      { key: "b", label: "B", type: "field", showWhen: "a" },
+      { key: "c", label: "C", type: "field", showWhen: { field: "a", in: [1] } },
+    ]);
+    for (const f of out) {
+      assert.equal("inventoryLinked" in f, false);
+      assert.equal("showWhen" in f, false);
+    }
+  });
+}
