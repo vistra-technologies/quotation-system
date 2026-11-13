@@ -29,7 +29,7 @@ covers("PATCH /api/v1/superadmin/component-types/[typeId]");
 covers("DELETE /api/v1/superadmin/component-types/[typeId]");
 covers("POST /api/v1/superadmin/component-types/[typeId]/reorder");
 
-type Field = { key: string; label: string; type: string; required: boolean; basic: boolean; options?: string[]; dependsOn?: string; hint?: string };
+type Field = { key: string; label: string; type: string; required: boolean; basic: boolean; dependsOn?: string; hint?: string };
 type CType = {
   id: string; organizationId: string; code: string; name: string; active: boolean; categoryId: string;
   category: { id: string; name: string }; fieldsSchema: Field[]; sortOrder: number; createdAt: string; updatedAt: string;
@@ -41,10 +41,10 @@ const SCHEMA = [
   { key: "rgrFinish", label: "Finish", type: "radio", dependsOn: "rgrFrame" },
   { key: "rgrNote", label: "Note", type: "field", hint: "free text" },
 ];
-/** What the DAL stores/echoes for SCHEMA (parseFieldsSchema: required/basic defaults, options [] on choice fields). */
+/** What the DAL stores/echoes for SCHEMA (parseFieldsSchema: required/basic defaults; no `options` key is ever emitted on read). */
 const SCHEMA_ECHO: Field[] = [
-  { key: "rgrFrame", label: "Frame", type: "dropdown", required: true, basic: true, options: [] },
-  { key: "rgrFinish", label: "Finish", type: "radio", required: false, basic: true, options: [], dependsOn: "rgrFrame" },
+  { key: "rgrFrame", label: "Frame", type: "dropdown", required: true, basic: true },
+  { key: "rgrFinish", label: "Finish", type: "radio", required: false, basic: true, dependsOn: "rgrFrame" },
   { key: "rgrNote", label: "Note", type: "field", required: false, basic: true, hint: "free text" },
 ];
 
@@ -193,6 +193,22 @@ test.describe("SuperAdmin component types (org B)", () => {
     expect(await getType(sa, mine.id, run.orgB.id)).toMatchObject({ code: newCode, name: "Renamed", active: false });
     const log = await auditLog(sa, { scope: "org", orgId: run.orgB.id, item: "Component type", verb: "UPDATE", pageSize: 100 });
     expect(log.entries.filter((e) => e.targetId === mine.id && e.action === "componentType.update").length).toBe(other ? 3 : 2);
+  });
+
+  test("GET body PATCHes back unchanged (Stage 35 S35-0): no `options` on any field; reordered GET body persists in the new order", async ({ sa, run }) => {
+    const mine = await newType(sa, run, { fieldsSchema: SCHEMA });
+    const url = `${SA}/component-types/${mine.id}`;
+    const first = await getType(sa, mine.id, run.orgB.id);
+    expect(first.fieldsSchema.length).toBe(3);
+    for (const f of first.fieldsSchema) expect(Object.prototype.hasOwnProperty.call(f, "options")).toBe(false);
+    const back = (await json<{ componentType: CType }>(await sa.patch(url, { data: { orgId: run.orgB.id, fieldsSchema: first.fieldsSchema } }))).componentType;
+    expect(back.fieldsSchema).toEqual(first.fieldsSchema);
+    expect((await getType(sa, mine.id, run.orgB.id)).fieldsSchema).toEqual(first.fieldsSchema);
+    // reorder (what the edit form's up/down does): the independent note field moves to the front
+    const [frame, finish, note] = first.fieldsSchema;
+    const reordered = (await json<{ componentType: CType }>(await sa.patch(url, { data: { orgId: run.orgB.id, fieldsSchema: [note, frame, finish] } }))).componentType;
+    expect(reordered.fieldsSchema.map((f) => f.key)).toEqual(["rgrNote", "rgrFrame", "rgrFinish"]);
+    expect((await getType(sa, mine.id, run.orgB.id)).fieldsSchema.map((f) => f.key)).toEqual(["rgrNote", "rgrFrame", "rgrFinish"]);
   });
 
   test("PATCH rules: taken code → 409; bad schema / foreign category → 400; unknown type / org → 404; another org's view → 404 (unchanged)", async ({ sa, run }) => {

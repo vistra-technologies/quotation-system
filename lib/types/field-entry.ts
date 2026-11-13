@@ -14,7 +14,6 @@ export type FieldEntry = {
   type: "field" | "radio" | "dropdown" | "checkbox";
   required: boolean;
   basic: boolean;
-  options?: string[];
   hint?: string;
   // Stage 20: SuperAdmin-authored wiring — the key of an earlier field in the same
   // fieldsSchema array that this dropdown/radio field's value list narrows by.

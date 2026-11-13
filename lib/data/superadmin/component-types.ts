@@ -71,11 +71,6 @@ function parseFieldsSchema(raw: unknown): FieldEntry[] {
         required: Boolean(obj.required),
         basic: obj.basic !== undefined ? Boolean(obj.basic) : true,
       };
-      if (type === "radio" || type === "dropdown") {
-        entry.options = Array.isArray(obj.options)
-          ? (obj.options as unknown[]).map(String).filter(Boolean)
-          : [];
-      }
       if (obj.hint) {
         entry.hint = String(obj.hint);
       }

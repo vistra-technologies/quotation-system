@@ -31,16 +31,6 @@ export function parseFieldsSchema(raw: unknown): FieldEntry[] {
         // `basic` defaults to true when absent (backwards-compat with old rows)
         basic: obj.basic !== undefined ? Boolean(obj.basic) : true,
       };
-      // options: conditionally included for radio/dropdown.
-      // Reads are intentionally lenient here (empty options → options: []) because
-      // the write-path in actions.ts throws if options are missing, so well-formed data
-      // never reaches the DB. Area 3 renderers should guard defensively on options.length
-      // rather than trusting type alone.
-      if (type === "radio" || type === "dropdown") {
-        entry.options = Array.isArray(obj.options)
-          ? (obj.options as unknown[]).map(String).filter(Boolean)
-          : [];
-      }
       if (obj.hint) {
         entry.hint = String(obj.hint);
       }

@@ -320,7 +320,14 @@ function SectionEditor({
   const attemptMove = (globalIndex: number, direction: "up" | "down") => {
     const candidate = moveFieldInSection(fields, globalIndex, direction);
     if (candidate === fields) return; // already at the edge — no-op
-    const result = validateFieldsSchema(candidate);
+    // Validate a copy with any stray `options` key dropped (SuperAdmin authors shape only).
+    const result = validateFieldsSchema(
+      candidate.map((f) => {
+        const rest: Record<string, unknown> = { ...f };
+        delete rest.options;
+        return rest as FieldEntry;
+      }),
+    );
     if (!result.valid) {
       onMoveBlocked(`Can't reorder — ${result.error}`);
       return;

@@ -70,7 +70,7 @@ export function validateFieldsSchema(fields: FieldEntry[]): ValidateFieldsSchema
       return { valid: false, error: `Field "${describeField(f, i)}": unknown type "${f.type}".` };
     }
 
-    if (f.options !== undefined) {
+    if ((f as { options?: unknown }).options !== undefined) {
       return {
         valid: false,
         error: `Field "${describeField(f, i)}": "options" is no longer accepted here — SuperAdmin authors field shape and dependsOn wiring only. Option values are configured by the org admin on the Catalog screen.`,
