@@ -23,6 +23,8 @@ export function parseFieldsSchema(raw: unknown): FieldEntry[] {
       if (typeof item !== "object" || item === null) return null;
       const obj = item as Record<string, unknown>;
       const type = (validTypes.has(obj.type as string) ? obj.type : "field") as FieldEntry["type"];
+      // S35-0: the entry is rebuilt key by key; a stored `options` key is deliberately never copied
+      // (org option values live in fieldOptionsConfig, read by parseFieldOptionsConfig).
       const entry: FieldEntry = {
         key: String(obj.key ?? ""),
         label: String(obj.label ?? ""),

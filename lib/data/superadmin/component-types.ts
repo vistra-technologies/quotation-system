@@ -56,7 +56,7 @@ export interface ComponentTypeInput {
  *
  * superadmin-only — intentionally cross-org
  */
-function parseFieldsSchema(raw: unknown): FieldEntry[] {
+export function parseFieldsSchema(raw: unknown): FieldEntry[] {
   if (!Array.isArray(raw)) return [];
   const validTypes = new Set(["field", "radio", "dropdown", "checkbox"]);
   return (raw as unknown[])
@@ -64,6 +64,8 @@ function parseFieldsSchema(raw: unknown): FieldEntry[] {
       if (typeof item !== "object" || item === null) return null;
       const obj = item as Record<string, unknown>;
       const type = (validTypes.has(obj.type as string) ? obj.type : "field") as FieldEntry["type"];
+      // S35-0: the entry is rebuilt key by key; a stored `options` key is deliberately never copied
+      // (SuperAdmin authors shape only; org option values live in fieldOptionsConfig).
       const entry: FieldEntry = {
         key: String(obj.key ?? ""),
         label: String(obj.label ?? ""),
