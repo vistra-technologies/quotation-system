@@ -108,7 +108,7 @@ export function validateFieldsSchema(fields: FieldEntry[]): ValidateFieldsSchema
       }
     }
 
-    // Stage 35 S35-2 / G0-a: showWhen is exactly { field, in[] } — one controller, no AND/OR.
+    // Stage 35 S35-2 / G0-a: showWhen is exactly { field, in[] } â€” one controller, no AND/OR.
     if (f.showWhen !== undefined) {
       const sw = f.showWhen as unknown;
       const name = describeField(f, i);
@@ -119,7 +119,7 @@ export function validateFieldsSchema(fields: FieldEntry[]): ValidateFieldsSchema
       if (extra.length > 0) {
         return {
           valid: false,
-          error: `Field "${name}": "showWhen" takes exactly one controller as { field, in } — unexpected key "${extra[0]}".`,
+          error: `Field "${name}": "showWhen" takes exactly one controller as { field, in } â€” unexpected key "${extra[0]}".`,
         };
       }
       const { field: controller, in: values } = sw as { field?: unknown; in?: unknown };
@@ -136,7 +136,7 @@ export function validateFieldsSchema(fields: FieldEntry[]): ValidateFieldsSchema
       if (controllerIndex >= i) {
         return {
           valid: false,
-          error: `Field "${name}": showWhen must reference a field earlier in the schema — "${controller}" is at position ${controllerIndex + 1}, this field is at position ${i + 1}.`,
+          error: `Field "${name}": showWhen must reference a field earlier in the schema â€” "${controller}" is at position ${controllerIndex + 1}, this field is at position ${i + 1}.`,
         };
       }
       if (!CHOICE_TYPES.has(fields[controllerIndex].type)) {

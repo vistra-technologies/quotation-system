@@ -56,8 +56,8 @@ export function isComponentTypeFullyConfigured(
       continue;
     }
 
-    // Parent must already be resolved (earlier in the array, per decision #4). If it isn't —
-    // an invalid/dangling dependsOn, which server-side validation should already prevent — fail
+    // Parent must already be resolved (earlier in the array, per decision #4). If it isn't â€”
+    // an invalid/dangling dependsOn, which server-side validation should already prevent â€” fail
     // closed rather than silently treating the field as vacuously configured.
     const parentValues = resolvedValues.get(field.dependsOn);
     if (!parentValues) return false;

@@ -50,7 +50,7 @@ function parseFieldsSchema(raw: string | null): FieldEntry[] {
       if (obj.dependsOn && typeof obj.dependsOn === "string") {
         entry.dependsOn = obj.dependsOn;
       }
-      // Stage 35: raw pass-through (validateFieldsSchema, via the API route, decides) — a silent drop here
+      // Stage 35: raw pass-through (validateFieldsSchema, via the API route, decides) â€” a silent drop here
       // would erase the flags on every Save from the form.
       if (obj.showWhen !== undefined && obj.showWhen !== null) entry.showWhen = obj.showWhen as FieldEntry["showWhen"];
       if (obj.inventoryLinked !== undefined && obj.inventoryLinked !== false) {
