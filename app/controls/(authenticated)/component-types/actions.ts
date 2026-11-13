@@ -64,26 +64,37 @@ function parseFieldsSchema(raw: string | null): FieldEntry[] {
 // ─── Server actions ───────────────────────────────────────────────────────────
 
 /**
+ * State returned by `createSuperAdminComponentType` for use with `useActionState` (same shape as the
+ * update action's), so a server 400 (e.g. a `showWhen` rule) shows inline instead of crashing the page.
+ */
+export type CreateComponentTypeState = { error: string | null };
+
+/**
  * Create a new ComponentType via the SuperAdmin API route.
  * Reads orgId, code, name, categoryId, fieldsSchema from FormData.
  * On success: revalidates the controls page and redirects to the org workspace Components tab with ?typeId=newId.
  * On 401: redirects to /controls/login.
+ * On any other error (incl. a 400 from `validateFieldsSchema`): returns { error } for the form to show inline.
  *
  * Stage 19 Batch 5 — SuperAdmin ComponentType management relocated to /controls.
+ * Stage 35 Batch 4 — switched to the useActionState signature (AC2: server 400s show inline).
  */
 export const createSuperAdminComponentType = withAction(
   "app/controls/(authenticated)/component-types/actions#createSuperAdminComponentType",
-  async (formData: FormData): Promise<void> => {
+  async (
+  prevState: CreateComponentTypeState,
+  formData: FormData,
+): Promise<CreateComponentTypeState> => {
   const orgId = (formData.get("orgId") as string | null)?.trim();
   const code = (formData.get("code") as string | null)?.trim().toUpperCase();
   const name = (formData.get("name") as string | null)?.trim();
   const categoryId = ((formData.get("categoryId") as string | null) ?? "").trim();
   const fieldsSchema = parseFieldsSchema(formData.get("fieldsSchema") as string | null);
 
-  if (!orgId) throw new Error("orgId is required");
-  if (!code) throw new Error("Code is required");
-  if (!name) throw new Error("Name is required");
-  if (!categoryId) throw new Error("Category is required");
+  if (!orgId) return { error: "orgId is required" };
+  if (!code) return { error: "Code is required" };
+  if (!name) return { error: "Name is required" };
+  if (!categoryId) return { error: "Category is required" };
 
   const res = await internalFetch("/api/v1/superadmin/component-types", {
     method: "POST",
@@ -94,7 +105,7 @@ export const createSuperAdminComponentType = withAction(
 
   if (!res.ok) {
     const body = (await res.json()) as { error?: string };
-    throw new Error(apiErrorMessage(body, "Failed to create component type"));
+    return { error: apiErrorMessage(body, "Failed to create component type") };
   }
 
   const { componentType } = (await res.json()) as { componentType: { id: string } };

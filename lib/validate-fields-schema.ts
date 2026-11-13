@@ -210,6 +210,20 @@ export function clearDependentsOf(fields: FieldEntry[], key: string): FieldEntry
 }
 
 /**
+ * Stage 35 (review-b2-1 MINOR 2): retype a field in the SuperAdmin forms. `dependsOn` and `inventoryLinked`
+ * only make sense on dropdown/radio, so switching to another type drops them (a stale `inventoryLinked: true`
+ * on a text field would otherwise 400 on Save). `showWhen` is allowed on any type and stays.
+ */
+export function applyFieldTypeChange(entry: FieldEntry, newType: FieldEntry["type"]): FieldEntry {
+  const updated: FieldEntry = { ...entry, type: newType };
+  if (newType !== "dropdown" && newType !== "radio") {
+    delete updated.dependsOn;
+    delete updated.inventoryLinked;
+  }
+  return updated;
+}
+
+/**
  * Stage 35 S35-1: `inventoryLinked: false` is stored absent. Applied at the data-layer write sites
  * (after `checkFieldsSchemaForWrite`); everything else is stored as authored.
  */

@@ -24,9 +24,10 @@ import fs from "node:fs";
 import { randomUUID } from "node:crypto";
 import { test, expect } from "../api/sa-helpers";
 import { coversPage } from "../fixtures/covers";
-import type { Role } from "../fixtures/run-state";
+import type { Role, RunState } from "../fixtures/run-state";
 import { deniedRolesFor, ROLES, ROLE_PERMISSIONS } from "../api/permissions";
-import { distributorCompanyId, glassConfig } from "../api/project-helpers";
+import { distributorCompanyId, glassConfig, orgApi, tag } from "../api/project-helpers";
+import { ok } from "../api/design-helpers";
 import { addSelection, sharedItems } from "../journeys/journey-helpers";
 import { doorCfg } from "../engine/materials";
 import { rgrSetSelectionConfig } from "../../e2e/db-helpers";
@@ -1166,6 +1167,192 @@ test.describe("pins", () => {
         await expect(o.page.getByText(`/${run.testOrg.slug}`, { exact: true }), h).toHaveCount(0);
         await expect(o.page.getByText(`/${run.orgB.slug}`, { exact: true }), h).toHaveCount(0);
       }
+    });
+  });
+});
+
+// Stage 35 Batch 4 — visibility UI. Throwaway org B only: its own type + project go with org B at teardown, so no
+// shared Test-Org data is touched (rule 10 n/a). One fixture type: root `kind`, then `hasLeaf` and gated fields,
+// all depending on `kind` (the production DOOR shape: tier-2 column with bands) plus an independent `hinge`.
+test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdmin edit form), throwaway org B", () => {
+  test.describe.configure({ mode: "serial" });
+  const VALS = (...v: string[]) => ({ valueMap: { K1: v, K2: v } });
+  const fld = (key: string, label: string, over: Record<string, unknown> = {}) =>
+    ({ key, label, type: "dropdown", required: false, basic: true, ...over });
+  const dep = { dependsOn: "kind" };
+  const SCHEMA = [
+    fld("kind", "Kind", { required: true }),
+    fld("hasLeaf", "Has Leaf", { required: true, ...dep }),
+    fld("leafCode", "Leaf Code", { required: true, ...dep, inventoryLinked: true, showWhen: { field: "hasLeaf", in: ["Yes"] } }),
+    fld("leafNote", "Leaf Note", { type: "field", showWhen: { field: "hasLeaf", in: ["Yes"] } }),
+    fld("rackCode", "Rack Code", { required: true, ...dep, showWhen: { field: "hasLeaf", in: ["No"] } }),
+    fld("partialA", "Partial A", { ...dep, showWhen: { field: "hasLeaf", in: ["Partial"] } }),
+    fld("partialB", "Partial B", { ...dep, showWhen: { field: "hasLeaf", in: ["Partial"] } }),
+    fld("hinge", "Hinge"),
+  ];
+  const CONFIG = {
+    fieldOptionsConfig: {
+      kind: { options: ["K1", "K2"] },
+      hasLeaf: VALS("Yes", "No"),
+      leafCode: VALS("L1", "L2"),
+      rackCode: VALS("R1", "R2"),
+      partialA: VALS("P1", "P2"),
+      partialB: VALS("Q1", "Q2"),
+      hinge: { options: ["H1", "H2"] },
+    },
+  };
+
+  /** The fixture type, configured, then a project frozen AFTER it (its snapshot carries the rules). */
+  async function fixture(run: RunState, orgB: import("../fixtures/clients").Guarded) {
+    const B = (p: string) => orgApi(run.orgB.slug, p);
+    const cats = (await ok<{ categories: { id: string }[] }>(await orgB.get(B("/component-categories")))).categories;
+    const code = `RGRW${tag().toUpperCase()}`;
+    const type = (await ok<{ componentType: { id: string; name: string; code: string } }>(
+      await orgB.post(B("/component-types"), { data: { code, name: `${run.prefix}vis-${tag()}`, categoryId: cats[0].id, fieldsSchema: SCHEMA } }),
+      201,
+    )).componentType;
+    await ok(await orgB.put(B(`/component-types/${type.id}/field-values`), { data: CONFIG }));
+    const project = (await ok<{ project: { id: string } }>(await orgB.post(B("/projects"), { data: { name: `${run.prefix}vis-${tag()}`, currency: "AED" } }), 201)).project;
+    return { B, type, projectId: project.id };
+  }
+  // Fixtures are test-scoped, so the shared type + project are built by the first test that needs them (serial mode, one worker).
+  let fxP: ReturnType<typeof fixture> | undefined;
+  const getFx = (run: RunState, orgB: import("../fixtures/clients").Guarded) => (fxP ??= fixture(run, orgB));
+
+  type Page = import("@playwright/test").Page;
+  /** The control wrapper (label + input) of a Configuration-form field, by its label text. */
+  const field = (page: Page, label: string) => page.locator("label", { hasText: new RegExp(`^${label}\\b`) }).locator("xpath=..");
+  const pick = async (page: Page, label: string, value: string) => {
+    await field(page, label).getByRole("combobox").click();
+    await page.getByRole("option", { name: value, exact: true }).click();
+  };
+
+  test("UI AC1 Configuration form: hidden fields do not render, values clear when hidden, switching back shows them empty, the saved body has no hidden key", async ({ browser, run, orgB }) => {
+    test.setTimeout(120_000);
+    const fx = await getFx(run, orgB);
+    await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
+      const page = o.page;
+      const actionBodies: string[] = [];
+      page.on("request", (r) => { if (r.method() === "POST" && r.headers()["next-action"]) actionBodies.push(r.postDataBuffer()?.toString("utf8") ?? ""); });
+      await page.goto(orgUrl(run.orgB.slug, `/projects/${fx.projectId}/configuration`));
+      await page.getByRole("button", { name: fx.type.name }).click();
+      const hidden = ["Leaf Code", "Leaf Note", "Rack Code", "Partial A", "Partial B"];
+      await expect(field(page, "Kind")).toBeVisible();
+      await pick(page, "Kind", "K1");
+      for (const l of hidden) await expect(page.locator("label", { hasText: new RegExp(`^${l}\\b`) }), `${l} hidden while Has Leaf is blank`).toHaveCount(0);
+
+      await pick(page, "Has Leaf", "Yes");
+      await expect(field(page, "Leaf Code")).toBeVisible();
+      await expect(field(page, "Leaf Note")).toBeVisible();
+      await expect(page.locator("label", { hasText: /^Rack Code\b/ })).toHaveCount(0);
+      await pick(page, "Leaf Code", "L1");
+      await field(page, "Leaf Note").locator("input").fill("note-1");
+
+      // required + visible: refused client-side before any request
+      await page.locator("#sel-label").fill(`${run.prefix}vis-sel`);
+      const before = actionBodies.length;
+      await pick(page, "Has Leaf", "Yes");
+      await page.getByRole("button", { name: "Add Component" }).click();
+      await expect(page.getByText('"Has Leaf" is required.').or(page.getByText('"Leaf Code" is required.'))).toBeVisible();
+      expect(actionBodies.length, "a refused save sends no request").toBe(before);
+      await pick(page, "Leaf Code", "L1");
+
+      await pick(page, "Has Leaf", "No");
+      for (const l of ["Leaf Code", "Leaf Note"]) await expect(page.locator("label", { hasText: new RegExp(`^${l}\\b`) }), `${l} gone at once`).toHaveCount(0);
+      await expect(field(page, "Rack Code")).toBeVisible();
+
+      await pick(page, "Has Leaf", "Yes");
+      await expect(field(page, "Leaf Code").getByRole("combobox")).toHaveText("Select"); // cleared: shows empty
+      await expect(field(page, "Leaf Note").locator("input")).toHaveValue("");
+
+      await pick(page, "Has Leaf", "No");
+      await pick(page, "Rack Code", "R1");
+      await pick(page, "Hinge", "H1");
+      await page.getByRole("button", { name: "Add Component" }).click();
+      await expect.poll(async () => (await ok<{ selections: { config: Record<string, unknown> }[] }>(await orgB.get(fx.B(`/selections?projectId=${fx.projectId}`)))).selections.length).toBe(1);
+      const sel = (await ok<{ selections: { config: Record<string, unknown> }[] }>(await orgB.get(fx.B(`/selections?projectId=${fx.projectId}`)))).selections[0];
+      expect(sel.config).toEqual({ kind: "K1", hasLeaf: "No", rackCode: "R1", hinge: "H1" });
+      const saved = actionBodies.filter((b) => b.includes("rackCode")).join("\n");
+      expect(saved, "the submitted body carries the visible gated key").toContain("rackCode");
+      expect(saved, "no hidden key in the submitted body").not.toMatch(/leafCode|leafNote/);
+    });
+  });
+
+  test("UI AC3 org Catalog: a Yes band and a No band, focus/dim, the never-shown warning band + pill, attribute-editor chips with the lock", async ({ browser, run, orgB }) => {
+    test.setTimeout(120_000);
+    const fx = await getFx(run, orgB);
+    await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
+      const page = o.page;
+      await page.goto(orgUrl(run.orgB.slug, "/admin/catalog"));
+      await page.getByRole("tab", { name: new RegExp(`\\(${fx.type.code}\\)`) }).click();
+      const bands = page.getByTestId("show-band").filter({ visible: true });
+      await expect(bands).toHaveCount(3);
+      await expect(bands.filter({ hasText: /Shown when Has Leaf = Yes/ })).toHaveCount(1);
+      await expect(bands.filter({ hasText: /Shown when Has Leaf = No/ })).toHaveCount(1);
+      const warn = bands.filter({ hasText: /Shown when Has Leaf = Partial/ });
+      await expect(warn).toHaveCount(1);
+      await expect(warn.getByText("These fields can never appear")).toBeVisible();
+      await expect(warn.getByRole("img", { name: /has no value Partial/ })).toBeVisible();
+      await expect(bands.filter({ hasText: /Yes/ }).first().getByText("These fields can never appear")).toHaveCount(0);
+      await expect(page.getByTestId("never-shown-pill").filter({ visible: true })).toHaveText(/2 never shown/);
+
+      // focus/dim: hovering the controller lights its bands' fields and dims the unrelated independent field
+      await page.getByRole("button", { name: /^Edit Has Leaf/ }).filter({ visible: true }).hover();
+      await expect(page.locator('[data-node-id="hinge"]').filter({ visible: true })).toHaveClass(/opacity-40/);
+      await expect(page.locator('[data-node-id="leafCode"]').filter({ visible: true })).not.toHaveClass(/opacity-40/);
+      await expect(page.locator('[data-node-id="rackCode"]').filter({ visible: true })).not.toHaveClass(/opacity-40/);
+
+      // editor chips: read-only, lock + "Set by platform admin", Linked to inventory
+      await page.getByRole("button", { name: /^Edit Leaf Code/ }).filter({ visible: true }).click();
+      const chips = page.getByTestId("attr-chips");
+      await expect(chips).toContainText("Values by Kind");
+      await expect(chips).toContainText("Shown when Has Leaf = Yes");
+      await expect(chips.getByRole("img", { name: "Set by platform admin" })).toBeVisible();
+      await expect(chips).toContainText("Linked to inventory");
+    });
+  });
+
+  test("UI AC2 SuperAdmin edit form: Show-when lists only earlier dropdown/radio fields, value chips, Linked toggle on dropdown/radio only, retyping clears Linked, a server 400 shows inline", async ({ browser, run, sa, orgB }) => {
+    test.setTimeout(150_000);
+    const fx = await getFx(run, orgB);
+    await withPage({ browser, run }, "sa", sa.token, async (o) => {
+      const page = o.page;
+      const edit = `/controls/orgs/${run.orgB.id}/components?typeId=${fx.type.id}`;
+      await page.goto(edit);
+      const rows = page.getByTestId("field-row").filter({ visible: true });
+      await expect(rows).toHaveCount(SCHEMA.length);
+      const leaf = rows.nth(2); // leafCode
+      await expect(leaf.getByRole("combobox").filter({ hasText: "Has Leaf" })).toBeVisible();
+      await expect(leaf.getByTestId("showwhen-values")).toContainText("Yes");
+      await expect(leaf.getByRole("switch", { name: "Linked to inventory" })).toHaveAttribute("aria-checked", "true");
+      await expect(rows.nth(3).getByRole("switch")).toHaveCount(0); // text field: no Linked toggle
+      await expect(rows.nth(1).getByRole("switch", { name: "Linked to inventory" })).toHaveAttribute("aria-checked", "false");
+
+      // controller list = "Always shown" + earlier dropdown/radio fields only
+      await leaf.getByRole("combobox").filter({ hasText: "Has Leaf" }).click();
+      await expect(page.getByRole("option")).toHaveText(["Always shown", "Kind", "Has Leaf"]);
+      await page.keyboard.press("Escape");
+
+      // MINOR 2: retyping a linked dropdown to a text field clears Linked, and Save does not 400
+      await leaf.getByRole("combobox").filter({ hasText: "Dropdown" }).click();
+      await page.getByRole("option", { name: "Field (text)" }).click();
+      await expect(leaf.getByRole("switch")).toHaveCount(0);
+      await page.getByRole("button", { name: "Save Changes" }).click();
+      await expect.poll(async () => {
+        const t = (await ok<{ componentType: { fieldsSchema: { key: string; type: string; inventoryLinked?: boolean }[] } }>(await sa.get(`/api/v1/superadmin/component-types/${fx.type.id}?orgId=${run.orgB.id}`))).componentType;
+        const f = t.fieldsSchema.find((x) => x.key === "leafCode")!;
+        return `${f.type}/${f.inventoryLinked ?? "absent"}`;
+      }).toBe("field/absent");
+
+      // a server 400 (showWhen with no values) shows inline, nothing is stored
+      await page.goto(edit);
+      await expect(rows).toHaveCount(SCHEMA.length);
+      const target = rows.nth(7); // hinge: Always shown -> controller Kind -> no values
+      await target.getByRole("combobox").filter({ hasText: "Always shown" }).click();
+      await page.getByRole("option", { name: "Kind", exact: true }).click();
+      await expect(target.getByTestId("showwhen-values")).toBeVisible();
+      await page.getByRole("button", { name: "Save Changes" }).click();
+      await expect(page.getByText(/showWhen\.in must be a non-empty array/)).toBeVisible();
     });
   });
 });

@@ -37,6 +37,9 @@ interface FieldEntry {
   basic: boolean;
   // Stage 20: SuperAdmin-authored wiring (key of an earlier field this field depends on).
   dependsOn?: string;
+  // Stage 35: SuperAdmin-authored (S35-1); carried through to the form, which hides gated fields.
+  showWhen?: { field: string; in: string[] };
+  inventoryLinked?: boolean;
 }
 
 /**

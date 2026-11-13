@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import {
+  bandsOf,
   choiceFields,
   depth,
   emptyGroups,
@@ -13,6 +14,7 @@ import {
   nodePreview,
   relatedIds,
   valuesOf,
+  type ShowBand,
 } from "./catalog-model";
 
 interface CatalogTreeProps {
@@ -29,7 +31,10 @@ interface LinkGeom {
   a: string;
   b: string;
   d: string;
-  kind: "chain" | "ind";
+  /** "show" = the dashed "Shown when" link from a controller to its band (Stage 35). */
+  kind: "chain" | "ind" | "show";
+  /** For "show": the band's member field keys (the link lights when the focus reaches any of them). */
+  members?: string[];
 }
 interface DotGeom {
   a: string;
@@ -85,6 +90,30 @@ export function CatalogTree({
       }))
       .sort((a, b) => a.p - b.p || a.i - b.i)
       .map((o) => o.f);
+  }
+
+  // Stage 35 S35-5: one dashed band per (controller, value set); a gated card sits in its band.
+  const bands = bandsOf(fields, config);
+  const bandOfKey = new Map<string, ShowBand>();
+  for (const b of bands) for (const k of b.fieldKeys) bandOfKey.set(k, b);
+  const controllerKeys = new Set(bands.map((b) => b.controller));
+  const controllerLabel = (key: string) => findAttr(fields, key)?.label ?? key;
+
+  /** Within one column/lane: a band's members become one contiguous unit, placed at its first member. */
+  function groupUnits(list: FieldEntry[], tag: string) {
+    const units: ({ kind: "node"; f: FieldEntry } | { kind: "band"; id: string; band: ShowBand; members: FieldEntry[] })[] = [];
+    const emitted = new Set<string>();
+    for (const f of list) {
+      const band = bandOfKey.get(f.key);
+      if (!band) {
+        units.push({ kind: "node", f });
+        continue;
+      }
+      if (emitted.has(band.id)) continue;
+      emitted.add(band.id);
+      units.push({ kind: "band", id: `${band.id}-${tag}`, band, members: list.filter((x) => bandOfKey.get(x.key) === band) });
+    }
+    return units;
   }
 
   const q = searchQuery.trim().toLowerCase();
@@ -170,6 +199,32 @@ export function CatalogTree({
         }
       }
 
+      // Stage 35: dashed controller -> band link (curve when the band is to the right, else an elbow
+      // around the right edge of the column, as in the mockup).
+      for (const el of container.querySelectorAll<HTMLElement>("[data-band-id]")) {
+        const ctl = box(nodeEl(el.dataset.bandController ?? ""));
+        if (!ctl) continue;
+        const r = el.getBoundingClientRect();
+        const bl = r.left - tr.left;
+        const br = r.right - tr.left;
+        const by = r.top - tr.top + 17;
+        let d: string;
+        if (bl >= ctl.r + 24) {
+          const k = Math.max(24, (bl - ctl.r) / 2);
+          d = `M${ctl.r} ${ctl.cy} C${ctl.r + k} ${ctl.cy} ${bl - k} ${by} ${bl} ${by}`;
+        } else {
+          const x = Math.max(ctl.r, br) + 14;
+          d = `M${ctl.r} ${ctl.cy} L${x} ${ctl.cy} L${x} ${by} L${br} ${by}`;
+        }
+        nextLinks.push({
+          a: el.dataset.bandController ?? "",
+          b: el.dataset.bandId ?? "",
+          kind: "show",
+          d,
+          members: JSON.parse(el.dataset.bandMembers ?? "[]") as string[],
+        });
+      }
+
       for (const id of outs) {
         const b = box(nodeEl(id));
         if (!b) continue;
@@ -202,7 +257,50 @@ export function CatalogTree({
     return related ? related.has(id) : false;
   }
   function linkIsLit(l: LinkGeom | DotGeom) {
+    if ("members" in l && l.members) return bandIsLit(l.a, l.members);
     return Boolean(related && related.has(l.a) && related.has(l.b));
+  }
+  function bandIsLit(controller: string, memberKeys: string[]) {
+    return Boolean(related && related.has(controller) && memberKeys.some((k) => related.has(k)));
+  }
+  function renderNode(f: FieldEntry, kind: "chain" | "indep") {
+    return (
+      <CatalogNode
+        key={f.key}
+        fields={fields}
+        config={config}
+        field={f}
+        kind={kind}
+        isController={controllerKeys.has(f.key)}
+        isLit={nodeIsLit(f.key)}
+        isMatch={matchSet?.has(f.key) ?? false}
+        isSearching={isSearching}
+        hasFocus={hasFocus}
+        onMouseOver={() => handleMouseOver(f.key)}
+        onClick={() => onOpenAttr(f.key)}
+      />
+    );
+  }
+  function renderUnits(list: FieldEntry[], tag: string, kind: "chain" | "indep") {
+    return groupUnits(list, tag).map((u) => {
+      if (u.kind === "node") return renderNode(u.f, kind);
+      const memberKeys = u.members.map((m) => m.key);
+      const lit = bandIsLit(u.band.controller, memberKeys);
+      return (
+        <BandBox
+          key={u.id}
+          id={u.id}
+          band={u.band}
+          controllerLabel={controllerLabel(u.band.controller)}
+          memberKeys={memberKeys}
+          lit={lit}
+          dimmed={hasFocus && !lit}
+          wide={kind === "indep"}
+        >
+          {u.members.map((m) => renderNode(m, kind))}
+        </BandBox>
+      );
+    });
   }
 
   function handleMouseOver(id: string) {
@@ -232,8 +330,9 @@ export function CatalogTree({
               key={`${l.a}-${l.b}-${i}`}
               d={l.d}
               fill="none"
-              stroke={linkIsLit(l) ? "var(--color-primary)" : l.kind === "ind" ? "#CDD6C9" : "#BFD0C1"}
+              stroke={linkIsLit(l) ? "var(--color-primary)" : l.kind === "ind" ? "#CDD6C9" : l.kind === "show" ? "#9DB5A1" : "#BFD0C1"}
               strokeWidth={linkIsLit(l) ? 2.25 : 1.75}
+              strokeDasharray={l.kind === "show" ? "5 4" : undefined}
               opacity={hasFocus && !linkIsLit(l) ? 0.3 : 1}
             />
           ))}
@@ -314,21 +413,7 @@ export function CatalogTree({
             className="relative z-10 flex flex-col justify-center gap-3.5 py-1.5 pb-6"
             style={{ gridColumn: t + 2, gridRow: 2 }}
           >
-            {tier.map((f) => (
-              <CatalogNode
-                key={f.key}
-                fields={fields}
-                config={config}
-                field={f}
-                kind="chain"
-                isLit={nodeIsLit(f.key)}
-                isMatch={matchSet?.has(f.key) ?? false}
-                isSearching={isSearching}
-                hasFocus={hasFocus}
-                onMouseOver={() => handleMouseOver(f.key)}
-                onClick={() => onOpenAttr(f.key)}
-              />
-            ))}
+            {renderUnits(tier, `t${t}`, "chain")}
           </div>
         ))}
 
@@ -367,25 +452,98 @@ export function CatalogTree({
               className="relative z-10 grid content-start gap-x-9 gap-y-3 pl-4 pt-[38px]"
               style={{ gridColumn: "3 / -1", gridRow: 3, gridTemplateColumns: "repeat(auto-fill, minmax(196px, 1fr))" }}
             >
-              {indep.map((f) => (
-                <CatalogNode
-                  key={f.key}
-                  fields={fields}
-                  config={config}
-                  field={f}
-                  kind="indep"
-                  isLit={nodeIsLit(f.key)}
-                  isMatch={matchSet?.has(f.key) ?? false}
-                  isSearching={isSearching}
-                  hasFocus={hasFocus}
-                  onMouseOver={() => handleMouseOver(f.key)}
-                  onClick={() => onOpenAttr(f.key)}
-                />
-              ))}
+              {renderUnits(indep, "indep", "indep")}
             </div>
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── One "Shown when" band (Stage 35 S35-5) ────────────────────────────────────
+
+const EYE_ICON = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+const WARN_ICON = (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
+    <path d="M12 9v4M12 17h.01" />
+  </svg>
+);
+
+function BandBox({
+  id,
+  band,
+  controllerLabel,
+  memberKeys,
+  lit,
+  dimmed,
+  wide,
+  children,
+}: {
+  id: string;
+  band: ShowBand;
+  controllerLabel: string;
+  memberKeys: string[];
+  lit: boolean;
+  dimmed: boolean;
+  wide: boolean;
+  children: React.ReactNode;
+}) {
+  const warn = band.badValues.length > 0 || band.allNever;
+  const tone = warn
+    ? "border-[#EBD39E] bg-status-pending-bg"
+    : lit
+      ? "border-primary bg-primary-softer/85"
+      : "border-[#AFC6B2] bg-white/55";
+  const tip = `${controllerLabel} has no value ${band.badValues.join(", ")} in this organisation.`;
+  return (
+    <div
+      data-band-id={id}
+      data-band-controller={band.controller}
+      data-band-members={JSON.stringify(memberKeys)}
+      data-testid="show-band"
+      className={`relative z-10 flex w-full flex-col gap-2 rounded-[18px] border-[1.5px] border-dashed px-3 pb-3 pt-9 transition-opacity ${wide ? "col-span-full" : "max-w-[334px]"} ${tone} ${dimmed ? "opacity-50" : ""}`}
+    >
+      <div
+        className={`absolute left-3.5 top-2 flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold ${warn ? "text-status-pending-text" : lit ? "text-primary-dark" : "text-text-muted"}`}
+      >
+        {warn ? WARN_ICON : EYE_ICON}
+        <span>
+          Shown when {controllerLabel} ={" "}
+          {band.values.map((v, i) => (
+            <span key={v}>
+              {i > 0 && ", "}
+              <span
+                className={`rounded-pill border bg-bg-white px-2 py-px ${warn ? "border-[#EBD39E]" : "border-[#CBDFCD] text-primary-dark"} ${band.badValues.includes(v) ? "line-through" : ""}`}
+              >
+                {v}
+              </span>
+            </span>
+          ))}
+        </span>
+        {band.badValues.length > 0 && (
+          <span
+            role="img"
+            aria-label={tip}
+            title={tip}
+            className="inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-current text-[10px] font-extrabold"
+          >
+            i
+          </span>
+        )}
+      </div>
+      {children}
+      {band.allNever && (
+        <div className="self-start rounded-pill border border-[#EBD39E] bg-status-pending-bg px-2.5 py-1 text-[11.5px] font-extrabold text-status-pending-text">
+          These fields can never appear
+        </div>
+      )}
     </div>
   );
 }
@@ -397,6 +555,7 @@ function CatalogNode({
   config,
   field,
   kind,
+  isController,
   isLit,
   isMatch,
   isSearching,
@@ -408,6 +567,7 @@ function CatalogNode({
   config: FieldOptionsConfig;
   field: FieldEntry;
   kind: "chain" | "indep";
+  isController: boolean;
   isLit: boolean;
   isMatch: boolean;
   isSearching: boolean;
@@ -438,7 +598,9 @@ function CatalogNode({
           className={`flex h-[34px] w-[34px] flex-shrink-0 items-center justify-center rounded-full ${
             kind === "indep" ? "bg-bg-page text-text-muted" : "bg-primary-softer text-primary-dark"
           }`}
-        />
+        >
+          {isController && EYE_ICON}
+        </span>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate text-[13.5px] font-extrabold text-text-heading" title={field.label}>
             {field.label}

@@ -159,6 +159,40 @@ export function descendants(schema: FieldEntry[], key: string): string[] {
  * Mirrors the mockup's `related`.
  */
 export function relatedIds(schema: FieldEntry[], id: string): Set<string> | null {
+  const set = relatedByDependsOn(schema, id);
+  if (!set || id === "hub") return set;
+  return expandShowWhen(schema, id, set);
+}
+
+/**
+ * Stage 35 S35-5 focus rule for `showWhen` edges, applied on top of the `dependsOn` trace: a controller
+ * lights every field it gates (any depth, every value set, so its Yes and No bands light together); a
+ * gated field lights its controller (and that controller's own controllers) plus the other fields the
+ * same controller gates — the mockup's "click a card in a band = focus its controller group".
+ */
+function expandShowWhen(schema: FieldEntry[], id: string, base: Set<string>): Set<string> {
+  const set = new Set(base);
+  const gatedBy = (key: string) => schema.filter((f) => f.showWhen?.field === key);
+  const addGated = (key: string) => {
+    for (const g of gatedBy(key)) {
+      if (set.has(g.key)) continue;
+      set.add(g.key);
+      addGated(g.key);
+    }
+  };
+  const focus = findAttr(schema, id);
+  if (!focus) return set;
+  let controllerKey = focus.showWhen?.field ?? null;
+  while (controllerKey) {
+    set.add(controllerKey);
+    controllerKey = findAttr(schema, controllerKey)?.showWhen?.field ?? null;
+  }
+  addGated(id);
+  if (focus.showWhen) addGated(focus.showWhen.field);
+  return set;
+}
+
+function relatedByDependsOn(schema: FieldEntry[], id: string): Set<string> | null {
   if (id === "root") return null;
   const set = new Set<string>([id]);
   if (id === "hub") {
@@ -190,6 +224,75 @@ export function relatedIds(schema: FieldEntry[], id: string): Set<string> | null
   };
   down(id);
   return set;
+}
+
+// ─── Visibility bands (Stage 35 S35-5) ────────────────────────────────────────
+
+export interface ShowBand {
+  /** Stable per render: `band-<index>`. */
+  id: string;
+  controller: string;
+  /** The `in` values, in authored order (the first member's set; an equal set in another order shares the band). */
+  values: string[];
+  /** Gated fields of this band, in schema order. */
+  fieldKeys: string[];
+  /** `in` values the controller cannot produce in this org (warn-only). */
+  badValues: string[];
+  /** Every member can never appear (no producible `in` value, or its controller is itself never shown). */
+  allNever: boolean;
+}
+
+/**
+ * Gated field keys that can never appear in this org: none of their `in` values is a value the controller
+ * can produce, or the controller is itself never shown (cascade). A controller with no values configured
+ * yet cannot be judged, so nothing is flagged until it has options (an unconfigured type already says so).
+ */
+export function neverShownKeys(schema: FieldEntry[], config: FieldOptionsConfig): Set<string> {
+  const never = new Set<string>();
+  for (const f of schema) {
+    const sw = f.showWhen;
+    if (!sw) continue;
+    const controller = findAttr(schema, sw.field);
+    if (!controller) continue;
+    if (never.has(controller.key)) {
+      never.add(f.key);
+      continue;
+    }
+    const produced = valuesOf(schema, config, controller);
+    if (produced.length > 0 && !sw.in.some((v) => produced.includes(v))) never.add(f.key);
+  }
+  return never;
+}
+
+/** One band per (controller, value set), in order of first appearance. A Yes set and a No set are two bands. */
+export function bandsOf(schema: FieldEntry[], config: FieldOptionsConfig): ShowBand[] {
+  const never = neverShownKeys(schema, config);
+  const bands: ShowBand[] = [];
+  const index = new Map<string, ShowBand>();
+  for (const f of schema) {
+    const sw = f.showWhen;
+    if (!sw) continue;
+    const controller = findAttr(schema, sw.field);
+    if (!controller) continue;
+    const sig = JSON.stringify([sw.field, [...new Set(sw.in)].sort()]);
+    let band = index.get(sig);
+    if (!band) {
+      const produced = valuesOf(schema, config, controller);
+      band = {
+        id: `band-${bands.length}`,
+        controller: sw.field,
+        values: [...new Set(sw.in)],
+        fieldKeys: [],
+        badValues: produced.length > 0 ? sw.in.filter((v) => !produced.includes(v)) : [],
+        allNever: false,
+      };
+      index.set(sig, band);
+      bands.push(band);
+    }
+    band.fieldKeys.push(f.key);
+  }
+  for (const b of bands) b.allNever = b.fieldKeys.every((k) => never.has(k));
+  return bands;
 }
 
 // ─── Removal impact (cross-field cascade warning) ─────────────────────────────

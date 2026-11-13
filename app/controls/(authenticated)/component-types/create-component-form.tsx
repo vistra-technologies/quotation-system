@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { SelectField } from "@/components/select-field";
-import { createSuperAdminComponentType } from "./actions";
-import { validateFieldsSchema, clearDependentsOf } from "@/lib/validate-fields-schema";
+import { createSuperAdminComponentType, type CreateComponentTypeState } from "./actions";
+import { validateFieldsSchema, clearDependentsOf, applyFieldTypeChange } from "@/lib/validate-fields-schema";
+import { ShowWhenControl, LinkedToggle } from "./_visibility-controls";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // ─── Inner status helpers ─────────────────────────────────────────────────────
@@ -144,7 +145,7 @@ function FieldRow({
   const isChoiceType = entry.type === "radio" || entry.type === "dropdown";
 
   return (
-    <div className="flex flex-col gap-2 rounded-sm border border-border bg-bg-page px-3 py-2.5">
+    <div data-testid="field-row" className="flex flex-col gap-2 rounded-sm border border-border bg-bg-page px-3 py-2.5">
       {/* Row 1: key, label, type, move/remove */}
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex min-w-[8rem] flex-1 flex-col gap-0.5">
@@ -178,14 +179,9 @@ function FieldRow({
           <SelectField
             value={entry.type}
             onChange={(e) => {
-              const newType = e.target.value as FieldEntry["type"];
-              const updated: FieldEntry = { ...entry, type: newType };
-              // dependsOn only makes sense on dropdown/radio (a value list to narrow) —
-              // clear it when switching to a type that has none.
-              if (newType !== "dropdown" && newType !== "radio") {
-                delete updated.dependsOn;
-              }
-              onChange(updated);
+              // dependsOn and inventoryLinked only make sense on dropdown/radio (a value list) —
+              // dropped when switching to a type that has none (Stage 35 review-b2-1 MINOR 2).
+              onChange(applyFieldTypeChange(entry, e.target.value as FieldEntry["type"]));
             }}
             className={inputBase}
           >
@@ -251,6 +247,15 @@ function FieldRow({
           </SelectField>
         </div>
       )}
+
+      {/* Stage 35: visibility rule (any type) + inventory link (dropdown/radio only). */}
+      <ShowWhenControl
+        entry={entry}
+        controllers={dependsOnOptions}
+        inputBase={inputBase}
+        onChange={onChange}
+      />
+      {isChoiceType && <LinkedToggle entry={entry} onChange={onChange} />}
 
       {/* Row 3: hint, required */}
       <div className="flex flex-wrap items-end gap-2">
@@ -528,8 +533,16 @@ interface CreateComponentFormProps {
  * Key difference: takes `orgId` instead of `orgSlug`; submits to
  * `createSuperAdminComponentType` (SuperAdmin API) instead of the org-scoped action.
  */
+const initialActionState: CreateComponentTypeState = { error: null };
+
 export function CreateComponentForm({ orgId, categories, labels }: CreateComponentFormProps) {
+  const [state, formAction] = useActionState(createSuperAdminComponentType, initialActionState);
   const [fields, setFields] = useState<FieldEntry[]>([]);
+  // Controlled (not uncontrolled) so the typed values survive a failed action: React 19 resets
+  // uncontrolled inputs after any <form action> completes (same fix as the edit form, review R1 #4).
+  const [code, setCode] = useState("");
+  const [name, setName] = useState("");
+  const [categoryId, setCategoryId] = useState("");
   const [mode, setMode] = useState<"form" | "json">("form");
   const [jsonText, setJsonText] = useState("");
   const [jsonError, setJsonError] = useState<string | null>(null);
@@ -590,7 +603,7 @@ export function CreateComponentForm({ orgId, categories, labels }: CreateCompone
     "rounded-sm border border-border bg-bg-white px-3 py-2 text-sm text-text-body placeholder:text-text-placeholder focus:outline-none focus:ring-2 focus:ring-primary-soft focus:border-primary-soft";
 
   return (
-    <form action={createSuperAdminComponentType} className="flex flex-col gap-5">
+    <form action={formAction} className="flex flex-col gap-5">
       <PendingOverlay />
 
       {/* orgId identifies the org (SuperAdmin context — not from session). */}
@@ -611,6 +624,8 @@ export function CreateComponentForm({ orgId, categories, labels }: CreateCompone
           name="code"
           type="text"
           required
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
           autoComplete="off"
           placeholder="e.g. WALL_TYPE"
           className={inputBase}
@@ -631,6 +646,8 @@ export function CreateComponentForm({ orgId, categories, labels }: CreateCompone
           name="name"
           type="text"
           required
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           autoComplete="off"
           placeholder="e.g. Wall Type"
           className={inputBase}
@@ -649,7 +666,8 @@ export function CreateComponentForm({ orgId, categories, labels }: CreateCompone
           id="categoryId"
           name="categoryId"
           required
-          defaultValue=""
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
           className={inputBase}
           placeholder={labels.fieldCategoryPlaceholder}
         >
@@ -741,6 +759,11 @@ export function CreateComponentForm({ orgId, categories, labels }: CreateCompone
           {labels.switchToFormHint}
         </p>
       )}
+      {/* Server-action error (e.g. a 400 from validateFieldsSchema) — inline, no crash */}
+      {state.error && (
+        <p className="text-sm text-status-failed-text">{state.error}</p>
+      )}
+
       <SubmitButton label={labels.submitLabel} disabled={mode === "json"} />
     </form>
   );

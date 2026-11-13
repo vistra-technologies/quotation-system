@@ -13,6 +13,9 @@ import {
   resolveOptions,
   collectDescendants,
 } from "@/lib/configurator-gating";
+import { applyFieldVisibility } from "@/lib/field-visibility";
+import { firstSelectionFormIssue, visibleSelectionValues } from "@/lib/selection-form-check";
+import type { ShowWhen } from "@/lib/types/field-entry";
 import {
   createSelection,
   updateSelection,
@@ -36,6 +39,9 @@ interface FieldEntry {
   basic: boolean;
   // Stage 20: SuperAdmin-authored wiring (key of an earlier field this field depends on).
   dependsOn?: string;
+  // Stage 35: SuperAdmin-authored visibility rule (S35-1); the form hides the field unless it holds.
+  showWhen?: ShowWhen;
+  inventoryLinked?: boolean;
 }
 
 interface ComponentTypeOption {
@@ -224,10 +230,17 @@ export function AddSelectionForm({
   const canShowForm =
     selectedType !== null && (editingSelectionId !== null || selectedTypeConfigured);
 
-  const basicFields = selectedType?.fieldsSchema.filter((f) => f.basic) ?? [];
-  const advancedFields = selectedType?.fieldsSchema.filter((f) => !f.basic) ?? [];
+  // Stage 35 S35-4: the one visibility pass decides which fields render; hidden fields are not mounted
+  // and the submitted config never holds a hidden key.
+  const visibleKeys = selectedType
+    ? applyFieldVisibility(selectedType.fieldsSchema, fieldValues).visibleKeys
+    : new Set<string>();
+  const basicFields = selectedType?.fieldsSchema.filter((f) => f.basic && visibleKeys.has(f.key)) ?? [];
+  const advancedFields = selectedType?.fieldsSchema.filter((f) => !f.basic && visibleKeys.has(f.key)) ?? [];
 
-  const configJson = JSON.stringify(fieldValues);
+  const configJson = JSON.stringify(
+    selectedType ? visibleSelectionValues(selectedType.fieldsSchema, fieldValues) : fieldValues,
+  );
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -309,19 +322,15 @@ export function AddSelectionForm({
       return;
     }
     if (selectedType) {
-      for (const field of selectedType.fieldsSchema) {
-        if (!field.required) continue;
-        const val = fieldValues[field.key];
-        const fieldName = field.label || field.key;
-        const isEmpty =
-          val === undefined ||
-          val === "" ||
-          (field.type === "checkbox" && val === false);
-        if (isEmpty) {
-          e.preventDefault();
-          setClientError(`"${fieldName}" is required.`);
-          return;
-        }
+      const issue = firstSelectionFormIssue(
+        selectedType.fieldsSchema,
+        fieldValues,
+        selectedType.fieldOptionsConfig,
+      );
+      if (issue) {
+        e.preventDefault();
+        setClientError(issue);
+        return;
       }
     }
     setClientError(null);

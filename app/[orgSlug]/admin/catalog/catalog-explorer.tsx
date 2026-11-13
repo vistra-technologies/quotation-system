@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
-import { choiceFields, emptyGroups, isChain, sync } from "./catalog-model";
+import { choiceFields, emptyGroups, isChain, neverShownKeys, sync } from "./catalog-model";
 import { SegmentTabs } from "./segment-tabs";
 import { CatalogTree } from "./catalog-tree";
 import { AttributeEditorModal } from "./attribute-editor-modal";
@@ -56,6 +56,8 @@ export function CatalogExplorer({ orgSlug, componentTypes }: CatalogExplorerProp
   const activeConfig = configsByType[active.id] ?? {};
   const chainCount = activeFields.filter((f) => isChain(activeFields, f)).length;
   const warnCount = activeFields.filter((f) => emptyGroups(activeFields, activeConfig, f).length > 0).length;
+  // Stage 35 S35-5: gated fields whose `in` values this org's controller cannot produce (warn-only).
+  const neverCount = neverShownKeys(activeFields, activeConfig).size;
 
   return (
     <div>
@@ -101,6 +103,18 @@ export function CatalogExplorer({ orgSlug, componentTypes }: CatalogExplorerProp
               {warnCount > 0 && (
                 <span className="whitespace-nowrap rounded-pill bg-status-pending-bg px-2.5 py-1 text-[11.5px] font-bold text-status-pending-text">
                   {warnCount} need options
+                </span>
+              )}
+              {neverCount > 0 && (
+                <span
+                  data-testid="never-shown-pill"
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill border border-[#EBD39E] bg-status-pending-bg px-2.5 py-1 text-[11.5px] font-bold text-status-pending-text"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 9v4M12 17h.01" />
+                    <path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
+                  </svg>
+                  {neverCount} never shown
                 </span>
               )}
             </div>
