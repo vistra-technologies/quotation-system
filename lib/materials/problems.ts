@@ -17,7 +17,8 @@ export type CalculationProblemKind =
   | "UNIT_MISMATCH"            // row found, wrong measurementUnit
   | "INACTIVE_ITEM"            // row found, active: false
   | "NON_FINITE_QUANTITY"      // a quantity expression produced NaN/Infinity
-  | "HIDDEN_PARAM";            // a FIRING formula reads a field hidden by showWhen (formula-engine.md rule 8)
+  | "HIDDEN_PARAM"            // a FIRING formula reads a field hidden by showWhen (formula-engine.md rule 8)
+  | "UNLINKED_CODE";          // a visible inventoryLinked value is not an active inventory item of its type (Stage 35 S35-8)
 
 /** Where the user has to go to fix the problem. Stage 25 groups the popup by this. */
 export type ProblemScope = "DESIGN" | "SELECTION" | "INVENTORY" | "FORMULA_SET";
@@ -152,6 +153,14 @@ export class ProblemCollector {
       });
       this._order.push(key);
     }
+  }
+
+  /** True when a problem of one of `kinds` already carries `code` (Stage 35: UNLINKED_CODE dedupe). */
+  hasCode(code: string, kinds: ReadonlyArray<CalculationProblemKind>): boolean {
+    for (const p of this._seen.values()) {
+      if (p.code === code && kinds.includes(p.kind)) return true;
+    }
+    return false;
   }
 
   /** True when at least one problem has been added. */

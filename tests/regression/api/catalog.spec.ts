@@ -557,6 +557,61 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     await ok(await orgB.patch(B(`/component-types/${ct.id}`), { data: { active: true } }));
   });
 
+  // Stage 35 S35-7/S35-8 (Batch 5): the Catalog read lists, per inventoryLinked field, the producible values that
+  // have no ACTIVE same-type InventoryItem. Org B only (throwaway), so no shared Test-Org data is touched.
+  test("component-types GET carries inventoryLinkIssues: inactive / other-type / NULL-type items count as missing; fixing each clears it; list = by-id = field-values", async ({ run, orgB }) => {
+    const B = (p: string) => orgApi(run.orgB.slug, p);
+    const sfx = tag();
+    const [c1, c2, c3, c4, plainCode] = ["c1", "c2", "c3", "c4", "pl"].map((k) => `${run.prefix}lnk-${k}-${sfx}`);
+    const fields: Field[] = [
+      { key: "kind", label: "Kind", type: "dropdown", required: true, basic: true },
+      // the B branch is hidden-only (showWhen kind in [A]); it is still producible, so it is still checked
+      { key: "code", label: "Code", type: "dropdown", required: true, basic: true, dependsOn: "kind", inventoryLinked: true, showWhen: { field: "kind", in: ["A"] } },
+      { key: "plain", label: "Plain", type: "dropdown", required: false, basic: false },
+      { key: "note", label: "Note", type: "field", required: false, basic: false },
+    ];
+    const ct = await mkBType({ run, orgB }, fields);
+    const other = await mkBType({ run, orgB }, CASCADE);
+    const config: Config = {
+      kind: { options: ["A", "B"] },
+      code: { valueMap: { A: [c1, c2, c3], B: [c4, c1], Zed: ["unreachable-" + sfx] } },
+      plain: { options: [plainCode] },
+    };
+    await ok(await orgB.put(B(`/component-types/${ct.id}/field-values`), { data: { fieldOptionsConfig: config } }));
+
+    // no item exists yet: every producible value is missing (A branch, then the B branch's new value; c1 once)
+    const first = (await listTypes(orgB, run.orgB.slug)).find((x) => x.id === ct.id) as CT & { inventoryLinkIssues: Record<string, string[]> };
+    expect(first.inventoryLinkIssues).toEqual({ code: [c1, c2, c3, c4] });
+
+    const mkItem = async (code: string, over: Record<string, unknown>) =>
+      (await ok<{ item: { id: string } }>(await orgB.post(B("/inventory"), { data: { code, name: `${code} n`, measurementUnit: "pieces", ...over } }), 201)).item.id;
+    await mkItem(c1, { componentTypeId: ct.id });
+    const inactiveId = await mkItem(c2, { componentTypeId: ct.id, active: false });
+    await mkItem(c3, { componentTypeId: other.id });
+    const nullTypeId = await mkItem(c4, {});
+    await mkItem(plainCode, {}); // not linked: never checked
+
+    const issuesOf = async () => {
+      const t = (await listTypes(orgB, run.orgB.slug)).find((x) => x.id === ct.id) as CT & { inventoryLinkIssues: Record<string, string[]> };
+      return t.inventoryLinkIssues;
+    };
+    expect(await issuesOf()).toEqual({ code: [c2, c3, c4] }); // c1 is present once (also under B), branch order, no unreachable value
+
+    for (const read of [
+      (await ok<{ componentType: CT }>(await orgB.get(B(`/component-types/${ct.id}`)))).componentType,
+      (await ok<{ componentType: CT }>(await orgB.get(B(`/component-types/${ct.id}/field-values`)))).componentType,
+    ]) {
+      expect((read as CT & { inventoryLinkIssues: unknown }).inventoryLinkIssues).toEqual({ code: [c2, c3, c4] });
+    }
+    // a type with no linked field answers {}
+    expect(((await listTypes(orgB, run.orgB.slug)).find((x) => x.id === other.id) as CT & { inventoryLinkIssues: unknown }).inventoryLinkIssues).toEqual({});
+
+    await ok(await orgB.patch(B(`/inventory/${nullTypeId}`), { data: { componentTypeId: ct.id } }));
+    expect(await issuesOf()).toEqual({ code: [c2, c3] });
+    await ok(await orgB.patch(B(`/inventory/${inactiveId}`), { data: { active: true } }));
+    expect(await issuesOf()).toEqual({ code: [c3] });
+  });
+
   // Stage 31 S31-10: POST with a code the org already has maps the P2002 to 409 (was a 500, backlog).
   test("POST with a duplicate code → 409 (Code already in use in this organization); no second row", async ({ run, orgB }) => {
     const a = await mkBType({ run, orgB });

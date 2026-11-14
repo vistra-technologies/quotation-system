@@ -507,3 +507,60 @@ test.describe("calculation engine: hidden fields (showWhen), Stage 35", () => {
     expect((await submit(c, projectId)).materialList).toEqual([]);
   });
 });
+
+// ── Stage 35 S35-8 (Batch 5): `inventoryLinked` on the live engine (Submit Design) ────────────────────────────────
+// Same technique as above: the shared Test-Org DOOR schema is flagged only for the requests that create one project
+// (recorded + reverted, rule 10); the project's frozen snapshot carries the flag afterwards. Items are this run's own,
+// ledgered; the Test Org's items have a NULL componentTypeId, which counts as "not an active DOOR item".
+const linkOn = (keys: string[], gate: (f: DoorField[]) => DoorField[] = (f) => f) => (fields: DoorField[]): DoorField[] =>
+  gate(fields).map((f) => (keys.includes(f.key) ? { ...f, inventoryLinked: true } : f));
+
+test.describe("calculation engine: inventory-linked fields (UNLINKED_CODE), Stage 35", () => {
+  test("a visible linked value with no active DOOR item -> one INVENTORY UNLINKED_CODE, nothing written; once the item is a DOOR item the submit succeeds", async ({ as, f, run }) => {
+    const c = { as, f, run };
+    const d = await itemSet(c, "dL", "DOOR");
+    const gated = await projectWithGatedDoor(c, linkOn(["frameCode"]));
+    const { projectId, partitionIds: [p1] } = await project(c, [wall(2000, 3000), PLAIN, PLAIN, PLAIN], undefined, gated);
+    const selId = await selection(c, projectId, "DOOR", doorCfg(d)); // the Selection save is NOT blocked by the missing link
+    await setDesign(c, p1, 3000, design([[2000, [[3000, selId]]]]));
+
+    const body = await refused(await as.admin.post(U(c, `/projects/${projectId}/submit-design`)));
+    expect(body.problems.map((p) => ({ kind: p.kind, scope: p.scope, code: p.code, fieldKey: p.locus?.fieldKey }))).toEqual([
+      { kind: "UNLINKED_CODE", scope: "INVENTORY", code: d.codes.frameCode, fieldKey: "frameCode" },
+    ]);
+    expect(body.problemCount).toBe(1);
+    expect(body.problems[0].message).toMatch(new RegExp(`^${d.codes.frameCode} is not an active .+ inventory item$`));
+    expect((await as.admin.get(U(c, `/projects/${projectId}/calculation`))).status()).toBe(404);
+
+    // fix it the way the Catalog does: the item becomes an active item of the DOOR type
+    const patch = await as.admin.patch(U(c, `/inventory/${d.ids.frameCode}`), { data: { componentTypeId: await typeId(c, "DOOR") } });
+    expect(patch.status(), await patch.text()).toBe(200);
+    expect((await submit(c, projectId)).materialList.length).toBeGreaterThan(0);
+  });
+
+  test("no double report: a linked value the engine already reports as UNRESOLVED_CODE is one UNRESOLVED_CODE, not also UNLINKED_CODE", async ({ as, f, run }) => {
+    const c = { as, f, run };
+    const d = await itemSet(c, "dL", "DOOR");
+    const missing = `${run.prefix}engNoLink-${Date.now().toString(36)}`;
+    await allowTestOrgCodes("DOOR", { frameCode: missing }); // a real dropdown choice with no inventory item
+    const gated = await projectWithGatedDoor(c, linkOn(["frameCode"]));
+    const { projectId, partitionIds: [p1] } = await project(c, [wall(2000, 3000), PLAIN, PLAIN, PLAIN], undefined, gated);
+    const selId = await selection(c, projectId, "DOOR", doorCfg(d, { frameCode: missing }));
+    await setDesign(c, p1, 3000, design([[2000, [[3000, selId]]]]));
+    const body = await refused(await as.admin.post(U(c, `/projects/${projectId}/submit-design`)));
+    expect(body.problems.map((p) => ({ kind: p.kind, code: p.code }))).toEqual([{ kind: "UNRESOLVED_CODE", code: missing }]);
+    expect(body.problemCount).toBe(1);
+  });
+
+  test("a hidden linked value is not reported: leafCode is linked and gated on hasLeaf = Yes, the door has hasLeaf = No with a stale leaf code -> submit 200", async ({ as, f, run }) => {
+    const c = { as, f, run };
+    const d = await itemSet(c, "dL", "DOOR");
+    const gated = await projectWithGatedDoor(c, linkOn(["leafCode"], gateOn(["leafCode"])));
+    const { projectId, partitionIds: [p1] } = await project(c, [wall(2000, 3000), PLAIN, PLAIN, PLAIN], undefined, gated);
+    const selId = await selection(c, projectId, "DOOR", doorCfg(d, { hasLeaf: "No" }));
+    await rgrSetSelectionConfig(selId, { ...doorCfg(d, { hasLeaf: "No" }) }); // stale hidden leafCode behind the API
+    await setDesign(c, p1, 3000, design([[2000, [[3000, selId]]]]));
+    const calc = await submit(c, projectId); // frameCode is NOT linked here, so nothing visible is
+    expect(calc.errorDetail).toBeNull();
+  });
+});

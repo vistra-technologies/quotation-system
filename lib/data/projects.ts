@@ -5,7 +5,8 @@ import {
   writeCalculation,
   type CalculationLoad,
 } from "@/lib/data/calculations";
-import { loadInventoryMap } from "@/lib/data/inventory";
+import { loadInventoryMap, type InventoryRow } from "@/lib/data/inventory";
+import { addUnlinkedCodeProblems, usedSelectionIds } from "@/lib/inventory-link";
 import { loadConfigSnapshot } from "@/lib/config-snapshot";
 import { resolveFormulaSetPin } from "@/lib/data/formula-pin";
 import { ownedProjectWhere } from "@/lib/data/ownership";
@@ -512,6 +513,27 @@ export type SubmitDesignResult =
   | { calculationRefused: CalculationProblemReport }
   | { project: { id: string; designSubmittedAt: Date | null } };
 
+/**
+ * Stage 35 S35-8: after the engine's own resolve step, every visible `inventoryLinked` value of a used Selection
+ * must be an active InventoryItem of that ComponentType (else INVENTORY-scope UNLINKED_CODE, deduped against the
+ * engine's UNRESOLVED_CODE / INACTIVE_ITEM). Runs before the `collector.hasAny()` refusal, so it blocks the write.
+ */
+function addUnlinkedProblems(
+  loaded: CalculationLoad,
+  inventoryMap: Map<string, InventoryRow>,
+  collector: ProblemCollector,
+): void {
+  addUnlinkedCodeProblems(collector, {
+    selections: loaded.input.selections,
+    usedSelectionIds: usedSelectionIds(loaded.input.floors),
+    snapshotTypes: loaded.input.snapshot.componentTypes ?? [],
+    isLinked: (typeId, code) => {
+      const item = inventoryMap.get(code);
+      return item !== undefined && item.active && item.componentTypeId === typeId;
+    },
+  });
+}
+
 export async function submitDesign(
   session: SessionData,
   projectId: string,
@@ -572,6 +594,7 @@ export async function submitDesign(
     const materialsInput = buildMaterialsInputHelper(loaded, roomLabels, partitionLabels);
     const { rawLines, byRoom, collector } = buildMaterials(materialsInput);
     const materialList = resolveAndAggregate(rawLines, inventoryMap, collector, roomLabels, partitionLabels);
+    addUnlinkedProblems(loaded, inventoryMap, collector);
 
     if (collector.hasAny()) {
       return { calculationRefused: collector.report() }; // ← exit 2b: nothing written
@@ -686,6 +709,7 @@ export async function recomputeProject(
     const materialsInput = buildMaterialsInputHelper(loaded, roomLabels, partitionLabels);
     const { rawLines, byRoom, collector } = buildMaterials(materialsInput);
     const materialList = resolveAndAggregate(rawLines, inventoryMap, collector, roomLabels, partitionLabels);
+    addUnlinkedProblems(loaded, inventoryMap, collector);
 
     if (collector.hasAny()) {
       return { calculationRefused: collector.report() }; // ← exit 2b: stored row UNTOUCHED

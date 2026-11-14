@@ -17,6 +17,7 @@ import {
   ComponentTypeGuardError,
 } from "@/lib/formula-compat";
 import type { FormulaSetBody } from "@/lib/summary/types";
+import { inventoryLinkIssues } from "@/lib/inventory-link";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -93,7 +94,7 @@ export async function listComponentTypes(session: SessionData) {
     orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
     include: { category: true, orgConfig: true },
   });
-  return rows.map((r) => {
+  const parsed = rows.map((r) => {
     const { orgConfig, ...rest } = r;
     return {
       ...rest,
@@ -101,6 +102,41 @@ export async function listComponentTypes(session: SessionData) {
       fieldOptionsConfig: orgConfig ? parseFieldOptionsConfig(orgConfig.fieldOptionsConfig) : null,
     };
   });
+  const linked = await loadLinkedCodes(session.organizationId, parsed);
+  return parsed.map((t) => ({ ...t, inventoryLinkIssues: linkIssuesOf(t, linked) }));
+}
+
+/**
+ * Stage 35 S35-7/S35-8: for the types that have an `inventoryLinked` field, the codes of the org's ACTIVE
+ * InventoryItems per componentTypeId. One read, skipped entirely when no type has a linked field. An inactive,
+ * other-type or NULL-type item never appears here, so each counts as missing.
+ */
+async function loadLinkedCodes(
+  organizationId: string,
+  types: Array<{ id: string; fieldsSchema: FieldEntry[] }>,
+): Promise<Map<string, Set<string>>> {
+  const typeIds = types.filter((t) => t.fieldsSchema.some((f) => f.inventoryLinked === true)).map((t) => t.id);
+  const byType = new Map<string, Set<string>>();
+  if (typeIds.length === 0) return byType;
+  const items = await prisma.inventoryItem.findMany({
+    where: { organizationId, active: true, componentTypeId: { in: typeIds } },
+    select: { code: true, componentTypeId: true },
+  });
+  for (const it of items) {
+    if (!it.componentTypeId) continue;
+    const set = byType.get(it.componentTypeId) ?? new Set<string>();
+    set.add(it.code);
+    byType.set(it.componentTypeId, set);
+  }
+  return byType;
+}
+
+function linkIssuesOf(
+  t: { id: string; fieldsSchema: FieldEntry[]; fieldOptionsConfig: FieldOptionsConfig | null },
+  linked: Map<string, Set<string>>,
+): Record<string, string[]> {
+  const codes = linked.get(t.id);
+  return inventoryLinkIssues(t.fieldsSchema, t.fieldOptionsConfig, (code) => codes?.has(code) === true);
 }
 
 /**
@@ -115,11 +151,12 @@ export async function getComponentTypeById(session: SessionData, id: string) {
   });
   if (!row) return null;
   const { orgConfig, ...rest } = row;
-  return {
+  const t = {
     ...rest,
     fieldsSchema: parseFieldsSchema(rest.fieldsSchema),
     fieldOptionsConfig: orgConfig ? parseFieldOptionsConfig(orgConfig.fieldOptionsConfig) : null,
   };
+  return { ...t, inventoryLinkIssues: linkIssuesOf(t, await loadLinkedCodes(session.organizationId, [t])) };
 }
 
 // ─── Mutations ────────────────────────────────────────────────────────────────

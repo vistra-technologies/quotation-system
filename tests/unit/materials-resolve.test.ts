@@ -21,6 +21,7 @@ function makeInventoryMap(items: Array<[string, Partial<InventoryRow>]>): Map<st
       measurementUnit: overrides.measurementUnit ?? "metres",
       perUnitQuantity: overrides.perUnitQuantity ?? 1,
       active: overrides.active ?? true,
+      componentTypeId: overrides.componentTypeId ?? null,
     });
   }
   return m;
@@ -198,9 +199,9 @@ describe("resolveAndAggregate — slot merge and determinism", () => {
     ]);
     // CODE-A exists only for "metres"; create a separate entry for "pieces" to avoid UNIT_MISMATCH
     const invBoth = new Map(inv);
-    invBoth.set("CODE-A", { name: "Item CODE-A metres", measurementUnit: "metres", perUnitQuantity: 1, active: true });
+    invBoth.set("CODE-A", { name: "Item CODE-A metres", measurementUnit: "metres", perUnitQuantity: 1, active: true, componentTypeId: null });
     // Add a second inventory entry so "pieces" can resolve
-    invBoth.set("CODE-B", { name: "Item CODE-B pieces", measurementUnit: "pieces", perUnitQuantity: 1, active: true });
+    invBoth.set("CODE-B", { name: "Item CODE-B pieces", measurementUnit: "pieces", perUnitQuantity: 1, active: true, componentTypeId: null });
     const lines = [
       makeLine({ code: "CODE-B", unit: "pieces" }),
       makeLine({ code: "CODE-A", unit: "metres" }),

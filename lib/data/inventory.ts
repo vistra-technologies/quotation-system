@@ -22,6 +22,8 @@ export interface InventoryRow {
   measurementUnit: string;
   perUnitQuantity: number;
   active: boolean;
+  /** Stage 35 S35-7: the ComponentType the item belongs to (legacy rows: null), for the inventoryLinked check. */
+  componentTypeId: string | null;
 }
 
 /**
@@ -41,6 +43,7 @@ export async function loadInventoryMap(
       measurementUnit: true,
       perUnitQuantity: true,
       active: true,
+      componentTypeId: true,
     },
   });
 
@@ -52,6 +55,7 @@ export async function loadInventoryMap(
       // Convert Decimal → number here so the pure resolver never imports Prisma types.
       perUnitQuantity: Number(item.perUnitQuantity),
       active: item.active,
+      componentTypeId: item.componentTypeId,
     });
   }
   return map;
