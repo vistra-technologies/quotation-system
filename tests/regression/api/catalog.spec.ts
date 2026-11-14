@@ -522,6 +522,14 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     await rejected(await post(sw({ field: "a", in: ["x"], and: { field: "a", in: ["y"] } })), 400, /exactly one controller/);
     await rejected(await post(sw([{ field: "a", in: ["x"] }])), 400, /"showWhen" must be an object/);
     await rejected(await post([{ key: "a", label: "A", type: "field", required: false, basic: true, inventoryLinked: true }]), 400, /"inventoryLinked" is only valid on dropdown\/radio/);
+    // Stage 35 G0-e: a dependsOn child of a gated parent needs a showWhen on the parent, or on its controller with an `in` subset
+    const gp = (child: Record<string, unknown>) => [
+      { key: "a", label: "A", type: "dropdown", required: false, basic: true },
+      { key: "g", label: "G", type: "dropdown", required: false, basic: true, showWhen: { field: "a", in: ["x", "y"] } },
+      { key: "c", label: "C", type: "dropdown", required: false, basic: true, dependsOn: "g", ...child },
+    ];
+    await rejected(await post(gp({})), 400, /Field "C": its dependsOn parent "g" is only shown when "a"/);
+    await rejected(await post(gp({ showWhen: { field: "a", in: ["x", "z"] } })), 400, /its dependsOn parent "g"/);
     expect((await listTypes(orgB, run.orgB.slug)).length).toBe(before);
     // review-b2-1 MINOR 1: org POST also ACCEPTS a valid showWhen / inventoryLinked, stores it and returns it
     // (`inventoryLinked: false` is stored absent, S35-1)

@@ -79,3 +79,53 @@ test("normalizeFieldsSchemaForStore drops inventoryLinked false only", () => {
   assert.equal(out[1].inventoryLinked, true);
   assert.equal("inventoryLinked" in out[2], false);
 });
+
+// Stage 35 G0-e: a dependsOn child of a gated parent must never be visible while the parent is hidden.
+const parentGated = () => [
+  f("ctl"),
+  f("parent", { showWhen: { field: "ctl", in: ["Yes", "No"] } }),
+];
+
+test("G0-e accepted shape (a): the child is gated on its dependsOn parent", () => {
+  assert.deepEqual(
+    checkFieldsSchemaForWrite([...parentGated(), f("child", { dependsOn: "parent", showWhen: { field: "parent", in: ["P"] } })]),
+    { valid: true },
+  );
+});
+
+test("G0-e accepted shape (b): same controller, `in` a subset of the parent's (equal counts)", () => {
+  for (const inn of [["Yes"], ["No", "Yes"]]) {
+    assert.deepEqual(
+      checkFieldsSchemaForWrite([...parentGated(), f("child", { dependsOn: "parent", showWhen: { field: "ctl", in: inn } })]),
+      { valid: true },
+    );
+  }
+});
+
+test("G0-e rejected: no showWhen, a different controller, a non-subset `in`; the message names child and parent", () => {
+  const re = /Field "CHILD".*dependsOn parent "parent"/;
+  bad([...parentGated(), f("child", { dependsOn: "parent" })], re);
+  bad([f("other"), ...parentGated(), f("child", { dependsOn: "parent", showWhen: { field: "other", in: ["Yes"] } })], re);
+  bad([...parentGated(), f("child", { dependsOn: "parent", showWhen: { field: "ctl", in: ["Yes", "Maybe"] } })], re);
+});
+
+test("G0-e: an ungated parent places no constraint; cascade holds through a gated grandparent", () => {
+  assert.deepEqual(checkFieldsSchemaForWrite([f("p"), f("c", { dependsOn: "p" })]), { valid: true });
+  // child gated on the same controller as a parent that is itself gated on it: hidden together
+  assert.deepEqual(
+    checkFieldsSchemaForWrite([
+      f("ctl"),
+      f("mid", { showWhen: { field: "ctl", in: ["Yes"] } }),
+      f("leaf", { dependsOn: "mid", showWhen: { field: "ctl", in: ["Yes"] } }),
+      f("tip", { dependsOn: "leaf", showWhen: { field: "ctl", in: ["Yes"] } }),
+    ]),
+    { valid: true },
+  );
+  // a grandchild that skips the gate is rejected against its direct parent
+  bad([
+    f("ctl"),
+    f("mid", { showWhen: { field: "ctl", in: ["Yes"] } }),
+    f("leaf", { dependsOn: "mid", showWhen: { field: "ctl", in: ["Yes"] } }),
+    f("tip", { dependsOn: "leaf", showWhen: { field: "ctl", in: ["No"] } }),
+  ], /dependsOn parent "leaf"/);
+});

@@ -106,6 +106,24 @@ export function validateFieldsSchema(fields: FieldEntry[]): ValidateFieldsSchema
           error: `Field "${describeField(f, i)}": dependsOn target "${f.dependsOn}" must be a dropdown/radio field (found type "${parent.type}").`,
         };
       }
+      // Stage 35 S35-2 / G0-e: a child of a gated parent must never be visible while the parent is hidden.
+      // Accepted: (a) gated on that parent, or (b) gated on the parent's own controller with `in` a subset of the parent's.
+      // The parent's own showWhen shape was validated when the loop passed it (it is earlier).
+      if (parent.showWhen) {
+        const csw = f.showWhen as { field?: unknown; in?: unknown } | undefined;
+        const psw = parent.showWhen;
+        const gatedOnParent = csw?.field === parent.key;
+        const withinParent =
+          csw?.field === psw.field &&
+          Array.isArray(csw.in) &&
+          (csw.in as unknown[]).every((v) => psw.in.includes(v as string));
+        if (!gatedOnParent && !withinParent) {
+          return {
+            valid: false,
+            error: `Field "${describeField(f, i)}": its dependsOn parent "${parent.key}" is only shown when "${psw.field}" is ${psw.in.map((v) => `"${v}"`).join(" or ")}, so this field needs a showWhen on "${parent.key}", or on "${psw.field}" with values from that same list.`,
+          };
+        }
+      }
     }
 
     // Stage 35 S35-2 / G0-a: showWhen is exactly { field, in[] } — one controller, no AND/OR.
