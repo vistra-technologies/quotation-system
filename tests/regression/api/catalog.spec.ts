@@ -241,7 +241,8 @@ test.describe("catalog: reads (Test Org)", () => {
 
   test("GET by id and field-values GET return the same row as the list (DOOR)", async ({ as, url, run }) => {
     const id = await testOrgTypeId({ run, as }, "DOOR");
-    const fromList = (await listTypes(as.admin, run.testOrg.slug)).find((t) => t.id === id);
+    // by-id always carries inventoryLinkIssues; the list does only with ?include=inventoryLinkIssues (Stage 35 B6)
+    const fromList = (await listTypesWithIssues(as.admin, run.testOrg.slug)).find((t) => t.id === id);
     const one = (await ok<{ componentType: CT }>(await as.admin.get(url(`/component-types/${id}`)))).componentType;
     const fv = (await ok<{ componentType: CT }>(await as.admin.get(url(`/component-types/${id}/field-values`)))).componentType;
     expect(one).toEqual(fromList);
@@ -344,7 +345,7 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     expect(ct).toMatchObject({ code: raw.trim().toUpperCase(), name, categoryId, active: true, organizationId: run.orgB.id, fieldsSchema: CASCADE });
     expect(ct.sortOrder).toBeGreaterThan(maxBefore);
 
-    const listed = (await listTypes(orgB, run.orgB.slug)).find((t) => t.id === ct.id)!;
+    const listed = (await listTypesWithIssues(orgB, run.orgB.slug)).find((t) => t.id === ct.id)!;
     expect(listed).toMatchObject({ code: ct.code, fieldOptionsConfig: null, category: { id: categoryId } });
     expect(listed.fieldsSchema.map((x) => x.key)).toEqual(CASCADE.map((x) => x.key));
     const one = (await ok<{ componentType: CT }>(await orgB.get(B(`/component-types/${ct.id}`)))).componentType;

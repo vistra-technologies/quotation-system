@@ -1423,7 +1423,7 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
         await expect(tag).toBeVisible();
         await tag.click();
         const dlg = page.getByRole("dialog").filter({ visible: true });
-        await expect(dlg.getByTestId("value-not-in-inventory")).toHaveCount(2); // L1, L2: the tag shows per value
+        await expect(dlg.getByTestId("value-not-in-inventory")).toHaveCount(4); // L1, L2 under each of the two Kind groups: the tag shows per chip
         await expect(dlg.getByRole("button", { name: /to inventory/ })).toHaveCount(0);
       });
     } finally {
