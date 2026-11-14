@@ -25,7 +25,8 @@ export const dynamic = "force-dynamic";
 /**
  * List all ComponentTypes for the org, A→Z by code.
  *
- * Auth: any authenticated org member — no RBAC permission required.
+ * Auth: any authenticated org member — no RBAC permission required. Exception: `?include=inventoryLinkIssues`
+ * (the Catalog page's opt-in) needs MANAGE_FEATURES, else 403.
  *
  * This endpoint is intentionally ungated beyond authentication because it
  * serves as the component palette source for the project configuration page,
@@ -56,8 +57,19 @@ export const GET = withRoute(
   }
 
   try {
-    // Stage 35: `?include=inventoryLinkIssues` adds the per-type missing-inventory map (Catalog page only).
+    // Stage 35: `?include=inventoryLinkIssues` adds the per-type missing-inventory map and the active same-type
+    // inventory codes (Catalog page only). Those codes are inventory data that GET /inventory gates behind
+    // MANAGE_PRICING, so the opt-in needs MANAGE_FEATURES (the Catalog's own permission); a refusal is the same
+    // 403 this route family gives every other permission failure. The plain palette list stays ungated.
     const withInventoryLinkIssues = new URL(request.url).searchParams.get("include") === "inventoryLinkIssues";
+    if (withInventoryLinkIssues) {
+      try {
+        await requirePermission(session, PERMISSIONS.MANAGE_FEATURES);
+      } catch (err) {
+        if (err instanceof ForbiddenError) return apiForbidden(err.message);
+        throw err;
+      }
+    }
     const componentTypes = await listComponentTypes(session, { withInventoryLinkIssues });
     return NextResponse.json({ componentTypes });
   } catch (err) {

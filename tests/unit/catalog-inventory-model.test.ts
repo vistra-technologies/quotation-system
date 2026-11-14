@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { missingCount, offenderKeys, tiersOf, withoutCode } from "@/app/[orgSlug]/admin/catalog/catalog-model";
+import { missingCount, offenderKeys, tiersOf } from "@/app/[orgSlug]/admin/catalog/catalog-model";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import { inventoryLinkIssues } from "@/lib/inventory-link";
 
@@ -31,13 +31,6 @@ test("offenderKeys: tree order (tiers, then the independent lane), only fields w
 test("missingCount sums the missing values across fields", () => {
   assert.equal(missingCount({ a: ["x", "y"], b: ["z"] }), 3);
   assert.equal(missingCount({}), 0);
-});
-
-test("withoutCode drops a value everywhere it is missing and omits fields left empty; input untouched", () => {
-  const issues = { a: ["x", "y"], b: ["x"] };
-  assert.deepEqual(withoutCode(issues, "x"), { a: ["y"] });
-  assert.deepEqual(issues, { a: ["x", "y"], b: ["x"] });
-  assert.deepEqual(withoutCode(issues, "nope"), issues);
 });
 
 // Stage 35 B8: the editor evaluates the DRAFT config with the server's own rule against the type's active codes.

@@ -80,16 +80,6 @@ export function missingCount(issues: Record<string, string[]>): number {
   return Object.values(issues).reduce((n, list) => n + list.length, 0);
 }
 
-/** Stage 35: the issues map after `code` became an active same-type item (it is no longer missing anywhere). */
-export function withoutCode(issues: Record<string, string[]>, code: string): Record<string, string[]> {
-  const next: Record<string, string[]> = {};
-  for (const [k, list] of Object.entries(issues)) {
-    const rest = list.filter((v) => v !== code);
-    if (rest.length > 0) next[k] = rest;
-  }
-  return next;
-}
-
 // ─── Values / groups ──────────────────────────────────────────────────────────
 
 /**

@@ -242,6 +242,11 @@ test.describe("catalog: reads (Test Org)", () => {
     for (const role of ["member", "distributor", "architect"] as const) {
       expect((await listTypes(as[role], run.testOrg.slug)).map((t) => t.id), role).toEqual(admin.map((t) => t.id));
     }
+    // Batch 8 review: the opt-in (it carries the org's active inventory codes) needs MANAGE_FEATURES; the plain list does not
+    for (const role of ["distributor", "architect"] as const) {
+      await rejected(await as[role].get(`${orgApi(run.testOrg.slug, "/component-types")}?include=inventoryLinkIssues`), 403, /MANAGE_FEATURES|permission/i);
+    }
+    expect((await listTypesWithIssues(as.admin, run.testOrg.slug)).length).toBe(admin.length);
     const b = await listTypes(orgB, run.orgB.slug);
     expect(b.map((t) => t.id).filter((id) => admin.some((t) => t.id === id))).toEqual([]);
   });

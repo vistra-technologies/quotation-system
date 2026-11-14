@@ -30,7 +30,7 @@ export function InventoryBadge({ value, canAdd, onAdd }: InventoryBadgeProps) {
     if (!open) return;
     const place = () => {
       const r = wrapRef.current?.getBoundingClientRect();
-      if (r) setPos({ top: r.bottom + 2, right: Math.max(8, window.innerWidth - r.right - 14) });
+      if (r) setPos({ top: r.bottom, right: Math.max(8, window.innerWidth - r.right - 14) });
     };
     place();
     const close = () => {

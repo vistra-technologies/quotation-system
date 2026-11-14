@@ -1316,7 +1316,7 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
   // Stage 35 Batch 6 — inventory-link UI + quick-add. Org B only: the quick-added rows live in org B and go with it
   // at teardown (the org hard-delete cascades every org-scoped table), so no Test-Org / shared data is touched.
   // The `hinge` field is linked too, so there are two offending fields (the pill needs two to step through).
-  test("B6/B8 UI AC1-AC3 org Catalog (MANAGE_PRICING): cube + red tag + pill, card/tag/pill open the editor, the pill steps in tree order, quick-add locks code + type and has no price, In inventory + counts drop, a 409 shows inline and keeps the typed values", async ({ browser, run, orgB }) => {
+  test("B6/B8 UI AC1-AC3 org Catalog (MANAGE_PRICING): cube + red card tag + pill, card/tag/pill open the editor, the pill steps in tree order, chip badges + tooltip + live unsaved flag, quick-add locks code + type and has no price, the badge and counts drop, keyboard path, a 409 shows inline and keeps the typed values", async ({ browser, run, orgB }) => {
     test.setTimeout(180_000);
     const fx = await getFx(run, orgB);
     // an item with code H2 but NO component type: it still counts as missing for the type, and makes the quick-add of H2 a 409
@@ -1386,6 +1386,15 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
       // AC2: quick-add (badge -> tooltip -> icon add button -> the unchanged side panel)
       await node("hinge").getByRole("button", { name: /^Edit Hinge/ }).click();
       await expect(badges).toHaveCount(2);
+      // keyboard path: focus the badge -> tooltip -> Tab -> the add button is focused -> Escape closes the tooltip only
+      await badges.nth(1).focus();
+      await expect(tip).toContainText("Not in inventory");
+      await page.keyboard.press("Tab");
+      await expect(addBtn).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(tip).toHaveCount(0);
+      await expect(dlg).toBeVisible();
+      await expect(page.getByRole("button", { name: "Discard" })).toHaveCount(0);
       await badges.nth(1).click();
       await addBtn.click();
       const panel = dlg.getByTestId("quick-add-panel");
