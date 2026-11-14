@@ -74,6 +74,13 @@ async function listTypes(g: Guarded, slug: string): Promise<CT[]> {
 async function listTypesWithIssues(g: Guarded, slug: string): Promise<CT[]> {
   return (await ok<{ componentTypes: CT[] }>(await g.get(`${orgApi(slug, "/component-types")}?include=inventoryLinkIssues`))).componentTypes;
 }
+/** Stage 35 B8: the list (opt-in) also carries `inventoryLinkCodes`; by-id / field-values do not, so compare without it. */
+function withoutLinkCodes(t: CT | undefined): unknown {
+  if (!t) return t;
+  const copy: Record<string, unknown> = { ...(t as unknown as Record<string, unknown>) };
+  delete copy.inventoryLinkCodes;
+  return copy;
+}
 async function typeId(g: Guarded, slug: string, code: string): Promise<string> {
   const id = (await listTypes(g, slug)).find((t) => t.code === code)?.id;
   if (!id) throw new Error(`org ${slug} has no ComponentType ${code}`);
@@ -245,8 +252,8 @@ test.describe("catalog: reads (Test Org)", () => {
     const fromList = (await listTypesWithIssues(as.admin, run.testOrg.slug)).find((t) => t.id === id);
     const one = (await ok<{ componentType: CT }>(await as.admin.get(url(`/component-types/${id}`)))).componentType;
     const fv = (await ok<{ componentType: CT }>(await as.admin.get(url(`/component-types/${id}/field-values`)))).componentType;
-    expect(one).toEqual(fromList);
-    expect(fv).toEqual(fromList);
+    expect(one).toEqual(withoutLinkCodes(fromList));
+    expect(fv).toEqual(withoutLinkCodes(fromList));
   });
 
   test("cascading-dropdown contract: GLASS and DOOR are fully configured; a dependent field's valueMap is keyed by its parent's values", async ({ as, run }) => {
@@ -349,7 +356,7 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     expect(listed).toMatchObject({ code: ct.code, fieldOptionsConfig: null, category: { id: categoryId } });
     expect(listed.fieldsSchema.map((x) => x.key)).toEqual(CASCADE.map((x) => x.key));
     const one = (await ok<{ componentType: CT }>(await orgB.get(B(`/component-types/${ct.id}`)))).componentType;
-    expect(one).toEqual(listed);
+    expect(one).toEqual(withoutLinkCodes(listed));
 
     await rejected(await as.admin.get(url(`/component-types/${ct.id}`)), 404, "Component type not found");
     expect((await listTypes(as.admin, run.testOrg.slug)).map((t) => t.id)).not.toContain(ct.id);
