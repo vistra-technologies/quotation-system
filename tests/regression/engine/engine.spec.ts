@@ -421,7 +421,11 @@ test.describe("calculation engine: refusals keep the stored calculation", () => 
 type DoorField = { key: string; type: string; showWhen?: { field: string; in: string[] } } & Record<string, unknown>;
 
 /** Create a project whose frozen DOOR schema has `gate(fields)` applied; the shared DOOR type is restored before this returns. */
-async function projectWithGatedDoor(c: C, gate: (fields: DoorField[]) => DoorField[]): Promise<string> {
+async function projectWithGatedDoor(
+  c: C,
+  gate: (fields: DoorField[]) => DoorField[],
+  frozen: (f: DoorField) => boolean = (f) => Boolean(f.showWhen),
+): Promise<string> {
   const id = await typeId(c, "DOOR");
   const path = U(c, `/component-types/${id}`);
   const read = async () => {
@@ -443,7 +447,7 @@ async function projectWithGatedDoor(c: C, gate: (fields: DoorField[]) => DoorFie
         const created = (await c.f.project()).id;
         // the freeze took the gating (otherwise every assertion below would pass for the wrong reason)
         const snap = (await (await c.as.admin.get(U(c, `/projects/${created}`))).json()) as { project: { configSnapshot: { componentTypes: { code: string; fieldsSchema: DoorField[] }[] } } };
-        expect(snap.project.configSnapshot.componentTypes.find((t) => t.code === "DOOR")!.fieldsSchema.some((f) => f.showWhen)).toBe(true);
+        expect(snap.project.configSnapshot.componentTypes.find((t) => t.code === "DOOR")!.fieldsSchema.some(frozen)).toBe(true);
         return created;
       },
       globalStateFailuresFile(c.run.storageDir),
@@ -515,11 +519,13 @@ test.describe("calculation engine: hidden fields (showWhen), Stage 35", () => {
 const linkOn = (keys: string[], gate: (f: DoorField[]) => DoorField[] = (f) => f) => (fields: DoorField[]): DoorField[] =>
   gate(fields).map((f) => (keys.includes(f.key) ? { ...f, inventoryLinked: true } : f));
 
+const linked = (f: DoorField): boolean => f.inventoryLinked === true; // the freeze took the flag
+
 test.describe("calculation engine: inventory-linked fields (UNLINKED_CODE), Stage 35", () => {
   test("a visible linked value with no active DOOR item -> one INVENTORY UNLINKED_CODE, nothing written; once the item is a DOOR item the submit succeeds", async ({ as, f, run }) => {
     const c = { as, f, run };
     const d = await itemSet(c, "dL", "DOOR");
-    const gated = await projectWithGatedDoor(c, linkOn(["frameCode"]));
+    const gated = await projectWithGatedDoor(c, linkOn(["frameCode"]), linked);
     const { projectId, partitionIds: [p1] } = await project(c, [wall(2000, 3000), PLAIN, PLAIN, PLAIN], undefined, gated);
     const selId = await selection(c, projectId, "DOOR", doorCfg(d)); // the Selection save is NOT blocked by the missing link
     await setDesign(c, p1, 3000, design([[2000, [[3000, selId]]]]));
@@ -543,7 +549,7 @@ test.describe("calculation engine: inventory-linked fields (UNLINKED_CODE), Stag
     const d = await itemSet(c, "dL", "DOOR");
     const missing = `${run.prefix}engNoLink-${Date.now().toString(36)}`;
     await allowTestOrgCodes("DOOR", { frameCode: missing }); // a real dropdown choice with no inventory item
-    const gated = await projectWithGatedDoor(c, linkOn(["frameCode"]));
+    const gated = await projectWithGatedDoor(c, linkOn(["frameCode"]), linked);
     const { projectId, partitionIds: [p1] } = await project(c, [wall(2000, 3000), PLAIN, PLAIN, PLAIN], undefined, gated);
     const selId = await selection(c, projectId, "DOOR", doorCfg(d, { frameCode: missing }));
     await setDesign(c, p1, 3000, design([[2000, [[3000, selId]]]]));
@@ -555,7 +561,7 @@ test.describe("calculation engine: inventory-linked fields (UNLINKED_CODE), Stag
   test("a hidden linked value is not reported: leafCode is linked and gated on hasLeaf = Yes, the door has hasLeaf = No with a stale leaf code -> submit 200", async ({ as, f, run }) => {
     const c = { as, f, run };
     const d = await itemSet(c, "dL", "DOOR");
-    const gated = await projectWithGatedDoor(c, linkOn(["leafCode"], gateOn(["leafCode"])));
+    const gated = await projectWithGatedDoor(c, linkOn(["leafCode"], gateOn(["leafCode"])), linked);
     const { projectId, partitionIds: [p1] } = await project(c, [wall(2000, 3000), PLAIN, PLAIN, PLAIN], undefined, gated);
     const selId = await selection(c, projectId, "DOOR", doorCfg(d, { hasLeaf: "No" }));
     await rgrSetSelectionConfig(selId, { ...doorCfg(d, { hasLeaf: "No" }) }); // stale hidden leafCode behind the API

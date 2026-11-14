@@ -574,12 +574,13 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     const other = await mkBType({ run, orgB }, CASCADE);
     const config: Config = {
       kind: { options: ["A", "B"] },
-      code: { valueMap: { A: [c1, c2, c3], B: [c4, c1], Zed: ["unreachable-" + sfx] } },
+      code: { valueMap: { A: [c1, c2, c3], B: [c4, c1] } },
       plain: { options: [plainCode] },
     };
     await ok(await orgB.put(B(`/component-types/${ct.id}/field-values`), { data: { fieldOptionsConfig: config } }));
 
-    // no item exists yet: every producible value is missing (A branch, then the B branch's new value; c1 once)
+    // no item exists yet: every producible value is missing (A branch, then the B branch's new value; c1 once).
+    // (A valueMap key the parent cannot produce is refused at write time, so an unreachable branch cannot be stored.)
     const first = (await listTypes(orgB, run.orgB.slug)).find((x) => x.id === ct.id) as CT & { inventoryLinkIssues: Record<string, string[]> };
     expect(first.inventoryLinkIssues).toEqual({ code: [c1, c2, c3, c4] });
 
@@ -595,7 +596,7 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
       const t = (await listTypes(orgB, run.orgB.slug)).find((x) => x.id === ct.id) as CT & { inventoryLinkIssues: Record<string, string[]> };
       return t.inventoryLinkIssues;
     };
-    expect(await issuesOf()).toEqual({ code: [c2, c3, c4] }); // c1 is present once (also under B), branch order, no unreachable value
+    expect(await issuesOf()).toEqual({ code: [c2, c3, c4] }); // c1 is present once (also under B), in branch order
 
     for (const read of [
       (await ok<{ componentType: CT }>(await orgB.get(B(`/component-types/${ct.id}`)))).componentType,
