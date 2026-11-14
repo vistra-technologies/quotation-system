@@ -1316,7 +1316,7 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
   // Stage 35 Batch 6 — inventory-link UI + quick-add. Org B only: the quick-added rows live in org B and go with it
   // at teardown (the org hard-delete cascades every org-scoped table), so no Test-Org / shared data is touched.
   // The `hinge` field is linked too, so there are two offending fields (the pill needs two to step through).
-  test("B6 UI AC1-AC3 org Catalog (MANAGE_PRICING): cube + red tag + pill, card/tag/pill open the editor, the pill steps in tree order, quick-add locks code + type and has no price, In inventory + counts drop, a 409 shows inline and keeps the typed values", async ({ browser, run, orgB }) => {
+  test("B6/B8 UI AC1-AC3 org Catalog (MANAGE_PRICING): cube + red tag + pill, card/tag/pill open the editor, the pill steps in tree order, quick-add locks code + type and has no price, In inventory + counts drop, a 409 shows inline and keeps the typed values", async ({ browser, run, orgB }) => {
     test.setTimeout(180_000);
     const fx = await getFx(run, orgB);
     // an item with code H2 but NO component type: it still counts as missing for the type, and makes the quick-add of H2 a 409
@@ -1353,10 +1353,41 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
         await closeEditor();
       }
 
-      // AC2: quick-add
+      // Batch 8: a corner badge per offending chip (H1, H2), the field-header pill, a tooltip on hover with an icon add button
+      const shot = async (name: string) => { if (process.env.B8_SHOTS) await page.screenshot({ path: `${process.env.B8_SHOTS}/b8-${name}.png` }); };
+      const badges = dlg.getByTestId("value-not-in-inventory");
+      const tip = page.getByRole("tooltip").filter({ visible: true });
+      const addBtn = page.getByTestId("inventory-badge-add").filter({ visible: true });
       await node("hinge").getByRole("button", { name: /^Edit Hinge/ }).click();
-      await expect(dlg.getByTestId("value-not-in-inventory")).toHaveCount(2);
-      await dlg.getByRole("button", { name: "Add H2 to inventory" }).click();
+      await expect(badges).toHaveCount(2);
+      await expect(dlg.getByTestId("editor-not-in-inventory-pill")).toHaveText("2 not in inventory");
+      await expect(tip).toHaveCount(0);
+      await shot("rest");
+      await badges.nth(0).hover();
+      await expect(tip).toContainText("Not in inventory");
+      await expect(addBtn).toHaveAttribute("aria-label", "Add to inventory");
+      await expect(addBtn).toHaveAttribute("title", "Add to inventory");
+      await shot("hover");
+      const box = (await badges.nth(0).boundingBox())!;
+      expect(box.width).toBeGreaterThanOrEqual(24); // the 24px hit area
+      await page.mouse.move(5, 5);
+      await expect(tip).toHaveCount(0);
+      // AC1 live: a value typed into the editor is flagged BEFORE Save (and counted), removing it clears it; nothing is saved
+      await dlg.getByLabel("Add value", { exact: true }).fill("LIVE-Z");
+      await dlg.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(badges).toHaveCount(3);
+      await expect(dlg.getByTestId("editor-not-in-inventory-pill")).toHaveText("3 not in inventory");
+      await shot("unsaved");
+      await dlg.getByRole("button", { name: "Cancel" }).click();
+      await page.getByRole("button", { name: "Discard" }).click();
+      await expect(dlg).toHaveCount(0);
+      await expect(pill).toHaveText("4 not in inventory");
+
+      // AC2: quick-add (badge -> tooltip -> icon add button -> the unchanged side panel)
+      await node("hinge").getByRole("button", { name: /^Edit Hinge/ }).click();
+      await expect(badges).toHaveCount(2);
+      await badges.nth(1).click();
+      await addBtn.click();
       const panel = dlg.getByTestId("quick-add-panel");
       await expect(panel.getByTestId("quick-add-code")).toContainText("H2");
       await expect(panel.getByTestId("quick-add-type")).toContainText(fx.type.name);
@@ -1378,12 +1409,14 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
       await expect(panel).toHaveCount(0);
 
       // the successful add: "In inventory · <name>", the editor's missing count and the pill drop by one
-      await dlg.getByRole("button", { name: "Add H1 to inventory" }).click();
+      await badges.nth(0).click();
+      await addBtn.click();
       await panel.getByLabel("Name", { exact: true }).fill("Hinge one");
       await panel.getByRole("button", { name: "Add item" }).click();
       await expect(panel).toHaveCount(0);
-      await expect(dlg.getByTestId("value-in-inventory")).toHaveText("In inventory · Hinge one");
-      await expect(dlg.getByTestId("value-not-in-inventory")).toHaveCount(1);
+      await expect(badges).toHaveCount(1); // H1's badge is gone; no "In inventory" text
+      await expect(dlg.getByTestId("editor-not-in-inventory-pill")).toHaveText("1 not in inventory");
+      await shot("after-add");
       await closeEditor();
       await expect(pill).toHaveText("3 not in inventory");
       await expect(node("hinge").getByTestId("not-in-inventory-tag")).toBeVisible(); // H2 is still missing
@@ -1405,7 +1438,7 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
 
   // Isolated actor (review-b6-1 IMPORTANT): its own org-B role (MANAGE_FEATURES only) + user, created here and
   // deleted with org B. org B's shared admin role is never edited, so parallel specs' org-B inventory calls are unaffected.
-  test("B6 UI AC2 without MANAGE_PRICING: the red tag and the pill remain, Add to inventory is absent (own org-B role + user, MANAGE_FEATURES only)", async ({ browser, run, sa, orgB, ledger, playwright, baseURL }) => {
+  test("B6 UI AC2 without MANAGE_PRICING: the red card tag, pill and chip badges remain, the tooltip is text only (no add button) (own org-B role + user, MANAGE_FEATURES only)", async ({ browser, run, sa, orgB, ledger, playwright, baseURL }) => {
     test.setTimeout(150_000);
     const fx = await getFx(run, orgB);
     const SAB = "/api/v1/superadmin";
@@ -1440,7 +1473,11 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
       await expect(tag35).toBeVisible();
       await tag35.click();
       const dlg = page.getByRole("dialog").filter({ visible: true });
-      await expect(dlg.getByTestId("value-not-in-inventory")).toHaveCount(4); // L1, L2 under each of the two Kind groups: the tag shows per chip
+      const badges = dlg.getByTestId("value-not-in-inventory");
+      await expect(badges).toHaveCount(4); // L1, L2 under each of the two Kind groups: a badge per chip
+      await badges.first().hover();
+      await expect(page.getByRole("tooltip").filter({ visible: true })).toHaveText("Not in inventory"); // text only
+      await expect(page.getByTestId("inventory-badge-add")).toHaveCount(0);
       await expect(dlg.getByRole("button", { name: /to inventory/ })).toHaveCount(0);
       // the server gate agrees: this role cannot create inventory items
       expect((await api.post(fx.B("/inventory"), { data: { code: "X", name: "x", measurementUnit: "pieces" } })).status()).toBe(403);

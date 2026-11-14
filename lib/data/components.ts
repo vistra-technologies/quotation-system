@@ -108,7 +108,13 @@ export async function listComponentTypes(
   });
   if (!options.withInventoryLinkIssues) return parsed;
   const linked = await loadLinkedCodes(session.organizationId, parsed);
-  return parsed.map((t) => ({ ...t, inventoryLinkIssues: linkIssuesOf(t, linked) }));
+  // Stage 35 B8: the active same-type codes ride along so the Catalog editor can flag an UNSAVED value with the
+  // same rule (`inventoryLinkIssues` in lib/inventory-link.ts) before Save. Same read, no extra query.
+  return parsed.map((t) => ({
+    ...t,
+    inventoryLinkIssues: linkIssuesOf(t, linked),
+    inventoryLinkCodes: [...(linked.get(t.id) ?? [])].sort(),
+  }));
 }
 
 /**

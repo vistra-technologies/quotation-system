@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { CUBE_ICON } from "./catalog-tree";
+import { InventoryBadge } from "./inventory-badge";
 import {
   emptyGroups,
   findAttr,
@@ -28,11 +28,9 @@ interface AttributeStepEditorProps {
    *  is non-null) — mirrors the mockup's `!!ed.flow`. Gates the "new lists only" focused view so a
    *  field opened directly with pre-existing empty groups doesn't get mislabeled "New". */
   inFlow: boolean;
-  /** Stage 35 S35-8: this field's values with no active same-type inventory item (empty when not linked). */
+  /** Stage 35 S35-8 / B8: this field's DRAFT values with no active same-type inventory item (empty when not linked). */
   missingValues: string[];
-  /** Codes quick-added this session -> the item name ("In inventory · <name>"). */
-  addedNames: Record<string, string>;
-  /** MANAGE_PRICING: show "Add to inventory" beside a missing value. */
+  /** MANAGE_PRICING: the badge tooltip carries the "Add to inventory" button. */
   canAddInventory: boolean;
   onAddInventory: (code: string) => void;
   /** Replaces the whole draft config — the modal re-syncs and marks the session dirty. */
@@ -59,7 +57,6 @@ export function AttributeStepEditor({
   searchQuery,
   inFlow,
   missingValues,
-  addedNames,
   canAddInventory,
   onAddInventory,
   onChange,
@@ -86,6 +83,16 @@ export function AttributeStepEditor({
   } | null>(null);
 
   const q = searchQuery.trim().toLowerCase();
+  // Stage 35 B8: the field's live "N not in inventory" pill (saved and unsaved values).
+  const missingPill =
+    field.inventoryLinked && missingValues.length > 0 ? (
+      <span
+        data-testid="editor-not-in-inventory-pill"
+        className="whitespace-nowrap rounded-pill border border-[#F3B8B2] bg-[#FDE3E0] px-2 py-0.5 text-[11.5px] font-extrabold text-[#B3261E]"
+      >
+        {missingValues.length} not in inventory
+      </span>
+    ) : null;
 
   function groupInputKey(groupKey: string | null) {
     return groupKey === null ? "flat" : groupKey;
@@ -234,8 +241,12 @@ export function AttributeStepEditor({
     return (
       <span
         key={value}
-        className={`inline-flex items-center gap-0.5 rounded-lg border bg-bg-white py-1 pl-2.5 pr-1 text-[13.5px] font-semibold text-text-body ${
-          isHit ? "border-[#D9B25F] shadow-[0_0_0_3px_var(--color-status-pending-bg)]" : "border-border"
+        className={`relative inline-flex items-center gap-0.5 rounded-lg border bg-bg-white py-1 pl-2.5 pr-1 text-[13.5px] font-semibold text-text-body ${
+          isHit
+            ? "border-[#D9B25F] shadow-[0_0_0_3px_var(--color-status-pending-bg)]"
+            : field.inventoryLinked && missingValues.includes(value)
+              ? "border-[#F3B8B2]"
+              : "border-border"
         }`}
       >
         <span
@@ -265,44 +276,9 @@ export function AttributeStepEditor({
         >
           ×
         </button>
-      </span>
-    );
-  }
-
-  /** Stage 35: per-value inventory state beside a chip of a linked field (red tag + Add button, or "In inventory"). */
-  function renderLinkStatus(value: string) {
-    if (!field.inventoryLinked) return null;
-    if (missingValues.includes(value)) {
-      return (
-        <>
-          <span
-            data-testid="value-not-in-inventory"
-            className="inline-flex items-center gap-1 rounded-pill border border-[#F2B8B0] bg-[#FFD9D4] px-2 py-0.5 text-[11px] font-extrabold text-[#B3261E]"
-          >
-            Not in inventory
-          </span>
-          {canAddInventory && (
-            <button
-              type="button"
-              onClick={() => onAddInventory(value)}
-              aria-label={`Add ${value} to inventory`}
-              className="inline-flex items-center gap-1.5 rounded-pill border-[1.5px] border-[#0B6E99] bg-bg-white px-2.5 py-0.5 text-xs font-extrabold text-[#0B6E99] hover:bg-[#E3F4FB]"
-            >
-              {CUBE_ICON(13)}
-              Add to inventory
-            </button>
-          )}
-        </>
-      );
-    }
-    const added = addedNames[value];
-    if (added === undefined) return null;
-    return (
-      <span
-        data-testid="value-in-inventory"
-        className="inline-flex items-center gap-1 rounded-pill bg-[#D4F1D4] px-2 py-0.5 text-[11px] font-extrabold text-[#2E6B34]"
-      >
-        In inventory · {added}
+        {field.inventoryLinked && missingValues.includes(value) && (
+          <InventoryBadge value={value} canAdd={canAddInventory} onAdd={onAddInventory} />
+        )}
       </span>
     );
   }
@@ -313,9 +289,8 @@ export function AttributeStepEditor({
       <>
         <div className="flex flex-wrap gap-2">
           {list.map((v) => (
-            <span key={v} className="inline-flex flex-wrap items-center gap-1.5">
+            <span key={v} className="inline-flex">
               {renderChip(groupKey, v)}
-              {renderLinkStatus(v)}
             </span>
           ))}
           {list.length === 0 && (
@@ -360,6 +335,7 @@ export function AttributeStepEditor({
       <div>
         <div className="mb-1.5 flex items-center gap-2">
           <h3 className="m-0 text-[15px] font-extrabold text-text-heading">{field.label}</h3>
+          {missingPill}
           <span className="ml-auto text-[11.5px] font-bold text-text-muted">
             {valuesOf(fieldsSchema, draftConfig, field).length} distinct option
             {valuesOf(fieldsSchema, draftConfig, field).length === 1 ? "" : "s"}
@@ -390,6 +366,7 @@ export function AttributeStepEditor({
     <div>
       <div className="mb-1.5 flex items-center gap-2">
         <h3 className="m-0 text-[15px] font-extrabold text-text-heading">{field.label}</h3>
+        {missingPill}
         <span className="ml-auto text-[11.5px] font-bold text-text-muted">
           {valuesOf(fieldsSchema, draftConfig, field).length} distinct option
           {valuesOf(fieldsSchema, draftConfig, field).length === 1 ? "" : "s"}

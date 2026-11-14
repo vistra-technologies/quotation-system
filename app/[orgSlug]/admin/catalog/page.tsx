@@ -18,8 +18,8 @@ interface ComponentTypeRow {
   // Stage 20 Batch 4: the list route now returns this for free (folded into
   // lib/data/components.ts listComponentTypes) — see the fetch below, no more per-type round trip.
   fieldOptionsConfig: FieldOptionsConfig | null;
-  // Stage 35 S35-8: per linked field key, the producible values with no active same-type inventory item.
-  inventoryLinkIssues?: Record<string, string[]>;
+  // Stage 35 B8: the org's active inventory codes of this type (opt-in via ?include=inventoryLinkIssues).
+  inventoryLinkCodes?: string[];
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ export default async function FieldValuesPage({
   const withConfig = configurableTypes.map((ct) => ({
     ...ct,
     fieldOptionsConfig: ct.fieldOptionsConfig ?? ({} as FieldOptionsConfig),
-    inventoryLinkIssues: ct.inventoryLinkIssues ?? {},
+    inventoryLinkCodes: ct.inventoryLinkCodes ?? [],
   }));
   // Quick-add needs MANAGE_PRICING (enforced by POST …/inventory); without it the tag still shows.
   const canAddInventory = me.adminPermissions.includes("MANAGE_PRICING");

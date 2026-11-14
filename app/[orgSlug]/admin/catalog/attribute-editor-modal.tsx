@@ -7,6 +7,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { descendants, emptyGroupCount, findAttr, isChain, sync } from "./catalog-model";
 import { AttributeStepEditor } from "./attribute-step-editor";
 import { apiErrorMessage } from "@/lib/api-error-message";
+import { inventoryLinkIssues } from "@/lib/inventory-link";
 import { InventoryQuickAddPanel } from "./inventory-quick-add-panel";
 
 interface AttributeEditorModalProps {
@@ -16,13 +17,12 @@ interface AttributeEditorModalProps {
   /** Last server-confirmed config for this segment — cloned once, at open, into the draft. */
   savedConfig: FieldOptionsConfig;
   openFieldKey: string;
-  /** Stage 35 S35-8: the type's name (locked in the quick-add panel) and live missing-inventory map. */
+  /** Stage 35 S35-8: the type's name (locked in the quick-add panel). */
   typeName: string;
-  issues: Record<string, string[]>;
-  /** Codes quick-added this session -> item name. */
-  addedNames: Record<string, string>;
+  /** Stage 35 B8: the org's active inventory codes of this type; the DRAFT values are checked against it. */
+  linkedCodes: ReadonlySet<string>;
   canAddInventory: boolean;
-  onInventoryAdded: (code: string, name: string) => void;
+  onInventoryAdded: (code: string) => void;
   onClose: () => void;
   /** Fires exactly once, after the single PUT that commits the whole (possibly multi-step) session. */
   onSaved: (newConfig: FieldOptionsConfig, savedLabel: string) => void;
@@ -57,8 +57,7 @@ export function AttributeEditorModal({
   savedConfig,
   openFieldKey,
   typeName,
-  issues,
-  addedNames,
+  linkedCodes,
   canAddInventory,
   onInventoryAdded,
   onClose,
@@ -75,6 +74,9 @@ export function AttributeEditorModal({
   const [quickAddCode, setQuickAddCode] = useState<string | null>(null);
 
   const currentField = findAttr(fieldsSchema, currentFieldKey) as FieldEntry;
+  // Stage 35 B8: the same rule the server runs (lib/inventory-link.ts), on the unsaved draft, so a value is flagged
+  // the moment it is added or renamed.
+  const draftIssues = inventoryLinkIssues(fieldsSchema, draftConfig, (code) => linkedCodes.has(code));
   const plan = flow ? flow.plan : [currentFieldKey, ...descendants(fieldsSchema, currentFieldKey)];
   const curEmpty = emptyGroupCount(fieldsSchema, draftConfig, currentField);
   const nextField = (() => {
@@ -348,8 +350,7 @@ export function AttributeEditorModal({
               draftConfig={draftConfig}
               searchQuery=""
               inFlow={flow !== null}
-              missingValues={issues[currentFieldKey] ?? []}
-              addedNames={addedNames}
+              missingValues={draftIssues[currentFieldKey] ?? []}
               canAddInventory={canAddInventory}
               onAddInventory={setQuickAddCode}
               onChange={handleMutate}
@@ -364,8 +365,8 @@ export function AttributeEditorModal({
               typeName={typeName}
               code={quickAddCode}
               onCancel={() => setQuickAddCode(null)}
-              onAdded={(name) => {
-                onInventoryAdded(quickAddCode, name);
+              onAdded={() => {
+                onInventoryAdded(quickAddCode);
                 setQuickAddCode(null);
               }}
             />

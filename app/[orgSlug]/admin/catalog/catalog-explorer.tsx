@@ -3,7 +3,8 @@
 import { useState } from "react";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
-import { choiceFields, emptyGroups, isChain, missingCount, neverShownKeys, offenderKeys, sync, withoutCode } from "./catalog-model";
+import { choiceFields, emptyGroups, isChain, missingCount, neverShownKeys, offenderKeys, sync } from "./catalog-model";
+import { inventoryLinkIssues } from "@/lib/inventory-link";
 import { SegmentTabs } from "./segment-tabs";
 import { CatalogTree } from "./catalog-tree";
 import { AttributeEditorModal } from "./attribute-editor-modal";
@@ -15,8 +16,8 @@ export interface CatalogComponentType {
   name: string;
   fieldsSchema: FieldEntry[];
   fieldOptionsConfig: FieldOptionsConfig;
-  /** Stage 35 S35-8: per linked field key, the producible values with no active same-type inventory item. */
-  inventoryLinkIssues: Record<string, string[]>;
+  /** Stage 35 B8: the org's ACTIVE inventory item codes of this type (the Catalog editor flags unsaved values against it). */
+  inventoryLinkCodes: string[];
 }
 
 interface CatalogExplorerProps {
@@ -42,11 +43,11 @@ export function CatalogExplorer({ orgSlug, componentTypes, canAddInventory }: Ca
     }
     return init;
   });
-  // Stage 35: the live missing-inventory map per type (drops as items are quick-added), and the names added this session.
-  const [issuesByType, setIssuesByType] = useState<Record<string, Record<string, string[]>>>(() =>
-    Object.fromEntries(componentTypes.map((ct) => [ct.id, ct.inventoryLinkIssues])),
+  // Stage 35 B8: the active same-type codes per type (grows as items are quick-added). The missing map is derived
+  // from them with lib/inventory-link.ts, the server's own rule, so tree, pill and editor always agree.
+  const [linkedByType, setLinkedByType] = useState<Record<string, Set<string>>>(() =>
+    Object.fromEntries(componentTypes.map((ct) => [ct.id, new Set(ct.inventoryLinkCodes)])),
   );
-  const [addedNames, setAddedNames] = useState<Record<string, Record<string, string>>>({});
   // The last offender the pill opened, per type: the next click steps from it, a new type (or a changed offender set) starts at the first.
   const [lastOffender, setLastOffender] = useState<Record<string, string>>({});
   const [activeTypeId, setActiveTypeId] = useState(componentTypes[0]?.id ?? "");
@@ -59,19 +60,10 @@ export function CatalogExplorer({ orgSlug, componentTypes, canAddInventory }: Ca
   function handleSaved(typeId: string, newConfig: FieldOptionsConfig, savedLabel: string) {
     setConfigsByType((prev) => ({ ...prev, [typeId]: newConfig }));
     toast.show(`${savedLabel} saved`);
-    // The saved values may add or drop linked values: re-read this type's missing map (same GET-by-id, additive field).
-    void fetch(`/api/v1/orgs/${orgSlug}/component-types/${typeId}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body: { componentType?: { inventoryLinkIssues?: Record<string, string[]> } } | null) => {
-        const next = body?.componentType?.inventoryLinkIssues;
-        if (next) setIssuesByType((prev) => ({ ...prev, [typeId]: next }));
-      })
-      .catch(() => {});
   }
 
-  function handleInventoryAdded(typeId: string, code: string, name: string) {
-    setIssuesByType((prev) => ({ ...prev, [typeId]: withoutCode(prev[typeId] ?? {}, code) }));
-    setAddedNames((prev) => ({ ...prev, [typeId]: { ...prev[typeId], [code]: name } }));
+  function handleInventoryAdded(typeId: string, code: string) {
+    setLinkedByType((prev) => ({ ...prev, [typeId]: new Set(prev[typeId]).add(code) }));
   }
 
   if (!active) return null;
@@ -83,7 +75,7 @@ export function CatalogExplorer({ orgSlug, componentTypes, canAddInventory }: Ca
   // Stage 35 S35-5: gated fields whose `in` values this org's controller cannot produce (warn-only).
   const neverCount = neverShownKeys(activeFields, activeConfig).size;
   // Stage 35 S35-8: missing inventory values; the pill steps through the offending fields in tree order.
-  const activeIssues = issuesByType[active.id] ?? {};
+  const activeIssues = inventoryLinkIssues(active.fieldsSchema, activeConfig, (code) => linkedByType[active.id]?.has(code) === true);
   const missingTotal = missingCount(activeIssues);
   const offenders = offenderKeys(activeFields, activeIssues);
 
@@ -183,10 +175,9 @@ export function CatalogExplorer({ orgSlug, componentTypes, canAddInventory }: Ca
           fieldsSchema={componentTypes.find((ct) => ct.id === openAttr.typeId)?.fieldsSchema ?? []}
           savedConfig={configsByType[openAttr.typeId] ?? {}}
           typeName={componentTypes.find((ct) => ct.id === openAttr.typeId)?.name ?? ""}
-          issues={issuesByType[openAttr.typeId] ?? {}}
-          addedNames={addedNames[openAttr.typeId] ?? {}}
+          linkedCodes={linkedByType[openAttr.typeId] ?? new Set<string>()}
           canAddInventory={canAddInventory}
-          onInventoryAdded={(code, name) => handleInventoryAdded(openAttr.typeId, code, name)}
+          onInventoryAdded={(code) => handleInventoryAdded(openAttr.typeId, code)}
           openFieldKey={openAttr.fieldKey}
           onClose={() => setOpenAttr(null)}
           onSaved={(newConfig, label) => {

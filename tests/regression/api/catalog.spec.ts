@@ -589,6 +589,7 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     expect((await listTypes(orgB, run.orgB.slug)).find((x) => x.id === ct.id)).not.toHaveProperty("inventoryLinkIssues");
     const first = (await listTypesWithIssues(orgB, run.orgB.slug)).find((x) => x.id === ct.id) as CT & { inventoryLinkIssues: Record<string, string[]> };
     expect(first.inventoryLinkIssues).toEqual({ code: [c1, c2, c3, c4] });
+    expect((first as unknown as { inventoryLinkCodes: string[] }).inventoryLinkCodes).toEqual([]); // Batch 8: no active same-type item yet
 
     const mkItem = async (code: string, over: Record<string, unknown>) =>
       (await ok<{ item: { id: string } }>(await orgB.post(B("/inventory"), { data: { code, name: `${code} n`, measurementUnit: "pieces", ...over } }), 201)).item.id;
@@ -603,6 +604,10 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
       return t.inventoryLinkIssues;
     };
     expect(await issuesOf()).toEqual({ code: [c2, c3, c4] }); // c1 is present once (also under B), in branch order
+    // Batch 8: the list carries the ACTIVE same-type codes (so the editor can flag an unsaved value); inactive / other-type / NULL-type are absent
+    const withCodes = (await listTypesWithIssues(orgB, run.orgB.slug)).find((x) => x.id === ct.id) as unknown as { inventoryLinkCodes: string[] };
+    expect(withCodes.inventoryLinkCodes).toEqual([c1]);
+    expect((await listTypes(orgB, run.orgB.slug)).find((x) => x.id === ct.id)).not.toHaveProperty("inventoryLinkCodes");
 
     for (const read of [
       (await ok<{ componentType: CT }>(await orgB.get(B(`/component-types/${ct.id}`)))).componentType,

@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { missingCount, offenderKeys, tiersOf, withoutCode } from "@/app/[orgSlug]/admin/catalog/catalog-model";
 import type { FieldEntry } from "@/lib/types/field-entry";
+import { inventoryLinkIssues } from "@/lib/inventory-link";
 
 const f = (key: string, over: Partial<FieldEntry> = {}): FieldEntry => ({
   key, label: key, type: "dropdown", required: false, basic: true, ...over,
@@ -37,4 +38,16 @@ test("withoutCode drops a value everywhere it is missing and omits fields left e
   assert.deepEqual(withoutCode(issues, "x"), { a: ["y"] });
   assert.deepEqual(issues, { a: ["x", "y"], b: ["x"] });
   assert.deepEqual(withoutCode(issues, "nope"), issues);
+});
+
+// Stage 35 B8: the editor evaluates the DRAFT config with the server's own rule against the type's active codes.
+test("draft evaluation (Batch 8): an added or renamed value is missing at once; a code in the active set is not", () => {
+  const active = new Set(["H1"]);
+  const isLinked = (c: string) => active.has(c);
+  const fields = [f("hinge", { inventoryLinked: true }), f("plain")];
+  assert.deepEqual(inventoryLinkIssues(fields, { hinge: { options: ["H1"] } }, isLinked), {});
+  assert.deepEqual(inventoryLinkIssues(fields, { hinge: { options: ["H1", "NEW"] } }, isLinked), { hinge: ["NEW"] });
+  assert.deepEqual(inventoryLinkIssues(fields, { hinge: { options: ["H2"] } }, isLinked), { hinge: ["H2"] });
+  active.add("NEW");
+  assert.deepEqual(inventoryLinkIssues(fields, { hinge: { options: ["H1", "NEW"] } }, isLinked), {});
 });
