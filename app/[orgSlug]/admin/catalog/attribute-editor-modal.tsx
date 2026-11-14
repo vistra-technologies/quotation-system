@@ -7,6 +7,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { descendants, emptyGroupCount, findAttr, isChain, sync } from "./catalog-model";
 import { AttributeStepEditor } from "./attribute-step-editor";
 import { apiErrorMessage } from "@/lib/api-error-message";
+import { InventoryQuickAddPanel } from "./inventory-quick-add-panel";
 
 interface AttributeEditorModalProps {
   orgSlug: string;
@@ -15,6 +16,13 @@ interface AttributeEditorModalProps {
   /** Last server-confirmed config for this segment — cloned once, at open, into the draft. */
   savedConfig: FieldOptionsConfig;
   openFieldKey: string;
+  /** Stage 35 S35-8: the type's name (locked in the quick-add panel) and live missing-inventory map. */
+  typeName: string;
+  issues: Record<string, string[]>;
+  /** Codes quick-added this session -> item name. */
+  addedNames: Record<string, string>;
+  canAddInventory: boolean;
+  onInventoryAdded: (code: string, name: string) => void;
   onClose: () => void;
   /** Fires exactly once, after the single PUT that commits the whole (possibly multi-step) session. */
   onSaved: (newConfig: FieldOptionsConfig, savedLabel: string) => void;
@@ -48,6 +56,11 @@ export function AttributeEditorModal({
   fieldsSchema,
   savedConfig,
   openFieldKey,
+  typeName,
+  issues,
+  addedNames,
+  canAddInventory,
+  onInventoryAdded,
   onClose,
   onSaved,
 }: AttributeEditorModalProps) {
@@ -58,6 +71,8 @@ export function AttributeEditorModal({
   const [pendingDiscard, setPendingDiscard] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // The missing value whose "Add to inventory" panel is open (null = closed).
+  const [quickAddCode, setQuickAddCode] = useState<string | null>(null);
 
   const currentField = findAttr(fieldsSchema, currentFieldKey) as FieldEntry;
   const plan = flow ? flow.plan : [currentFieldKey, ...descendants(fieldsSchema, currentFieldKey)];
@@ -199,7 +214,7 @@ export function AttributeEditorModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="ed-modal-title"
-          className="flex max-h-[88vh] w-full max-w-[660px] flex-col rounded-md bg-bg-white shadow-[0_24px_60px_-16px_rgba(27,40,30,.35)]"
+          className={`flex max-h-[88vh] w-full flex-col rounded-md ${quickAddCode !== null ? "max-w-[1000px]" : "max-w-[660px]"} bg-bg-white shadow-[0_24px_60px_-16px_rgba(27,40,30,.35)]`}
         >
           <div className="flex flex-shrink-0 items-start justify-between gap-3 px-5.5 pt-4.5">
             <div>
@@ -287,7 +302,8 @@ export function AttributeEditorModal({
             </button>
           </div>
 
-          <div className="overflow-y-auto px-5.5 pb-1 pt-3.5">
+          <div className="flex min-h-0 flex-1">
+          <div className="min-w-0 flex-1 overflow-y-auto px-5.5 pb-1 pt-3.5">
             {(flow || nextField) && (
               <div className="mb-3.5 flex flex-wrap items-center gap-1.5 rounded-xl bg-bg-page p-2.5">
                 <span className="mr-1 text-[10.5px] font-extrabold uppercase tracking-wide text-text-muted">
@@ -332,9 +348,28 @@ export function AttributeEditorModal({
               draftConfig={draftConfig}
               searchQuery=""
               inFlow={flow !== null}
+              missingValues={issues[currentFieldKey] ?? []}
+              addedNames={addedNames}
+              canAddInventory={canAddInventory}
+              onAddInventory={setQuickAddCode}
               onChange={handleMutate}
               key={currentFieldKey}
             />
+          </div>
+          {quickAddCode !== null && (
+            <InventoryQuickAddPanel
+              key={quickAddCode}
+              orgSlug={orgSlug}
+              typeId={typeId}
+              typeName={typeName}
+              code={quickAddCode}
+              onCancel={() => setQuickAddCode(null)}
+              onAdded={(name) => {
+                onInventoryAdded(quickAddCode, name);
+                setQuickAddCode(null);
+              }}
+            />
+          )}
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-2.5 border-t border-border px-5.5 py-4">

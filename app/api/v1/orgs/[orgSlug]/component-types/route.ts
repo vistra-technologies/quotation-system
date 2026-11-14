@@ -56,7 +56,9 @@ export const GET = withRoute(
   }
 
   try {
-    const componentTypes = await listComponentTypes(session);
+    // Stage 35: `?include=inventoryLinkIssues` adds the per-type missing-inventory map (Catalog page only).
+    const withInventoryLinkIssues = new URL(request.url).searchParams.get("include") === "inventoryLinkIssues";
+    const componentTypes = await listComponentTypes(session, { withInventoryLinkIssues });
     return NextResponse.json({ componentTypes });
   } catch (err) {
     log.error("[GET /api/v1/orgs/[orgSlug]/component-types] listComponentTypes", { err });

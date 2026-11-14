@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
-import { choiceFields, emptyGroups, isChain, neverShownKeys, sync } from "./catalog-model";
+import { choiceFields, emptyGroups, isChain, missingCount, neverShownKeys, offenderKeys, sync, withoutCode } from "./catalog-model";
 import { SegmentTabs } from "./segment-tabs";
 import { CatalogTree } from "./catalog-tree";
 import { AttributeEditorModal } from "./attribute-editor-modal";
@@ -15,11 +15,15 @@ export interface CatalogComponentType {
   name: string;
   fieldsSchema: FieldEntry[];
   fieldOptionsConfig: FieldOptionsConfig;
+  /** Stage 35 S35-8: per linked field key, the producible values with no active same-type inventory item. */
+  inventoryLinkIssues: Record<string, string[]>;
 }
 
 interface CatalogExplorerProps {
   orgSlug: string;
   componentTypes: CatalogComponentType[];
+  /** MANAGE_PRICING: shows "Add to inventory" (the inventory route enforces it server-side too). */
+  canAddInventory: boolean;
 }
 
 /**
@@ -30,7 +34,7 @@ interface CatalogExplorerProps {
  * the search query, and which attribute's editor modal is open. Fetches nothing itself — every
  * ComponentType's `fieldsSchema` + `fieldOptionsConfig` already arrived via `page.tsx` props.
  */
-export function CatalogExplorer({ orgSlug, componentTypes }: CatalogExplorerProps) {
+export function CatalogExplorer({ orgSlug, componentTypes, canAddInventory }: CatalogExplorerProps) {
   const [configsByType, setConfigsByType] = useState<Record<string, FieldOptionsConfig>>(() => {
     const init: Record<string, FieldOptionsConfig> = {};
     for (const ct of componentTypes) {
@@ -38,6 +42,12 @@ export function CatalogExplorer({ orgSlug, componentTypes }: CatalogExplorerProp
     }
     return init;
   });
+  // Stage 35: the live missing-inventory map per type (drops as items are quick-added), and the names added this session.
+  const [issuesByType, setIssuesByType] = useState<Record<string, Record<string, string[]>>>(() =>
+    Object.fromEntries(componentTypes.map((ct) => [ct.id, ct.inventoryLinkIssues])),
+  );
+  const [addedNames, setAddedNames] = useState<Record<string, Record<string, string>>>({});
+  const [pillClicks, setPillClicks] = useState(0);
   const [activeTypeId, setActiveTypeId] = useState(componentTypes[0]?.id ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [openAttr, setOpenAttr] = useState<{ typeId: string; fieldKey: string } | null>(null);
@@ -48,6 +58,19 @@ export function CatalogExplorer({ orgSlug, componentTypes }: CatalogExplorerProp
   function handleSaved(typeId: string, newConfig: FieldOptionsConfig, savedLabel: string) {
     setConfigsByType((prev) => ({ ...prev, [typeId]: newConfig }));
     toast.show(`${savedLabel} saved`);
+    // The saved values may add or drop linked values: re-read this type's missing map (same GET-by-id, additive field).
+    void fetch(`/api/v1/orgs/${orgSlug}/component-types/${typeId}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body: { componentType?: { inventoryLinkIssues?: Record<string, string[]> } } | null) => {
+        const next = body?.componentType?.inventoryLinkIssues;
+        if (next) setIssuesByType((prev) => ({ ...prev, [typeId]: next }));
+      })
+      .catch(() => {});
+  }
+
+  function handleInventoryAdded(typeId: string, code: string, name: string) {
+    setIssuesByType((prev) => ({ ...prev, [typeId]: withoutCode(prev[typeId] ?? {}, code) }));
+    setAddedNames((prev) => ({ ...prev, [typeId]: { ...prev[typeId], [code]: name } }));
   }
 
   if (!active) return null;
@@ -58,6 +81,16 @@ export function CatalogExplorer({ orgSlug, componentTypes }: CatalogExplorerProp
   const warnCount = activeFields.filter((f) => emptyGroups(activeFields, activeConfig, f).length > 0).length;
   // Stage 35 S35-5: gated fields whose `in` values this org's controller cannot produce (warn-only).
   const neverCount = neverShownKeys(activeFields, activeConfig).size;
+  // Stage 35 S35-8: missing inventory values; the pill steps through the offending fields in tree order.
+  const activeIssues = issuesByType[active.id] ?? {};
+  const missingTotal = missingCount(activeIssues);
+  const offenders = offenderKeys(activeFields, activeIssues);
+
+  function stepToOffender() {
+    if (offenders.length === 0) return;
+    setOpenAttr({ typeId: active!.id, fieldKey: offenders[pillClicks % offenders.length] });
+    setPillClicks((n) => n + 1);
+  }
 
   return (
     <div>
@@ -105,6 +138,16 @@ export function CatalogExplorer({ orgSlug, componentTypes }: CatalogExplorerProp
                   {warnCount} need options
                 </span>
               )}
+              {missingTotal > 0 && (
+                <button
+                  type="button"
+                  data-testid="not-in-inventory-pill"
+                  onClick={stepToOffender}
+                  className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill border border-[#EBD39E] bg-status-pending-bg px-2.5 py-1 text-[11.5px] font-bold text-status-pending-text hover:border-[#D9B25F]"
+                >
+                  {missingTotal} not in inventory
+                </button>
+              )}
               {neverCount > 0 && (
                 <span
                   data-testid="never-shown-pill"
@@ -126,6 +169,7 @@ export function CatalogExplorer({ orgSlug, componentTypes }: CatalogExplorerProp
           fieldsSchema={active.fieldsSchema}
           config={activeConfig}
           searchQuery={searchQuery}
+          issues={activeIssues}
           onOpenAttr={(fieldKey) => setOpenAttr({ typeId: active.id, fieldKey })}
         />
       </section>
@@ -136,6 +180,11 @@ export function CatalogExplorer({ orgSlug, componentTypes }: CatalogExplorerProp
           typeId={openAttr.typeId}
           fieldsSchema={componentTypes.find((ct) => ct.id === openAttr.typeId)?.fieldsSchema ?? []}
           savedConfig={configsByType[openAttr.typeId] ?? {}}
+          typeName={componentTypes.find((ct) => ct.id === openAttr.typeId)?.name ?? ""}
+          issues={issuesByType[openAttr.typeId] ?? {}}
+          addedNames={addedNames[openAttr.typeId] ?? {}}
+          canAddInventory={canAddInventory}
+          onInventoryAdded={(code, name) => handleInventoryAdded(openAttr.typeId, code, name)}
           openFieldKey={openAttr.fieldKey}
           onClose={() => setOpenAttr(null)}
           onSaved={(newConfig, label) => {

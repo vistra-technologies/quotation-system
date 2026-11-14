@@ -71,6 +71,9 @@ function once<T>(key: string, make: () => Promise<T>): Promise<T> {
 async function listTypes(g: Guarded, slug: string): Promise<CT[]> {
   return (await ok<{ componentTypes: CT[] }>(await g.get(orgApi(slug, "/component-types")))).componentTypes;
 }
+async function listTypesWithIssues(g: Guarded, slug: string): Promise<CT[]> {
+  return (await ok<{ componentTypes: CT[] }>(await g.get(`${orgApi(slug, "/component-types")}?include=inventoryLinkIssues`))).componentTypes;
+}
 async function typeId(g: Guarded, slug: string, code: string): Promise<string> {
   const id = (await listTypes(g, slug)).find((t) => t.code === code)?.id;
   if (!id) throw new Error(`org ${slug} has no ComponentType ${code}`);
@@ -559,7 +562,7 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
 
   // Stage 35 S35-7/S35-8 (Batch 5): the Catalog read lists, per inventoryLinked field, the producible values that
   // have no ACTIVE same-type InventoryItem. Org B only (throwaway), so no shared Test-Org data is touched.
-  test("component-types GET carries inventoryLinkIssues: inactive / other-type / NULL-type items count as missing; fixing each clears it; list = by-id = field-values", async ({ run, orgB }) => {
+  test("component-types GET ?include=inventoryLinkIssues carries inventoryLinkIssues (absent without the flag): inactive / other-type / NULL-type items count as missing; fixing each clears it; list = by-id = field-values", async ({ run, orgB }) => {
     const B = (p: string) => orgApi(run.orgB.slug, p);
     const sfx = tag();
     const [c1, c2, c3, c4, plainCode] = ["c1", "c2", "c3", "c4", "pl"].map((k) => `${run.prefix}lnk-${k}-${sfx}`);
@@ -581,7 +584,9 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
 
     // no item exists yet: every producible value is missing (A branch, then the B branch's new value; c1 once).
     // (A valueMap key the parent cannot produce is refused at write time, so an unreachable branch cannot be stored.)
-    const first = (await listTypes(orgB, run.orgB.slug)).find((x) => x.id === ct.id) as CT & { inventoryLinkIssues: Record<string, string[]> };
+    // opt-in (review-b5-1 MINOR): the plain list (layout palette, Inventory page) pays no extra read and has no such key
+    expect((await listTypes(orgB, run.orgB.slug)).find((x) => x.id === ct.id)).not.toHaveProperty("inventoryLinkIssues");
+    const first = (await listTypesWithIssues(orgB, run.orgB.slug)).find((x) => x.id === ct.id) as CT & { inventoryLinkIssues: Record<string, string[]> };
     expect(first.inventoryLinkIssues).toEqual({ code: [c1, c2, c3, c4] });
 
     const mkItem = async (code: string, over: Record<string, unknown>) =>
@@ -593,7 +598,7 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     await mkItem(plainCode, {}); // not linked: never checked
 
     const issuesOf = async () => {
-      const t = (await listTypes(orgB, run.orgB.slug)).find((x) => x.id === ct.id) as CT & { inventoryLinkIssues: Record<string, string[]> };
+      const t = (await listTypesWithIssues(orgB, run.orgB.slug)).find((x) => x.id === ct.id) as CT & { inventoryLinkIssues: Record<string, string[]> };
       return t.inventoryLinkIssues;
     };
     expect(await issuesOf()).toEqual({ code: [c2, c3, c4] }); // c1 is present once (also under B), in branch order
@@ -605,7 +610,7 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
       expect((read as CT & { inventoryLinkIssues: unknown }).inventoryLinkIssues).toEqual({ code: [c2, c3, c4] });
     }
     // a type with no linked field answers {}
-    expect(((await listTypes(orgB, run.orgB.slug)).find((x) => x.id === other.id) as CT & { inventoryLinkIssues: unknown }).inventoryLinkIssues).toEqual({});
+    expect(((await listTypesWithIssues(orgB, run.orgB.slug)).find((x) => x.id === other.id) as CT & { inventoryLinkIssues: unknown }).inventoryLinkIssues).toEqual({});
 
     await ok(await orgB.patch(B(`/inventory/${nullTypeId}`), { data: { componentTypeId: ct.id } }));
     expect(await issuesOf()).toEqual({ code: [c2, c3] });

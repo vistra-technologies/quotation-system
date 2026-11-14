@@ -13,6 +13,7 @@ import {
   attrMatches,
   nodePreview,
   relatedIds,
+  tiersOf,
   valuesOf,
   type ShowBand,
 } from "./catalog-model";
@@ -23,6 +24,8 @@ interface CatalogTreeProps {
   fieldsSchema: FieldEntry[];
   config: FieldOptionsConfig;
   searchQuery: string;
+  /** Stage 35 S35-8: per linked field key, the producible values with no active same-type inventory item. */
+  issues: Record<string, string[]>;
   /** No-op stub in Batch 1 — wired to open the editor modal starting Batch 2. */
   onOpenAttr: (fieldKey: string) => void;
 }
@@ -63,6 +66,7 @@ export function CatalogTree({
   fieldsSchema,
   config,
   searchQuery,
+  issues,
   onOpenAttr,
 }: CatalogTreeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -78,19 +82,7 @@ export function CatalogTree({
   const maxDepth = chain.reduce((m, f) => Math.max(m, depth(fields, f)), 0);
   const nCols = Math.max(maxDepth, 3);
 
-  const tiers: FieldEntry[][] = [];
-  for (let d = 1; d <= maxDepth; d++) {
-    const prevTier = tiers[d - 2] ?? [];
-    tiers[d - 1] = chain
-      .filter((f) => depth(fields, f) === d)
-      .map((f, i) => ({
-        f,
-        i,
-        p: f.dependsOn ? prevTier.findIndex((x) => x.key === f.dependsOn) : 0,
-      }))
-      .sort((a, b) => a.p - b.p || a.i - b.i)
-      .map((o) => o.f);
-  }
+  const tiers = tiersOf(fields);
 
   // Stage 35 S35-5: one dashed band per (controller, value set); a gated card sits in its band.
   const bands = bandsOf(fields, config);
@@ -272,6 +264,7 @@ export function CatalogTree({
         field={f}
         kind={kind}
         isController={controllerKeys.has(f.key)}
+        missing={issues[f.key]?.length ?? 0}
         isLit={nodeIsLit(f.key)}
         isMatch={matchSet?.has(f.key) ?? false}
         isSearching={isSearching}
@@ -463,6 +456,14 @@ export function CatalogTree({
 
 // ─── One "Shown when" band (Stage 35 S35-5) ────────────────────────────────────
 
+export const CUBE_ICON = (size: number) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21 8l-9-5-9 5 9 5 9-5z" />
+    <path d="M3 8v8l9 5 9-5V8" />
+    <path d="M12 13v8" />
+  </svg>
+);
+
 const EYE_ICON = (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
@@ -556,6 +557,7 @@ function CatalogNode({
   field,
   kind,
   isController,
+  missing,
   isLit,
   isMatch,
   isSearching,
@@ -568,6 +570,8 @@ function CatalogNode({
   field: FieldEntry;
   kind: "chain" | "indep";
   isController: boolean;
+  /** Stage 35: how many of this field's producible values are not in inventory. */
+  missing: number;
   isLit: boolean;
   isMatch: boolean;
   isSearching: boolean;
@@ -607,6 +611,15 @@ function CatalogNode({
           </span>
           <span className="truncate text-[11.5px] font-semibold text-text-muted">{preview}</span>
         </span>
+        {field.inventoryLinked && (
+          <span
+            title="Linked to inventory"
+            data-testid="linked-icon"
+            className="flex h-[26px] w-[26px] flex-shrink-0 items-center justify-center rounded-full bg-[#E3F4FB] text-[#0B6E99]"
+          >
+            {CUBE_ICON(14)}
+          </span>
+        )}
         <span
           title={`${vals.length} distinct option${vals.length === 1 ? "" : "s"}`}
           className="flex h-7 min-w-[28px] flex-shrink-0 items-center justify-center rounded-pill border border-border bg-bg-page px-1.5 text-xs font-extrabold text-primary-dark"
@@ -614,6 +627,22 @@ function CatalogNode({
           {vals.length}
         </span>
       </button>
+      {missing > 0 && (
+        <button
+          type="button"
+          data-testid="not-in-inventory-tag"
+          onClick={onClick}
+          className={`absolute -top-2 inline-flex items-center gap-1 rounded-pill border border-[#F2B8B0] bg-[#FFD9D4] px-2 py-0.5 text-[10px] font-extrabold text-[#B3261E] ${
+            empties.length > 0 ? "left-[112px]" : "left-10"
+          }`}
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 9v4M12 17h.01" />
+            <path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h17a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z" />
+          </svg>
+          Not in inventory
+        </button>
+      )}
       {empties.length > 0 && (
         <span className="pointer-events-none absolute -top-2 left-10 rounded-pill border border-[#EBD39E] bg-status-pending-bg px-2 py-0.5 text-[10px] font-extrabold text-status-pending-text">
           {field.dependsOn ? `${empties.length} empty` : "Empty"}

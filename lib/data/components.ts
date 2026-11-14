@@ -88,7 +88,11 @@ export async function listComponentCategories(session: SessionData) {
  * `fieldOptionsConfig` is null when no ComponentTypeOrgConfig row exists yet for that type (i.e.
  * the org hasn't configured any of its dropdown/radio fields).
  */
-export async function listComponentTypes(session: SessionData) {
+export async function listComponentTypes(
+  session: SessionData,
+  /** Stage 35 (review-b5-1 MINOR): the extra inventory read is opt-in; only the Catalog page asks for it. */
+  options: { withInventoryLinkIssues?: boolean } = {},
+) {
   const rows = await prisma.componentType.findMany({
     where: { organizationId: session.organizationId },
     orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
@@ -102,6 +106,7 @@ export async function listComponentTypes(session: SessionData) {
       fieldOptionsConfig: orgConfig ? parseFieldOptionsConfig(orgConfig.fieldOptionsConfig) : null,
     };
   });
+  if (!options.withInventoryLinkIssues) return parsed;
   const linked = await loadLinkedCodes(session.organizationId, parsed);
   return parsed.map((t) => ({ ...t, inventoryLinkIssues: linkIssuesOf(t, linked) }));
 }

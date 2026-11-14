@@ -18,6 +18,8 @@ interface ComponentTypeRow {
   // Stage 20 Batch 4: the list route now returns this for free (folded into
   // lib/data/components.ts listComponentTypes) — see the fetch below, no more per-type round trip.
   fieldOptionsConfig: FieldOptionsConfig | null;
+  // Stage 35 S35-8: per linked field key, the producible values with no active same-type inventory item.
+  inventoryLinkIssues?: Record<string, string[]>;
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -63,7 +65,7 @@ export default async function FieldValuesPage({
   }
 
   const listRes = await internalFetch(
-    `/api/v1/orgs/${orgSlug}/component-types`,
+    `/api/v1/orgs/${orgSlug}/component-types?include=inventoryLinkIssues`,
   );
   if (!listRes.ok) {
     redirect(await orgHref(orgSlug, "/dashboard"));
@@ -81,7 +83,10 @@ export default async function FieldValuesPage({
   const withConfig = configurableTypes.map((ct) => ({
     ...ct,
     fieldOptionsConfig: ct.fieldOptionsConfig ?? ({} as FieldOptionsConfig),
+    inventoryLinkIssues: ct.inventoryLinkIssues ?? {},
   }));
+  // Quick-add needs MANAGE_PRICING (enforced by POST …/inventory); without it the tag still shows.
+  const canAddInventory = me.adminPermissions.includes("MANAGE_PRICING");
 
   return (
     <div>
@@ -100,7 +105,7 @@ export default async function FieldValuesPage({
         </p>
       ) : (
         <div className="mt-6">
-          <CatalogExplorer orgSlug={orgSlug} componentTypes={withConfig} />
+          <CatalogExplorer orgSlug={orgSlug} componentTypes={withConfig} canAddInventory={canAddInventory} />
         </div>
       )}
     </div>

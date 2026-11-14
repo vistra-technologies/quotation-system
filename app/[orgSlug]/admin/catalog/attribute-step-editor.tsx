@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { CUBE_ICON } from "./catalog-tree";
 import {
   emptyGroups,
   findAttr,
@@ -27,6 +28,13 @@ interface AttributeStepEditorProps {
    *  is non-null) — mirrors the mockup's `!!ed.flow`. Gates the "new lists only" focused view so a
    *  field opened directly with pre-existing empty groups doesn't get mislabeled "New". */
   inFlow: boolean;
+  /** Stage 35 S35-8: this field's values with no active same-type inventory item (empty when not linked). */
+  missingValues: string[];
+  /** Codes quick-added this session -> the item name ("In inventory · <name>"). */
+  addedNames: Record<string, string>;
+  /** MANAGE_PRICING: show "Add to inventory" beside a missing value. */
+  canAddInventory: boolean;
+  onAddInventory: (code: string) => void;
   /** Replaces the whole draft config — the modal re-syncs and marks the session dirty. */
   onChange: (nextConfig: FieldOptionsConfig) => void;
 }
@@ -50,6 +58,10 @@ export function AttributeStepEditor({
   draftConfig,
   searchQuery,
   inFlow,
+  missingValues,
+  addedNames,
+  canAddInventory,
+  onAddInventory,
   onChange,
 }: AttributeStepEditorProps) {
   const field = findAttr(fieldsSchema, fieldKey) as FieldEntry;
@@ -257,12 +269,55 @@ export function AttributeStepEditor({
     );
   }
 
+  /** Stage 35: per-value inventory state beside a chip of a linked field (red tag + Add button, or "In inventory"). */
+  function renderLinkStatus(value: string) {
+    if (!field.inventoryLinked) return null;
+    if (missingValues.includes(value)) {
+      return (
+        <>
+          <span
+            data-testid="value-not-in-inventory"
+            className="inline-flex items-center gap-1 rounded-pill border border-[#F2B8B0] bg-[#FFD9D4] px-2 py-0.5 text-[11px] font-extrabold text-[#B3261E]"
+          >
+            Not in inventory
+          </span>
+          {canAddInventory && (
+            <button
+              type="button"
+              onClick={() => onAddInventory(value)}
+              aria-label={`Add ${value} to inventory`}
+              className="inline-flex items-center gap-1.5 rounded-pill border-[1.5px] border-[#0B6E99] bg-bg-white px-2.5 py-0.5 text-xs font-extrabold text-[#0B6E99] hover:bg-[#E3F4FB]"
+            >
+              {CUBE_ICON(13)}
+              Add to inventory
+            </button>
+          )}
+        </>
+      );
+    }
+    const added = addedNames[value];
+    if (added === undefined) return null;
+    return (
+      <span
+        data-testid="value-in-inventory"
+        className="inline-flex items-center gap-1 rounded-pill bg-[#D4F1D4] px-2 py-0.5 text-[11px] font-extrabold text-[#2E6B34]"
+      >
+        In inventory · {added}
+      </span>
+    );
+  }
+
   function renderList(groupKey: string | null, groupInputKeyStr: string) {
     const list = listFor(draftConfig, field, groupKey);
     return (
       <>
         <div className="flex flex-wrap gap-2">
-          {list.map((v) => renderChip(groupKey, v))}
+          {list.map((v) => (
+            <span key={v} className="inline-flex flex-wrap items-center gap-1.5">
+              {renderChip(groupKey, v)}
+              {renderLinkStatus(v)}
+            </span>
+          ))}
           {list.length === 0 && (
             <span className="py-1 text-[12.5px] font-semibold text-status-pending-text">
               No options yet — add at least one.

@@ -45,6 +45,51 @@ export function choiceFields(schema: FieldEntry[]): FieldEntry[] {
   return schema.filter((f) => f.type === "dropdown" || f.type === "radio");
 }
 
+/**
+ * The tree's dependent-attribute columns: tier d (1-based) holds the chain fields at depth d, ordered by
+ * their parent's position in the previous tier, then schema order. The one definition of "tree order" —
+ * `CatalogTree` renders these columns and `offenderKeys` walks them.
+ */
+export function tiersOf(fields: FieldEntry[]): FieldEntry[][] {
+  const chain = fields.filter((f) => isChain(fields, f));
+  const maxDepth = chain.reduce((m, f) => Math.max(m, depth(fields, f)), 0);
+  const tiers: FieldEntry[][] = [];
+  for (let d = 1; d <= maxDepth; d++) {
+    const prevTier = tiers[d - 2] ?? [];
+    tiers[d - 1] = chain
+      .filter((f) => depth(fields, f) === d)
+      .map((f, i) => ({
+        f,
+        i,
+        p: f.dependsOn ? prevTier.findIndex((x) => x.key === f.dependsOn) : 0,
+      }))
+      .sort((a, b) => a.p - b.p || a.i - b.i)
+      .map((o) => o.f);
+  }
+  return tiers;
+}
+
+/** Stage 35 S35-8: the keys of fields with a missing inventory value, in tree order (tiers, then the independent lane). */
+export function offenderKeys(fields: FieldEntry[], issues: Record<string, string[]>): string[] {
+  const ordered = [...tiersOf(fields).flat(), ...fields.filter((f) => !isChain(fields, f))];
+  return ordered.filter((f) => (issues[f.key]?.length ?? 0) > 0).map((f) => f.key);
+}
+
+/** Stage 35 S35-8: the pill's N — missing values summed across the type's linked fields. */
+export function missingCount(issues: Record<string, string[]>): number {
+  return Object.values(issues).reduce((n, list) => n + list.length, 0);
+}
+
+/** Stage 35: the issues map after `code` became an active same-type item (it is no longer missing anywhere). */
+export function withoutCode(issues: Record<string, string[]>, code: string): Record<string, string[]> {
+  const next: Record<string, string[]> = {};
+  for (const [k, list] of Object.entries(issues)) {
+    const rest = list.filter((v) => v !== code);
+    if (rest.length > 0) next[k] = rest;
+  }
+  return next;
+}
+
 // ─── Values / groups ──────────────────────────────────────────────────────────
 
 /**

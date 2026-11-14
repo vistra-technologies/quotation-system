@@ -1188,7 +1188,7 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
     fld("rackCode", "Rack Code", { required: true, ...dep, showWhen: { field: "hasLeaf", in: ["No"] } }),
     fld("partialA", "Partial A", { ...dep, showWhen: { field: "hasLeaf", in: ["Partial"] } }),
     fld("partialB", "Partial B", { ...dep, showWhen: { field: "hasLeaf", in: ["Partial"] } }),
-    fld("hinge", "Hinge"),
+    fld("hinge", "Hinge", { inventoryLinked: true }), // Stage 35 B6: a second offending (independent) linked field
   ];
   const CONFIG = {
     fieldOptionsConfig: {
@@ -1253,7 +1253,7 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
       const before = actionBodies.length;
       await pick(page, "Has Leaf", "Yes");
       await page.getByRole("button", { name: "Add Component" }).click();
-      await expect(page.getByText('"Has Leaf" is required.').or(page.getByText('"Leaf Code" is required.'))).toBeVisible();
+      await expect(page.getByText('"Leaf Code" is required.')).toBeVisible(); // re-picking Has Leaf cleared its dependent; the controller value is kept
       expect(actionBodies.length, "a refused save sends no request").toBe(before);
       await pick(page, "Leaf Code", "L1");
 
@@ -1312,6 +1312,126 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
     });
   });
 
+  // Stage 35 Batch 6 — inventory-link UI + quick-add. Org B only: the quick-added rows live in org B and go with it
+  // at teardown (the org hard-delete cascades every org-scoped table), so no Test-Org / shared data is touched.
+  // The `hinge` field is linked too, so there are two offending fields (the pill needs two to step through).
+  test("B6 UI AC1-AC3 org Catalog (MANAGE_PRICING): cube + red tag + pill, card/tag/pill open the editor, the pill steps in tree order, quick-add locks code + type and has no price, In inventory + counts drop, a 409 shows inline and keeps the typed values", async ({ browser, run, orgB }) => {
+    test.setTimeout(180_000);
+    const fx = await getFx(run, orgB);
+    // an item with code H2 but NO component type: it still counts as missing for the type, and makes the quick-add of H2 a 409
+    await ok(await orgB.post(fx.B("/inventory"), { data: { code: "H2", name: `${run.prefix}vis-dup`, measurementUnit: "pieces" } }), 201);
+    await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
+      const page = o.page;
+      await page.goto(orgUrl(run.orgB.slug, "/admin/catalog"));
+      await page.getByRole("tab", { name: new RegExp(`\\(${fx.type.code}\\)`) }).click();
+      const vis = (id: string) => page.getByTestId(id).filter({ visible: true });
+      const node = (key: string) => page.locator(`[data-node-id="${key}"]`).filter({ visible: true });
+      const dlg = page.getByRole("dialog").filter({ visible: true });
+      const pill = vis("not-in-inventory-pill");
+      const closeEditor = async () => { await dlg.getByRole("button", { name: "Cancel" }).click(); await expect(dlg).toHaveCount(0); };
+
+      // AC1: cube on linked cards only, red tag on the offending cards, header pill = missing values across the type
+      await expect(pill).toHaveText("4 not in inventory");
+      await expect(node("leafCode").getByTestId("linked-icon")).toBeVisible();
+      await expect(node("hinge").getByTestId("linked-icon")).toBeVisible();
+      await expect(node("kind").getByTestId("linked-icon")).toHaveCount(0);
+      await expect(vis("not-in-inventory-tag")).toHaveCount(2);
+      await expect(node("leafCode").getByTestId("not-in-inventory-tag")).toBeVisible();
+
+      // card, tag and pill each open that field's editor
+      await node("hinge").getByRole("button", { name: /^Edit Hinge/ }).click();
+      await expect(dlg.getByRole("heading", { name: "Hinge", exact: true })).toBeVisible();
+      await closeEditor();
+      await node("leafCode").getByTestId("not-in-inventory-tag").click();
+      await expect(dlg.getByRole("heading", { name: "Leaf Code", exact: true })).toBeVisible();
+      await closeEditor();
+      // repeated pill clicks step through the offenders in tree order (tier column, then the independent lane), then wrap
+      for (const label of ["Leaf Code", "Hinge", "Leaf Code"]) {
+        await pill.click();
+        await expect(dlg.getByRole("heading", { name: label, exact: true })).toBeVisible();
+        await closeEditor();
+      }
+
+      // AC2: quick-add
+      await node("hinge").getByRole("button", { name: /^Edit Hinge/ }).click();
+      await expect(dlg.getByTestId("value-not-in-inventory")).toHaveCount(2);
+      await dlg.getByRole("button", { name: "Add H2 to inventory" }).click();
+      const panel = dlg.getByTestId("quick-add-panel");
+      await expect(panel.getByTestId("quick-add-code")).toContainText("H2");
+      await expect(panel.getByTestId("quick-add-type")).toContainText(fx.type.name);
+      await expect(panel.getByText(/price/i)).toHaveCount(0); // G0-c: no price field
+      await expect(panel.getByLabel("Per-unit qty")).toHaveValue("1");
+
+      // AC3: a 409 duplicate code shows inline and keeps what was typed
+      await panel.getByLabel("Name", { exact: true }).fill("Hinge two");
+      await panel.getByLabel("Per-unit qty").fill("2.5");
+      await panel.getByRole("combobox").click();
+      await page.getByRole("option", { name: "set", exact: true }).click();
+      await panel.getByRole("button", { name: "Add item" }).click();
+      await expect(panel.getByRole("alert")).toHaveText("An item with this code already exists");
+      await expect(panel.getByLabel("Name", { exact: true })).toHaveValue("Hinge two");
+      await expect(panel.getByLabel("Per-unit qty")).toHaveValue("2.5");
+      await expect(panel.getByRole("combobox")).toContainText("set");
+      await panel.getByRole("button", { name: "Cancel" }).click();
+      await expect(panel).toHaveCount(0);
+
+      // the successful add: "In inventory · <name>", the editor's missing count and the pill drop by one
+      await dlg.getByRole("button", { name: "Add H1 to inventory" }).click();
+      await panel.getByLabel("Name", { exact: true }).fill("Hinge one");
+      await panel.getByRole("button", { name: "Add item" }).click();
+      await expect(panel).toHaveCount(0);
+      await expect(dlg.getByTestId("value-in-inventory")).toHaveText("In inventory · Hinge one");
+      await expect(dlg.getByTestId("value-not-in-inventory")).toHaveCount(1);
+      await closeEditor();
+      await expect(pill).toHaveText("3 not in inventory");
+      await expect(node("hinge").getByTestId("not-in-inventory-tag")).toBeVisible(); // H2 is still missing
+
+      // the item exists (GET inventory), typed to this component type, no price rows (G0-c); a reload agrees
+      const items = (await ok<{ items: { code: string; name: string; componentTypeId: string | null; measurementUnit: string; perUnitQuantity: unknown; prices?: unknown[] }[] }>(await orgB.get(fx.B("/inventory")))).items;
+      const h1 = items.find((i) => i.code === "H1")!;
+      expect(h1, "the quick-added item exists").toBeTruthy();
+      expect(h1.name).toBe("Hinge one");
+      expect(h1.componentTypeId).toBe(fx.type.id);
+      expect(h1.measurementUnit).toBe("metres");
+      expect(Number(h1.perUnitQuantity)).toBe(1);
+      expect(h1.prices ?? []).toHaveLength(0);
+      await page.reload();
+      await page.getByRole("tab", { name: new RegExp(`\\(${fx.type.code}\\)`) }).click();
+      await expect(vis("not-in-inventory-pill")).toHaveText("3 not in inventory");
+    });
+  });
+
+  test("B6 UI AC2 without MANAGE_PRICING: the red tag and the pill remain, Add to inventory is absent (the role permission is removed and restored, org B only)", async ({ browser, run, sa, orgB }) => {
+    test.setTimeout(150_000);
+    const fx = await getFx(run, orgB);
+    const SAB = "/api/v1/superadmin";
+    const perms = (await ok<{ permissions: { id: string; code: string }[] }>(await sa.get(`${SAB}/permissions`))).permissions;
+    const pricing = perms.find((p) => p.code === "MANAGE_PRICING")!.id;
+    const roleName = (await ok<{ roleName: string }>(await orgB.get(fx.B("/me")))).roleName;
+    const roleId = (await ok<{ roles: { id: string; name: string }[] }>(await sa.get(`${SAB}/roles?orgId=${run.orgB.id}`))).roles.find((r) => r.name === roleName)!.id;
+    const holds = async () => (await ok<{ rolePermissions: { permission: { code: string } }[] }>(await sa.get(`${SAB}/roles/${roleId}/permissions?orgId=${run.orgB.id}`))).rolePermissions.some((rp) => rp.permission.code === "MANAGE_PRICING");
+    expect(await holds(), "org B's admin role starts with MANAGE_PRICING").toBe(true);
+    const body = { orgId: run.orgB.id, permissionId: pricing };
+    await ok(await sa.delete(`${SAB}/roles/${roleId}/permissions`, { data: body }));
+    try {
+      await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
+        const page = o.page;
+        await page.goto(orgUrl(run.orgB.slug, "/admin/catalog"));
+        await page.getByRole("tab", { name: new RegExp(`\\(${fx.type.code}\\)`) }).click();
+        await expect(page.getByTestId("not-in-inventory-pill").filter({ visible: true })).toBeVisible();
+        const tag = page.locator('[data-node-id="leafCode"]').filter({ visible: true }).getByTestId("not-in-inventory-tag");
+        await expect(tag).toBeVisible();
+        await tag.click();
+        const dlg = page.getByRole("dialog").filter({ visible: true });
+        await expect(dlg.getByTestId("value-not-in-inventory")).toHaveCount(2); // L1, L2: the tag shows per value
+        await expect(dlg.getByRole("button", { name: /to inventory/ })).toHaveCount(0);
+      });
+    } finally {
+      await ok(await sa.post(`${SAB}/roles/${roleId}/permissions`, { data: body }), 201);
+      expect(await holds(), "MANAGE_PRICING restored on org B's admin role").toBe(true);
+    }
+  });
+
   test("UI AC2 SuperAdmin edit form: Show-when lists only earlier dropdown/radio fields, value chips, Linked toggle on dropdown/radio only, retyping clears Linked, a server 400 shows inline", async ({ browser, run, sa, orgB }) => {
     test.setTimeout(150_000);
     const fx = await getFx(run, orgB);
@@ -1353,6 +1473,45 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
       await expect(target.getByTestId("showwhen-values")).toBeVisible();
       await page.getByRole("button", { name: "Save Changes" }).click();
       await expect(page.getByText(/showWhen\.in must be a non-empty array/)).toBeVisible();
+    });
+  });
+  // review-b4-1 MINOR 2: the create form's new inline-400 path (it used to throw to the error boundary) and the
+  // JSON-mode round trip of showWhen / inventoryLinked, neither of which had a UI step. Creates nothing (the 400 is the point).
+  test("UI AC2 SuperAdmin create form: JSON mode round-trips showWhen + inventoryLinked, and a server 400 (showWhen with no values) shows inline with the typed code/name kept", async ({ browser, run, sa, orgB }) => {
+    test.setTimeout(150_000);
+    await withPage({ browser, run }, "sa", sa.token, async (o) => {
+      const page = o.page;
+      await page.goto(`/controls/orgs/${run.orgB.id}/components`);
+      const rows = page.getByTestId("field-row").filter({ visible: true });
+      const schema = [
+        { key: "kind", label: "Kind", type: "dropdown", required: true, basic: true },
+        { key: "gate", label: "Gate", type: "dropdown", required: false, basic: true, inventoryLinked: true, showWhen: { field: "kind", in: ["A"] } },
+      ];
+      await page.getByRole("button", { name: "JSON", exact: true }).click();
+      await page.locator("textarea").fill(JSON.stringify(schema));
+      await page.getByRole("button", { name: "Form", exact: true }).click();
+      await expect(rows).toHaveCount(2);
+      await expect(rows.nth(1).getByRole("switch", { name: "Linked to inventory" })).toHaveAttribute("aria-checked", "true");
+      await expect(rows.nth(1).getByTestId("showwhen-values")).toContainText("A");
+      // back to JSON: both keys survived the Form round trip
+      await page.getByRole("button", { name: "JSON", exact: true }).click();
+      const text = await page.locator("textarea").inputValue();
+      expect(JSON.parse(text)[1]).toMatchObject({ key: "gate", inventoryLinked: true, showWhen: { field: "kind", in: ["A"] } });
+      await page.getByRole("button", { name: "Form", exact: true }).click();
+
+      // empty the controller's values, fill code/name/category, Save: the server's 400 shows inline, the inputs keep their values
+      await rows.nth(1).getByRole("button", { name: "Remove A" }).click();
+      const code = `RGRC${tag().toUpperCase()}`;
+      await page.locator("#code").fill(code);
+      await page.locator("#name").fill(`${run.prefix}create-400`);
+      await page.getByRole("combobox").first().click();
+      await page.getByRole("option").first().click();
+      await page.getByRole("button", { name: "Create Component Type" }).click();
+      await expect(page.getByText(/showWhen\.in must be a non-empty array/)).toBeVisible();
+      await expect(page.locator("#code")).toHaveValue(code);
+      await expect(page.locator("#name")).toHaveValue(`${run.prefix}create-400`);
+      const listed = (await ok<{ componentTypes: { code: string }[] }>(await orgB.get(orgApi(run.orgB.slug, "/component-types")))).componentTypes;
+      expect(listed.some((t) => t.code === code), "the refused create stored nothing").toBe(false);
     });
   });
 });
