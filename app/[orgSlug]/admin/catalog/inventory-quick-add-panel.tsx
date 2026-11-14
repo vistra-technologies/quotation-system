@@ -4,6 +4,7 @@ import { useState } from "react";
 import { SelectField } from "@/components/select-field";
 import { MEASUREMENT_UNITS } from "@/lib/units";
 import { apiErrorMessage } from "@/lib/api-error-message";
+import { useOrgHref } from "@/lib/useOrgHref";
 import { CUBE_ICON } from "./catalog-tree";
 
 interface InventoryQuickAddPanelProps {
@@ -43,6 +44,7 @@ export function InventoryQuickAddPanel({ orgSlug, typeId, typeName, code, onCanc
   const [codeError, setCodeError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const href = useOrgHref(orgSlug);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -64,7 +66,7 @@ export function InventoryQuickAddPanel({ orgSlug, typeId, typeName, code, onCanc
         return;
       }
       const body = (await res.json().catch(() => ({}))) as { error?: string };
-      if (res.status === 409) setCodeError("An item with this code already exists");
+      if (res.status === 409) setCodeError("This code already exists in Inventory.");
       else setFormError(apiErrorMessage(body, `Could not add the item (HTTP ${res.status})`));
     } catch {
       setFormError("Could not add the item — network error");
@@ -90,7 +92,11 @@ export function InventoryQuickAddPanel({ orgSlug, typeId, typeName, code, onCanc
         </div>
         {codeError && (
           <span role="alert" className="text-[11.5px] font-bold text-status-failed-text">
-            {codeError}
+            {codeError}{" "}
+            {/* new tab: the typed values stay here; the item may be inactive or have another/no component type */}
+            <a href={href("/admin/inventory")} target="_blank" rel="noreferrer" className="underline">
+              Open Inventory
+            </a>
           </span>
         )}
       </label>

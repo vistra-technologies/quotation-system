@@ -22,7 +22,8 @@
  */
 import fs from "node:fs";
 import { randomUUID } from "node:crypto";
-import { test, expect } from "../api/sa-helpers";
+import { test, expect, rawContext } from "../api/sa-helpers";
+import { runPassword, signIn } from "../api/sign-in";
 import { coversPage } from "../fixtures/covers";
 import type { Role, RunState } from "../fixtures/run-state";
 import { deniedRolesFor, ROLES, ROLE_PERMISSIONS } from "../api/permissions";
@@ -1368,7 +1369,8 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
       await panel.getByRole("combobox").click();
       await page.getByRole("option", { name: "set", exact: true }).click();
       await panel.getByRole("button", { name: "Add item" }).click();
-      await expect(panel.getByRole("alert")).toHaveText("An item with this code already exists");
+      await expect(panel.getByRole("alert")).toContainText("This code already exists in Inventory.");
+      await expect(panel.getByRole("link", { name: "Open Inventory" })).toBeVisible();
       await expect(panel.getByLabel("Name", { exact: true })).toHaveValue("Hinge two");
       await expect(panel.getByLabel("Per-unit qty")).toHaveValue("2.5");
       await expect(panel.getByRole("combobox")).toContainText("set");
@@ -1401,34 +1403,50 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
     });
   });
 
-  test("B6 UI AC2 without MANAGE_PRICING: the red tag and the pill remain, Add to inventory is absent (the role permission is removed and restored, org B only)", async ({ browser, run, sa, orgB }) => {
+  // Isolated actor (review-b6-1 IMPORTANT): its own org-B role (MANAGE_FEATURES only) + user, created here and
+  // deleted with org B. org B's shared admin role is never edited, so parallel specs' org-B inventory calls are unaffected.
+  test("B6 UI AC2 without MANAGE_PRICING: the red tag and the pill remain, Add to inventory is absent (own org-B role + user, MANAGE_FEATURES only)", async ({ browser, run, sa, orgB, ledger, playwright, baseURL }) => {
     test.setTimeout(150_000);
     const fx = await getFx(run, orgB);
     const SAB = "/api/v1/superadmin";
     const perms = (await ok<{ permissions: { id: string; code: string }[] }>(await sa.get(`${SAB}/permissions`))).permissions;
-    const pricing = perms.find((p) => p.code === "MANAGE_PRICING")!.id;
-    const roleName = (await ok<{ roleName: string }>(await orgB.get(fx.B("/me")))).roleName;
-    const roleId = (await ok<{ roles: { id: string; name: string }[] }>(await sa.get(`${SAB}/roles?orgId=${run.orgB.id}`))).roles.find((r) => r.name === roleName)!.id;
-    const holds = async () => (await ok<{ rolePermissions: { permission: { code: string } }[] }>(await sa.get(`${SAB}/roles/${roleId}/permissions?orgId=${run.orgB.id}`))).rolePermissions.some((rp) => rp.permission.code === "MANAGE_PRICING");
-    expect(await holds(), "org B's admin role starts with MANAGE_PRICING").toBe(true);
-    const body = { orgId: run.orgB.id, permissionId: pricing };
-    await ok(await sa.delete(`${SAB}/roles/${roleId}/permissions`, { data: body }));
+    const role = (await ok<{ role: { id: string } }>(await sa.post(`${SAB}/roles`, { data: { orgId: run.orgB.id, name: `${run.prefix}nopricing-${tag()}` } }), 201)).role;
+    await ok(await sa.post(`${SAB}/roles/${role.id}/permissions`, { data: { orgId: run.orgB.id, permissionId: perms.find((p) => p.code === "MANAGE_FEATURES")!.id } }), 201);
+    // custom roles are external: the user needs an org-B external company
+    const coName = `${run.prefix}nopricing-co-${tag()}`;
+    await ok(await orgB.post(fx.B("/external-companies"), { data: { name: coName, type: "DISTRIBUTOR", country: "UAE", defaultCurrency: "AED" } }), 201);
+    const co = (await ok<{ companies: { id: string; name: string }[] }>(await orgB.get(fx.B("/external-companies")))).companies.find((c) => c.name === coName)!;
+    const username = `${run.prefix}nopr-${tag()}`;
+    const u = await sa.post(`${SAB}/orgs/${run.orgB.id}/users`, { data: { firstName: "Rgr", lastName: "NoPricing", username, roleId: role.id, externalCompanyId: co.id, password: runPassword() } });
+    const text = await u.text();
+    if (u.status() === 201) ledger.add({ kind: "user", id: (JSON.parse(text) as { user: { id: string } }).user.id, orgSlug: run.orgB.slug, label: username });
+    expect(u.status(), text).toBe(201);
+
+    const api = await rawContext(playwright, baseURL);
+    const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    let ctx: import("@playwright/test").BrowserContext | undefined;
     try {
-      await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
-        const page = o.page;
-        await page.goto(orgUrl(run.orgB.slug, "/admin/catalog"));
-        await page.getByRole("tab", { name: new RegExp(`\\(${fx.type.code}\\)`) }).click();
-        await expect(page.getByTestId("not-in-inventory-pill").filter({ visible: true })).toBeVisible();
-        const tag = page.locator('[data-node-id="leafCode"]').filter({ visible: true }).getByTestId("not-in-inventory-tag");
-        await expect(tag).toBeVisible();
-        await tag.click();
-        const dlg = page.getByRole("dialog").filter({ visible: true });
-        await expect(dlg.getByTestId("value-not-in-inventory")).toHaveCount(4); // L1, L2 under each of the two Kind groups: the tag shows per chip
-        await expect(dlg.getByRole("button", { name: /to inventory/ })).toHaveCount(0);
+      expect((await signIn(api, run.orgB.slug, username, runPassword())).status()).toBe(200);
+      ctx = await browser.newContext({
+        baseURL: process.env.PLAYWRIGHT_BASE_URL,
+        extraHTTPHeaders: bypass ? { "x-vercel-protection-bypass": bypass } : {},
+        storageState: await api.storageState(),
       });
+      const page = await ctx.newPage();
+      await page.goto(orgUrl(run.orgB.slug, "/admin/catalog"));
+      await page.getByRole("tab", { name: new RegExp(`\\(${fx.type.code}\\)`) }).click();
+      await expect(page.getByTestId("not-in-inventory-pill").filter({ visible: true })).toBeVisible();
+      const tag35 = page.locator('[data-node-id="leafCode"]').filter({ visible: true }).getByTestId("not-in-inventory-tag");
+      await expect(tag35).toBeVisible();
+      await tag35.click();
+      const dlg = page.getByRole("dialog").filter({ visible: true });
+      await expect(dlg.getByTestId("value-not-in-inventory")).toHaveCount(4); // L1, L2 under each of the two Kind groups: the tag shows per chip
+      await expect(dlg.getByRole("button", { name: /to inventory/ })).toHaveCount(0);
+      // the server gate agrees: this role cannot create inventory items
+      expect((await api.post(fx.B("/inventory"), { data: { code: "X", name: "x", measurementUnit: "pieces" } })).status()).toBe(403);
     } finally {
-      await ok(await sa.post(`${SAB}/roles/${roleId}/permissions`, { data: body }), 201);
-      expect(await holds(), "MANAGE_PRICING restored on org B's admin role").toBe(true);
+      await ctx?.close();
+      await api.dispose();
     }
   });
 

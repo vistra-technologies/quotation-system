@@ -47,7 +47,8 @@ export function CatalogExplorer({ orgSlug, componentTypes, canAddInventory }: Ca
     Object.fromEntries(componentTypes.map((ct) => [ct.id, ct.inventoryLinkIssues])),
   );
   const [addedNames, setAddedNames] = useState<Record<string, Record<string, string>>>({});
-  const [pillClicks, setPillClicks] = useState(0);
+  // The last offender the pill opened, per type: the next click steps from it, a new type (or a changed offender set) starts at the first.
+  const [lastOffender, setLastOffender] = useState<Record<string, string>>({});
   const [activeTypeId, setActiveTypeId] = useState(componentTypes[0]?.id ?? "");
   const [searchQuery, setSearchQuery] = useState("");
   const [openAttr, setOpenAttr] = useState<{ typeId: string; fieldKey: string } | null>(null);
@@ -88,8 +89,9 @@ export function CatalogExplorer({ orgSlug, componentTypes, canAddInventory }: Ca
 
   function stepToOffender() {
     if (offenders.length === 0) return;
-    setOpenAttr({ typeId: active!.id, fieldKey: offenders[pillClicks % offenders.length] });
-    setPillClicks((n) => n + 1);
+    const next = offenders[(offenders.indexOf(lastOffender[active!.id]) + 1) % offenders.length];
+    setOpenAttr({ typeId: active!.id, fieldKey: next });
+    setLastOffender((prev) => ({ ...prev, [active!.id]: next }));
   }
 
   return (
