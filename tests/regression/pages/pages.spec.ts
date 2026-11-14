@@ -988,8 +988,11 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       await expect(locks).toHaveCount(0);
 
       // D-49: rail Width field rejects '-', '+', 'e', 'E' (fix-3 numeric guard).
-      // Select P1 alone so the rail Width field is shown for an unlocked panel.
-      await panels.nth(0).click();
+      // doEnterConfigureMode pre-selects P1; clicking the already-sole selection deselects it
+      // (design-page-stage34.html:2540 — alreadySoleSelection ? null : ...). Click P4 first to
+      // move selection away, then click P1 to become the sole selection → #rail-width-input renders.
+      await panels.nth(3).click(); // P4 — sole selection moves away from P1
+      await panels.nth(0).click(); // P1 — now sole selection → #rail-width-input renders
       const railWidthInput = o.page.locator("#rail-width-input");
       await railWidthInput.focus();
       await o.page.keyboard.type("-");
