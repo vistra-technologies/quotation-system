@@ -6,7 +6,7 @@ import { MAX_LINE_DESCRIPTION, type DiscountMode } from "@/lib/quick-estimate/es
 import { emptyDraft, hasDraftItems, newLine, type DraftLine, type EstimateDraft } from "@/lib/quick-estimate/lines";
 import type { EstimateOption, EstimateType } from "@/lib/quick-estimate/palette";
 import { draftStorageActive, parseStoredDraft, serializeDraft, storageKey } from "@/lib/quick-estimate/storage";
-import { applyChoice, relookupForCurrency, resetRate as resetLineRate, type PricingLookup } from "@/lib/quick-estimate/suggest";
+import { applyChoice, relookupForCurrency, resetRate as resetLineRate, restorePricing, snapshotPricing, type PricingLookup, type PricingSnapshot } from "@/lib/quick-estimate/suggest";
 
 /** Removes the saved draft; called on Log Out before the session ends (S33-8). Never throws. */
 export function clearStoredEstimate(orgSlug: string) {
@@ -41,7 +41,7 @@ export function useEstimateState(
   // The currency before the last change, for Undo on the currency-change banner. Not persisted.
   const [prevCurrency, setPrevCurrency] = useState<SupportedCurrency | null>(null);
   // Stage 36: the rate/suggestion of each line before a currency switch re-looked it up, so Undo restores them.
-  const prevPricing = useRef<Record<string, Pick<DraftLine, "rate" | "suggestedUnitPrice" | "suggestedUnit">> | null>(null);
+  const prevPricing = useRef<Record<string, PricingSnapshot> | null>(null);
 
   // Until the guard has really passed (see draftStorageActive) the stored draft is left untouched.
   const active = persist && draftStorageActive(enabled, types);
@@ -78,9 +78,7 @@ export function useEstimateState(
       // Rates are never converted (D-7: flag every line that has one so the user re-checks it). Stage 36 S36-11:
       // a line with a combination key is re-looked up in the new currency instead.
       setDraft((d) => {
-        prevPricing.current = Object.fromEntries(
-          d.lines.map((l) => [l.id, { rate: l.rate, suggestedUnitPrice: l.suggestedUnitPrice, suggestedUnit: l.suggestedUnit }]),
-        );
+        prevPricing.current = snapshotPricing(d.lines);
         return { ...d, currency: next, lines: d.lines.map((l) => relookupForCurrency(l, types, pricing, next)) };
       });
     },
@@ -93,7 +91,7 @@ export function useEstimateState(
       return {
         ...d,
         currency: prevCurrency ?? d.currency,
-        lines: d.lines.map((l) => ({ ...l, ...(saved?.[l.id] ?? {}), flag: false })),
+        lines: d.lines.map((l) => restorePricing(l, saved?.[l.id])),
       };
     });
     prevPricing.current = null;

@@ -11,6 +11,8 @@ import { buildCombinations, usableEstimateTypes, type ComponentTypeInput } from 
 import { parseStoredDraft, serializeDraft } from "../../lib/quick-estimate/storage";
 import {
   applyChoice,
+  restorePricing,
+  snapshotPricing,
   buildPricingLookup,
   relookupForCurrency,
   resetRate,
@@ -247,6 +249,28 @@ test("currency: a line with no key keeps D-7 (rate kept, flagged when it has one
   const r = relookupForCurrency(manual, [specType], LOOKUP, "USD");
   assert.equal(r.rate, "55");
   assert.equal(r.flag, true);
+});
+
+test("undo: the saved rate and suggestion come back onto the same item and variant", () => {
+  const picked = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR");
+  const snap = snapshotPricing([picked]);
+  const switched = relookupForCurrency(picked, [specType], LOOKUP, "AED");
+  assert.equal(switched.rate, "");
+  const back = restorePricing(switched, snap[picked.id]);
+  assert.equal(back.rate, "2800");
+  assert.equal(back.suggestedUnitPrice, 2800);
+  assert.equal(back.flag, false);
+});
+
+test("undo: a line re-picked to another variant while the banner was up keeps its new pricing", () => {
+  const picked = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR");
+  const snap = snapshotPricing([picked]);
+  const repicked = { ...applyChoice(relookupForCurrency(picked, [specType], LOOKUP, "USD"), specType, optionOf("Double · 12 mm"), LOOKUP, "USD"), rate: "77" };
+  const back = restorePricing(repicked, snap[picked.id]);
+  assert.equal(back.rate, "77");
+  assert.equal(back.combinationKey, combinationKey({ category: "Double", thickness: "12 mm" }));
+  // a line added after the snapshot has none to restore
+  assert.equal(restorePricing(repicked, undefined).rate, "77");
 });
 
 // ─── Line keys: validation, stamper, bridges, storage (AC4, F-4) ────────────

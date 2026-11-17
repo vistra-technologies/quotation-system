@@ -373,7 +373,7 @@
   transition: opacity 0.12s, background 0.12s, color 0.12s;
 }
 .qe-del svg { width: 16px; height: 16px; }
-.qe-line:hover .qe-del, .qe-line:focus-within .qe-del, .qe-del:focus-visible { opacity: 1; }
+.qe-lw:hover .qe-del, .qe-lw:focus-within .qe-del, .qe-del:focus-visible { opacity: 1; }
 .qe-del:hover { background: var(--color-status-failed-bg); color: var(--qe-danger); }
 @media (hover: none) { .qe-del { opacity: 1; } }
 

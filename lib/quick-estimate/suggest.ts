@@ -140,6 +140,30 @@ export function resetRate(line: DraftLine): DraftLine {
   return { ...line, rate: rateString(line.suggestedUnitPrice), flag: false };
 }
 
+/** What a currency switch may overwrite on a line, kept so Undo can put it back. */
+export interface PricingSnapshot {
+  rate: string;
+  suggestedUnitPrice: number | null;
+  suggestedUnit: SuggestedUnit | null;
+  /** The line's identity when saved: Undo restores only onto the same item and variant. */
+  combinationKey: string | null;
+  variantText: string;
+}
+
+export function snapshotPricing(lines: readonly DraftLine[]): Record<string, PricingSnapshot> {
+  return Object.fromEntries(
+    lines.map((l) => [l.id, { rate: l.rate, suggestedUnitPrice: l.suggestedUnitPrice, suggestedUnit: l.suggestedUnit, combinationKey: l.combinationKey, variantText: l.variantText }]),
+  );
+}
+
+/** Undo: restore the saved rate and suggestion only if the line still holds the same combination and variant. */
+export function restorePricing(line: DraftLine, saved: PricingSnapshot | undefined): DraftLine {
+  if (!saved || saved.combinationKey !== line.combinationKey || saved.variantText !== line.variantText) {
+    return { ...line, flag: false };
+  }
+  return { ...line, rate: saved.rate, suggestedUnitPrice: saved.suggestedUnitPrice, suggestedUnit: saved.suggestedUnit, flag: false };
+}
+
 /**
  * S36-11 currency switch for one line. A line with a `combinationKey` re-looks up in the new currency: found, the
  * new rate and suggestion (even over an override); not found, the rate is cleared and the suggestion dropped, and
