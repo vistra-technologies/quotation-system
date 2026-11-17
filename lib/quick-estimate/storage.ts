@@ -1,5 +1,6 @@
 import { isSupportedCurrency, type SupportedCurrency } from "@/lib/currency";
-import { validateValueLine, parseQty, parseUnitPrice, MAX_LINE_DESCRIPTION, SUGGESTED_UNITS, type SuggestedUnit } from "./estimate";
+import { isAreaUnit } from "./area-units";
+import { validateValueLine, parseQty, parseUnitPrice, MAX_LINE_DESCRIPTION, SUGGESTED_UNITS, UNIT_AREA, UNIT_SQFT, type EstimateUnit, type SuggestedUnit } from "./estimate";
 import type { EstimateType } from "./palette";
 import { emptyDraft, type DraftLine, type EstimateDraft } from "./lines";
 
@@ -35,6 +36,8 @@ interface StoredLine {
 
 interface StoredDraft {
   currency: string;
+  /** Stage 36 S36-13: absent in a draft saved before Batch 5, which loads as m². */
+  areaUnit?: string;
   discountMode: string;
   discountValue: string;
   taxPct: string;
@@ -61,6 +64,7 @@ export function serializeDraft(d: EstimateDraft): string {
   }
   const stored: StoredDraft = {
     currency: d.currency,
+    areaUnit: d.areaUnit,
     discountMode: d.discountMode,
     discountValue: d.discountValue,
     taxPct: d.taxPct,
@@ -89,6 +93,7 @@ export function parseStoredDraft(
   const s = o as Record<string, unknown>;
 
   const lines: DraftLine[] = [];
+  const areaUnit = s.areaUnit === UNIT_SQFT ? UNIT_SQFT : UNIT_AREA;
   if (Array.isArray(s.lines)) {
     for (const item of s.lines) {
       if (typeof item !== "object" || item === null) continue;
@@ -97,11 +102,13 @@ export function parseStoredDraft(
       if (!type) continue;
       const qty = str(l.qty);
       const rate = str(l.rate);
+      // An area type's line always shows the draft's area unit (the stored qty is in that unit).
+      const unit: EstimateUnit = isAreaUnit(type.unit) ? areaUnit : type.unit;
       const check = validateValueLine({
         itemName: l.itemName,
         variantText: l.variantText,
-        unit: type.unit,
-        qty: parseQty(qty, type.unit),
+        unit,
+        qty: parseQty(qty, unit),
         unitPrice: parseUnitPrice(rate),
       });
       if (!check.ok) continue;
@@ -115,7 +122,7 @@ export function parseStoredDraft(
         typeCode: type.code,
         itemName: check.line.itemName,
         variantText: check.line.variantText,
-        unit: type.unit,
+        unit,
         qty,
         rate,
         flag: false,
@@ -131,6 +138,7 @@ export function parseStoredDraft(
 
   return {
     currency: isSupportedCurrency(s.currency) ? s.currency : defaultCurrency,
+    areaUnit,
     discountMode: s.discountMode === "amount" ? "amount" : "pct",
     discountValue: str(s.discountValue),
     taxPct: str(s.taxPct),

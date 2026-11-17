@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SupportedCurrency } from "@/lib/currency";
+import type { AreaUnit } from "@/lib/quick-estimate/area-units";
 import { MAX_LINE_DESCRIPTION, type DiscountMode } from "@/lib/quick-estimate/estimate";
 import { emptyDraft, hasDraftItems, newLine, type DraftLine, type EstimateDraft } from "@/lib/quick-estimate/lines";
 import type { EstimateOption, EstimateType } from "@/lib/quick-estimate/palette";
 import { draftStorageActive, parseStoredDraft, serializeDraft, storageKey } from "@/lib/quick-estimate/storage";
-import { applyChoice, relookupForCurrency, resetRate as resetLineRate, restorePricing, snapshotPricing, type PricingLookup, type PricingSnapshot } from "@/lib/quick-estimate/suggest";
+import { applyChoice, relookupForCurrency, resetRate as resetLineRate, restorePricing, snapshotPricing, switchAreaUnit, type PricingLookup, type PricingSnapshot } from "@/lib/quick-estimate/suggest";
 
 /** Removes the saved draft; called on Log Out before the session ends (S33-8). Never throws. */
 export function clearStoredEstimate(orgSlug: string) {
@@ -98,6 +99,22 @@ export function useEstimateState(
     setPrevCurrency(null);
   }, [prevCurrency]);
 
+  const currentAreaUnit = draft.areaUnit;
+  // S36-13 / S36-18: qty converts, every area line's rate resets to the exact product price or empty. Returns whether
+  // a typed or overridden rate was replaced, so the caller can show the one "Price reset to default" toast.
+  // Undo of a currency switch is dropped: its saved rates belong to the other unit.
+  const setAreaUnit = useCallback(
+    (next: AreaUnit): boolean => {
+      if (next === currentAreaUnit) return false;
+      const result = switchAreaUnit(draft, next, types, pricing);
+      setDraft(result.draft);
+      prevPricing.current = null;
+      setPrevCurrency(null);
+      return result.replaced;
+    },
+    [currentAreaUnit, draft, types, pricing],
+  );
+
   const acceptRates = useCallback(() => {
     setDraft((d) => ({ ...d, lines: d.lines.map((l) => ({ ...l, flag: false })) }));
     prevPricing.current = null;
@@ -126,7 +143,7 @@ export function useEstimateState(
     (id: string, type: EstimateType, option: EstimateOption) => {
       setDraft((d) => ({
         ...d,
-        lines: d.lines.map((l) => (l.id !== id ? l : applyChoice(l, type, option, pricing, d.currency))),
+        lines: d.lines.map((l) => (l.id !== id ? l : applyChoice(l, type, option, pricing, d.currency, d.areaUnit))),
       }));
     },
     [pricing],
@@ -184,6 +201,7 @@ export function useEstimateState(
     reset,
     prevCurrency,
     setCurrency,
+    setAreaUnit,
     undoCurrency,
     acceptRates,
     setDiscountMode,

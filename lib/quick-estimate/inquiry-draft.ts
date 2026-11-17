@@ -1,5 +1,6 @@
 import type { SupportedCurrency } from "@/lib/currency";
-import { clampPct, parseQty, parseUnitPrice, pricingKeysOf, round2, type DiscountMode, type ValueLine } from "./estimate";
+import { isAreaUnit, type AreaUnit } from "./area-units";
+import { UNIT_AREA, clampPct, parseQty, parseUnitPrice, pricingKeysOf, round2, type DiscountMode, type ValueLine } from "./estimate";
 import type { ParsedQuickEstimate } from "./inquiry-estimate";
 import { NO_PRICING, pricingKeysOfDraft, type DraftLine, type EstimateDraft } from "./lines";
 import type { EstimateType } from "./palette";
@@ -77,6 +78,15 @@ export function storedToInput(stored: StoredEstimate): EstimateInput {
   };
 }
 
+/**
+ * Plan F-5: the stored estimate has no unit key of its own, so the draft's area unit is the first area line's unit
+ * (m² when there is none). A mixed estimate (API-made) converts nothing until the user switches.
+ */
+export function areaUnitOf(lines: readonly Pick<ValueLine, "unit">[]): AreaUnit {
+  const first = lines.find((l) => isAreaUnit(l.unit));
+  return first && isAreaUnit(first.unit) ? first.unit : UNIT_AREA;
+}
+
 const numStr = (n: number) => (n === 0 ? "" : String(n));
 
 /**
@@ -94,12 +104,14 @@ export function storedToDraft(
   const drifted = stored.currency !== lockCurrency;
   return {
     currency: lockCurrency,
+    areaUnit: areaUnitOf(stored.lines),
     discountMode: stored.discountMode,
     discountValue: numStr(stored.discountValue),
     taxPct: numStr(stored.taxPct),
     lines: stored.lines.map((l) => ({
       id: nextId(),
-      typeCode: types.find((t) => t.name === l.itemName && t.unit === l.unit)?.code ?? "",
+      // Display match only: an area line matches an area type whichever area unit it was stored in.
+      typeCode: types.find((t) => t.name === l.itemName && isAreaUnit(t.unit) === isAreaUnit(l.unit) && (isAreaUnit(l.unit) || t.unit === l.unit))?.code ?? "",
       itemName: l.itemName,
       variantText: l.variantText,
       unit: l.unit,

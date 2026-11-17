@@ -1,5 +1,6 @@
 import type { SupportedCurrency } from "@/lib/currency";
-import { parseQty, parseUnitPrice, type DiscountMode, type EstimateUnit, type SuggestedUnit, type ValueLine } from "./estimate";
+import type { AreaUnit } from "./area-units";
+import { UNIT_AREA, parseQty, parseUnitPrice, type DiscountMode, type EstimateUnit, type SuggestedUnit, type ValueLine } from "./estimate";
 
 /**
  * The client-side draft (Stage 33): what the popup edits. Inputs are strings (blank means 0). A line that
@@ -29,6 +30,12 @@ export interface DraftLine {
 
 export interface EstimateDraft {
   currency: SupportedCurrency;
+  /**
+   * Stage 36 S36-13 (plan F-5): the one area unit of the estimate (the header toggle). A draft-only field: the stored
+   * estimate has no such key, each stored line carries its own `unit`, and it is derived again when an inquiry is
+   * opened (`storedToDraft`). Every line with an area unit shows this unit.
+   */
+  areaUnit: AreaUnit;
   discountMode: DiscountMode;
   /** String input; blank means 0. */
   discountValue: string;
@@ -51,7 +58,7 @@ export function newLine(id: string): DraftLine {
 }
 
 export function emptyDraft(currency: SupportedCurrency): EstimateDraft {
-  return { currency, discountMode: "pct", discountValue: "", taxPct: "", lines: [] };
+  return { currency, areaUnit: UNIT_AREA, discountMode: "pct", discountValue: "", taxPct: "", lines: [] };
 }
 
 /** S33-6: a line counts only once its component is chosen. Lines with no item are dropped. */

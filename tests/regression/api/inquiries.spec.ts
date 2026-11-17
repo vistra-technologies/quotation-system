@@ -463,6 +463,8 @@ test.describe("inquiries: quickEstimate", () => {
       ["empty lines", est({ lines: [] })],
       ["unit kg", est({ lines: [estLine({ unit: "kg" })] })],
       ["pcs qty 1.5", est({ lines: [estLine({ unit: "pcs", qty: 1.5 })] })],
+      ["sq ft qty 3 decimals", est({ lines: [estLine({ unit: "sq ft", qty: 452.083 })] })],
+      ["unit sqft (the price-entry spelling is not a line unit)", est({ lines: [estLine({ unit: "sqft" })] })],
       ["pct discount 101", est({ discountMode: "pct", discountValue: 101 })],
       ["discountMode fixed", est({ discountMode: "fixed" })],
       ["not an object", "x"],
@@ -552,6 +554,24 @@ test.describe("inquiries: quickEstimate", () => {
       expect(await q.json(), `PATCH ${name}`).toMatchObject({ code: "INVALID_QUICK_ESTIMATE" });
     }
     expect((await getEstimate(as.admin, url(`/inquiries/${id}`))).quickEstimate).toEqual(before);
+  });
+
+  // Stage 36 Batch 5 (S36-13, S36-14, API AC3): "sq ft" is a third line unit. qty keeps 2 decimals like m2; the
+  // sq ft price unit is stored as `suggestedUnit: "sqft"`; there is still no top-level unit key; a mixed estimate is valid.
+  test("Stage 36 B5 sq ft: unit \"sq ft\" lines are stored with their suggestedUnit, qty up to 2 dp, mixed units allowed", async ({ as, run, ledger, url }) => {
+    const sq = estLine({ unit: "sq ft", qty: 452.08, unitPrice: 260, suggestedUnitPrice: 260, suggestedUnit: "sqft", combinationKey: JSON.stringify({ category: "Single" }) });
+    const created = await createLedgered(as.admin, { run, ledger }, "inquiry", {
+      name: nm({ run }, "inq-qe-sqft"), currency: "AED", quickEstimate: est({ lines: [sq, estLine({ unit: "m²", qty: 2 }), estLine({ itemName: "Door", unit: "pcs", qty: 1 })] }),
+    });
+    expect(created.res.status(), JSON.stringify(created.body)).toBe(201);
+    const got = (await getEstimate(as.admin, url(`/inquiries/${created.id}`))).quickEstimate!;
+    expect(got.lines[0]).toMatchObject({ unit: "sq ft", qty: 452.08, unitPrice: 260, suggestedUnit: "sqft", suggestedUnitPrice: 260 });
+    expect(got.lines.map((l) => l.unit)).toEqual(["sq ft", "m²", "pcs"]);
+    expect(Object.keys(got).sort()).not.toContain("areaUnit");
+    // PATCH back to m2 replaces the lines
+    const r = await as.admin.patch(url(`/inquiries/${created.id}`), { data: { quickEstimate: est({ lines: [estLine({ qty: 42, unit: "m²" })] }) } });
+    expect(r.status(), await r.text()).toBe(200);
+    expect((await getEstimate(as.admin, url(`/inquiries/${created.id}`))).quickEstimate!.lines.map((l) => l.unit)).toEqual(["m²"]);
   });
 
   test("currency: PATCH currency + estimate in the new currency is 200; PATCH currency alone leaves the estimate's old currency", async ({ as, run, ledger, url }) => {

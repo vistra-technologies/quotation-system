@@ -5,7 +5,8 @@ import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 import { SelectField } from "@/components/select-field";
 import { SUPPORTED_CURRENCIES, type SupportedCurrency } from "@/lib/currency";
-import { computeEstimate, isInvalidQty, MAX_LINE_DESCRIPTION, type EstimateLineResult } from "@/lib/quick-estimate/estimate";
+import { isAreaUnit, type AreaUnit } from "@/lib/quick-estimate/area-units";
+import { computeEstimate, isInvalidQty, MAX_LINE_DESCRIPTION, UNIT_AREA, UNIT_SQFT, type EstimateLineResult } from "@/lib/quick-estimate/estimate";
 import { formatAmount, formatMoney } from "@/lib/quick-estimate/format";
 import { sameDraft } from "@/lib/quick-estimate/inquiry-draft";
 import { toValueLines, type DraftLine } from "@/lib/quick-estimate/lines";
@@ -16,6 +17,7 @@ import type { InquiryMode } from "./estimate-provider";
 import { ExportPreview } from "./export-preview";
 import { ItemPicker } from "./item-picker";
 import { numericInputGuards } from "./numeric-input";
+import { UndoToast, useUndoToast } from "./undo-toast";
 import type { EstimateState } from "./use-estimate-state";
 import { useFocusTrap } from "./use-focus-trap";
 import "./quick-estimate.css";
@@ -36,6 +38,7 @@ interface QuickEstimatePopupProps {
 
 interface LineRowProps {
   line: DraftLine;
+  areaUnit: AreaUnit;
   result: EstimateLineResult | null;
   currency: SupportedCurrency;
   types: EstimateType[];
@@ -46,7 +49,7 @@ interface LineRowProps {
   onChosen: (id: string) => void;
 }
 
-function LineRow({ line, result, currency, types, pickerOpen, onTogglePicker, onClosePicker, state, onChosen }: LineRowProps) {
+function LineRow({ line, areaUnit, result, currency, types, pickerOpen, onTogglePicker, onClosePicker, state, onChosen }: LineRowProps) {
   const t = useTranslations("quickEstimate");
   const itemRef = useRef<HTMLButtonElement>(null);
   const hasItem = line.typeCode !== null && line.unit !== null;
@@ -156,6 +159,7 @@ function LineRow({ line, result, currency, types, pickerOpen, onTogglePicker, on
           types={types}
           selectedCode={line.typeCode}
           selectedText={line.variantText}
+          areaUnit={areaUnit}
           onChoose={(ty, option) => {
             state.chooseItem(line.id, ty, option);
             onChosen(line.id);
@@ -215,6 +219,8 @@ export function QuickEstimatePopup({ orgName, types, state, onClose, inquiryMode
   const exportBtnRef = useRef<HTMLButtonElement>(null);
   const attachBtnRef = useRef<HTMLButtonElement>(null);
   const [step, setStep] = useState<"edit" | "export">("edit");
+  // S36-18: the one transient "Price reset to default" notice, shown once per area-unit switch.
+  const { toast, show: showToast, hide: hideToast } = useUndoToast();
   const [pickerLine, setPickerLine] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<"clear" | "discard" | null>(null);
   // What the popup was opened with: the discard confirm compares against it (S33-23).
@@ -371,6 +377,22 @@ export function QuickEstimatePopup({ orgName, types, state, onClose, inquiryMode
                   </SelectField>
                 </div>
               )}
+              <div className="qe-areaunit" role="group" aria-label={t("areaUnit")}>
+                {([UNIT_AREA, UNIT_SQFT] as const).map((u) => (
+                  <button
+                    key={u}
+                    type="button"
+                    className={draft.areaUnit === u ? "qe-on" : undefined}
+                    aria-pressed={draft.areaUnit === u}
+                    data-area-unit={u}
+                    onClick={() => {
+                      if (state.setAreaUnit(u)) showToast(t("areaUnitReset"));
+                    }}
+                  >
+                    {u}
+                  </button>
+                ))}
+              </div>
               <button type="button" className="qe-x" onClick={requestClose} title={t("close")} aria-label={t("close")}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                   <path d="M6 6l12 12M18 6 6 18" />
@@ -408,6 +430,7 @@ export function QuickEstimatePopup({ orgName, types, state, onClose, inquiryMode
                       <LineRow
                         key={line.id}
                         line={line}
+                        areaUnit={draft.areaUnit}
                         result={lineResults[i]}
                         currency={currency}
                         types={types}
@@ -609,6 +632,7 @@ export function QuickEstimatePopup({ orgName, types, state, onClose, inquiryMode
           </div>
         </div>
       )}
+      <UndoToast toast={toast} onDone={hideToast} />
     </div>,
     document.body,
   );

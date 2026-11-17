@@ -174,6 +174,86 @@ test("J12: Quick Estimate product pricing: auto-populate, Reset, description, cu
       await expect(attach(0)).toBeChecked();
       await expect(desc(0)).toHaveValue(`${DESC} Rev B.`);
     });
+
+    // ── Batch 5: the m² / sq ft toggle (S36-13, S36-18, UI AC2, AC2b, UI AC4) ──
+    const qty = (i: number) => lines.nth(i).locator("[data-qty]");
+    const unitSuffix = (i: number) => lines.nth(i).locator(".qe-unit");
+    const toggle = (u: "m²" | "sq ft") => dialog.locator(`[data-area-unit="${u}"]`);
+    const toast = page.getByTestId("qe-toast");
+
+    await test.step("setup: a DOOR line (pcs), quantities, and a typed rate on the unpriced m2 variant", async () => {
+      await dialog.getByRole("button", { name: "Add item" }).click();
+      const picker = page.getByRole("dialog", { name: "Choose an item" });
+      await picker.locator('.qe-pk-gh:has(.qe-pk-gh-u:text-is("pcs")) + .qe-pk-opt').first().click();
+      await expect(picker).toHaveCount(0);
+      await qty(3).fill("3");
+      await rate(3).fill("1500");
+      await qty(1).fill("10");
+      await rate(1).fill("99"); // c1 has no INR/m2 price: a typed rate with no suggestion
+      await expect(qty(0)).toHaveValue("2");
+      await expect(toggle("m²")).toHaveAttribute("aria-pressed", "true");
+      await expect(toggle("sq ft")).toHaveAttribute("aria-pressed", "false");
+    });
+
+    await test.step("UI AC2 + AC2b: sq ft converts qty, resets rates (no conversion), pcs untouched, one toast, no note", async () => {
+      await toggle("sq ft").click();
+      await expect(toggle("sq ft")).toHaveAttribute("aria-pressed", "true");
+      await expect(qty(0)).toHaveValue("21.53"); // 2 x 10.7639
+      await expect(qty(1)).toHaveValue("107.64"); // 10 x 10.7639
+      await expect(unitSuffix(0).last()).toHaveText("/sq ft");
+      await expect(rate(0)).toHaveValue(""); // c0 has INR/m2 only: empty, never 2800 / 10.7639
+      await expect(rate(1)).toHaveValue("260"); // c1 has an exact INR/sq ft price; the typed 99 was replaced
+      await expect(rate(2)).toHaveValue("");
+      await expect(dialog.locator("[data-reset]")).toHaveCount(0);
+      // DOOR line: still pcs, quantity and rate untouched
+      await expect(qty(3)).toHaveValue("3");
+      await expect(rate(3)).toHaveValue("1500");
+      await expect(unitSuffix(3).last()).toHaveText("/pcs");
+      // the typed 99 was replaced, so the toast shows once; it is transient and no permanent note remains
+      await expect(toast).toHaveText("Price reset to default");
+      await expect(toast).toHaveCount(0, { timeout: 8_000 });
+      await expect(dialog).not.toContainText(/converted|price reset/i);
+      const stored = JSON.parse((await page.evaluate((k) => sessionStorage.getItem(k), draftKey))!) as { areaUnit: string; lines: Array<Record<string, unknown>> };
+      expect(stored.areaUnit).toBe("sq ft");
+      expect(stored.lines[1]).toMatchObject({ suggestedUnitPrice: 260, suggestedUnit: "sqft" });
+      expect(stored.lines[0]).toMatchObject({ suggestedUnitPrice: null, suggestedUnit: null });
+    });
+
+    await test.step("UI AC4: the PDF preview prints sq ft for the sq ft lines", async () => {
+      await dialog.getByRole("button", { name: "Export PDF" }).click();
+      const sheet = page.getByRole("dialog", { name: "Export PDF" }).locator(".qe-sheet");
+      await expect(sheet).toContainText("sq ft");
+      await expect(sheet).toContainText("107.64");
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("dialog", { name: "Export PDF" })).toHaveCount(0);
+    });
+
+    await test.step("switching back: m2 price returns for the priced variant, qty returns within rounding, no toast when nothing was typed", async () => {
+      await toggle("m²").click();
+      await expect(qty(0)).toHaveValue("2");
+      await expect(qty(1)).toHaveValue("10");
+      await expect(rate(0)).toHaveValue("2800");
+      await expect(rate(1)).toHaveValue(""); // c1 has no INR/m2 entry
+      await expect(unitSuffix(0).last()).toHaveText("/m²");
+      await expect(dialog.locator("[data-reset]")).toHaveCount(0);
+      // line 1 sat at its sq ft default and line 0 was empty: nothing typed was replaced
+      await expect(toast).toHaveCount(0);
+    });
+
+    await test.step("an overridden rate triggers the toast again; five toggles do not drift the quantity", async () => {
+      await rate(0).fill("3100");
+      await expect(reset(0)).toBeVisible();
+      await toggle("sq ft").click();
+      await expect(toast).toHaveText("Price reset to default");
+      await expect(rate(0)).toHaveValue("");
+      await expect(toast).toHaveCount(0, { timeout: 8_000 });
+      for (const u of ["m²", "sq ft", "m²", "sq ft"] as const) await toggle(u).click();
+      await expect(toast).toHaveCount(0); // every rate was at its default or empty on those switches
+      await expect(qty(0)).toHaveValue("21.53");
+      await toggle("m²").click();
+      await expect(qty(0)).toHaveValue("2");
+      await expect(qty(1)).toHaveValue("10");
+    });
   });
 
   // ── The inquiry estimate card, old and new lines (UI AC5) ──

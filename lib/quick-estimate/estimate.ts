@@ -7,8 +7,9 @@
  */
 
 export const UNIT_AREA = "m²" as const;
+export const UNIT_SQFT = "sq ft" as const;
 export const UNIT_PIECE = "pcs" as const;
-export const ESTIMATE_UNITS = [UNIT_AREA, UNIT_PIECE] as const;
+export const ESTIMATE_UNITS = [UNIT_AREA, UNIT_SQFT, UNIT_PIECE] as const;
 export type EstimateUnit = (typeof ESTIMATE_UNITS)[number];
 
 export type DiscountMode = "pct" | "amount";
@@ -166,13 +167,13 @@ export function validateValueLine(raw: unknown): ValueLineCheck {
     if (variantText.length > MAX_VARIANT_TEXT) return { ok: false, error: `variantText must be at most ${MAX_VARIANT_TEXT} characters` };
   }
 
-  if (o.unit !== UNIT_AREA && o.unit !== UNIT_PIECE) return { ok: false, error: `unit must be "${UNIT_AREA}" or "${UNIT_PIECE}"` };
-  const unit: EstimateUnit = o.unit;
+  if (!(ESTIMATE_UNITS as readonly unknown[]).includes(o.unit)) return { ok: false, error: `unit must be "${UNIT_AREA}", "${UNIT_SQFT}" or "${UNIT_PIECE}"` };
+  const unit = o.unit as EstimateUnit;
 
   const qty = o.qty;
   if (typeof qty !== "number" || !Number.isFinite(qty) || qty < 0) return { ok: false, error: "qty must be a finite number >= 0" };
   if (unit === UNIT_PIECE && !Number.isInteger(qty)) return { ok: false, error: "qty must be a whole number for pcs" };
-  if (unit === UNIT_AREA && round2(qty) !== qty) return { ok: false, error: "qty must have at most 2 decimals for m²" };
+  if (unit !== UNIT_PIECE && round2(qty) !== qty) return { ok: false, error: `qty must have at most 2 decimals for ${unit}` };
 
   const unitPrice = o.unitPrice;
   if (typeof unitPrice !== "number" || !Number.isFinite(unitPrice) || unitPrice < 0) {

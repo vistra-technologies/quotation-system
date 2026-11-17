@@ -338,6 +338,7 @@ test("storage: garbage, non-objects and missing data restore to an empty draft i
 test("storage: a round trip keeps currency, discount mode and value, tax and the lines", () => {
   const draft = {
     currency: "USD" as const,
+    areaUnit: "m²" as const,
     discountMode: "amount" as const,
     discountValue: "250",
     taxPct: "7.5",

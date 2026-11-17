@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { useTranslations } from "next-intl";
+import { isAreaUnit, type AreaUnit } from "@/lib/quick-estimate/area-units";
 import { buildCombinations, type EstimateOption, type EstimateType } from "@/lib/quick-estimate/palette";
 import { ComponentChip } from "./component-chip";
 
@@ -11,6 +12,8 @@ interface ItemPickerProps {
   types: EstimateType[];
   selectedCode: string | null;
   selectedText: string;
+  /** The estimate's current area unit: an area type's group header shows it (S36-13). */
+  areaUnit: AreaUnit;
   onChoose: (type: EstimateType, option: EstimateOption) => void;
   /** `refocus` returns focus to the trigger (Esc, the explicit close); a click outside does not. */
   onClose: (refocus: boolean) => void;
@@ -44,7 +47,7 @@ function Highlight({ text, tokens }: { text: string; tokens: string[] }) {
  * trigger's rectangle at z-200 (above the dialog), flipping above/below by free space. It renders INSIDE the
  * dialog DOM so the focus trap covers it. Keyboard: arrows, Enter, Esc, Tab (closes and returns to the trigger).
  */
-export function ItemPicker({ anchorRef, types, selectedCode, selectedText, onChoose, onClose }: ItemPickerProps) {
+export function ItemPicker({ anchorRef, types, selectedCode, selectedText, areaUnit, onChoose, onClose }: ItemPickerProps) {
   const t = useTranslations("quickEstimate");
   const uid = useId();
   const pickerRef = useRef<HTMLDivElement>(null);
@@ -196,7 +199,7 @@ export function ItemPicker({ anchorRef, types, selectedCode, selectedText, onCho
           <Fragment key={g.type.code}>
             <div className="qe-pk-gh">
               <ComponentChip code={g.type.code} name={g.type.name} />
-              <span className="qe-pk-gh-u">{g.type.unit}</span>
+              <span className="qe-pk-gh-u">{isAreaUnit(g.type.unit) ? areaUnit : g.type.unit}</span>
             </div>
             {g.options.map((option, n) => {
               const i = g.start + n;

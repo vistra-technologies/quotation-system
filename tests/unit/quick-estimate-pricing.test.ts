@@ -166,7 +166,7 @@ test("lookup: fallback-mode types never get a suggestion", () => {
 const fresh = (): DraftLine => newLine("l1");
 
 test("choose: a priced variant fills the rate, suggestion, key and a checked description", () => {
-  const l = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR");
+  const l = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR", "m²");
   assert.equal(l.rate, "2800");
   assert.equal(l.suggestedUnitPrice, 2800);
   assert.equal(l.combinationKey, KEY_S10);
@@ -177,7 +177,7 @@ test("choose: a priced variant fills the rate, suggestion, key and a checked des
 });
 
 test("choose: an unpriced variant leaves the rate empty, description unchecked and empty, no Reset", () => {
-  const l = applyChoice(fresh(), specType, optionOf("Double · 12 mm"), LOOKUP, "INR");
+  const l = applyChoice(fresh(), specType, optionOf("Double · 12 mm"), LOOKUP, "INR", "m²");
   assert.equal(l.rate, "");
   assert.equal(l.attachDescription, false);
   assert.equal(l.description, "");
@@ -185,7 +185,7 @@ test("choose: an unpriced variant leaves the rate empty, description unchecked a
 });
 
 test("reset: an edited rate shows Reset, Reset restores the suggestion and hides itself", () => {
-  const picked = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR");
+  const picked = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR", "m²");
   const edited = { ...picked, rate: "3100" };
   assert.equal(showReset(edited), true);
   const back = resetRate(edited);
@@ -196,29 +196,29 @@ test("reset: an edited rate shows Reset, Reset restores the suggestion and hides
 });
 
 test("reset: a manual rate (no suggestion) never shows Reset and Reset is a no-op", () => {
-  const manual = { ...applyChoice(fresh(), specType, optionOf("Double · 12 mm"), LOOKUP, "INR"), rate: "999" };
+  const manual = { ...applyChoice(fresh(), specType, optionOf("Double · 12 mm"), LOOKUP, "INR", "m²"), rate: "999" };
   assert.equal(showReset(manual), false);
   assert.equal(resetRate(manual), manual);
 });
 
 test("choose: re-picking the same item does not clobber an edited rate or description", () => {
-  const picked = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR");
+  const picked = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR", "m²");
   const edited = { ...picked, rate: "3100", description: "mine", descriptionEdited: true };
-  const again = applyChoice(edited, specType, optionOf("Single · 10 mm"), LOOKUP, "INR");
+  const again = applyChoice(edited, specType, optionOf("Single · 10 mm"), LOOKUP, "INR", "m²");
   assert.equal(again.rate, "3100");
   assert.equal(again.description, "mine");
 });
 
 test("choose: moving to another variant drops an untouched suggestion but keeps a typed rate", () => {
-  const priced = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR");
-  assert.equal(applyChoice(priced, specType, optionOf("Double · 12 mm"), LOOKUP, "INR").rate, "");
+  const priced = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR", "m²");
+  assert.equal(applyChoice(priced, specType, optionOf("Double · 12 mm"), LOOKUP, "INR", "m²").rate, "");
   const typed = { ...priced, rate: "3100" };
-  assert.equal(applyChoice(typed, specType, optionOf("Double · 12 mm"), LOOKUP, "INR").rate, "3100");
+  assert.equal(applyChoice(typed, specType, optionOf("Double · 12 mm"), LOOKUP, "INR", "m²").rate, "3100");
 });
 
 test("choose: fallback mode keeps Stage 33 behaviour (rate untouched, no key, no suggestion)", () => {
   const [fb] = usableEstimateTypes([plainGlass()]).types;
-  const l = applyChoice({ ...fresh(), rate: "55" }, fb, buildCombinations(fb)[0], LOOKUP, "INR");
+  const l = applyChoice({ ...fresh(), rate: "55" }, fb, buildCombinations(fb)[0], LOOKUP, "INR", "m²");
   assert.equal(l.rate, "55");
   assert.equal(l.combinationKey, null);
   assert.equal(l.suggestedUnitPrice, null);
@@ -228,7 +228,7 @@ test("choose: fallback mode keeps Stage 33 behaviour (rate untouched, no key, no
 // ─── Currency switch (S36-11) ───────────────────────────────────────────────
 
 test("currency: a keyed line re-looks up (even over an override); found -> new rate and suggestion", () => {
-  const picked = { ...applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR"), rate: "9999" };
+  const picked = { ...applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR", "m²"), rate: "9999" };
   const usd = relookupForCurrency(picked, [specType], LOOKUP, "USD");
   assert.equal(usd.rate, "40");
   assert.equal(usd.suggestedUnitPrice, 40);
@@ -236,7 +236,7 @@ test("currency: a keyed line re-looks up (even over an override); found -> new r
 });
 
 test("currency: not found -> rate cleared, suggestion null, flagged when it had a rate", () => {
-  const picked = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR");
+  const picked = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR", "m²");
   const aed = relookupForCurrency(picked, [specType], LOOKUP, "AED");
   assert.equal(aed.rate, "");
   assert.equal(aed.suggestedUnitPrice, null);
@@ -252,7 +252,7 @@ test("currency: a line with no key keeps D-7 (rate kept, flagged when it has one
 });
 
 test("undo: the saved rate and suggestion come back onto the same item and variant", () => {
-  const picked = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR");
+  const picked = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR", "m²");
   const snap = snapshotPricing([picked]);
   const switched = relookupForCurrency(picked, [specType], LOOKUP, "AED");
   assert.equal(switched.rate, "");
@@ -263,9 +263,9 @@ test("undo: the saved rate and suggestion come back onto the same item and varia
 });
 
 test("undo: a line re-picked to another variant while the banner was up keeps its new pricing", () => {
-  const picked = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR");
+  const picked = applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR", "m²");
   const snap = snapshotPricing([picked]);
-  const repicked = { ...applyChoice(relookupForCurrency(picked, [specType], LOOKUP, "USD"), specType, optionOf("Double · 12 mm"), LOOKUP, "USD"), rate: "77" };
+  const repicked = { ...applyChoice(relookupForCurrency(picked, [specType], LOOKUP, "USD"), specType, optionOf("Double · 12 mm"), LOOKUP, "USD", "m²"), rate: "77" };
   const back = restorePricing(repicked, snap[picked.id]);
   assert.equal(back.rate, "77");
   assert.equal(back.combinationKey, combinationKey({ category: "Double", thickness: "12 mm" }));
@@ -334,10 +334,10 @@ test("stamper: an invalid new key is rejected by the parser (400 path)", () => {
 });
 
 function draftWith(line: DraftLine): EstimateDraft {
-  return { currency: "INR", discountMode: "pct", discountValue: "", taxPct: "", lines: [line] };
+  return { currency: "INR", areaUnit: "m²", discountMode: "pct", discountValue: "", taxPct: "", lines: [line] };
 }
 const priced = (): DraftLine => ({
-  ...applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR"),
+  ...applyChoice(fresh(), specType, optionOf("Single · 10 mm"), LOOKUP, "INR", "m²"),
   qty: "10",
   description: "edited text",
   descriptionEdited: true,

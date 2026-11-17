@@ -572,6 +572,8 @@
     "infoTip": "Rough total before any design. Not saved.",
     "close": "Close",
     "currency": "Currency",
+    "areaUnit": "Area unit",
+    "areaUnitReset": "Price reset to default",
     "currencyChanged": "Currency changed to {currency}. Rates are not converted. Check the highlighted rates.",
     "undo": "Undo",
     "ratesCorrect": "Rates are correct",
