@@ -1880,7 +1880,7 @@ test.describe.serial("Stage 36 B3: Product Pricing admin page, throwaway org B",
       await rows.filter({ hasText: "Double" }).first().click();
       await dlg.getByRole("button", { name: "Add price" }).click();
       // Escape closes the open Currency list only
-      await dlg.getByRole("combobox", { name: "Currency" }).click();
+      await dlg.locator('button[role="combobox"]').first().click(); // the Currency trigger (first in the form)
       await expect(page.getByRole("listbox")).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(page.getByRole("listbox")).toHaveCount(0);
