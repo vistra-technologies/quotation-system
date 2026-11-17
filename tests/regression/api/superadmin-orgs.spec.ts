@@ -106,6 +106,7 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
 
   let orgC: { id: string; slug: string; name: string };
   let projectId = "";
+  let priceRowId = "";
   // The org admin's session, signed in BEFORE the suspension and held across it (S29-9: an existing session
   // is refused on its next API call, and works again after reactivation). Only ever used against org C.
   let heldCtx: APIRequestContext | undefined;
@@ -192,6 +193,14 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     projectId = (await json<{ project: { id: string } }>(p, 201)).project.id; // cascades with org C (not ledgered on its own)
     await rgrInsertCalculation(projectId);
     expect(await countProjectCalculations(orgC.id)).toBe(1);
+    // Stage 36: a product price row, so the suspended-org and hard-delete steps below cover ProductPricing.
+    const t = await admin.get(orgApi(orgC.slug, "/component-types"));
+    const glassId = (await json<{ componentTypes: { id: string; code: string }[] }>(t)).componentTypes.find((x) => x.code === "GLASS")?.id;
+    expect(glassId, "org C has a GLASS type").toBeTruthy();
+    const put = await admin.put(orgApi(orgC.slug, "/product-pricing"), {
+      data: { componentTypeId: glassId, combinationKey: JSON.stringify({ rgr: "c" }), combinationLabel: "rgr c", prices: [{ currency: "INR", unit: "m2", amount: 1 }] },
+    });
+    priceRowId = (await json<{ row: { id: string } }>(put)).row.id; // cascades with org C (not ledgered on its own)
   });
 
   test("suspend → 200; listed suspended; its pages answer 403; audit org.suspend", async ({ sa, playwright, baseURL }) => {
@@ -236,6 +245,17 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
       expect(r.status(), path).toBe(403);
       expect(await r.json(), path).toEqual(body);
     }
+    // Stage 36 (API AC4): the product-pricing routes refuse a suspended org too, and the row is untouched.
+    const pp = orgApi(orgC.slug, "/product-pricing");
+    const putBody = { componentTypeId: GHOST, combinationKey: JSON.stringify({ rgr: "c" }), combinationLabel: "rgr c", prices: [] };
+    for (const [verb, r] of [
+      ["GET", await admin.get(pp)],
+      ["PUT", await admin.put(pp, { data: putBody })],
+      ["DELETE", await admin.delete(`${pp}/${priceRowId}`)],
+    ] as const) {
+      expect(r.status(), `${verb} product-pricing`).toBe(403);
+      expect(await r.json(), `${verb} product-pricing`).toEqual(body);
+    }
     // The global permission catalog route has no orgSlug, so it checks suspension itself (Stage 29 fix round 1, was review-5 M-1; POST shares the helper, but the guard forbids global writes in tests).
     const perms = await admin.get(apiUrl(orgC.slug, "/api/v1/permissions"));
     expect(perms.status(), "GET /api/v1/permissions").toBe(403);
@@ -278,7 +298,7 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     test.setTimeout(180_000);
     const before = (await regressionSnapshot()).orgs[orgC.slug] as { counts: Record<string, number> } | undefined;
     expect(before, "org C in the snapshot before the delete").toBeTruthy();
-    expect(before!.counts).toMatchObject({ user: 1, role: 4, project: 1, projectCalculation: 1 });
+    expect(before!.counts).toMatchObject({ user: 1, role: 4, project: 1, projectCalculation: 1, productPricing: 1 });
     expect(before!.counts.componentType ?? 0).toBeGreaterThan(0);
 
     expect(await json(await sa.delete(`${SA}/orgs/${orgC.id}`))).toEqual({ ok: true });
@@ -295,6 +315,7 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     // cascade proof: the org — and with it every org-scoped table's rows — is absent from the snapshot
     expect((await regressionSnapshot()).orgs[orgC.slug]).toBeUndefined();
     expect(await countProjectCalculations(orgC.id)).toBe(0);
+    // Stage 36 (API AC5): the org's product price row went with it (the snapshot counted it above).
 
     // the audit trail survives the org (org id + slug snapshot), one row per step
     const log = await auditLog(sa, { scope: "org", orgId: orgC.id, pageSize: 100 });

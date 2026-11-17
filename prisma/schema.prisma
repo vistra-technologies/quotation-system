@@ -53,6 +53,8 @@ model Organization {
   rooms             Room[]
   // Stage 20 relations
   componentTypeOrgConfigs ComponentTypeOrgConfig[]
+  // Stage 36
+  productPricings   ProductPricing[]
   // Stage 23: the org-wide default FormulaSet new projects pin to at creation time.
   // Restrict — a FormulaSet can't be deleted while any org still points at it.
   activeFormulaSetId      String?
@@ -333,6 +335,8 @@ model ComponentType {
   orgConfig      ComponentTypeOrgConfig?
   // Hotfix 2026-09-27 H-17 relation
   inventoryItems InventoryItem[]
+  // Stage 36: price rows go with their type (onDelete: Cascade on ProductPricing.componentType)
+  productPricings ProductPricing[]
 
   @@unique([organizationId, code])
 }
@@ -357,6 +361,26 @@ model ComponentTypeOrgConfig {
   updatedAt          DateTime      @updatedAt
 
   @@unique([organizationId, componentTypeId])
+}
+
+// Stage 36 (S36-5): org-admin rate card for Quick Estimate. One row per priced product combination
+// (the visible product-spec values of a ComponentType). Only rows with at least one price or a
+// non-blank description exist. combinationKey = JSON of the visible spec values, keys sorted
+// (lib/product-pricing/combination.ts). prices JSONB: [{ currency, unit, amount }].
+model ProductPricing {
+  id               String        @id @default(uuid())
+  organizationId   String
+  organization     Organization  @relation(fields: [organizationId], references: [id])
+  componentTypeId  String
+  componentType    ComponentType @relation(fields: [componentTypeId], references: [id], onDelete: Cascade)
+  combinationKey   String
+  combinationLabel String
+  prices           Json          @default("[]")
+  description      String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@unique([organizationId, componentTypeId, combinationKey])
 }
 
 // Org-scoped project created by a user, optionally linked to an external company.

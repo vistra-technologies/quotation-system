@@ -288,7 +288,7 @@ async function main() {
           { t: "selection", hasUpdatedAt: true }, { t: "floor", hasUpdatedAt: true }, { t: "room", hasUpdatedAt: true },
           { t: "partition", hasUpdatedAt: true }, { t: "projectCalculation", hasUpdatedAt: true }, { t: "componentType", hasUpdatedAt: true },
           { t: "componentTypeOrgConfig", hasUpdatedAt: true }, { t: "itemPrice", hasUpdatedAt: true },
-          { t: "componentCategory", hasUpdatedAt: true },
+          { t: "componentCategory", hasUpdatedAt: true }, { t: "productPricing", hasUpdatedAt: true },
         ] as const;
         const counts: Record<string, Record<string, number>> = {};
         const rowsByOrg: Record<string, Record<string, Array<{ id: string; updatedAt: Date }>>> = {};

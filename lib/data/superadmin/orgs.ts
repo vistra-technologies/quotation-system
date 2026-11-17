@@ -708,6 +708,10 @@ export async function deleteOrganization(
       // 8. InventoryItem
       await tx.inventoryItem.deleteMany({ where: { organizationId: orgId } });
 
+      // 9-pre. ProductPricing — references ComponentType (Cascade) + Organization (Stage 36 S36-5);
+      //        explicit so the delete order never depends on the DB cascade and step 15 cannot hit the org FK.
+      await tx.productPricing.deleteMany({ where: { organizationId: orgId } });
+
       // 9a. ComponentTypeOrgConfig — references ComponentType (FK RESTRICT); must precede it.
       //     Stage 20 Batch 1: new table — easy to forget in cascade deletes, so called out
       //     explicitly here. See design-docs/04-data-model.md — ComponentTypeOrgConfig.
