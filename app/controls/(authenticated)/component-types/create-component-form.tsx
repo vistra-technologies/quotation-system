@@ -144,7 +144,10 @@ function FieldRow({
 
   const isChoiceType = entry.type === "radio" || entry.type === "dropdown";
   // Stage 36 S36-3: a retype that would clear an active Product spec flag waits for confirmation.
-  const [pendingType, setPendingType] = useState<FieldEntry["type"] | null>(null);
+  // The confirm is bound to the field it was opened for (by key), and is dropped on move/remove, so a row that
+  // changes identity under it can never be retyped by a stale confirm.
+  const [pending, setPending] = useState<{ type: FieldEntry["type"]; key: string } | null>(null);
+  const pendingType = pending && pending.key === entry.key ? pending.type : null;
 
   return (
     <div
@@ -188,7 +191,7 @@ function FieldRow({
               // dropped when switching to a type that has none (Stage 35 review-b2-1 MINOR 2).
               const next = e.target.value as FieldEntry["type"];
               if (entry.productSpec === true && next !== "dropdown" && next !== "radio") {
-                setPendingType(next); // Stage 36: ask before clearing the Product spec flag
+                setPending({ type: next, key: entry.key }); // Stage 36: ask before clearing the Product spec flag
                 return;
               }
               onChange(applyFieldTypeChange(entry, next));
@@ -206,7 +209,7 @@ function FieldRow({
         <div className="flex items-end gap-1 self-end">
           <button
             type="button"
-            onClick={onMoveUp}
+            onClick={() => { setPending(null); onMoveUp(); }}
             disabled={sectionPos === 0}
             aria-label={labels.moveUp}
             title={labels.moveUp}
@@ -216,7 +219,7 @@ function FieldRow({
           </button>
           <button
             type="button"
-            onClick={onMoveDown}
+            onClick={() => { setPending(null); onMoveDown(); }}
             disabled={sectionPos === sectionLength - 1}
             aria-label={labels.moveDown}
             title={labels.moveDown}
@@ -226,7 +229,7 @@ function FieldRow({
           </button>
           <button
             type="button"
-            onClick={onRemove}
+            onClick={() => { setPending(null); onRemove(); }}
             className="rounded-sm border border-border px-2 py-1.5 text-xs font-bold text-text-muted hover:border-status-failed-bg hover:text-status-failed-text"
           >
             {labels.removeLabel}
@@ -270,9 +273,9 @@ function FieldRow({
         <TypeChangeConfirm
           onConfirm={() => {
             onChange(applyFieldTypeChange(entry, pendingType));
-            setPendingType(null);
+            setPending(null);
           }}
-          onCancel={() => setPendingType(null)}
+          onCancel={() => setPending(null)}
         />
       )}
       {isChoiceType && <ProductSpecToggle entry={entry} onChange={onChange} muted={pendingType !== null} />}

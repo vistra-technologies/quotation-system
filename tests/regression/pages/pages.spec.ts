@@ -1592,7 +1592,7 @@ test.describe("Stage 36 B1: Product spec toggle (SuperAdmin edit form), throwawa
     const cats = (await ok<{ categories: { id: string }[] }>(await orgB.get(B("/component-categories")))).categories;
     const fld = (key: string, label: string, over: Record<string, unknown> = {}) =>
       ({ key, label, type: "dropdown", required: false, basic: true, ...over });
-    const type = (await ok<{ componentType: { id: string } }>(
+    const type = (await ok<{ componentType: { id: string; code: string } }>(
       await orgB.post(B("/component-types"), { data: { code: `RGRP${tag().toUpperCase()}`, name: `${run.prefix}spec-${tag()}`, categoryId: cats[0].id, fieldsSchema: [fld("glass", "Glass type"), fld("thick", "Thickness", { dependsOn: "glass" }), fld("note", "Note", { type: "field" })] } }),
       201,
     )).componentType;
@@ -1624,6 +1624,12 @@ test.describe("Stage 36 B1: Product spec toggle (SuperAdmin edit form), throwawa
       await expect.poll(stored).toEqual(["glass:dropdown:true", "thick:dropdown:absent", "note:field:absent"]);
       await page.goto(edit);
       await expect(spec(0)).toHaveAttribute("aria-checked", "true");
+      // the list's "Product specs" column counts flagged fields (1 spec for this type)
+      await page.goto(`/controls/orgs/${run.orgB.id}/components`);
+      const listRow = page.getByRole("row").filter({ hasText: type.code }).filter({ visible: true });
+      await expect(listRow.getByTestId("product-specs-count")).toHaveText("1 spec");
+      await page.goto(edit);
+      await expect(rows).toHaveCount(3);
 
       // retype a flagged field: the confirm shows; Keep type leaves both unchanged
       const typeBox = () => rows.nth(0).getByRole("combobox").filter({ hasText: "Dropdown" });
@@ -1635,6 +1641,14 @@ test.describe("Stage 36 B1: Product spec toggle (SuperAdmin edit form), throwawa
       await expect(confirm).toHaveCount(0);
       await expect(typeBox()).toBeVisible();
       await expect(spec(0)).toHaveAttribute("aria-checked", "true");
+      // a pending confirm is dropped on a move attempt (here the move itself is refused: thick depends on glass)
+      await typeBox().click();
+      await page.getByRole("option", { name: "Field (text)" }).click();
+      await expect(rows.nth(0).getByRole("alertdialog")).toBeVisible();
+      await rows.nth(0).getByRole("button", { name: "Move down" }).click();
+      await expect(page.getByRole("alertdialog")).toHaveCount(0);
+      await expect(spec(0)).toHaveAttribute("aria-checked", "true");
+      await expect(typeBox()).toBeVisible();
       // Change type clears the flag (and the toggle goes away with the choice type)
       await typeBox().click();
       await page.getByRole("option", { name: "Field (text)" }).click();

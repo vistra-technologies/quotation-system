@@ -8,6 +8,7 @@ import { DeleteComponentTypeButton } from "../../../component-types/_delete-butt
 import { ReorderButtons } from "../../../component-types/_reorder-buttons";
 import { loadWorkspaceOrg } from "../_org";
 import type { FieldEntry } from "@/lib/types/field-entry";
+import { countProductSpecs } from "@/lib/product-pricing/spec-fields";
 
 // Always render live — reads the SuperAdminSession table (via guard layout) and live DB.
 export const dynamic = "force-dynamic";
@@ -227,6 +228,9 @@ export default async function OrgComponentsPage({
                         Fields
                       </th>
                       <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
+                        Product specs
+                      </th>
+                      <th className="px-5 py-3.5 text-left text-xs font-bold uppercase tracking-wider text-text-muted">
                         Status
                       </th>
                       <th className="px-5 py-3.5 text-right text-xs font-bold uppercase tracking-wider text-text-muted">
@@ -265,6 +269,12 @@ export default async function OrgComponentsPage({
                             <span className="rounded-pill bg-bg-subtle px-2 py-0.5 text-xs text-text-muted">
                               {ct.fieldsSchema.length} field{ct.fieldsSchema.length !== 1 ? "s" : ""}
                             </span>
+                          </td>
+                          <td
+                            data-testid="product-specs-count"
+                            className={`px-5 py-4 text-sm ${countProductSpecs(ct.fieldsSchema) > 0 ? "font-bold text-primary-dark" : "text-text-muted"}`}
+                          >
+                            {countProductSpecs(ct.fieldsSchema)} spec{countProductSpecs(ct.fieldsSchema) !== 1 ? "s" : ""}
                           </td>
                           <td className="px-5 py-4">
                             {ct.active ? (

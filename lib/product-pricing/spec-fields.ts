@@ -24,6 +24,11 @@ export function isSpecChoiceField(f: Pick<FieldEntry, "type" | "productSpec">): 
   return f.productSpec === true && CHOICE.has(f.type);
 }
 
+/** Number of Product spec fields on a type (the SuperAdmin list column). */
+export function countProductSpecs(fieldsSchema: ReadonlyArray<Pick<FieldEntry, "type" | "productSpec">>): number {
+  return fieldsSchema.filter(isSpecChoiceField).length;
+}
+
 export function specFieldList(
   fieldsSchema: ReadonlyArray<Pick<FieldEntry, "key" | "label" | "type" | "dependsOn" | "showWhen" | "productSpec">>,
 ): SpecField[] {

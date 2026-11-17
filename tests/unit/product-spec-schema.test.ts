@@ -10,7 +10,7 @@ import { parseFieldsSchema as parseOrgFieldsSchema } from "@/lib/parse-field-con
 import { parseFieldsSchema as parseSuperAdminFieldsSchema } from "@/lib/data/superadmin/component-types";
 import { diffConfigs } from "@/lib/config-update";
 import { generateCombinations } from "@/lib/quick-estimate/palette";
-import { specFieldList } from "@/lib/product-pricing/spec-fields";
+import { specFieldList, countProductSpecs } from "@/lib/product-pricing/spec-fields";
 import { combinationKey } from "@/lib/product-pricing/combination";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
@@ -168,4 +168,9 @@ test("specFieldList keeps a showWhen whose controller is itself a spec field, an
   // and the generator honours it: b is only offered when a is "x"
   const out = generateCombinations(fields, { a: { options: ["x", "y"] }, b: { options: ["1"] } });
   assert.deepEqual(out.map((o) => o.text), ["x · 1", "y"]);
+});
+
+test("countProductSpecs counts only flagged dropdown/radio fields (the SuperAdmin list column)", () => {
+  assert.equal(countProductSpecs([f("a", { productSpec: true }), f("b"), f("c", { type: "radio", productSpec: true }), f("d", { type: "field", productSpec: true })]), 2);
+  assert.equal(countProductSpecs([]), 0);
 });
