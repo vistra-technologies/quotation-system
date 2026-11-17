@@ -43,7 +43,7 @@ function PriceChips({ row, dim }: { row: StoredPricingRow; dim?: boolean }) {
           key={`${p.currency}-${p.unit}`}
           className={`mb-0.5 mr-1 inline-flex h-[22px] items-center whitespace-nowrap rounded-full px-2 text-[11.5px] font-bold ${CURRENCY_CHIP[p.currency]}`}
         >
-          {p.currency}/{unitLabel(p.unit)} {formatAmount(p.amount)}
+          {formatAmount(p.amount)} {p.currency}/{unitLabel(p.unit)}
         </span>
       ))}
     </div>

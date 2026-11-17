@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import { SelectField } from "@/components/select-field";
 import { apiErrorMessage } from "@/lib/api-error-message";
@@ -96,6 +96,18 @@ export function PricingDrawer({ orgSlug, target, onClose, onSaved }: Props) {
   const [dupIndex, setDupIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // A press outside the panel closes the drawer. A SelectField list is portalled outside the panel, so it is not "outside".
+  useEffect(() => {
+    const onDown = (e: PointerEvent) => {
+      const el = e.target as Element | null;
+      if (!el || panelRef.current?.contains(el) || el.closest('[role="listbox"]')) return;
+      onClose();
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [onClose]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -280,6 +292,7 @@ export function PricingDrawer({ orgSlug, target, onClose, onSaved }: Props) {
   return (
     <div className="pointer-events-none fixed inset-0 z-40 flex justify-end bg-[rgba(27,40,30,.14)]">
       <div
+        ref={panelRef}
         role="dialog"
         aria-label={target.label}
         className="pointer-events-auto flex h-full w-[360px] flex-col border-l border-border bg-bg-white shadow-[-8px_0_24px_rgba(27,40,30,.1)]"
