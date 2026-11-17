@@ -5,7 +5,7 @@ import { useFormStatus } from "react-dom";
 import { SelectField } from "@/components/select-field";
 import { createSuperAdminComponentType, type CreateComponentTypeState } from "./actions";
 import { validateFieldsSchema, clearDependentsOf, applyFieldTypeChange } from "@/lib/validate-fields-schema";
-import { ShowWhenControl, LinkedToggle } from "./_visibility-controls";
+import { ShowWhenControl, LinkedToggle, ProductSpecToggle, TypeChangeConfirm } from "./_visibility-controls";
 import type { FieldEntry } from "@/lib/types/field-entry";
 
 // ─── Inner status helpers ─────────────────────────────────────────────────────
@@ -143,9 +143,14 @@ function FieldRow({
   };
 
   const isChoiceType = entry.type === "radio" || entry.type === "dropdown";
+  // Stage 36 S36-3: a retype that would clear an active Product spec flag waits for confirmation.
+  const [pendingType, setPendingType] = useState<FieldEntry["type"] | null>(null);
 
   return (
-    <div data-testid="field-row" className="flex flex-col gap-2 rounded-sm border border-border bg-bg-page px-3 py-2.5">
+    <div
+      data-testid="field-row"
+      className={`flex flex-col gap-2 rounded-sm border px-3 py-2.5 ${entry.productSpec === true ? "border-primary-soft bg-primary-softer" : "border-border bg-bg-page"}`}
+    >
       {/* Row 1: key, label, type, move/remove */}
       <div className="flex flex-wrap items-end gap-2">
         <div className="flex min-w-[8rem] flex-1 flex-col gap-0.5">
@@ -181,7 +186,12 @@ function FieldRow({
             onChange={(e) => {
               // dependsOn and inventoryLinked only make sense on dropdown/radio (a value list) —
               // dropped when switching to a type that has none (Stage 35 review-b2-1 MINOR 2).
-              onChange(applyFieldTypeChange(entry, e.target.value as FieldEntry["type"]));
+              const next = e.target.value as FieldEntry["type"];
+              if (entry.productSpec === true && next !== "dropdown" && next !== "radio") {
+                setPendingType(next); // Stage 36: ask before clearing the Product spec flag
+                return;
+              }
+              onChange(applyFieldTypeChange(entry, next));
             }}
             className={inputBase}
           >
@@ -256,6 +266,16 @@ function FieldRow({
         onChange={onChange}
       />
       {isChoiceType && <LinkedToggle entry={entry} onChange={onChange} />}
+      {pendingType && (
+        <TypeChangeConfirm
+          onConfirm={() => {
+            onChange(applyFieldTypeChange(entry, pendingType));
+            setPendingType(null);
+          }}
+          onCancel={() => setPendingType(null)}
+        />
+      )}
+      {isChoiceType && <ProductSpecToggle entry={entry} onChange={onChange} muted={pendingType !== null} />}
 
       {/* Row 3: hint, required */}
       <div className="flex flex-wrap items-end gap-2">
@@ -466,6 +486,9 @@ function validateJsonText(text: string): FieldEntry[] {
       if (obj.showWhen !== undefined && obj.showWhen !== null) entry.showWhen = obj.showWhen as FieldEntry["showWhen"];
       if (obj.inventoryLinked !== undefined && obj.inventoryLinked !== false) {
         entry.inventoryLinked = obj.inventoryLinked as FieldEntry["inventoryLinked"];
+      }
+      if (obj.productSpec !== undefined && obj.productSpec !== false) {
+        entry.productSpec = obj.productSpec as FieldEntry["productSpec"]; // Stage 36: raw pass-through, server validates
       }
       // Stage 20: `options` is no longer accepted from SuperAdmin authoring — silently
       // dropped here (never copied onto `entry`), mirroring what parseFieldsSchema in

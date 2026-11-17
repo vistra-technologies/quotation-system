@@ -11,7 +11,8 @@ import type { FieldEntry } from "@/lib/types/field-entry";
  *   1. No entry may carry an `options` key at all, regardless of type or
  *      emptiness — SuperAdmin no longer authors values, full stop. Values live
  *      in the org-owned `ComponentTypeOrgConfig` table instead.
- *   2. (Stage 35: `showWhen` / `inventoryLinked` rules are enforced at the end of the per-entry loop below.)
+ *   2. (Stage 35: `showWhen` / `inventoryLinked` rules are enforced at the end of the per-entry loop below.
+ *      Stage 36: `productSpec` rules too: boolean, dropdown/radio only, a flagged `dependsOn` child needs a flagged parent.)
  *   3. `dependsOn` is only valid on `dropdown`/`radio` fields, must name a key
  *      that exists earlier in the same array (not later, not itself — this is
  *      what rules out cycles by construction), and that earlier field must
@@ -186,6 +187,31 @@ export function validateFieldsSchema(fields: FieldEntry[]): ValidateFieldsSchema
         };
       }
     }
+
+    // Stage 36 S36-1/S36-2: productSpec only on dropdown/radio; a flagged dependsOn child needs a flagged parent.
+    // No showWhen rule (O-2 = b): a spec field gated by a non-spec controller is valid.
+    if (f.productSpec !== undefined) {
+      const name = describeField(f, i);
+      if (typeof f.productSpec !== "boolean") {
+        return { valid: false, error: `Field "${name}": "productSpec" must be a boolean.` };
+      }
+      if (f.productSpec && !CHOICE_TYPES.has(f.type)) {
+        return {
+          valid: false,
+          error: `Field "${name}": "productSpec" is only valid on dropdown/radio fields (found type "${f.type}").`,
+        };
+      }
+      if (f.productSpec && f.dependsOn !== undefined && f.dependsOn !== "") {
+        // The dependsOn block above already proved the parent exists and is earlier.
+        const parent = fields.find((other) => other.key === f.dependsOn);
+        if (parent && parent.productSpec !== true) {
+          return {
+            valid: false,
+            error: `Field "${name}": a Product spec field that depends on "${parent.label || parent.key}" needs that field to be Product spec too, otherwise its values cannot be combined.`,
+          };
+        }
+      }
+    }
   }
 
   return { valid: true };
@@ -237,6 +263,7 @@ export function applyFieldTypeChange(entry: FieldEntry, newType: FieldEntry["typ
   if (newType !== "dropdown" && newType !== "radio") {
     delete updated.dependsOn;
     delete updated.inventoryLinked;
+    delete updated.productSpec; // Stage 36 S36-1
   }
   return updated;
 }
@@ -247,9 +274,10 @@ export function applyFieldTypeChange(entry: FieldEntry, newType: FieldEntry["typ
  */
 export function normalizeFieldsSchemaForStore<T extends FieldEntry>(fields: T[]): T[] {
   return fields.map((f) => {
-    if (f.inventoryLinked !== false) return f;
+    if (f.inventoryLinked !== false && f.productSpec !== false) return f;
     const rest = { ...f };
-    delete rest.inventoryLinked;
+    if (rest.inventoryLinked === false) delete rest.inventoryLinked;
+    if (rest.productSpec === false) delete rest.productSpec; // Stage 36 S36-1
     return rest;
   });
 }

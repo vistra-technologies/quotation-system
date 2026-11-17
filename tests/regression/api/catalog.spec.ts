@@ -37,7 +37,7 @@ covers("PATCH /api/v1/orgs/[orgSlug]/component-types/[typeId]");
 covers("GET /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values");
 covers("PUT /api/v1/orgs/[orgSlug]/component-types/[typeId]/field-values");
 
-type Field = { key: string; label: string; type: string; required?: boolean; basic?: boolean; options?: string[]; dependsOn?: string; hint?: string; showWhen?: { field: string; in: string[] }; inventoryLinked?: boolean };
+type Field = { key: string; label: string; type: string; required?: boolean; basic?: boolean; options?: string[]; dependsOn?: string; hint?: string; showWhen?: { field: string; in: string[] }; inventoryLinked?: boolean; productSpec?: boolean };
 type Entry = { options: string[] } | { valueMap: Record<string, string[]> };
 type Config = Record<string, Entry>;
 type Category = { id: string; organizationId: string; name: string };
@@ -568,6 +568,27 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     const stored35 = (await ok<{ componentType: CT }>(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: gated } }))).componentType;
     expect(stored35.fieldsSchema).toEqual(gated);
     expect((await listTypes(orgB, run.orgB.slug)).find((t) => t.id === ct.id)!.fieldsSchema).toEqual(gated);
+    // Stage 36 S36-1/S36-2 (org PATCH + POST): productSpec only on dropdown/radio, boolean, flagged child needs a flagged parent
+    const ps = (extra: Record<string, unknown>, childExtra: Record<string, unknown> = {}) => [
+      { key: "a", label: "Glass type", type: "dropdown", required: false, basic: true, ...extra },
+      { key: "b", label: "Thickness", type: "dropdown", required: false, basic: true, ...childExtra },
+    ];
+    await rejected(await post([{ key: "a", label: "A", type: "field", required: false, basic: true, productSpec: true }]), 400, /"productSpec" is only valid on dropdown\/radio/);
+    await rejected(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: ps({ productSpec: "yes" }) } }), 400, /"productSpec" must be a boolean/);
+    await rejected(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: ps({}, { dependsOn: "a", productSpec: true }) } }), 400, /"Thickness": a Product spec field that depends on "Glass type"/);
+    // accepted (flagged parent, and a showWhen on a non-spec controller, O-2), stored and returned; `false` is stored absent
+    const specSchema = [
+      { key: "c", label: "Category", type: "dropdown", required: false, basic: true },
+      { key: "a", label: "Glass type", type: "dropdown", required: false, basic: true, productSpec: true, showWhen: { field: "c", in: ["Partition"] } },
+      { key: "b", label: "Thickness", type: "dropdown", required: false, basic: true, dependsOn: "a", productSpec: true },
+    ];
+    const storedSpec = (await ok<{ componentType: CT }>(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: specSchema } }))).componentType;
+    expect(storedSpec.fieldsSchema).toEqual(specSchema);
+    expect((await listTypes(orgB, run.orgB.slug)).find((t) => t.id === ct.id)!.fieldsSchema).toEqual(specSchema);
+    const specOff = (await ok<{ componentType: CT }>(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: ps({ productSpec: false }) } }))).componentType;
+    expect(specOff.fieldsSchema.map((f) => Object.prototype.hasOwnProperty.call(f, "productSpec"))).toEqual([false, false]);
+    const specPosted = (await ok<{ componentType: CT }>(await post(ps({ productSpec: true })), 201)).componentType;
+    expect(specPosted.fieldsSchema).toEqual(ps({ productSpec: true }));
     // a valid schema (and a PATCH without fieldsSchema) still works
     await ok(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: CASCADE } }));
     await ok(await orgB.patch(B(`/component-types/${ct.id}`), { data: { active: true } }));

@@ -1582,3 +1582,67 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
     });
   });
 });
+
+// Stage 36 Batch 1 UI AC5: the SuperAdmin "Product spec" toggle. Throwaway org B only (its own type goes with org B at
+// teardown), so no Test-Org schema is touched and there is nothing to restore (rule 10 n/a).
+test.describe("Stage 36 B1: Product spec toggle (SuperAdmin edit form), throwaway org B", () => {
+  test("UI AC5: toggle only on dropdown/radio, saves and survives reload; the type-change confirm (Keep type / Change type) and the inline dependency guard error", async ({ browser, run, sa, orgB }) => {
+    test.setTimeout(150_000);
+    const B = (p: string) => orgApi(run.orgB.slug, p);
+    const cats = (await ok<{ categories: { id: string }[] }>(await orgB.get(B("/component-categories")))).categories;
+    const fld = (key: string, label: string, over: Record<string, unknown> = {}) =>
+      ({ key, label, type: "dropdown", required: false, basic: true, ...over });
+    const type = (await ok<{ componentType: { id: string } }>(
+      await orgB.post(B("/component-types"), { data: { code: `RGRP${tag().toUpperCase()}`, name: `${run.prefix}spec-${tag()}`, categoryId: cats[0].id, fieldsSchema: [fld("glass", "Glass type"), fld("thick", "Thickness", { dependsOn: "glass" }), fld("note", "Note", { type: "field" })] } }),
+      201,
+    )).componentType;
+    const stored = async () => (await ok<{ componentType: { fieldsSchema: { key: string; type: string; productSpec?: boolean }[] } }>(
+      await sa.get(`/api/v1/superadmin/component-types/${type.id}?orgId=${run.orgB.id}`),
+    )).componentType.fieldsSchema.map((f) => `${f.key}:${f.type}:${f.productSpec ?? "absent"}`);
+    await withPage({ browser, run }, "sa", sa.token, async (o) => {
+      const page = o.page;
+      const edit = `/controls/orgs/${run.orgB.id}/components?typeId=${type.id}`;
+      await page.goto(edit);
+      const rows = page.getByTestId("field-row").filter({ visible: true });
+      await expect(rows).toHaveCount(3);
+      const spec = (i: number) => rows.nth(i).getByRole("switch", { name: "Product spec" });
+      // toggle only on dropdown/radio rows
+      await expect(spec(0)).toHaveAttribute("aria-checked", "false");
+      await expect(spec(1)).toHaveAttribute("aria-checked", "false");
+      await expect(spec(2)).toHaveCount(0);
+      // the dependency guard: a child flagged while its parent is not shows the server's message inline, nothing stored
+      await spec(1).click();
+      await page.getByRole("button", { name: "Save Changes" }).click();
+      await expect(page.getByText(/a Product spec field that depends on/)).toBeVisible();
+      expect(await stored()).toEqual(["glass:dropdown:absent", "thick:dropdown:absent", "note:field:absent"]);
+      await page.goto(edit);
+      await expect(rows).toHaveCount(3);
+      // turn it on, save, reload: it survived
+      await spec(0).click();
+      await expect(spec(0)).toHaveAttribute("aria-checked", "true");
+      await page.getByRole("button", { name: "Save Changes" }).click();
+      await expect.poll(stored).toEqual(["glass:dropdown:true", "thick:dropdown:absent", "note:field:absent"]);
+      await page.goto(edit);
+      await expect(spec(0)).toHaveAttribute("aria-checked", "true");
+
+      // retype a flagged field: the confirm shows; Keep type leaves both unchanged
+      const typeBox = () => rows.nth(0).getByRole("combobox").filter({ hasText: "Dropdown" });
+      await typeBox().click();
+      await page.getByRole("option", { name: "Field (text)" }).click();
+      const confirm = rows.nth(0).getByRole("alertdialog");
+      await expect(confirm).toContainText("Product spec requires Dropdown or Radio.");
+      await confirm.getByRole("button", { name: "Keep type" }).click();
+      await expect(confirm).toHaveCount(0);
+      await expect(typeBox()).toBeVisible();
+      await expect(spec(0)).toHaveAttribute("aria-checked", "true");
+      // Change type clears the flag (and the toggle goes away with the choice type)
+      await typeBox().click();
+      await page.getByRole("option", { name: "Field (text)" }).click();
+      await rows.nth(0).getByRole("alertdialog").getByRole("button", { name: "Change type" }).click();
+      await expect(spec(0)).toHaveCount(0);
+      await page.getByRole("button", { name: "Save Changes" }).click();
+      await expect.poll(stored).toEqual(["glass:field:absent", "thick:dropdown:absent", "note:field:absent"]);
+
+    });
+  });
+});

@@ -82,6 +82,8 @@ export interface EstimateOption {
   parts: string[];
   /** The parts joined with " · ". */
   text: string;
+  /** Stage 36: the chosen value by field key (only the visible fields). */
+  values: Record<string, string>;
 }
 
 export const VARIANT_SEPARATOR = " · ";
@@ -94,13 +96,22 @@ export const VARIANT_SEPARATOR = " · ";
  * hidden field adds no part to the combination.
  */
 export function buildCombinations(type: EstimateType): EstimateOption[] {
-  if (type.basicFields.length === 0) return [];
+  return generateCombinations(type.basicFields, type.options);
+}
+
+/**
+ * The generator core (Stage 36 S36-7): same walk for any ordered field list. Quick Estimate passes the basic
+ * fields; the Product Pricing page and spec mode pass `specFieldList(...)`. Each option also carries its chosen
+ * `values` by field key, the input of `combinationKey`.
+ */
+export function generateCombinations(fields: EstimateField[], config: FieldOptionsConfig): EstimateOption[] {
+  if (fields.length === 0) return [];
   let partials: Record<string, string>[] = [{}];
-  for (const field of type.basicFields) {
-    const entry = type.options[field.key];
+  for (const field of fields) {
+    const entry = config[field.key];
     const next: Record<string, string>[] = [];
     for (const partial of partials) {
-      if (!applyFieldVisibility(type.basicFields, partial).visibleKeys.has(field.key)) {
+      if (!applyFieldVisibility(fields, partial).visibleKeys.has(field.key)) {
         next.push(partial);
         continue;
       }
@@ -117,7 +128,7 @@ export function buildCombinations(type: EstimateType): EstimateOption[] {
   }
   // A combination with no chosen part (every field hidden) is not an option, same as "no basic choice fields".
   return partials.filter((p) => Object.keys(p).length > 0).map((p) => {
-    const parts = type.basicFields.filter((f) => p[f.key] !== undefined).map((f) => p[f.key]);
-    return { parts, text: parts.join(VARIANT_SEPARATOR) };
+    const parts = fields.filter((f) => p[f.key] !== undefined).map((f) => p[f.key]);
+    return { parts, text: parts.join(VARIANT_SEPARATOR), values: p };
   });
 }

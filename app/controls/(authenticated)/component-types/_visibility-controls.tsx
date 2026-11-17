@@ -157,3 +157,77 @@ export function LinkedToggle({
     </div>
   );
 }
+
+/**
+ * Stage 36 (S36-3): "Product spec" switch, same markup as `LinkedToggle`. Rendered by the forms only for
+ * dropdown/radio rows. `muted` dims it while the type-change confirmation is open (mockup guard state).
+ */
+export function ProductSpecToggle({
+  entry,
+  onChange,
+  muted,
+}: {
+  entry: FieldEntry;
+  onChange: (updated: FieldEntry) => void;
+  muted?: boolean;
+}) {
+  const on = entry.productSpec === true;
+  return (
+    <div className={`flex items-center gap-2.5 text-sm font-bold text-text-heading ${muted ? "opacity-50" : ""}`}>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label="Product spec"
+        disabled={muted}
+        onClick={() => {
+          const updated = { ...entry };
+          if (on) delete updated.productSpec;
+          else updated.productSpec = true;
+          onChange(updated);
+        }}
+        className={`relative h-[22px] w-[38px] flex-shrink-0 rounded-full transition-colors ${on ? "bg-primary" : "bg-border"}`}
+      >
+        <span
+          className={`absolute top-[3px] h-4 w-4 rounded-full bg-white transition-all ${on ? "left-[19px]" : "left-[3px]"}`}
+        />
+      </button>
+      Product spec
+      <InfoTip text="Mark this field as a pricing dimension. Only product spec fields generate combinations on the Product Pricing page." />
+    </div>
+  );
+}
+
+/**
+ * Stage 36 (S36-3): the in-row confirmation shown when a field that has Product spec on is retyped to a type
+ * that cannot carry it. Translation-free on purpose (/controls has no i18n provider, AGENTS.md), and no
+ * loading overlay. Copy and actions are fixed by the UI spec.
+ */
+export function TypeChangeConfirm({ onConfirm, onCancel }: { onConfirm: () => void; onCancel: () => void }) {
+  return (
+    <div
+      role="alertdialog"
+      aria-label="Change field type"
+      className="flex flex-wrap items-center gap-2 rounded-sm border border-status-pending-border bg-status-pending-bg px-3 py-2 text-[12.5px] font-semibold text-status-pending-text"
+    >
+      <span className="min-w-[14rem] flex-1">
+        <strong>Product spec requires Dropdown or Radio.</strong> Changing this field&apos;s type will clear the
+        Product spec flag and may break existing pricing entries. Change type anyway?
+      </span>
+      <button
+        type="button"
+        onClick={onCancel}
+        className="rounded-sm border border-border bg-bg-white px-3 py-1 text-xs font-bold text-text-heading hover:border-primary-soft"
+      >
+        Keep type
+      </button>
+      <button
+        type="button"
+        onClick={onConfirm}
+        className="rounded-sm bg-primary px-3 py-1 text-xs font-bold text-text-on-primary hover:bg-primary-dark"
+      >
+        Change type
+      </button>
+    </div>
+  );
+}

@@ -86,6 +86,7 @@ export function parseFieldsSchema(raw: unknown): FieldEntry[] {
       const showWhen = readShowWhen(obj.showWhen);
       if (showWhen) entry.showWhen = showWhen;
       if (obj.inventoryLinked === true) entry.inventoryLinked = true;
+      if (obj.productSpec === true) entry.productSpec = true; // Stage 36 S36-1
       return entry;
     })
     .filter((x): x is FieldEntry => x !== null);

@@ -29,7 +29,7 @@ covers("PATCH /api/v1/superadmin/component-types/[typeId]");
 covers("DELETE /api/v1/superadmin/component-types/[typeId]");
 covers("POST /api/v1/superadmin/component-types/[typeId]/reorder");
 
-type Field = { key: string; label: string; type: string; required: boolean; basic: boolean; dependsOn?: string; hint?: string; showWhen?: { field: string; in: string[] }; inventoryLinked?: boolean };
+type Field = { key: string; label: string; type: string; required: boolean; basic: boolean; dependsOn?: string; hint?: string; showWhen?: { field: string; in: string[] }; inventoryLinked?: boolean; productSpec?: boolean };
 type CType = {
   id: string; organizationId: string; code: string; name: string; active: boolean; categoryId: string;
   category: { id: string; name: string }; fieldsSchema: Field[]; sortOrder: number; createdAt: string; updatedAt: string;
@@ -97,6 +97,11 @@ const INVALID_SCHEMAS: Array<[string, unknown[], RegExp]> = [
   ["dependsOn child of a gated parent, in not a subset", [{ key: "a", label: "A", type: "dropdown" }, { key: "g", label: "G", type: "dropdown", showWhen: { field: "a", in: ["x", "y"] } }, { key: "c", label: "C", type: "dropdown", dependsOn: "g", showWhen: { field: "a", in: ["x", "z"] } }], /its dependsOn parent "g"/],
   ["inventoryLinked on a plain field", [{ key: "a", label: "A", type: "field", inventoryLinked: true }], /"inventoryLinked" is only valid on dropdown\/radio/],
   ["inventoryLinked not a boolean", [{ key: "a", label: "A", type: "dropdown", inventoryLinked: "yes" }], /"inventoryLinked" must be a boolean/],
+  // Stage 36 S36-1/S36-2: productSpec only on dropdown/radio, boolean, and a flagged dependsOn child needs a flagged parent
+  ["productSpec on a plain field", [{ key: "a", label: "A", type: "field", productSpec: true }], /"productSpec" is only valid on dropdown\/radio/],
+  ["productSpec on a checkbox", [{ key: "a", label: "A", type: "checkbox", productSpec: true }], /"productSpec" is only valid on dropdown\/radio/],
+  ["productSpec not a boolean", [{ key: "a", label: "A", type: "dropdown", productSpec: "yes" }], /"productSpec" must be a boolean/],
+  ["productSpec child of a non-spec parent", [{ key: "a", label: "Glass type", type: "dropdown" }, { key: "b", label: "Thickness", type: "dropdown", dependsOn: "a", productSpec: true }], /"Thickness": a Product spec field that depends on "Glass type"/],
 ];
 
 test.describe("GET /api/v1/superadmin/component-categories", () => {
@@ -245,6 +250,26 @@ test.describe("SuperAdmin component types (org B)", () => {
     const off = (await json<{ componentType: CType }>(await sa.patch(url, { data: { orgId: run.orgB.id, fieldsSchema: [{ ...schema[0], inventoryLinked: false }, schema[1]] } }))).componentType;
     expect(off.fieldsSchema.map((f) => Object.prototype.hasOwnProperty.call(f, "inventoryLinked"))).toEqual([false, false]);
     expect(off.fieldsSchema[1].showWhen).toEqual({ field: "rgrLeaf", in: ["Yes"] });
+  });
+
+  test("productSpec (Stage 36): POST and PATCH store and return it; GET round-trips; `false` is stored absent; a showWhen on a non-spec controller is accepted (O-2)", async ({ sa, run }) => {
+    const schema: Field[] = [
+      { key: "rgrCat", label: "Category", type: "dropdown", required: false, basic: true },
+      { key: "rgrGlass", label: "Glass", type: "dropdown", required: false, basic: true, productSpec: true, showWhen: { field: "rgrCat", in: ["Partition"] } },
+      { key: "rgrThick", label: "Thickness", type: "radio", required: false, basic: true, dependsOn: "rgrGlass", productSpec: true },
+      { key: "rgrNote", label: "Note", type: "field", required: false, basic: true },
+    ];
+    const mine = await newType(sa, run, { fieldsSchema: schema });
+    expect(mine.fieldsSchema).toEqual(schema);
+    expect((await getType(sa, mine.id, run.orgB.id)).fieldsSchema).toEqual(schema);
+    const url = `${SA}/component-types/${mine.id}`;
+    // the GET body PATCHes back unchanged, flags intact
+    const back = (await json<{ componentType: CType }>(await sa.patch(url, { data: { orgId: run.orgB.id, fieldsSchema: mine.fieldsSchema } }))).componentType;
+    expect(back.fieldsSchema).toEqual(schema);
+    // PATCH can add the flag to another dropdown, and `false` is accepted and stored absent
+    const patched = (await json<{ componentType: CType }>(await sa.patch(url, { data: { orgId: run.orgB.id, fieldsSchema: [{ ...schema[0], productSpec: true }, { ...schema[1], productSpec: false, showWhen: undefined }, { ...schema[2], dependsOn: undefined, productSpec: false }, schema[3]] } }))).componentType;
+    expect(patched.fieldsSchema.map((f) => f.productSpec ?? "absent")).toEqual([true, "absent", "absent", "absent"]);
+    expect((await getType(sa, mine.id, run.orgB.id)).fieldsSchema.map((f) => Object.prototype.hasOwnProperty.call(f, "productSpec"))).toEqual([true, false, false, false]);
   });
 
   test("PATCH rules: taken code → 409; bad schema / foreign category → 400; unknown type / org → 404; another org's view → 404 (unchanged)", async ({ sa, run }) => {

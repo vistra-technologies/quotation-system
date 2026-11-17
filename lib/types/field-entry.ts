@@ -24,6 +24,9 @@ export type FieldEntry = {
   showWhen?: ShowWhen;
   // Stage 35 S35-1: dropdown/radio only; its option values must be Inventory codes. `false` is stored absent.
   inventoryLinked?: boolean;
+  // Stage 36 S36-1: SuperAdmin-authored pricing dimension. dropdown/radio only; `false` is stored absent.
+  // Only product spec fields generate combinations on the Product Pricing page.
+  productSpec?: boolean;
 };
 
 /** Stage 35 S35-1: one controller, whose current value must be in `in` for the field to be visible. */

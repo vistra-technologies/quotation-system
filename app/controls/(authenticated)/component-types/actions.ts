@@ -56,6 +56,9 @@ function parseFieldsSchema(raw: string | null): FieldEntry[] {
       if (obj.inventoryLinked !== undefined && obj.inventoryLinked !== false) {
         entry.inventoryLinked = obj.inventoryLinked as FieldEntry["inventoryLinked"];
       }
+      if (obj.productSpec !== undefined && obj.productSpec !== false) {
+        entry.productSpec = obj.productSpec as FieldEntry["productSpec"]; // Stage 36: raw pass-through, server validates
+      }
       return entry;
     })
     .filter((x): x is FieldEntry => x !== null);
