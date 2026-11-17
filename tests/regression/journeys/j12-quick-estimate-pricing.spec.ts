@@ -61,6 +61,9 @@ test("J12: Quick Estimate product pricing: auto-populate, Reset, description, cu
   const specType = usableEstimateTypes([{ ...glass!, fieldsSchema: flagged }]).types.find((t) => t.code === "GLASS");
   expect(specType?.mode, "GLASS is usable in spec mode in org B").toBe("spec");
   const combos = buildCombinations(specType!);
+  // The picker offers every usable type (org B also has a fallback-mode DOOR): the expected total is GLASS's spec combinations plus the rest.
+  const allUsable = usableEstimateTypes(list.componentTypes.map((t) => (t.id === glass!.id ? { ...t, fieldsSchema: flagged } : t))).types;
+  const pickerTotal = allUsable.reduce((n, t) => n + buildCombinations(t).length, 0);
   expect(combos.length).toBeGreaterThanOrEqual(3);
   const [c0, c1, c2] = combos;
   const put = async (c: (typeof combos)[number], prices: unknown[], description?: string) =>
@@ -85,7 +88,7 @@ test("J12: Quick Estimate product pricing: auto-populate, Reset, description, cu
     await test.step("the picker lists the spec combinations; a priced variant fills the rate, no Reset, no badge", async () => {
       await dialog.getByRole("button", { name: "Add item" }).click();
       const picker = page.getByRole("dialog", { name: "Choose an item" });
-      await expect(picker.getByRole("option")).toHaveCount(combos.length);
+      await expect(picker.getByRole("option")).toHaveCount(pickerTotal);
       await picker.getByRole("textbox", { name: "Search" }).fill(c0.text);
       await picker.getByRole("option", { name: c0.text, exact: true }).click();
       await expect(rate(0)).toHaveValue("2800");
