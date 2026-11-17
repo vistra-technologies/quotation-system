@@ -59,7 +59,8 @@ function parseKeyValues(key: string): Record<string, string> {
 }
 
 function byLabel(a: { label: string; key: string }, b: { label: string; key: string }): number {
-  return a.label.localeCompare(b.label) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+  // Natural order so "8 mm" sorts before "12 mm".
+  return a.label.localeCompare(b.label, "en", { numeric: true }) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
 }
 
 /** `stored` must already be the rows of this one component type. */

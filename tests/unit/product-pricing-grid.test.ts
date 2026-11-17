@@ -31,13 +31,13 @@ function stored(values: Record<string, string>, label: string, priced = true, id
 
 test("buildPricingGrid: sorted by label, keys from the shared generator, priced count", () => {
   const g = buildPricingGrid(fields, config, [stored({ glass: "Single", thk: "8 mm" }, "Single · 8 mm")]);
-  assert.deepEqual(g.rows.map((r) => r.label), ["Double · 12 mm", "Double · 8 mm", "Single · 12 mm", "Single · 8 mm"]);
+  assert.deepEqual(g.rows.map((r) => r.label), ["Double · 8 mm", "Double · 12 mm", "Single · 8 mm", "Single · 12 mm"]);
   assert.equal(g.total, 4);
   assert.equal(g.capped, false);
   assert.equal(g.pricedCount, 1);
-  assert.equal(g.rows[3].row?.id, "Single · 8 mm");
+  assert.equal(g.rows[2].row?.id, "Single · 8 mm");
   assert.equal(g.rows[0].row, null);
-  assert.equal(g.rows[0].key, combinationKey({ glass: "Double", thk: "12 mm" }));
+  assert.equal(g.rows[0].key, combinationKey({ glass: "Double", thk: "8 mm" }));
 });
 
 test("buildPricingGrid: orphans are separate, excluded from the priced count, keep the stored label", () => {
