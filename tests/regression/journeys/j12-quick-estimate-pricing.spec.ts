@@ -180,6 +180,16 @@ test("J12: Quick Estimate product pricing: auto-populate, Reset, description, cu
     const unitSuffix = (i: number) => lines.nth(i).locator(".qe-unit");
     const toggle = (u: "m²" | "sq ft") => dialog.locator(`[data-area-unit="${u}"]`);
     const toast = page.getByTestId("qe-toast");
+    // Review screenshots only (QE_SHOTS_DIR set by hand); a normal regression run never writes a file.
+    const shoot = async (name: string) => {
+      const dir = process.env.QE_SHOTS_DIR;
+      if (!dir) return;
+      for (const [w, h] of [[1280, 800], [1536, 864], [1920, 1080]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForTimeout(250);
+        await page.screenshot({ path: `${dir}/${w}x${h}-${name}.png` });
+      }
+    };
 
     await test.step("setup: a DOOR line (pcs), quantities, and a typed rate on the unpriced m2 variant", async () => {
       await dialog.getByRole("button", { name: "Add item" }).click();
@@ -193,6 +203,7 @@ test("J12: Quick Estimate product pricing: auto-populate, Reset, description, cu
       await expect(qty(0)).toHaveValue("2");
       await expect(toggle("m²")).toHaveAttribute("aria-pressed", "true");
       await expect(toggle("sq ft")).toHaveAttribute("aria-pressed", "false");
+      await shoot("1-m2");
     });
 
     await test.step("UI AC2 + AC2b: sq ft converts qty, resets rates (no conversion), pcs untouched, one toast, no note", async () => {
@@ -211,7 +222,9 @@ test("J12: Quick Estimate product pricing: auto-populate, Reset, description, cu
       await expect(unitSuffix(3).last()).toHaveText("/pcs");
       // the typed 99 was replaced, so the toast shows once; it is transient and no permanent note remains
       await expect(toast).toHaveText("Price reset to default");
+      await shoot("3-sqft-toast");
       await expect(toast).toHaveCount(0, { timeout: 8_000 });
+      await shoot("2-sqft");
       await expect(dialog).not.toContainText(/converted|price reset/i);
       const stored = JSON.parse((await page.evaluate((k) => sessionStorage.getItem(k), draftKey))!) as { areaUnit: string; lines: Array<Record<string, unknown>> };
       expect(stored.areaUnit).toBe("sq ft");
