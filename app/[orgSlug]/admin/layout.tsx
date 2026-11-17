@@ -60,6 +60,8 @@ export default async function AdminLayout({
     roles: allMessages.roles,
     components: allMessages.components,
     externalCompanies: allMessages.externalCompanies,
+    // Stage 36 Batch 3: the Product Pricing page's client components (AGENTS.md namespace wiring).
+    productPricing: allMessages.productPricing,
     // Toast component requires this namespace — needed independently by H-16 (_inventory-list.tsx)
     // and Stage 27 (the Catalog page's option-editor save-success toast). Toast calls
     // useTranslations("toast") internally regardless of whether a custom `message` is passed, so the

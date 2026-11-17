@@ -350,6 +350,16 @@ export function Sidebar({
                   Catalog
                 </Link>
               )}
+
+              {/* Stage 36: MANAGE_PRICING only (not the canManageUsers || that Inventory admits). */}
+              {canManagePricing && (
+                <Link
+                  href={href("/admin/product-pricing")}
+                  className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
+                >
+                  Product Pricing
+                </Link>
+              )}
             </div>
           </div>
         </div>

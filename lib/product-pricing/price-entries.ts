@@ -67,7 +67,7 @@ export function validatePriceEntries(raw: unknown, isArea: boolean): PriceEntrie
     if (hasPair(out, e.currency as string, e.unit)) {
       return { ok: false, error: `Duplicate price for ${e.currency} ${e.unit}` };
     }
-    out.push({ currency: e.currency as PriceCurrency, unit: e.unit as PriceUnit, amount: e.amount });
+    out.push({ currency: e.currency as PriceCurrency, unit: e.unit as PriceUnit, amount: Math.round(e.amount * 100) / 100 });
   }
   return { ok: true, entries: sortEntries(out) };
 }

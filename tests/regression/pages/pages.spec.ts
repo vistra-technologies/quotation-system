@@ -61,6 +61,7 @@ coversPage("/[orgSlug]/projects/[projectId]/quotation");
 coversPage("/[orgSlug]/projects/[projectId]/update-configuration");
 coversPage("/[orgSlug]/admin/catalog");
 coversPage("/[orgSlug]/admin/inventory");
+coversPage("/[orgSlug]/admin/product-pricing");
 coversPage("/[orgSlug]/admin/users");
 coversPage("/[orgSlug]/admin/users/new");
 coversPage("/[orgSlug]/admin/users/[userId]");
@@ -1657,6 +1658,213 @@ test.describe("Stage 36 B1: Product spec toggle (SuperAdmin edit form), throwawa
       await page.getByRole("button", { name: "Save Changes" }).click();
       await expect.poll(stored).toEqual(["glass:field:absent", "thick:dropdown:absent", "note:field:absent"]);
 
+    });
+  });
+});
+
+// Stage 36 Batch 3 UI AC1-AC4: the Product Pricing admin page. Throwaway org B only: its types, pricing rows and the
+// option removal that orphans a row all go with org B at teardown (rule 10 n/a, nothing in the Test Org is written).
+// The GET-failure banner (UI AC2) is a server-side fetch, so a browser route cannot fail it; it is covered by the page code
+// path and the by-design 4xx/5xx API specs, not here.
+test.describe.serial("Stage 36 B3: Product Pricing admin page, throwaway org B", () => {
+  const fld = (key: string, label: string, over: Record<string, unknown> = {}) =>
+    ({ key, label, type: "dropdown", required: false, basic: true, ...over });
+  const SCHEMA = [
+    fld("glass", "Glass type", { productSpec: true }),
+    fld("thick", "Thickness", { productSpec: true, dependsOn: "glass" }),
+    fld("note", "Note"),
+  ];
+  const CONFIG = {
+    fieldOptionsConfig: {
+      glass: { options: ["Single", "Double"] },
+      thick: { valueMap: { Single: ["8 mm", "12 mm"], Double: ["12 mm"] } },
+      note: { options: ["x"] },
+    },
+  };
+  type Guarded = import("../fixtures/clients").Guarded;
+  let fxP: Promise<{ B: (p: string) => string; typeId: string; code: string; plainCode: string }> | undefined;
+  async function fixture(run: RunState, orgB: Guarded) {
+    const B = (p: string) => orgApi(run.orgB.slug, p);
+    const cats = (await ok<{ categories: { id: string }[] }>(await orgB.get(B("/component-categories")))).categories;
+    const mk = async (code: string, fieldsSchema: unknown[]) =>
+      (await ok<{ componentType: { id: string; code: string } }>(
+        await orgB.post(B("/component-types"), { data: { code, name: `${run.prefix}pp-${code}`, categoryId: cats[0].id, fieldsSchema } }),
+        201,
+      )).componentType;
+    const spec = await mk(`RGRPP${tag().toUpperCase()}`, SCHEMA);
+    await ok(await orgB.put(B(`/component-types/${spec.id}/field-values`), { data: CONFIG }));
+    const plain = await mk(`RGRPN${tag().toUpperCase()}`, [fld("kind", "Kind")]);
+    return { B, typeId: spec.id, code: spec.code, plainCode: plain.code };
+  }
+  const getFx = (run: RunState, orgB: Guarded) => (fxP ??= fixture(run, orgB));
+  const key = (glass: string, thick: string) => JSON.stringify({ glass, thick });
+
+  test("UI AC1 flyout: Product Pricing for a MANAGE_PRICING user only, no SuperAdmin text or /controls link on the page", async ({ browser, run, orgB }) => {
+    test.setTimeout(120_000);
+    const fx = await getFx(run, orgB);
+    await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
+      const page = o.page;
+      await page.goto(orgUrl(run.orgB.slug, "/dashboard"));
+      await page.getByRole("button", { name: /Admin/ }).first().click();
+      const link = page.getByRole("link", { name: "Product Pricing" });
+      await expect(link).toBeVisible();
+      await link.click();
+      await expect(page.getByRole("heading", { name: "Product Pricing" })).toBeVisible();
+      await expect(page.getByTestId(`type-tab-${fx.code}`)).toBeVisible();
+      await expect(page.getByText(/SuperAdmin/i)).toHaveCount(0);
+      await expect(page.locator('main a[href*="/controls"]')).toHaveCount(0);
+    });
+    await withPage({ browser, run }, "architect", undefined, async (o) => {
+      await o.page.goto(orgUrl(run.testOrg.slug, "/dashboard"));
+      await expect(o.page.getByRole("link", { name: "Product Pricing" })).toHaveCount(0);
+    });
+  });
+
+  test("UI AC2 tabs, counts, spec columns, search and filters, empty state with Go to catalog", async ({ browser, run, orgB }) => {
+    test.setTimeout(120_000);
+    const fx = await getFx(run, orgB);
+    await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
+      const page = o.page;
+      await page.goto(orgUrl(run.orgB.slug, "/admin/product-pricing"));
+      const tab = page.getByTestId(`type-tab-${fx.code}`);
+      await tab.click();
+      await expect(tab).toContainText("0 / 3 priced");
+      await expect(page.getByRole("columnheader", { name: "Glass type" })).toBeVisible();
+      await expect(page.getByRole("columnheader", { name: "Thickness" })).toBeVisible();
+      await expect(page.getByRole("columnheader", { name: "Note" })).toHaveCount(0);
+      const rows = page.getByTestId("pricing-row");
+      await expect(rows).toHaveCount(3);
+      await expect(rows.first()).toContainText("No prices");
+      await page.getByRole("textbox", { name: "Search combinations" }).fill("8 mm");
+      await expect(rows).toHaveCount(1);
+      await page.getByRole("textbox", { name: "Search combinations" }).fill("");
+      await page.getByRole("button", { name: "Show unpriced only" }).click();
+      await expect(rows).toHaveCount(3);
+      await page.getByRole("button", { name: "Show orphaned" }).click();
+      await expect(rows).toHaveCount(0);
+      await page.getByTestId(`type-tab-${fx.plainCode}`).click();
+      await expect(page.getByText("Contact the Easeetool team to add product specifications to your catalog.")).toBeVisible();
+      const go = page.getByRole("link", { name: "Go to catalog" });
+      await expect(go).toHaveAttribute("href", /\/admin\/catalog$/);
+      await expect(rows).toHaveCount(0);
+    });
+  });
+
+  test("UI AC3 drawer: Enter opens, add, duplicate error keeps the typed value, description, one PUT, prices-only save keeps the description, discard, empty save unprices", async ({ browser, run, orgB }) => {
+    test.setTimeout(150_000);
+    const fx = await getFx(run, orgB);
+    const storedRows = async () => (await ok<{ rows: { combinationKey: string; prices: { amount: number }[]; description: string | null }[] }>(await orgB.get(fx.B(`/product-pricing?componentTypeId=${fx.typeId}`)))).rows;
+    await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
+      const page = o.page;
+      const puts: string[] = [];
+      page.on("request", (r) => {
+        if (r.method() === "PUT" && r.url().includes("/product-pricing")) puts.push(r.postData() ?? "");
+      });
+      await page.goto(orgUrl(run.orgB.slug, "/admin/product-pricing"));
+      const tab = page.getByTestId(`type-tab-${fx.code}`);
+      await tab.click();
+      const rows = page.getByTestId("pricing-row");
+      const dlg = page.getByRole("dialog");
+      // Enter on the focused row opens the drawer for that combination (first by label: Double · 12 mm)
+      await rows.first().focus();
+      await page.keyboard.press("Enter");
+      await expect(dlg).toBeVisible();
+      await expect(dlg).toContainText("Double · 12 mm");
+      await expect(dlg.getByText("No prices set.")).toBeVisible();
+      // add INR 2800 (the unit is the locked pcs for a piece type)
+      await dlg.getByRole("button", { name: "Add price" }).click();
+      await dlg.getByRole("textbox", { name: "Amount" }).fill("2800");
+      await dlg.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(dlg.getByTestId("price-entry")).toHaveCount(1);
+      // duplicate pair: the error, the existing entry highlighted, the typed value kept
+      await dlg.getByRole("button", { name: "Add price" }).click();
+      await dlg.getByRole("textbox", { name: "Amount" }).fill("3100");
+      await dlg.getByRole("button", { name: "Add", exact: true }).click();
+      await expect(dlg.getByText("A price entry for INR pcs already exists.")).toBeVisible();
+      await expect(dlg.getByTestId("price-entry").first()).toHaveClass(/bg-danger-bg/);
+      await expect(dlg.getByRole("textbox", { name: "Amount" })).toHaveValue("3100");
+      await dlg.getByRole("button", { name: "Cancel" }).click();
+      // description tab with its counter
+      await dlg.getByRole("tab", { name: "Description" }).click();
+      await dlg.getByLabel("Description").fill("Standard unit");
+      await expect(dlg).toContainText("13 / 500");
+      // discard reverts both
+      await dlg.getByRole("button", { name: "Discard" }).click();
+      await expect(dlg.getByLabel("Description")).toHaveValue("");
+      await dlg.getByLabel("Description").fill("Standard unit");
+      await dlg.getByRole("tab", { name: "Prices" }).click();
+      await dlg.getByRole("button", { name: "Add price" }).click();
+      await dlg.getByRole("textbox", { name: "Amount" }).fill("2800");
+      await dlg.getByRole("button", { name: "Add", exact: true }).click();
+      await dlg.getByRole("button", { name: "Save changes" }).click();
+      await expect(dlg).toHaveCount(0);
+      expect(puts.length, "one PUT per save").toBe(1);
+      await expect(rows.first()).toContainText("INR/pcs 2,800");
+      await expect(rows.first()).toContainText("Standard unit");
+      await expect(tab).toContainText("1 / 3 priced");
+      let stored = await storedRows();
+      expect(stored).toHaveLength(1);
+      expect(stored[0].description).toBe("Standard unit");
+
+      // a prices-only change still sends the current description (PUT replaces the row)
+      await rows.first().click();
+      await dlg.getByRole("button", { name: "Edit" }).click();
+      await dlg.getByRole("textbox", { name: "Amount" }).fill("2900");
+      await dlg.getByRole("button", { name: "Update" }).click();
+      await dlg.getByRole("button", { name: "Save changes" }).click();
+      await expect(dlg).toHaveCount(0);
+      expect(puts).toHaveLength(2);
+      expect(JSON.parse(puts[1]).description).toBe("Standard unit");
+      await expect(rows.first()).toContainText("INR/pcs 2,900");
+
+      // empty drawer + blank description deletes the row: back to unpriced
+      await rows.first().click();
+      await dlg.getByRole("button", { name: "Remove" }).click();
+      await dlg.getByRole("tab", { name: "Description" }).click();
+      await dlg.getByLabel("Description").fill("");
+      await dlg.getByRole("button", { name: "Save changes" }).click();
+      await expect(dlg).toHaveCount(0);
+      await expect(rows.first()).toContainText("No prices");
+      await expect(tab).toContainText("0 / 3 priced");
+      stored = await storedRows();
+      expect(stored).toHaveLength(0);
+    });
+  });
+
+  test("UI AC4 orphan: band, badge, stored label and note; Remove deletes without opening the drawer", async ({ browser, run, orgB }) => {
+    test.setTimeout(150_000);
+    const fx = await getFx(run, orgB);
+    const put = (g: string, t: string, label: string) =>
+      orgB.put(fx.B("/product-pricing"), {
+        data: { componentTypeId: fx.typeId, combinationKey: key(g, t), combinationLabel: label, prices: [{ currency: "INR", unit: "pcs", amount: 100 }] },
+      });
+    await ok(await put("Single", "8 mm", "Single · 8 mm"));
+    await ok(await put("Double", "12 mm", "Double · 12 mm"));
+    // remove the option value that produced "Single · 8 mm"
+    await ok(await orgB.put(fx.B(`/component-types/${fx.typeId}/field-values`), {
+      data: { fieldOptionsConfig: { ...CONFIG.fieldOptionsConfig, thick: { valueMap: { Single: ["12 mm"], Double: ["12 mm"] } } } },
+    }));
+    await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
+      const page = o.page;
+      await page.goto(orgUrl(run.orgB.slug, "/admin/product-pricing"));
+      const tab = page.getByTestId(`type-tab-${fx.code}`);
+      await tab.click();
+      await expect(page.getByText("1 orphaned combination")).toBeVisible();
+      await expect(tab).toContainText("1 / 2 priced");
+      await page.getByRole("button", { name: "Show orphaned" }).click();
+      const rows = page.getByTestId("pricing-row");
+      await expect(rows).toHaveCount(1);
+      await expect(rows.first()).toHaveAttribute("data-orphaned", "true");
+      await expect(rows.first()).toContainText("Orphaned");
+      await expect(rows.first()).toContainText("Single · 8 mm");
+      await expect(rows.first()).toContainText("This combination is no longer available. Clear or update it.");
+      await expect(rows.first().locator("td").first()).toHaveClass(/bg-status-pending-bg/);
+      await rows.first().getByRole("button", { name: "Remove" }).click();
+      await expect(rows).toHaveCount(0);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      const left = (await ok<{ rows: { combinationKey: string }[] }>(await orgB.get(fx.B(`/product-pricing?componentTypeId=${fx.typeId}`)))).rows;
+      expect(left.map((r) => r.combinationKey)).toEqual([key("Double", "12 mm")]);
+      await expect(page.getByText("orphaned combination")).toHaveCount(0);
     });
   });
 });

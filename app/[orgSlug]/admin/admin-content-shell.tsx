@@ -19,7 +19,8 @@ import { useSelectedLayoutSegment } from "next/navigation";
 export function AdminContentShell({ children }: { children: React.ReactNode }) {
   const segment = useSelectedLayoutSegment();
 
-  if (segment === "catalog") {
+  // Stage 36: the Product Pricing table (up to six columns plus the right drawer) also fills the column.
+  if (segment === "catalog" || segment === "product-pricing") {
     return <div className="w-full px-8 pb-12 pt-6">{children}</div>;
   }
 
