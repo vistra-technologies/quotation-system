@@ -53,9 +53,9 @@ async function loadEstimatePalette(ctRes: Promise<Response>): Promise<{ enabled:
 }
 
 /**
- * Stage 36 (S36-10): the product price rows for the Quick Estimate lookup. Attempted for every org user; the route
- * needs MANAGE_PRICING, so a user without it gets a 403 here. Any non-ok status, a malformed body or a throw
- * degrades to no rows: no shell break, no toast, no logging of the expected 403.
+ * Stage 36 (S36-10, S36-19): the product price rows for the Quick Estimate lookup, read from the session-only
+ * `.../product-pricing/lookup` route for every org user. Any non-ok status (401 login pass-through, 5xx), a malformed
+ * body or a throw degrades to no rows: no shell break, no toast.
  */
 async function loadPricingRows(res: Promise<Response>): Promise<PricingRowInput[]> {
   try {
@@ -87,7 +87,7 @@ export default async function OrgSlugLayout({
   const meResPromise = internalFetch(`/api/v1/orgs/${orgSlug}/me`);
   const typesPromise = loadEstimatePalette(internalFetch(`/api/v1/orgs/${orgSlug}/component-types`));
   // Like the types promise it carries its own catch, so the early return below leaves no unhandled rejection.
-  const pricingPromise = loadPricingRows(internalFetch(`/api/v1/orgs/${orgSlug}/product-pricing`));
+  const pricingPromise = loadPricingRows(internalFetch(`/api/v1/orgs/${orgSlug}/product-pricing/lookup`));
   const meRes = await meResPromise;
 
   // No session (401) or cross-org guard (403) → render page without chrome.

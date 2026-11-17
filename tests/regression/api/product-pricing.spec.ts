@@ -1,8 +1,8 @@
 /**
  * Stage 36 Batch 2: product pricing API (GET / PUT collection, DELETE by id).
  *
- * Gates (route source, O-1 = c): every verb requires MANAGE_PRICING (admin + member hold it; distributor and
- * architect do not). Tenancy: organizationId comes from the session; a foreign componentTypeId is a 404 on PUT,
+ * Gates (route source): GET (admin list), PUT and DELETE require MANAGE_PRICING (admin + member hold it; distributor
+ * and architect do not). GET .../product-pricing/lookup (S36-19, Fix batch F1) is session-only: any member of the org. Tenancy: organizationId comes from the session; a foreign componentTypeId is a 404 on PUT,
  * a foreign row id a 404 on DELETE.
  *
  * Writes only ever go to this run's throwaway org B (rows cascade with it at teardown; its hard delete would
@@ -20,6 +20,7 @@ import { test, expect, SA, tag, json } from "./sa-helpers";
 covers("GET /api/v1/orgs/[orgSlug]/product-pricing");
 covers("PUT /api/v1/orgs/[orgSlug]/product-pricing");
 covers("DELETE /api/v1/orgs/[orgSlug]/product-pricing/[id]");
+covers("GET /api/v1/orgs/[orgSlug]/product-pricing/lookup");
 
 type Price = { currency: string; unit: string; amount: number };
 type Row = {
@@ -28,6 +29,7 @@ type Row = {
 };
 
 const PP = "/product-pricing";
+const LOOKUP = `${PP}/lookup`;
 const key = (o: Record<string, string>) => JSON.stringify(Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1))));
 
 /** Component type id by code, as seen by `g` in org `slug` (a read). */
@@ -63,6 +65,8 @@ const glassOfTestOrg = (c: Ctx) => typeIdIn(c.as.admin, c.run.testOrg.slug, "GLA
 
 registerNegatives([
   { key: "GET /api/v1/orgs/[orgSlug]/product-pricing", method: "GET", path: () => PP, permission: "MANAGE_PRICING" },
+  // S36-19: session-only (no permission): the matrix gives 401 / cross-tenant 403 / unknown-org 404 and no role is denied.
+  { key: "GET /api/v1/orgs/[orgSlug]/product-pricing/lookup", method: "GET", path: () => LOOKUP },
   {
     key: "PUT /api/v1/orgs/[orgSlug]/product-pricing",
     method: "PUT",
@@ -108,6 +112,51 @@ registerNegatives([
     },
   },
 ]);
+
+test.describe("product pricing: GET .../lookup, session-only read (S36-19, Fix batch F1)", () => {
+  const LOOKUP_KEYS = ["combinationKey", "componentTypeId", "description", "prices"];
+
+  test("AC1: a Test Org distributor (no MANAGE_PRICING) reads the lookup; the admin GET, PUT and DELETE stay 403", async ({ as, run }) => {
+    const r = await as.distributor.get(orgApi(run.testOrg.slug, LOOKUP));
+    expect(r.status(), await r.text()).toBe(200);
+    const rows = ((await r.json()) as { rows: Record<string, unknown>[] }).rows;
+    expect(Array.isArray(rows)).toBe(true);
+    for (const row of rows) expect(Object.keys(row).sort()).toEqual(LOOKUP_KEYS);
+    expect((await as.distributor.get(orgApi(run.testOrg.slug, PP))).status()).toBe(403);
+    expect((await as.distributor.put(orgApi(run.testOrg.slug, PP), { data: { componentTypeId: UUID_GHOST, combinationKey: key({ a: "b" }), combinationLabel: "x", prices: [] } })).status()).toBe(403);
+    expect((await as.distributor.delete(orgApi(run.testOrg.slug, `${PP}/${UUID_GHOST}`))).status()).toBe(403);
+    // the architect (the other external role) and a company member read it too
+    expect((await as.architect.get(orgApi(run.testOrg.slug, LOOKUP))).status()).toBe(200);
+    expect((await as.member.get(orgApi(run.testOrg.slug, LOOKUP))).status()).toBe(200);
+  });
+
+  test("AC2: after the admin PUTs a row, the lookup returns it with exactly the 4 keys (org B)", async ({ orgB, run }) => {
+    const glass = await typeIdIn(orgB, run.orgB.slug, "GLASS");
+    const b = body(run.prefix, glass, `lk-${tag()}`, { description: "Lookup note" });
+    const put = await putB({ orgB, run }, b);
+    expect(put.status(), await put.text()).toBe(200);
+    const row = ((await put.json()) as { row: Row }).row;
+    const r = await orgB.get(orgApi(run.orgB.slug, LOOKUP));
+    expect(r.status(), await r.text()).toBe(200);
+    const rows = ((await r.json()) as { rows: Record<string, unknown>[] }).rows;
+    const mine = rows.find((x) => x.combinationKey === b.combinationKey);
+    expect(mine, "the new row is in the lookup").toBeTruthy();
+    expect(Object.keys(mine!).sort()).toEqual(LOOKUP_KEYS);
+    expect(mine).toEqual({ componentTypeId: glass, combinationKey: b.combinationKey, prices: b.prices, description: "Lookup note" });
+    for (const x of rows) expect(Object.keys(x).sort()).toEqual(LOOKUP_KEYS); // no id / label / timestamps / organizationId on any row
+    expect((await orgB.delete(orgApi(run.orgB.slug, `${PP}/${row.id}`))).status()).toBe(200);
+  });
+
+  test("AC3: the Test Org's lookup never contains org B's rows (401, cross-tenant 403, unknown org 404 come from the matrix above)", async ({ orgB, as, run }) => {
+    const glass = await typeIdIn(orgB, run.orgB.slug, "GLASS");
+    const b = body(run.prefix, glass, `lkx-${tag()}`);
+    const row = ((await (await putB({ orgB, run }, b)).json()) as { row: Row }).row;
+    const own = await as.distributor.get(orgApi(run.testOrg.slug, LOOKUP));
+    expect(own.status()).toBe(200);
+    expect(((await own.json()) as { rows: { combinationKey: string }[] }).rows.some((x) => x.combinationKey === b.combinationKey)).toBe(false);
+    expect((await orgB.delete(orgApi(run.orgB.slug, `${PP}/${row.id}`))).status()).toBe(200);
+  });
+});
 
 test.describe("product pricing: PUT / GET / DELETE rules (org B)", () => {
   test("create → update in place (one row) → delete-on-empty; shapes; label trimmed; prices sorted", async ({ orgB, run }) => {

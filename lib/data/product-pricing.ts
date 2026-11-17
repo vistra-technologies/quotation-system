@@ -29,6 +29,17 @@ export async function listProductPricing(session: SessionData, opts: { component
   });
 }
 
+/**
+ * Stage 36 Fix batch F1 (S36-19): the Quick Estimate read for every org member. Exactly the 4 fields the lookup
+ * needs, organizationId from the session only, no order, no join. Do not reuse ROW_SELECT (it carries admin fields).
+ */
+export async function lookupProductPricing(session: SessionData) {
+  return prisma.productPricing.findMany({
+    where: { organizationId: session.organizationId },
+    select: { componentTypeId: true, combinationKey: true, prices: true, description: true },
+  });
+}
+
 /** Org-scoped type lookup (tenancy guard): null when missing or another org's. `code` drives area vs piece. */
 export async function getComponentTypeForPricing(session: SessionData, componentTypeId: string) {
   return prisma.componentType.findFirst({

@@ -250,6 +250,7 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     const putBody = { componentTypeId: GHOST, combinationKey: JSON.stringify({ rgr: "c" }), combinationLabel: "rgr c", prices: [] };
     for (const [verb, r] of [
       ["GET", await admin.get(pp)],
+      ["GET lookup", await admin.get(`${pp}/lookup`)],
       ["PUT", await admin.put(pp, { data: putBody })],
       ["DELETE", await admin.delete(`${pp}/${priceRowId}`)],
     ] as const) {

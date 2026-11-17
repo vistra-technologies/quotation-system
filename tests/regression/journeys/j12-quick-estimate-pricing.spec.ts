@@ -1,13 +1,15 @@
 /**
- * J12 — Quick Estimate with Product Pricing (Stage 36 Batch 4, S36-9..S36-14, UI AC2, AC3, AC5, AC6).
+ * J12 — Quick Estimate with Product Pricing (Stage 36 Batch 4, S36-9..S36-14, UI AC2, AC3, AC5; Fix batch F1: M-1
+ * same-session refresh after a drawer save, UI AC4 for a user without MANAGE_PRICING, S36-19).
  *
  * The Test Org has no product-spec flags and no prices, and rule 10 forbids editing its shared catalog, so the priced
  * walk runs in this run's throwaway org B: the starter GLASS type there is flagged `productSpec` (SuperAdmin PATCH),
  * three combinations get prices through the org admin's PUT, and the popup is driven as org B's admin. Everything
- * created goes with org B at teardown (pricing rows and the one inquiry cascade). The Test Org is only READ, for UI
- * AC6: a distributor has no MANAGE_PRICING, so the layout's pricing GET is a 403 that must leave the popup working with
- * manual rates, no toast and no console error. (A 500 or network failure of that GET is a server-side fetch, so a
- * browser route cannot fail it: covered by the layout's catch, not by this spec.)
+ * created goes with org B at teardown (pricing rows, the one inquiry, and the distributor user + company of UI AC4
+ * cascade). The Test Org is never touched. UI AC4 (S36-19): a distributor in org B has no MANAGE_PRICING yet reads the
+ * rate card through the session-only `.../product-pricing/lookup`, so the rate auto-fills (no toast, no console
+ * error). (A 500 or network failure of that read is a server-side fetch, so a browser route cannot fail it: covered
+ * by the layout's catch, not by this spec.)
  *
  * Prices: combination 0 = INR/m2 2800 + USD/m2 40 + a description; combination 1 = INR/sqft 260 only (the other area
  * unit, which must NOT match and is never converted); combination 2 = nothing.
@@ -18,7 +20,8 @@ import { ok } from "../api/design-helpers";
 import { orgApi } from "../api/project-helpers";
 import { combinationKey } from "@/lib/product-pricing/combination";
 import { buildCombinations, usableEstimateTypes, type ComponentTypeInput } from "@/lib/quick-estimate/palette";
-import { orgUrl } from "../../e2e/helpers";
+import { apiSignIn, orgUrl } from "../../e2e/helpers";
+import { RUN_PASSWORD_ENV } from "../env";
 import { isHydrated } from "../pages/collect";
 import { withPage } from "./journey-helpers";
 import type { Locator, Page } from "@playwright/test";
@@ -45,7 +48,7 @@ async function addLineWith(page: Page, dialog: Locator, text: string) {
   await expect(picker).toHaveCount(0);
 }
 
-test("J12: Quick Estimate product pricing: auto-populate, Reset, description, currency re-lookup, inquiry card; 403 degrades silently", async ({ browser, run, sa, orgB, as }) => {
+test("J12: Quick Estimate product pricing: auto-populate, Reset, description, currency re-lookup, inquiry card; same-session refresh after a drawer save; a user without MANAGE_PRICING gets the rates", async ({ browser, run, sa, orgB }) => {
   test.setTimeout(420_000);
   const B = (p: string) => orgApi(run.orgB.slug, p);
   const tag = randomBytes(2).toString("hex");
@@ -303,32 +306,76 @@ test("J12: Quick Estimate product pricing: auto-populate, Reset, description, cu
     });
   });
 
-  // ── UI AC6: no MANAGE_PRICING => the layout's pricing GET is 403, the popup still works, no toast, no console error ──
-  await withPage(browser, run, "distributor", async (o) => {
-    const denied = await as.distributor.get(orgApi(run.testOrg.slug, "/product-pricing"));
-    expect(denied.status(), "a distributor lacks MANAGE_PRICING").toBe(403);
+  // ── M-1: a price saved through the drawer reaches Quick Estimate in the SAME page session (no reload) ──
+  await withPage(browser, run, "orgB-admin", async (o) => {
     const page = o.page;
-    // Only console errors and uncaught page errors count here: a browser-side abort of a background prefetch is
-    // unrelated noise, and the pricing GET itself is a server-side fetch (nothing for the browser to log).
-    const errors: string[] = [];
-    page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-    page.on("pageerror", (e) => errors.push(String(e)));
-    const icon = await openCalculator(page, run.testOrg.slug);
-    await expect(icon).not.toHaveAttribute("aria-disabled", "true");
-    await icon.click();
-    const dialog = page.getByRole("dialog", { name: "Quick Estimate" });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Add item" }).click();
-    const picker = page.getByRole("dialog", { name: "Choose an item" });
-    await picker.locator(".qe-pk-gh:has(.qe-pk-gh-u:text-is(\"m²\")) + .qe-pk-opt").first().click();
-    await expect(dialog.getByLabel("Unit rate").first()).toHaveValue("");
-    await page.locator("[data-qty]").first().fill("5");
-    await dialog.getByLabel("Unit rate").first().fill("1000");
-    await expect(dialog.locator(".qe-amt").first()).toHaveText("5,000.00");
-    await expect(dialog.locator("[data-reset]")).toHaveCount(0);
-    // No toast (components/toast.tsx is role=status) and no alert, apart from Next's always-present route announcer.
-    await expect(page.getByRole("status")).toHaveCount(0);
-    await expect(page.locator('[role="alert"]:not(#__next-route-announcer__)')).toHaveCount(0);
-    expect(errors, "no console error").toEqual([]);
+    await page.goto(orgUrl(run.orgB.slug, "/admin/product-pricing"));
+    const tab = page.getByTestId("type-tab-GLASS");
+    await expect.poll(() => isHydrated(tab)).toBe(true);
+    await tab.click();
+    // c2 is unpriced (see the header): price it through the drawer UI, INR/m2 default pair
+    await page.getByTestId("pricing-row").filter({ hasText: c2.text }).first().click();
+    const dlg = page.getByRole("dialog");
+    await dlg.getByRole("button", { name: "Add price" }).click();
+    await dlg.getByRole("textbox", { name: "Amount" }).fill("777");
+    await dlg.getByRole("button", { name: "Add", exact: true }).click();
+    await dlg.getByRole("tab", { name: "Description" }).click();
+    await dlg.getByLabel("Description").fill("Saved in the drawer");
+    // router.refresh() issues an RSC GET for the current page: wait for it so the layout's new lookup has landed
+    const refreshed = page.waitForResponse((r) => r.request().method() === "GET" && r.url().includes("_rsc="));
+    await dlg.getByRole("button", { name: "Save changes" }).click();
+    await expect(dlg).toHaveCount(0);
+    await refreshed;
+    // no goto / reload from here on: the layout's lookup must have been refreshed by the save
+    await page.getByRole("button", { name: "Quick Estimate" }).click();
+    const qe = page.getByRole("dialog", { name: "Quick Estimate" });
+    await expect(qe).toBeVisible();
+    await addLineWith(page, qe, c2.text);
+    const line = qe.locator(".qe-lw").first();
+    await expect(line.getByLabel("Unit rate")).toHaveValue("777", { timeout: 20_000 });
+    await expect(line.getByRole("checkbox", { name: "Attach description" })).toBeChecked();
+    await expect(line.getByRole("textbox", { name: "Description" })).toHaveValue("Saved in the drawer");
   });
+
+  // ── UI AC4 (S36-19): a user WITHOUT MANAGE_PRICING sees the rate auto-filled; no toast, no console error ──
+  {
+    const password = process.env[RUN_PASSWORD_ENV];
+    if (!password) throw new Error(`${RUN_PASSWORD_ENV} is not set`);
+    const roles = (await ok<{ roles: { id: string; name: string }[] }>(await orgB.get(B("/roles")))).roles;
+    const roleId = roles.find((r) => r.name === "Distributor")?.id;
+    expect(roleId, "org B has the default Distributor role").toBeTruthy();
+    const co = await orgB.post(B("/external-companies"), { data: { name: `${run.prefix}co-${tag}`, type: "DISTRIBUTOR", country: "India", defaultCurrency: "INR" } });
+    expect(co.status(), await co.text()).toBe(201);
+    const companies = (await ok<{ companies: { id: string; name: string }[] }>(await orgB.get(B("/external-companies")))).companies;
+    const companyId = companies.find((c) => c.name === `${run.prefix}co-${tag}`)?.id;
+    expect(companyId, "the company is listed").toBeTruthy();
+    const username = `${run.prefix}dist-${tag}`;
+    await ok(await orgB.post(B("/users"), { data: { username, firstName: "RGR", lastName: "Dist", password, roleId, externalCompanyId: companyId } }), 201);
+
+    const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    const ctx = await browser.newContext({ baseURL: process.env.PLAYWRIGHT_BASE_URL, extraHTTPHeaders: bypass ? { "x-vercel-protection-bypass": bypass } : {} });
+    try {
+      const page = await ctx.newPage();
+      await apiSignIn(page, run.orgB.slug, username, password);
+      const errors: string[] = [];
+      page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+      page.on("pageerror", (e) => errors.push(String(e)));
+      const icon = await openCalculator(page, run.orgB.slug);
+      await icon.click();
+      const dialog = page.getByRole("dialog", { name: "Quick Estimate" });
+      await expect(dialog).toBeVisible();
+      await addLineWith(page, dialog, c0.text);
+      const rate = dialog.locator(".qe-lw").first().getByLabel("Unit rate");
+      await expect(rate).toHaveValue("2800");
+      await expect(dialog.locator("[data-reset]")).toHaveCount(0);
+      await rate.fill("3100");
+      await expect(dialog.locator("[data-reset]")).toBeVisible();
+      // No toast (components/toast.tsx is role=status) and no alert, apart from Next's always-present route announcer.
+      await expect(page.getByRole("status")).toHaveCount(0);
+      await expect(page.locator('[role="alert"]:not(#__next-route-announcer__)')).toHaveCount(0);
+      expect(errors, "no console error").toEqual([]);
+    } finally {
+      await ctx.close();
+    }
+  }
 });

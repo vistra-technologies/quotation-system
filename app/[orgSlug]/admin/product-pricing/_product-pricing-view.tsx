@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Toast, useToast } from "@/components/toast";
 import { apiErrorMessage } from "@/lib/api-error-message";
@@ -53,6 +54,7 @@ export function ProductPricingView({ orgSlug, types, initialRows, loadError }: P
   const t = useTranslations("productPricing");
   const href = useOrgHref(orgSlug);
   const toast = useToast();
+  const router = useRouter();
 
   const [rows, setRows] = useState(initialRows);
   const [activeId, setActiveId] = useState(types[0]?.id ?? "");
@@ -87,6 +89,9 @@ export function ProductPricingView({ orgSlug, types, initialRows, loadError }: P
       const rest = prev.filter((r) => !(r.componentTypeId === typeId && r.combinationKey === key));
       return row ? [...rest, row] : rest;
     });
+    // M-1: Quick Estimate's price lookup is built once in the org layout (server) and the layout persists across
+    // client navigation, so re-run it now; without this the popup keeps the pre-save prices until a hard reload.
+    router.refresh();
   }
 
   async function removeOrphan(g: GridRow) {
