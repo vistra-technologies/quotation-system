@@ -234,3 +234,16 @@ test("opening an inquiry derives the area unit from the first area line (F-5), m
   assert.equal(sw.lines[1].qty, "0.93");
   assert.equal(sw.lines[2].qty, "2");
 });
+
+test("re-pick: a line still in the other area unit has its qty converted, never kept as the same number", () => {
+  const stale: DraftLine = { ...picked("Single", "2"), unit: "m²" }; // a mixed stored estimate: draft unit is sq ft
+  const out = applyChoice(stale, type, opt("Double"), LOOKUP, "INR", "sq ft");
+  assert.equal(out.unit, "sq ft");
+  assert.equal(out.qty, "21.53");
+  const back = applyChoice({ ...out }, type, opt("Single"), LOOKUP, "INR", "m²");
+  assert.equal(back.unit, "m²");
+  assert.equal(back.qty, "2");
+  // same unit: untouched; area to pcs type kind change still clears
+  assert.equal(applyChoice(picked("Single", "7"), type, opt("Double"), LOOKUP, "INR", "m²").qty, "7");
+  assert.equal(applyChoice({ ...pcsLine(), qty: "3" }, type, opt("Double"), LOOKUP, "INR", "m²").qty, "");
+});

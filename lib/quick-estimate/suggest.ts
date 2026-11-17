@@ -108,14 +108,21 @@ export function applyChoice(
   areaUnit: AreaUnit,
 ): DraftLine {
   const unit: EstimateUnit = isAreaUnit(type.unit) ? areaUnit : type.unit;
+  // Another kind of unit (area vs pcs) makes the old quantity meaningless; a line still in the other area unit
+  // (a mixed stored estimate) has its quantity converted, so "2 m2" never silently becomes "2 sq ft".
+  const qty =
+    line.unit === null || line.unit === unit
+      ? line.qty
+      : isAreaUnit(line.unit) && isAreaUnit(unit)
+        ? convertAreaQtyString(line.qty, line.unit, unit)
+        : "";
   const base: DraftLine = {
     ...line,
     typeCode: type.code,
     itemName: type.name,
     variantText: option.text,
     unit,
-    // Another kind of unit (area vs pcs) makes the old quantity meaningless.
-    qty: line.unit !== null && isAreaUnit(line.unit) !== isAreaUnit(unit) ? "" : line.qty,
+    qty,
   };
   const sameItem = line.typeCode === type.code && line.variantText === option.text;
   if (sameItem) return base;
