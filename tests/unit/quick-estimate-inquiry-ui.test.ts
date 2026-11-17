@@ -15,8 +15,8 @@ import { emptyDraft, newLine, toValueLines, type DraftLine, type EstimateDraft }
 import type { EstimateType } from "../../lib/quick-estimate/palette";
 
 const TYPES: EstimateType[] = [
-  { id: "t1", code: "GLASS", name: "Partition", unit: "m²", basicFields: [], options: {} as EstimateType["options"] },
-  { id: "t2", code: "DOOR", name: "Door", unit: "pcs", basicFields: [], options: {} as EstimateType["options"] },
+  { id: "t1", code: "GLASS", name: "Partition", unit: "m²", mode: "fallback", pickerFields: [], options: {} as EstimateType["options"] },
+  { id: "t2", code: "DOOR", name: "Door", unit: "pcs", mode: "fallback", pickerFields: [], options: {} as EstimateType["options"] },
 ];
 
 const line = (over: Partial<DraftLine> = {}): DraftLine => ({

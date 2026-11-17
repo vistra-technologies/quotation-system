@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useRef, useState, type ReactNod
 import type { SupportedCurrency } from "@/lib/currency";
 import type { EstimateDraft } from "@/lib/quick-estimate/lines";
 import type { EstimateType } from "@/lib/quick-estimate/palette";
+import type { PricingLookup } from "@/lib/quick-estimate/suggest";
 import { useEstimateState, type EstimateState } from "./use-estimate-state";
 
 /**
@@ -57,6 +58,8 @@ interface EstimateProviderProps {
   enabled: boolean;
   types: EstimateType[];
   defaultCurrency: SupportedCurrency;
+  /** Stage 36: product prices (S36-10); `{}` when the user lacks MANAGE_PRICING or the read failed. */
+  pricing: PricingLookup;
   children: ReactNode;
 }
 
@@ -65,9 +68,9 @@ interface EstimateProviderProps {
  * top bar, the New Inquiry form and the inquiry detail card share one draft instead of racing on one
  * sessionStorage key. `TopBarActions` renders the single popup from `request`; nothing else renders one.
  */
-export function EstimateProvider({ orgSlug, orgName, enabled, types, defaultCurrency, children }: EstimateProviderProps) {
-  const draft = useEstimateState(orgSlug, enabled, types, defaultCurrency);
-  const session = useEstimateState(orgSlug, enabled, types, defaultCurrency, { persist: false });
+export function EstimateProvider({ orgSlug, orgName, enabled, types, defaultCurrency, pricing, children }: EstimateProviderProps) {
+  const draft = useEstimateState(orgSlug, enabled, types, defaultCurrency, pricing);
+  const session = useEstimateState(orgSlug, enabled, types, defaultCurrency, pricing, { persist: false });
   const [request, setRequest] = useState<OpenRequest | null>(null);
   const requestRef = useRef<OpenRequest | null>(null);
   const inquiryOpener = useRef<((trigger: HTMLElement | null) => void) | null>(null);

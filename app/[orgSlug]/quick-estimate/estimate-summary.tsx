@@ -56,6 +56,9 @@ export function EstimateSummary({ view }: { view: EstimateView }) {
                 <td className="qe-est-it px-3 py-2.5">
                   <b className="block font-extrabold text-text-heading">{r.name}</b>
                   {r.variant && <span className="mt-px block text-xs text-text-muted">{r.variant}</span>}
+                  {r.description && (
+                    <span className="qe-est-desc mt-1 block whitespace-pre-line text-xs text-text-muted">{r.description}</span>
+                  )}
                 </td>
                 <td className="qe-est-qty whitespace-nowrap px-3 py-2.5 text-right">{r.qty}</td>
                 <td className="qe-est-rate whitespace-nowrap px-3 py-2.5 text-right">

@@ -1,5 +1,5 @@
 import { isSupportedCurrency, type SupportedCurrency } from "@/lib/currency";
-import { validateValueLine, parseQty, parseUnitPrice } from "./estimate";
+import { validateValueLine, parseQty, parseUnitPrice, MAX_LINE_DESCRIPTION, SUGGESTED_UNITS, type SuggestedUnit } from "./estimate";
 import type { EstimateType } from "./palette";
 import { emptyDraft, type DraftLine, type EstimateDraft } from "./lines";
 
@@ -24,6 +24,13 @@ interface StoredLine {
   variantText: string;
   qty: string;
   rate: string;
+  /** Stage 36 (F-4): absent in a draft saved before Stage 36, which loads with the defaults. */
+  suggestedUnitPrice?: number | null;
+  suggestedUnit?: SuggestedUnit | null;
+  combinationKey?: string | null;
+  description?: string;
+  descriptionEdited?: boolean;
+  attachDescription?: boolean;
 }
 
 interface StoredDraft {
@@ -38,7 +45,19 @@ export function serializeDraft(d: EstimateDraft): string {
   const lines: StoredLine[] = [];
   for (const l of d.lines) {
     if (l.typeCode === null) continue;
-    lines.push({ typeCode: l.typeCode, itemName: l.itemName, variantText: l.variantText, qty: l.qty, rate: l.rate });
+    lines.push({
+      typeCode: l.typeCode,
+      itemName: l.itemName,
+      variantText: l.variantText,
+      qty: l.qty,
+      rate: l.rate,
+      suggestedUnitPrice: l.suggestedUnitPrice,
+      suggestedUnit: l.suggestedUnit,
+      combinationKey: l.combinationKey,
+      description: l.description,
+      descriptionEdited: l.descriptionEdited,
+      attachDescription: l.attachDescription,
+    });
   }
   const stored: StoredDraft = {
     currency: d.currency,
@@ -86,6 +105,11 @@ export function parseStoredDraft(
         unitPrice: parseUnitPrice(rate),
       });
       if (!check.ok) continue;
+      // Stage 36: each new key is read defensively; a bad or missing one takes its default, never drops the line.
+      const sp = l.suggestedUnitPrice;
+      const suggestedUnitPrice = typeof sp === "number" && Number.isFinite(sp) && sp >= 0 ? sp : null;
+      const suggestedUnit = (SUGGESTED_UNITS as readonly unknown[]).includes(l.suggestedUnit) ? (l.suggestedUnit as SuggestedUnit) : null;
+      const key = typeof l.combinationKey === "string" && l.combinationKey.length <= 1000 ? l.combinationKey : null;
       lines.push({
         id: nextId(),
         typeCode: type.code,
@@ -95,6 +119,12 @@ export function parseStoredDraft(
         qty,
         rate,
         flag: false,
+        suggestedUnitPrice,
+        suggestedUnit: suggestedUnitPrice === null ? null : suggestedUnit,
+        combinationKey: key,
+        description: str(l.description).slice(0, MAX_LINE_DESCRIPTION),
+        descriptionEdited: l.descriptionEdited === true,
+        attachDescription: l.attachDescription === true,
       });
     }
   }

@@ -1,6 +1,7 @@
 import { internalFetch } from "@/lib/internal-fetch";
 import { isSupportedCurrency, type SupportedCurrency } from "@/lib/currency";
 import { usableEstimateTypes, type ComponentTypeInput, type EstimateType } from "@/lib/quick-estimate/palette";
+import { buildPricingLookup, type PricingRowInput } from "@/lib/quick-estimate/suggest";
 import { detectIsSubdomain } from "@/lib/orgHref";
 import { NextIntlClientProvider } from "next-intl";
 import allMessages from "@/messages/en.json";
@@ -50,6 +51,23 @@ async function loadEstimatePalette(ctRes: Promise<Response>): Promise<{ enabled:
     return { enabled: false, types: [] };
   }
 }
+
+/**
+ * Stage 36 (S36-10): the product price rows for the Quick Estimate lookup. Attempted for every org user; the route
+ * needs MANAGE_PRICING, so a user without it gets a 403 here. Any non-ok status, a malformed body or a throw
+ * degrades to no rows: no shell break, no toast, no logging of the expected 403.
+ */
+async function loadPricingRows(res: Promise<Response>): Promise<PricingRowInput[]> {
+  try {
+    const r = await res;
+    if (!r.ok) return [];
+    const body = (await r.json()) as { rows?: PricingRowInput[] };
+    return Array.isArray(body.rows) ? body.rows : [];
+  } catch {
+    return [];
+  }
+}
+
 export default async function OrgSlugLayout({
   children,
   params,
@@ -68,6 +86,8 @@ export default async function OrgSlugLayout({
   // below (401/403: no chrome) leaves no unhandled rejection.
   const meResPromise = internalFetch(`/api/v1/orgs/${orgSlug}/me`);
   const typesPromise = loadEstimatePalette(internalFetch(`/api/v1/orgs/${orgSlug}/component-types`));
+  // Like the types promise it carries its own catch, so the early return below leaves no unhandled rejection.
+  const pricingPromise = loadPricingRows(internalFetch(`/api/v1/orgs/${orgSlug}/product-pricing`));
   const meRes = await meResPromise;
 
   // No session (401) or cross-org guard (403) → render page without chrome.
@@ -90,6 +110,7 @@ export default async function OrgSlugLayout({
     externalCompanyCurrency: string | null;
   };
   const estimate = await typesPromise;
+  const pricing = buildPricingLookup(await pricingPromise, estimate.types);
   const estimateCurrency: SupportedCurrency | null = isSupportedCurrency(me.externalCompanyCurrency)
     ? me.externalCompanyCurrency
     : null;
@@ -112,6 +133,7 @@ export default async function OrgSlugLayout({
       enabled={estimate.enabled}
       types={estimate.types}
       defaultCurrency={estimateCurrency ?? "INR"}
+      pricing={pricing}
     >
     <div className="flex h-screen bg-bg-page">
       {/* Hard-reloads if a client-side nav lands on /login (revoked/expired session),

@@ -5,11 +5,12 @@ import { createPortal } from "react-dom";
 import { useTranslations } from "next-intl";
 import { SelectField } from "@/components/select-field";
 import { SUPPORTED_CURRENCIES, type SupportedCurrency } from "@/lib/currency";
-import { computeEstimate, isInvalidQty, type EstimateLineResult } from "@/lib/quick-estimate/estimate";
+import { computeEstimate, isInvalidQty, MAX_LINE_DESCRIPTION, type EstimateLineResult } from "@/lib/quick-estimate/estimate";
 import { formatAmount, formatMoney } from "@/lib/quick-estimate/format";
 import { sameDraft } from "@/lib/quick-estimate/inquiry-draft";
 import { toValueLines, type DraftLine } from "@/lib/quick-estimate/lines";
 import type { EstimateType } from "@/lib/quick-estimate/palette";
+import { showReset } from "@/lib/quick-estimate/suggest";
 import { ComponentChip } from "./component-chip";
 import type { InquiryMode } from "./estimate-provider";
 import { ExportPreview } from "./export-preview";
@@ -51,8 +52,10 @@ function LineRow({ line, result, currency, types, pickerOpen, onTogglePicker, on
   const hasItem = line.typeCode !== null && line.unit !== null;
   const qtyBad = hasItem && line.unit !== null && isInvalidQty(line.qty, line.unit);
   const label = hasItem ? `${line.itemName} · ${line.variantText}` : t("selectItem");
+  const descId = `qe-desc-${line.id}`;
 
   return (
+    <div className="qe-lw">
     <div className="qe-line qe-grid" data-line={line.id}>
       <button
         ref={itemRef}
@@ -105,7 +108,7 @@ function LineRow({ line, result, currency, types, pickerOpen, onTogglePicker, on
         <span className="qe-unit">{line.unit ?? ""}</span>
       </div>
 
-      <div className={`qe-in${line.flag ? " qe-flag" : ""}${hasItem ? "" : " qe-off"}`}>
+      <div className={`qe-in${line.flag ? " qe-flag" : ""}${hasItem ? "" : " qe-off"}${showReset(line) ? " qe-edited" : ""}`}>
         <span className="qe-pre">{currency}</span>
         <input
           type="number"
@@ -119,6 +122,21 @@ function LineRow({ line, result, currency, types, pickerOpen, onTogglePicker, on
           {...numericInputGuards}
           onChange={(e) => state.setRate(line.id, e.target.value)}
         />
+        {showReset(line) && (
+          <button
+            type="button"
+            className="qe-rst"
+            data-reset={line.id}
+            title={t("resetRate")}
+            aria-label={t("resetRate")}
+            onClick={() => state.resetRate(line.id)}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+              <path d="M3 3v5h5" />
+            </svg>
+          </button>
+        )}
         <span className="qe-unit">{line.unit ? `/${line.unit}` : ""}</span>
       </div>
 
@@ -145,6 +163,39 @@ function LineRow({ line, result, currency, types, pickerOpen, onTogglePicker, on
           onClose={onClosePicker}
         />
       )}
+    </div>
+    {hasItem && (
+      <div className="qe-subrow">
+        <label className="qe-attach-lbl">
+          <input
+            type="checkbox"
+            data-attach={line.id}
+            checked={line.attachDescription}
+            onChange={(e) => state.setAttachDescription(line.id, e.target.checked)}
+          />
+          {t("attachDescription")}
+        </label>
+        {line.attachDescription && (
+          <div className="qe-desc-area">
+            <div className="qe-desc-head">
+              <label className="qe-desc-label" htmlFor={descId}>{t("description")}</label>
+              {line.description.length >= MAX_LINE_DESCRIPTION - 100 && (
+                <span className="qe-desc-count">{t("descriptionCount", { count: line.description.length, max: MAX_LINE_DESCRIPTION })}</span>
+              )}
+            </div>
+            <textarea
+              id={descId}
+              data-desc={line.id}
+              className="qe-desc-ta"
+              rows={2}
+              maxLength={MAX_LINE_DESCRIPTION}
+              value={line.description}
+              onChange={(e) => state.setDescription(line.id, e.target.value)}
+            />
+          </div>
+        )}
+      </div>
+    )}
     </div>
   );
 }

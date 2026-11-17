@@ -1,5 +1,5 @@
 import type { SupportedCurrency } from "@/lib/currency";
-import { parseQty, parseUnitPrice, type DiscountMode, type EstimateUnit, type ValueLine } from "./estimate";
+import { parseQty, parseUnitPrice, type DiscountMode, type EstimateUnit, type SuggestedUnit, type ValueLine } from "./estimate";
 
 /**
  * The client-side draft (Stage 33): what the popup edits. Inputs are strings (blank means 0). A line that
@@ -16,6 +16,15 @@ export interface DraftLine {
   rate: string;
   /** Currency-change flag (D-7): the rate needs re-checking. UI state, never persisted. */
   flag: boolean;
+  /** Stage 36 S36-11: the product price found for this line's (currency, unit), or null. Drives the inline Reset. */
+  suggestedUnitPrice: number | null;
+  suggestedUnit: SuggestedUnit | null;
+  /** Set in spec mode only (the picked combination's key); null for fallback lines and generic stored lines. */
+  combinationKey: string | null;
+  /** The description text shown in the textarea ("" when none); printed only while `attachDescription`. */
+  description: string;
+  descriptionEdited: boolean;
+  attachDescription: boolean;
 }
 
 export interface EstimateDraft {
@@ -27,8 +36,18 @@ export interface EstimateDraft {
   lines: DraftLine[];
 }
 
+/** The Stage 36 fields of a line that has no product price or description (every pre-Stage 36 line). */
+export const NO_PRICING = {
+  suggestedUnitPrice: null,
+  suggestedUnit: null,
+  combinationKey: null,
+  description: "",
+  descriptionEdited: false,
+  attachDescription: false,
+} as const;
+
 export function newLine(id: string): DraftLine {
-  return { id, typeCode: null, itemName: "", variantText: "", unit: null, qty: "", rate: "", flag: false };
+  return { id, typeCode: null, itemName: "", variantText: "", unit: null, qty: "", rate: "", flag: false, ...NO_PRICING };
 }
 
 export function emptyDraft(currency: SupportedCurrency): EstimateDraft {
@@ -46,9 +65,27 @@ export function toValueLines(lines: DraftLine[]): ValueLine[] {
       unit: l.unit,
       qty: parseQty(l.qty, l.unit),
       unitPrice: parseUnitPrice(l.rate),
+      ...pricingKeysOfDraft(l),
     });
   }
   return out;
+}
+
+/** The Stage 36 value-line keys of a draft line (S36-14). A blank description is stored as null. */
+export function pricingKeysOfDraft(l: DraftLine): Partial<ValueLine> {
+  const d = l.description.trim();
+  // A line with none of it (every fallback line) is stored exactly as in Stage 33.
+  if (l.suggestedUnitPrice === null && l.combinationKey === null && d === "" && !l.descriptionEdited && !l.attachDescription) {
+    return {};
+  }
+  return {
+    suggestedUnitPrice: l.suggestedUnitPrice,
+    suggestedUnit: l.suggestedUnit,
+    combinationKey: l.combinationKey,
+    description: d === "" ? null : d,
+    descriptionEdited: l.descriptionEdited,
+    attachDescription: l.attachDescription,
+  };
 }
 
 /** The draft dot: at least one line has an item. */

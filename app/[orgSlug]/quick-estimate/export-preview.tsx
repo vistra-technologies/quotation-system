@@ -140,6 +140,7 @@ export function ExportPreview({ orgName, currency, lines, result, initialPrepare
                 <span>
                   <b>{r.name}</b>
                   {r.variant && <div className="qe-s-sub">{r.variant}</div>}
+                  {r.description && <div className="qe-s-sub qe-s-desc">{r.description}</div>}
                 </span>
                 <span>{r.qty}</span>
                 <span>{r.rate}</span>

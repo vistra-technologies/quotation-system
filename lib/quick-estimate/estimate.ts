@@ -19,16 +19,33 @@ export interface Discount {
   value: number;
 }
 
+/** Stage 36 S36-14: the unit a product price was entered in (the pricing API's unit vocabulary). */
+export const SUGGESTED_UNITS = ["m2", "sqft", "pcs"] as const;
+export type SuggestedUnit = (typeof SUGGESTED_UNITS)[number];
+
 export interface ValueLine {
   itemName: string;
   variantText: string;
   unit: EstimateUnit;
   qty: number;
   unitPrice: number;
+  /**
+   * Stage 36 S36-14, all optional and additive: a Stage 33 line has none of them and stays valid. The estimate is
+   * a self-contained snapshot, so none of these is re-checked against live pricing.
+   */
+  suggestedUnitPrice?: number | null;
+  suggestedUnit?: SuggestedUnit | null;
+  combinationKey?: string | null;
+  description?: string | null;
+  descriptionEdited?: boolean;
+  attachDescription?: boolean;
 }
 
 export const MAX_ITEM_NAME = 120;
 export const MAX_VARIANT_TEXT = 200;
+export const MAX_LINE_DESCRIPTION = 500;
+/** Same cap as `MAX_KEY_LENGTH` in lib/product-pricing/combination.ts (this layer imports nothing). */
+export const MAX_COMBINATION_KEY = 1000;
 
 export function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -162,5 +179,69 @@ export function validateValueLine(raw: unknown): ValueLineCheck {
     return { ok: false, error: "unitPrice must be a finite number >= 0" };
   }
 
-  return { ok: true, line: { itemName, variantText, unit, qty, unitPrice } };
+  const line: ValueLine = { itemName, variantText, unit, qty, unitPrice };
+
+  // Stage 36 S36-14 optional keys. Absent (undefined) stays absent, so a Stage 33 line is returned unchanged.
+  if (o.suggestedUnitPrice !== undefined) {
+    const p = o.suggestedUnitPrice;
+    if (p !== null && (typeof p !== "number" || !Number.isFinite(p) || p < 0 || round2(p) !== p)) {
+      return { ok: false, error: "suggestedUnitPrice must be null or a number >= 0 with at most 2 decimals" };
+    }
+    line.suggestedUnitPrice = p;
+  }
+  if (o.suggestedUnit !== undefined) {
+    const u = o.suggestedUnit;
+    if (u !== null && !(SUGGESTED_UNITS as readonly unknown[]).includes(u)) {
+      return { ok: false, error: 'suggestedUnit must be null, "m2", "sqft" or "pcs"' };
+    }
+    line.suggestedUnit = u as SuggestedUnit | null;
+  }
+  if (o.combinationKey !== undefined) {
+    const k = o.combinationKey;
+    if (k !== null && (typeof k !== "string" || k.length > MAX_COMBINATION_KEY)) {
+      return { ok: false, error: `combinationKey must be null or a string of at most ${MAX_COMBINATION_KEY} characters` };
+    }
+    line.combinationKey = k;
+  }
+  if (o.description !== undefined) {
+    const d = o.description;
+    if (d === null) line.description = null;
+    else {
+      if (typeof d !== "string") return { ok: false, error: "description must be null or a string" };
+      const trimmed = d.trim();
+      if (trimmed.length > MAX_LINE_DESCRIPTION) {
+        return { ok: false, error: `description must be at most ${MAX_LINE_DESCRIPTION} characters` };
+      }
+      line.description = trimmed === "" ? null : trimmed;
+    }
+  }
+  if (o.descriptionEdited !== undefined) {
+    if (typeof o.descriptionEdited !== "boolean") return { ok: false, error: "descriptionEdited must be a boolean" };
+    line.descriptionEdited = o.descriptionEdited;
+  }
+  if (o.attachDescription !== undefined) {
+    if (typeof o.attachDescription !== "boolean") return { ok: false, error: "attachDescription must be a boolean" };
+    line.attachDescription = o.attachDescription;
+  }
+
+  return { ok: true, line };
+}
+
+/** The Stage 36 optional keys of a line, copied only when present (one place for the stamper and the bridges). */
+export function pricingKeysOf(l: ValueLine): Partial<ValueLine> {
+  const out: Partial<ValueLine> = {};
+  if (l.suggestedUnitPrice !== undefined) out.suggestedUnitPrice = l.suggestedUnitPrice;
+  if (l.suggestedUnit !== undefined) out.suggestedUnit = l.suggestedUnit;
+  if (l.combinationKey !== undefined) out.combinationKey = l.combinationKey;
+  if (l.description !== undefined) out.description = l.description;
+  if (l.descriptionEdited !== undefined) out.descriptionEdited = l.descriptionEdited;
+  if (l.attachDescription !== undefined) out.attachDescription = l.attachDescription;
+  return out;
+}
+
+/** S36-14: a description prints/shows only when attached and non-blank. */
+export function attachedDescription(l: Pick<ValueLine, "attachDescription" | "description">): string | null {
+  if (l.attachDescription !== true) return null;
+  const d = (l.description ?? "").trim();
+  return d === "" ? null : d;
 }

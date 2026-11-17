@@ -500,6 +500,60 @@ test.describe("inquiries: quickEstimate", () => {
     expect(after.status).toBe("NEW");
   });
 
+  // Stage 36 S36-14: the additive per-line keys. Stored and returned on POST and PATCH; a bad value is the same 400;
+  // a Stage 33 shaped line comes back without them. The server never checks them against live pricing.
+  test("Stage 36 line keys: stored and returned on POST and PATCH, trimmed, never invented; bad values are 400", async ({ as, run, ledger, url }) => {
+    const key = JSON.stringify({ category: "Single", thickness: "12 mm" });
+    const priced = estLine({
+      suggestedUnitPrice: 2800, suggestedUnit: "m2", combinationKey: key,
+      description: "  Standard single glazed  ", descriptionEdited: true, attachDescription: true,
+    });
+    const created = await createLedgered(as.admin, { run, ledger }, "inquiry", {
+      name: nm({ run }, "inq-qe-s36"), currency: "AED", quickEstimate: est({ lines: [priced, estLine({ itemName: "Door", unit: "pcs", qty: 2 })] }),
+    });
+    expect(created.res.status(), JSON.stringify(created.body)).toBe(201);
+    const id = created.id!;
+    const got = (await getEstimate(as.admin, url(`/inquiries/${id}`))).quickEstimate!;
+    expect(got.lines[0]).toEqual({
+      ...estLine(), suggestedUnitPrice: 2800, suggestedUnit: "m2", combinationKey: key,
+      description: "Standard single glazed", descriptionEdited: true, attachDescription: true,
+    });
+    // the Stage 33 shaped line next to it has none of the new keys
+    expect(Object.keys(got.lines[1]).sort()).toEqual(["itemName", "qty", "unit", "unitPrice", "variantText"]);
+
+    // PATCH replaces: nulls are kept as nulls, a blank description becomes null
+    const r = await as.admin.patch(url(`/inquiries/${id}`), {
+      data: { quickEstimate: est({ lines: [estLine({ suggestedUnitPrice: null, suggestedUnit: null, combinationKey: null, description: "   ", attachDescription: false })] }) },
+    });
+    expect(r.status(), await r.text()).toBe(200);
+    const after = (await getEstimate(as.admin, url(`/inquiries/${id}`))).quickEstimate!;
+    expect(after.lines[0]).toEqual({ ...estLine(), suggestedUnitPrice: null, suggestedUnit: null, combinationKey: null, description: null, attachDescription: false });
+
+    const bad: Array<[string, Record<string, unknown>]> = [
+      ["suggestedUnitPrice negative", { suggestedUnitPrice: -1 }],
+      ["suggestedUnitPrice 3 decimals", { suggestedUnitPrice: 1.234 }],
+      ["suggestedUnitPrice string", { suggestedUnitPrice: "5" }],
+      ["suggestedUnit sq ft", { suggestedUnit: "sq ft" }],
+      ["combinationKey 1001 chars", { combinationKey: "x".repeat(1001) }],
+      ["combinationKey number", { combinationKey: 5 }],
+      ["description 501 chars", { description: "x".repeat(501) }],
+      ["description number", { description: 7 }],
+      ["descriptionEdited string", { descriptionEdited: "yes" }],
+      ["attachDescription number", { attachDescription: 1 }],
+    ];
+    const before = (await getEstimate(as.admin, url(`/inquiries/${id}`))).quickEstimate;
+    for (const [name, extra] of bad) {
+      const postName = nm({ run }, "inq-qe-s36bad");
+      const p = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: postName, currency: "AED", quickEstimate: est({ lines: [estLine(extra)] }) });
+      expect(p.res.status(), `POST ${name}`).toBe(400);
+      expect(p.body, `POST ${name}`).toMatchObject({ code: "INVALID_QUICK_ESTIMATE" });
+      const q = await as.admin.patch(url(`/inquiries/${id}`), { data: { quickEstimate: est({ lines: [estLine(extra)] }) } });
+      expect(q.status(), `PATCH ${name}`).toBe(400);
+      expect(await q.json(), `PATCH ${name}`).toMatchObject({ code: "INVALID_QUICK_ESTIMATE" });
+    }
+    expect((await getEstimate(as.admin, url(`/inquiries/${id}`))).quickEstimate).toEqual(before);
+  });
+
   test("currency: PATCH currency + estimate in the new currency is 200; PATCH currency alone leaves the estimate's old currency", async ({ as, run, ledger, url }) => {
     const { id } = await createLedgered(as.admin, { run, ledger }, "inquiry", { name: nm({ run }, "inq-qe-cur"), currency: "AED", quickEstimate: est() });
     const ok = await as.admin.patch(url(`/inquiries/${id}`), { data: { currency: "usd", quickEstimate: est({ currency: "USD" }) } });

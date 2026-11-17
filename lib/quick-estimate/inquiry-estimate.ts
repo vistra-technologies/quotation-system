@@ -7,10 +7,10 @@
  */
 import {
   computeEstimate,
+  pricingKeysOf,
   round2,
   validateValueLine,
   type DiscountMode,
-  type EstimateUnit,
   type ValueLine,
 } from "./estimate";
 
@@ -37,7 +37,7 @@ export interface InquiryQuickEstimateV1 {
   discountMode: DiscountMode;
   discountValue: number;
   taxPct: number;
-  lines: Array<{ itemName: string; variantText: string; unit: EstimateUnit; qty: number; unitPrice: number }>;
+  lines: ValueLine[];
   updatedAt: string;
   updatedByName: string;
 }
@@ -134,6 +134,7 @@ export function stampQuickEstimate(
       unit: l.unit,
       qty: l.qty,
       unitPrice: l.unitPrice,
+      ...pricingKeysOf(l),
     })),
     updatedAt: now.toISOString(),
     updatedByName: byName,

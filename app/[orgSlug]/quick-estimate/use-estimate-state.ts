@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SupportedCurrency } from "@/lib/currency";
-import { parseUnitPrice, type DiscountMode } from "@/lib/quick-estimate/estimate";
-import { emptyDraft, hasDraftItems, newLine, type EstimateDraft } from "@/lib/quick-estimate/lines";
+import { MAX_LINE_DESCRIPTION, type DiscountMode } from "@/lib/quick-estimate/estimate";
+import { emptyDraft, hasDraftItems, newLine, type DraftLine, type EstimateDraft } from "@/lib/quick-estimate/lines";
 import type { EstimateOption, EstimateType } from "@/lib/quick-estimate/palette";
 import { draftStorageActive, parseStoredDraft, serializeDraft, storageKey } from "@/lib/quick-estimate/storage";
+import { applyChoice, relookupForCurrency, resetRate as resetLineRate, type PricingLookup } from "@/lib/quick-estimate/suggest";
 
 /** Removes the saved draft; called on Log Out before the session ends (S33-8). Never throws. */
 export function clearStoredEstimate(orgSlug: string) {
@@ -27,6 +28,8 @@ export function useEstimateState(
   enabled: boolean,
   types: EstimateType[],
   defaultCurrency: SupportedCurrency,
+  /** Stage 36: product prices by component type id then combination key; `{}` when none or not allowed (S36-10). */
+  pricing: PricingLookup,
   /** `persist: false` is the storage-free session copy the inquiry pages edit (S33-19, S33-23). */
   options: { persist?: boolean } = {},
 ) {
@@ -37,6 +40,8 @@ export function useEstimateState(
   const [loaded, setLoaded] = useState(false);
   // The currency before the last change, for Undo on the currency-change banner. Not persisted.
   const [prevCurrency, setPrevCurrency] = useState<SupportedCurrency | null>(null);
+  // Stage 36: the rate/suggestion of each line before a currency switch re-looked it up, so Undo restores them.
+  const prevPricing = useRef<Record<string, Pick<DraftLine, "rate" | "suggestedUnitPrice" | "suggestedUnit">> | null>(null);
 
   // Until the guard has really passed (see draftStorageActive) the stored draft is left untouched.
   const active = persist && draftStorageActive(enabled, types);
@@ -70,27 +75,34 @@ export function useEstimateState(
     (next: SupportedCurrency) => {
       if (next === currentCurrency) return;
       setPrevCurrency(currentCurrency);
-      // Rates are never converted: flag every line that has one so the user re-checks it (D-7).
-      setDraft((d) => ({
-        ...d,
-        currency: next,
-        lines: d.lines.map((l) => ({ ...l, flag: parseUnitPrice(l.rate) > 0 })),
-      }));
+      // Rates are never converted (D-7: flag every line that has one so the user re-checks it). Stage 36 S36-11:
+      // a line with a combination key is re-looked up in the new currency instead.
+      setDraft((d) => {
+        prevPricing.current = Object.fromEntries(
+          d.lines.map((l) => [l.id, { rate: l.rate, suggestedUnitPrice: l.suggestedUnitPrice, suggestedUnit: l.suggestedUnit }]),
+        );
+        return { ...d, currency: next, lines: d.lines.map((l) => relookupForCurrency(l, types, pricing, next)) };
+      });
     },
-    [currentCurrency],
+    [currentCurrency, types, pricing],
   );
 
   const undoCurrency = useCallback(() => {
-    setDraft((d) => ({
-      ...d,
-      currency: prevCurrency ?? d.currency,
-      lines: d.lines.map((l) => ({ ...l, flag: false })),
-    }));
+    setDraft((d) => {
+      const saved = prevPricing.current;
+      return {
+        ...d,
+        currency: prevCurrency ?? d.currency,
+        lines: d.lines.map((l) => ({ ...l, ...(saved?.[l.id] ?? {}), flag: false })),
+      };
+    });
+    prevPricing.current = null;
     setPrevCurrency(null);
   }, [prevCurrency]);
 
   const acceptRates = useCallback(() => {
     setDraft((d) => ({ ...d, lines: d.lines.map((l) => ({ ...l, flag: false })) }));
+    prevPricing.current = null;
     setPrevCurrency(null);
   }, []);
 
@@ -111,24 +123,16 @@ export function useEstimateState(
     setDraft((d) => ({ ...d, lines: d.lines.filter((l) => l.id !== id) }));
   }, []);
 
-  const chooseItem = useCallback((id: string, type: EstimateType, option: EstimateOption) => {
-    setDraft((d) => ({
-      ...d,
-      lines: d.lines.map((l) =>
-        l.id !== id
-          ? l
-          : {
-              ...l,
-              typeCode: type.code,
-              itemName: type.name,
-              variantText: option.text,
-              unit: type.unit,
-              // A different unit makes the old quantity meaningless.
-              qty: l.unit !== null && l.unit !== type.unit ? "" : l.qty,
-            },
-      ),
-    }));
-  }, []);
+  // Stage 36: a spec-mode pick also fills the rate from the product price and the description from its row.
+  const chooseItem = useCallback(
+    (id: string, type: EstimateType, option: EstimateOption) => {
+      setDraft((d) => ({
+        ...d,
+        lines: d.lines.map((l) => (l.id !== id ? l : applyChoice(l, type, option, pricing, d.currency))),
+      }));
+    },
+    [pricing],
+  );
 
   const setQty = useCallback((id: string, v: string) => {
     setDraft((d) => ({ ...d, lines: d.lines.map((l) => (l.id === id ? { ...l, qty: v } : l)) }));
@@ -139,9 +143,29 @@ export function useEstimateState(
     setDraft((d) => ({ ...d, lines: d.lines.map((l) => (l.id === id ? { ...l, rate: v, flag: false } : l)) }));
   }, []);
 
+  // The inline Reset (S36-11): back to the suggested rate.
+  const resetRate = useCallback((id: string) => {
+    setDraft((d) => ({ ...d, lines: d.lines.map((l) => (l.id === id ? resetLineRate(l) : l)) }));
+  }, []);
+
+  const setAttachDescription = useCallback((id: string, on: boolean) => {
+    setDraft((d) => ({ ...d, lines: d.lines.map((l) => (l.id === id ? { ...l, attachDescription: on } : l)) }));
+  }, []);
+
+  // An edit never writes back to the admin row (S36-12).
+  const setDescription = useCallback((id: string, text: string) => {
+    setDraft((d) => ({
+      ...d,
+      lines: d.lines.map((l) =>
+        l.id === id ? { ...l, description: text.slice(0, MAX_LINE_DESCRIPTION), descriptionEdited: true } : l,
+      ),
+    }));
+  }, []);
+
   // Clear all empties the lines only; currency, discount and tax stay (S33-8).
   const clearLines = useCallback(() => {
     setDraft((d) => ({ ...d, lines: [] }));
+    prevPricing.current = null;
     setPrevCurrency(null);
   }, []);
 
@@ -150,6 +174,7 @@ export function useEstimateState(
   const reset = useCallback(
     (next: EstimateDraft) => {
       setDraft({ ...next, lines: next.lines.map((l) => ({ ...l, id: nextId() })) });
+      prevPricing.current = null;
       setPrevCurrency(null);
     },
     [nextId],
@@ -171,6 +196,9 @@ export function useEstimateState(
     chooseItem,
     setQty,
     setRate,
+    resetRate,
+    setAttachDescription,
+    setDescription,
     clearLines,
   };
 }

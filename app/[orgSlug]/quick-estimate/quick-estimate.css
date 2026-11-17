@@ -221,10 +221,11 @@
 
 .qe-lines { padding: 0 16px; }
 .qe-line { padding: 10px 8px; border-radius: 12px; position: relative; transition: background 0.12s; }
-.qe-line + .qe-line::before { content: ""; position: absolute; left: 8px; right: 8px; top: 0; border-top: 1px solid var(--qe-hair); }
-.qe-line:hover, .qe-line:focus-within { background: var(--qe-row-hover); }
-.qe-line:hover::before, .qe-line:focus-within::before,
-.qe-line:hover + .qe-line::before, .qe-line:focus-within + .qe-line::before { border-color: transparent; }
+/* Stage 36: each line sits in a .qe-lw wrapper with its description subrow, so the hairline hangs off the wrapper pair. */
+.qe-lw + .qe-lw > .qe-line::before { content: ""; position: absolute; left: 8px; right: 8px; top: 0; border-top: 1px solid var(--qe-hair); }
+.qe-lw:hover, .qe-lw:focus-within { background: var(--qe-row-hover); border-radius: 12px; }
+.qe-lw:hover > .qe-line::before, .qe-lw:focus-within > .qe-line::before,
+.qe-lw:hover + .qe-lw > .qe-line::before, .qe-lw:focus-within + .qe-lw > .qe-line::before { border-color: transparent; }
 
 /* Item field: component chip + variant, opens the picker */
 .qe-item {
@@ -312,6 +313,47 @@
 .qe-in.qe-flag { border-color: #e2b65b; background: #fffbf1; box-shadow: 0 0 0 3px rgba(247, 231, 196, 0.7); }
 .qe-in.qe-flag .qe-pre { color: var(--qe-warn-text); }
 .qe-in.qe-off { background: var(--color-bg-card); border-style: dashed; }
+/* Stage 36: inline Reset on the rate field, shown only while the rate differs from the suggestion (.qe-edited). */
+.qe-rst {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  color: var(--color-text-placeholder);
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: color 0.12s, background 0.12s;
+}
+.qe-rst svg { width: 12px; height: 12px; }
+.qe-rst:hover, .qe-rst:focus-visible { color: var(--color-primary-dark); background: var(--color-primary-softer); }
+.qe-in.qe-edited .qe-rst { display: flex; }
+/* Stage 36: Attach description subrow. */
+.qe-subrow { display: flex; flex-direction: column; gap: 4px; padding: 3px 8px 8px 20px; }
+.qe-attach-lbl { display: flex; align-items: center; gap: 6px; width: fit-content; font-size: 12px; font-weight: 700; color: var(--color-text-muted); cursor: pointer; user-select: none; }
+.qe-attach-lbl input[type="checkbox"] { accent-color: var(--color-primary); width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; }
+.qe-desc-area { display: flex; flex-direction: column; gap: 3px; width: 100%; }
+.qe-desc-head { display: flex; align-items: baseline; justify-content: space-between; }
+.qe-desc-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-text-placeholder); }
+.qe-desc-count { font-size: 10.5px; font-weight: 700; color: var(--color-text-placeholder); font-variant-numeric: tabular-nums; }
+.qe-desc-ta {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--color-text-body);
+  background: var(--color-bg-white);
+  resize: vertical;
+  min-height: 52px;
+  box-sizing: border-box;
+}
+.qe-desc-ta:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary-softer); }
 .qe-in.qe-bad { border-color: var(--qe-danger); background: var(--color-danger-bg); }
 
 .qe-amt { text-align: right; font-size: 14.5px; font-weight: 800; color: var(--color-text-heading); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -600,6 +642,7 @@
 .qe-s-row > span:nth-child(n + 3) { text-align: right; font-variant-numeric: tabular-nums; }
 .qe-s-row > span:first-child { color: #999; }
 .qe-s-sub { color: #777; font-size: 8.5px; margin-top: 2px; }
+.qe-s-desc { white-space: pre-line; }
 .qe-s-sum { margin: 16px 0 0 auto; width: 230px; }
 .qe-s-sum div { display: flex; justify-content: space-between; padding: 3px 6px; color: #555; font-variant-numeric: tabular-nums; }
 .qe-s-sum .qe-g { background: var(--color-primary-softer); border-top: 1.5px solid var(--color-primary); margin-top: 6px; padding: 8px 6px; color: #111; font-size: 13px; font-weight: 800; }

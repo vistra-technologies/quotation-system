@@ -1,5 +1,6 @@
 import { isComponentTypeFullyConfigured } from "@/lib/configurator-gating";
 import { applyFieldVisibility } from "@/lib/field-visibility";
+import { specFieldEntries, specFieldList } from "@/lib/product-pricing/spec-fields";
 import type { FieldEntry, ShowWhen } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import { UNIT_AREA, UNIT_PIECE, type EstimateUnit } from "./estimate";
@@ -27,9 +28,14 @@ export interface EstimateType {
   code: string;
   name: string;
   unit: EstimateUnit;
-  /** Basic dropdown/radio fields, in schema order. */
-  basicFields: EstimateField[];
-  /** The org's option config, narrowed to the basic fields' keys. */
+  /**
+   * Stage 36 S36-9: "spec" when the type has at least one `productSpec` dropdown/radio field (the picker lists only
+   * product-spec combinations and prices are looked up), else "fallback" (today's basic fields, no lookup).
+   */
+  mode: "spec" | "fallback";
+  /** The fields the picker walks, in schema order: the spec choice fields, or (fallback) the basic choice fields. */
+  pickerFields: EstimateField[];
+  /** The org's option config, narrowed to the picker fields' keys. */
   options: FieldOptionsConfig;
 }
 
@@ -57,22 +63,28 @@ export function usableEstimateTypes(componentTypes: ComponentTypeInput[]): { ena
   const types: EstimateType[] = [];
   for (const ct of componentTypes) {
     if (!ct.active) continue;
+    // S36-9: a type with a product-spec choice field is judged (and offered) on the spec set only.
+    const specEntries = specFieldEntries(ct.fieldsSchema);
+    const mode: EstimateType["mode"] = specEntries.length > 0 ? "spec" : "fallback";
     const basic = ct.fieldsSchema.filter((f) => f.basic);
-    if (!isComponentTypeFullyConfigured(basic, ct.fieldOptionsConfig)) continue;
-    const basicFields = basic
-      .filter((f) => CHOICE.has(f.type))
-      .map((f) => ({
-        key: f.key,
-        label: f.label,
-        ...(f.dependsOn ? { dependsOn: f.dependsOn } : {}),
-        ...(f.showWhen ? { showWhen: f.showWhen } : {}),
-      }));
+    if (!isComponentTypeFullyConfigured(mode === "spec" ? specEntries : basic, ct.fieldOptionsConfig)) continue;
+    const pickerFields: EstimateField[] =
+      mode === "spec"
+        ? specFieldList(ct.fieldsSchema)
+        : basic
+            .filter((f) => CHOICE.has(f.type))
+            .map((f) => ({
+              key: f.key,
+              label: f.label,
+              ...(f.dependsOn ? { dependsOn: f.dependsOn } : {}),
+              ...(f.showWhen ? { showWhen: f.showWhen } : {}),
+            }));
     const config = ct.fieldOptionsConfig ?? {};
     const options: FieldOptionsConfig = {};
-    for (const f of basicFields) {
+    for (const f of pickerFields) {
       if (config[f.key]) options[f.key] = config[f.key];
     }
-    types.push({ id: ct.id, code: ct.code, name: ct.name, unit: unitForCode(ct.code), basicFields, options });
+    types.push({ id: ct.id, code: ct.code, name: ct.name, unit: unitForCode(ct.code), mode, pickerFields, options });
   }
   return { enabled: types.some((t) => t.code === PARTITION_CODE), types };
 }
@@ -96,7 +108,7 @@ export const VARIANT_SEPARATOR = " · ";
  * hidden field adds no part to the combination.
  */
 export function buildCombinations(type: EstimateType): EstimateOption[] {
-  return generateCombinations(type.basicFields, type.options);
+  return generateCombinations(type.pickerFields, type.options);
 }
 
 /**

@@ -1,7 +1,7 @@
 import type { SupportedCurrency } from "@/lib/currency";
-import { clampPct, parseQty, parseUnitPrice, round2, type DiscountMode, type ValueLine } from "./estimate";
+import { clampPct, parseQty, parseUnitPrice, pricingKeysOf, round2, type DiscountMode, type ValueLine } from "./estimate";
 import type { ParsedQuickEstimate } from "./inquiry-estimate";
-import type { DraftLine, EstimateDraft } from "./lines";
+import { NO_PRICING, pricingKeysOfDraft, type DraftLine, type EstimateDraft } from "./lines";
 import type { EstimateType } from "./palette";
 
 /**
@@ -54,6 +54,7 @@ export function draftToInput(draft: EstimateDraft): EstimateInput {
       unit: l.unit,
       qty: parseQty(l.qty, l.unit),
       unitPrice: parseUnitPrice(l.rate),
+      ...pricingKeysOfDraft(l),
     });
   }
   return { discountMode: draft.discountMode, discountValue, taxPct: clampPct(parseFloat(draft.taxPct)), lines };
@@ -71,6 +72,7 @@ export function storedToInput(stored: StoredEstimate): EstimateInput {
       unit: l.unit,
       qty: l.qty,
       unitPrice: l.unitPrice,
+      ...pricingKeysOf(l),
     })),
   };
 }
@@ -104,6 +106,14 @@ export function storedToDraft(
       qty: String(l.qty),
       rate: String(l.unitPrice),
       flag: drifted && l.unitPrice > 0,
+      // A Stage 33 line has none of the Stage 36 keys: it seeds with the defaults (no suggestion, no description).
+      ...NO_PRICING,
+      suggestedUnitPrice: l.suggestedUnitPrice ?? null,
+      suggestedUnit: l.suggestedUnit ?? null,
+      combinationKey: l.combinationKey ?? null,
+      description: l.description ?? "",
+      descriptionEdited: l.descriptionEdited === true,
+      attachDescription: l.attachDescription === true,
     })),
   };
 }

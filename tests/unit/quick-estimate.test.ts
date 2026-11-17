@@ -131,7 +131,7 @@ test("guard: a custom active configured type is offered (pcs); an inactive custo
 
 test("guard: the trimmed type carries only basic choice fields and their option config", () => {
   const t = usableEstimateTypes([glass()]).types[0];
-  assert.deepEqual(t.basicFields.map((f) => f.key), ["category", "glassType", "thickness"]);
+  assert.deepEqual(t.pickerFields.map((f) => f.key), ["category", "glassType", "thickness"]);
   assert.equal("profile" in t.options, false);
 });
 

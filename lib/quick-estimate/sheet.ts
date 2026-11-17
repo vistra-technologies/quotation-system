@@ -1,5 +1,5 @@
 import type { SupportedCurrency } from "@/lib/currency";
-import type { EstimateResult, ValueLine } from "./estimate";
+import { attachedDescription, type EstimateResult, type ValueLine } from "./estimate";
 import { formatAmount, formatMoney, formatQty } from "./format";
 
 /**
@@ -19,6 +19,8 @@ export interface SheetRow {
   n: number;
   name: string;
   variant: string;
+  /** Stage 36 S36-14: present only when the line has the description attached and it is non-blank. */
+  description?: string;
   qty: string;
   rate: string;
   amount: string;
@@ -45,10 +47,12 @@ export function buildSheet(
   lines.forEach((l, i) => {
     const r = result.lines[i];
     if (!r?.priced) return;
+    const description = attachedDescription(l);
     rows.push({
       n: rows.length + 1,
       name: l.itemName,
       variant: l.variantText,
+      ...(description ? { description } : {}),
       qty: `${formatQty(l.qty, currency)} ${l.unit}`,
       rate: formatAmount(l.unitPrice, currency),
       amount: formatAmount(r.total, currency),

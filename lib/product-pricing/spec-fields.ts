@@ -29,6 +29,21 @@ export function countProductSpecs(fieldsSchema: ReadonlyArray<Pick<FieldEntry, "
   return fieldsSchema.filter(isSpecChoiceField).length;
 }
 
+/**
+ * The spec fields as full entries (for `isComponentTypeFullyConfigured`, S36-9), with the same F-3 rule as
+ * `specFieldList`: a `showWhen` whose controller is not itself a spec field is dropped.
+ */
+export function specFieldEntries(fieldsSchema: ReadonlyArray<FieldEntry>): FieldEntry[] {
+  const spec = fieldsSchema.filter(isSpecChoiceField);
+  const specKeys = new Set(spec.map((f) => f.key));
+  return spec.map((f) => {
+    if (!f.showWhen || specKeys.has(f.showWhen.field)) return f;
+    const rest = { ...f };
+    delete rest.showWhen;
+    return rest;
+  });
+}
+
 export function specFieldList(
   fieldsSchema: ReadonlyArray<Pick<FieldEntry, "key" | "label" | "type" | "dependsOn" | "showWhen" | "productSpec">>,
 ): SpecField[] {
