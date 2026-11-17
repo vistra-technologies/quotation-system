@@ -1867,4 +1867,41 @@ test.describe.serial("Stage 36 B3: Product Pricing admin page, throwaway org B",
       await expect(page.getByText("orphaned combination")).toHaveCount(0);
     });
   });
+
+  test("UI AC3b drawer: Escape on a dropdown keeps the drawer open; a finished save does not close a drawer opened on another row", async ({ browser, run, orgB }) => {
+    test.setTimeout(150_000);
+    const fx = await getFx(run, orgB);
+    await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
+      const page = o.page;
+      await page.goto(orgUrl(run.orgB.slug, "/admin/product-pricing"));
+      await page.getByTestId(`type-tab-${fx.code}`).click();
+      const rows = page.getByTestId("pricing-row");
+      const dlg = page.getByRole("dialog");
+      await rows.filter({ hasText: "Double" }).first().click();
+      await dlg.getByRole("button", { name: "Add price" }).click();
+      // Escape closes the open Currency list only
+      await dlg.getByRole("combobox", { name: "Currency" }).click();
+      await expect(page.getByRole("listbox")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("listbox")).toHaveCount(0);
+      await expect(dlg).toBeVisible();
+      // a save still in flight must not close the drawer of another row
+      await dlg.getByRole("textbox", { name: "Amount" }).fill("100");
+      await dlg.getByRole("button", { name: "Add", exact: true }).click();
+      let release!: () => void;
+      const gate = new Promise<void>((res) => { release = res; });
+      await page.route("**/product-pricing", async (r) => {
+        if (r.request().method() === "PUT") await gate;
+        await r.continue();
+      });
+      await dlg.getByRole("button", { name: "Save changes" }).click();
+      await rows.filter({ hasText: "Single" }).filter({ hasText: "12 mm" }).click();
+      await expect(dlg).toContainText("Single · 12 mm");
+      release();
+      await expect(page.getByText("Pricing saved")).toBeVisible();
+      await expect(dlg).toBeVisible();
+      await expect(dlg).toContainText("Single · 12 mm");
+      await page.unroute("**/product-pricing");
+    });
+  });
 });

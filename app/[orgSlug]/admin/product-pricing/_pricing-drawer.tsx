@@ -99,7 +99,8 @@ export function PricingDrawer({ orgSlug, target, onClose, onSaved }: Props) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // A SelectField closing its list on Escape calls preventDefault: that Escape is not for the drawer.
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

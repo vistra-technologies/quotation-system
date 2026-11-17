@@ -372,8 +372,10 @@ export function ProductPricingView({ orgSlug, types, initialRows, loadError }: P
           target={drawer}
           onClose={() => setDrawer(null)}
           onSaved={(row) => {
-            applySaved(drawer.typeId, drawer.key, row);
-            setDrawer(null);
+            const saved = drawer;
+            applySaved(saved.typeId, saved.key, row);
+            // Close only if the drawer still shows the row that was saved (the user may have opened another).
+            setDrawer((cur) => (cur && cur.typeId === saved.typeId && cur.key === saved.key ? null : cur));
             toast.show(t("saved"));
           }}
         />
