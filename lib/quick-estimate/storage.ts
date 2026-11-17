@@ -36,7 +36,7 @@ interface StoredLine {
 
 interface StoredDraft {
   currency: string;
-  /** Stage 36 S36-13: absent in a draft saved before Batch 5, which loads as m². */
+  /** Stage 36 S36-13: absent in a draft saved before Batch 5, which loads as mÂ². */
   areaUnit?: string;
   discountMode: string;
   discountValue: string;

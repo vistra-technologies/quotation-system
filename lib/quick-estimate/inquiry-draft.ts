@@ -80,7 +80,7 @@ export function storedToInput(stored: StoredEstimate): EstimateInput {
 
 /**
  * Plan F-5: the stored estimate has no unit key of its own, so the draft's area unit is the first area line's unit
- * (m² when there is none). A mixed estimate (API-made) converts nothing until the user switches.
+ * (mÂ² when there is none). A mixed estimate (API-made) converts nothing until the user switches.
  */
 export function areaUnitOf(lines: readonly Pick<ValueLine, "unit">[]): AreaUnit {
   const first = lines.find((l) => isAreaUnit(l.unit));
