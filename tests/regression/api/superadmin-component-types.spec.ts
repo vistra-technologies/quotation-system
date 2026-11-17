@@ -256,7 +256,7 @@ test.describe("SuperAdmin component types (org B)", () => {
     const schema: Field[] = [
       { key: "rgrCat", label: "Category", type: "dropdown", required: false, basic: true },
       { key: "rgrGlass", label: "Glass", type: "dropdown", required: false, basic: true, productSpec: true, showWhen: { field: "rgrCat", in: ["Partition"] } },
-      { key: "rgrThick", label: "Thickness", type: "radio", required: false, basic: true, dependsOn: "rgrGlass", productSpec: true },
+      { key: "rgrThick", label: "Thickness", type: "radio", required: false, basic: true, dependsOn: "rgrGlass", productSpec: true, showWhen: { field: "rgrGlass", in: ["Clear"] } }, // G0-e: a child of a gated parent needs a showWhen
       { key: "rgrNote", label: "Note", type: "field", required: false, basic: true },
     ];
     const mine = await newType(sa, run, { fieldsSchema: schema });

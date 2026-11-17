@@ -580,7 +580,7 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     const specSchema = [
       { key: "c", label: "Category", type: "dropdown", required: false, basic: true },
       { key: "a", label: "Glass type", type: "dropdown", required: false, basic: true, productSpec: true, showWhen: { field: "c", in: ["Partition"] } },
-      { key: "b", label: "Thickness", type: "dropdown", required: false, basic: true, dependsOn: "a", productSpec: true },
+      { key: "b", label: "Thickness", type: "dropdown", required: false, basic: true, dependsOn: "a", productSpec: true, showWhen: { field: "a", in: ["x"] } }, // G0-e: a child of a gated parent needs a showWhen
     ];
     const storedSpec = (await ok<{ componentType: CT }>(await orgB.patch(B(`/component-types/${ct.id}`), { data: { fieldsSchema: specSchema } }))).componentType;
     expect(storedSpec.fieldsSchema).toEqual(specSchema);
