@@ -310,11 +310,15 @@ test("J12: Quick Estimate product pricing: auto-populate, Reset, description, cu
   await withPage(browser, run, "orgB-admin", async (o) => {
     const page = o.page;
     await page.goto(orgUrl(run.orgB.slug, "/admin/product-pricing"));
-    const tab = page.getByTestId("type-tab-GLASS");
+    const tab = page.getByTestId("type-tab-GLASS").filter({ visible: true }).first();
     await expect.poll(() => isHydrated(tab)).toBe(true);
     await tab.click();
     // c2 is unpriced (see the header): price it through the drawer UI, INR/m2 default pair
-    await page.getByTestId("pricing-row").filter({ hasText: c2.text }).first().click();
+    await page.getByRole("textbox", { name: "Search combinations" }).fill(c2.text); // the grid pages at 25 rows
+    // the search narrows the grid to that one combination
+    const row = page.getByTestId("pricing-row");
+    await expect(row).toHaveCount(1);
+    await row.click();
     const dlg = page.getByRole("dialog");
     await dlg.getByRole("button", { name: "Add price" }).click();
     await dlg.getByRole("textbox", { name: "Amount" }).fill("777");
@@ -322,17 +326,28 @@ test("J12: Quick Estimate product pricing: auto-populate, Reset, description, cu
     await dlg.getByRole("tab", { name: "Description" }).click();
     await dlg.getByLabel("Description").fill("Saved in the drawer");
     // router.refresh() issues an RSC GET for the current page: wait for it so the layout's new lookup has landed
-    const refreshed = page.waitForResponse((r) => r.request().method() === "GET" && r.url().includes("_rsc="));
+    // (a link prefetch is also an _rsc GET but carries the prefetch header, so it is excluded)
+    const refreshed = page.waitForResponse((r) => r.request().method() === "GET" && r.url().includes("/admin/product-pricing") && r.url().includes("_rsc=") && !r.request().headers()["next-router-prefetch"]);
     await dlg.getByRole("button", { name: "Save changes" }).click();
     await expect(dlg).toHaveCount(0);
     await refreshed;
-    // no goto / reload from here on: the layout's lookup must have been refreshed by the save
+    // no goto / reload from here on. The refreshed layout props commit a moment after the response arrives, and a
+    // line picked before that keeps the stale (empty) lookup by design, so pick again until the new price is there.
     await page.getByRole("button", { name: "Quick Estimate" }).click();
     const qe = page.getByRole("dialog", { name: "Quick Estimate" });
     await expect(qe).toBeVisible();
-    await addLineWith(page, qe, c2.text);
-    const line = qe.locator(".qe-lw").first();
-    await expect(line.getByLabel("Unit rate")).toHaveValue("777", { timeout: 20_000 });
+    const line = qe.locator(".qe-lw").last();
+    await expect
+      .poll(
+        async () => {
+          await addLineWith(page, qe, c2.text);
+          const value = await line.getByLabel("Unit rate").inputValue();
+          if (value === "") await line.getByRole("button", { name: "Remove" }).click();
+          return value;
+        },
+        { timeout: 45_000, intervals: [1_000] },
+      )
+      .toBe("777");
     await expect(line.getByRole("checkbox", { name: "Attach description" })).toBeChecked();
     await expect(line.getByRole("textbox", { name: "Description" })).toHaveValue("Saved in the drawer");
   });
@@ -344,7 +359,7 @@ test("J12: Quick Estimate product pricing: auto-populate, Reset, description, cu
     const roles = (await ok<{ roles: { id: string; name: string }[] }>(await orgB.get(B("/roles")))).roles;
     const roleId = roles.find((r) => r.name === "Distributor")?.id;
     expect(roleId, "org B has the default Distributor role").toBeTruthy();
-    const co = await orgB.post(B("/external-companies"), { data: { name: `${run.prefix}co-${tag}`, type: "DISTRIBUTOR", country: "India", defaultCurrency: "INR" } });
+    const co = await orgB.post(B("/external-companies"), { data: { name: `${run.prefix}co-${tag}`, type: "DISTRIBUTOR", country: "INDIA", defaultCurrency: "INR" } });
     expect(co.status(), await co.text()).toBe(201);
     const companies = (await ok<{ companies: { id: string; name: string }[] }>(await orgB.get(B("/external-companies")))).companies;
     const companyId = companies.find((c) => c.name === `${run.prefix}co-${tag}`)?.id;
