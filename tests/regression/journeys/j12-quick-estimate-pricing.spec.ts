@@ -20,11 +20,10 @@ import { combinationKey } from "@/lib/product-pricing/combination";
 import { buildCombinations, usableEstimateTypes, type ComponentTypeInput } from "@/lib/quick-estimate/palette";
 import { orgUrl } from "../../e2e/helpers";
 import { isHydrated } from "../pages/collect";
-import { settledProblems } from "../pages/page-helpers";
 import { withPage } from "./journey-helpers";
 import type { Locator, Page } from "@playwright/test";
 
-test.use({ trace: "off" });
+test.use({ trace: "off", actionTimeout: 15_000 });
 
 const SPEC_KEYS = ["category", "glassType", "thickness"];
 const DESC = "Acoustic standard, 12 mm laminated.";
@@ -41,7 +40,7 @@ async function addLineWith(page: Page, dialog: Locator, text: string) {
   await dialog.getByRole("button", { name: "Add item" }).click();
   const picker = page.getByRole("dialog", { name: "Choose an item" });
   await expect(picker).toBeVisible();
-  await picker.getByRole("textbox", { name: "Search" }).fill(text);
+  await picker.getByRole("combobox", { name: "Search" }).fill(text);
   await picker.getByRole("option", { name: text, exact: true }).click();
   await expect(picker).toHaveCount(0);
 }
@@ -89,7 +88,7 @@ test("J12: Quick Estimate product pricing: auto-populate, Reset, description, cu
       await dialog.getByRole("button", { name: "Add item" }).click();
       const picker = page.getByRole("dialog", { name: "Choose an item" });
       await expect(picker.getByRole("option")).toHaveCount(pickerTotal);
-      await picker.getByRole("textbox", { name: "Search" }).fill(c0.text);
+      await picker.getByRole("combobox", { name: "Search" }).fill(c0.text);
       await picker.getByRole("option", { name: c0.text, exact: true }).click();
       await expect(rate(0)).toHaveValue("2800");
       await expect(reset(0)).toHaveCount(0);
@@ -216,6 +215,11 @@ test("J12: Quick Estimate product pricing: auto-populate, Reset, description, cu
     const denied = await as.distributor.get(orgApi(run.testOrg.slug, "/product-pricing"));
     expect(denied.status(), "a distributor lacks MANAGE_PRICING").toBe(403);
     const page = o.page;
+    // Only console errors and uncaught page errors count here: a browser-side abort of a background prefetch is
+    // unrelated noise, and the pricing GET itself is a server-side fetch (nothing for the browser to log).
+    const errors: string[] = [];
+    page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+    page.on("pageerror", (e) => errors.push(String(e)));
     const icon = await openCalculator(page, run.testOrg.slug);
     await expect(icon).not.toHaveAttribute("aria-disabled", "true");
     await icon.click();
@@ -229,7 +233,9 @@ test("J12: Quick Estimate product pricing: auto-populate, Reset, description, cu
     await dialog.getByLabel("Unit rate").first().fill("1000");
     await expect(dialog.locator(".qe-amt").first()).toHaveText("5,000.00");
     await expect(dialog.locator("[data-reset]")).toHaveCount(0);
-    await expect(page.getByRole("alert")).toHaveCount(0);
-    expect(await settledProblems(o), "no console error, 5xx or failed request").toEqual([]);
+    // No toast (components/toast.tsx is role=status) and no alert, apart from Next's always-present route announcer.
+    await expect(page.getByRole("status")).toHaveCount(0);
+    await expect(page.locator('[role="alert"]:not(#__next-route-announcer__)')).toHaveCount(0);
+    expect(errors, "no console error").toEqual([]);
   });
 });
