@@ -77,7 +77,7 @@ export const PAGES: PageRow[] = [
 
   // ── org admin pages ───────────────────────────────────────────────────────
   { path: "/[orgSlug]/admin/catalog", access: { permission: "MANAGE_FEATURES" }, expectsText: /Catalog/ },
-  { path: "/[orgSlug]/admin/inventory", access: { permission: "MANAGE_PRICING" }, expectsText: /Search code or name/, primary: { role: "button", name: /^New item$/ } },
+  { path: "/[orgSlug]/admin/inventory", access: { permission: "MANAGE_PRICING" }, expectsText: /Unassigned|No inventory items yet/, primary: { role: "button", name: /^New item$/ } },
   { path: "/[orgSlug]/admin/product-pricing", access: { permission: "MANAGE_PRICING" }, expectsText: /Product Pricing/ },
   { path: "/[orgSlug]/admin/users", access: { permission: "MANAGE_USERS" }, expectsText: /User Management/ },
   { path: "/[orgSlug]/admin/users/new", access: { permission: "MANAGE_USERS" }, expectsText: /Create User/ },

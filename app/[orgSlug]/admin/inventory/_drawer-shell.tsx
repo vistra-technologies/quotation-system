@@ -39,10 +39,29 @@ export function DrawerShell({
 }: DrawerShellProps) {
   const scrimRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLElement>(null);
+  // Latest props for the document-level Escape listener and the unmount cleanup (set after every render).
   const restoreRef = useRef(getRestoreTarget);
+  const closeRef = useRef(onRequestClose);
+  const blockedRef = useRef(escapeBlocked);
   useEffect(() => {
     restoreRef.current = getRestoreTarget;
+    closeRef.current = onRequestClose;
+    blockedRef.current = escapeBlocked;
   });
+
+  // Escape is listened for on the document, not on the panel: after the owner swaps the drawer to another item
+  // the focused element can unmount and focus falls to <body>, which a panel handler never sees (UI AC3b).
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      // A SelectField closing its own listbox, or a confirm dialog, already handled this Escape.
+      if (e.defaultPrevented || blockedRef.current) return;
+      e.preventDefault();
+      closeRef.current();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
@@ -65,14 +84,6 @@ export function DrawerShell({
   }, []);
 
   function onPanelKeyDown(e: React.KeyboardEvent<HTMLElement>) {
-    if (e.key === "Escape") {
-      // A SelectField closing its own listbox already handled this Escape.
-      if (e.defaultPrevented || escapeBlocked) return;
-      e.preventDefault();
-      e.stopPropagation();
-      onRequestClose();
-      return;
-    }
     if (e.key !== "Tab") return;
     const nodes = Array.from(panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
       (n) => n.offsetParent !== null || n === document.activeElement,

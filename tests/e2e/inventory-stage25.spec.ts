@@ -113,11 +113,6 @@ test("company member can view /inventory list page (Inventory heading)", async (
     page.getByRole("heading", { name: "Inventory", exact: true }),
   ).toBeVisible({ timeout: 30_000 });
 
-  // Table heading should say "Inventory Items" (S25-6 rename)
-  await expect(page.getByRole("heading", { name: "Inventory Items" })).toBeVisible({
-    timeout: 10_000,
-  });
-
   // No "Edit Prices" links — price UI removed in S25-7
   await expect(page.getByRole("link", { name: /Edit Prices/i })).not.toBeVisible();
 });

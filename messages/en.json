@@ -578,7 +578,7 @@
     "chooseValue": "Choose a value",
     "removeMatch": "Remove match {field}",
     "notOffered": "{value} (not offered)",
-    "alsoMatchedBy": "Also matched by {codes}",
+    "alsoMatchedBy": "Also matched by <codes></codes>",
     "staleBadge": "No longer valid",
     "staleField": "This field no longer exists for the component type.",
     "staleValue": "This value is no longer offered.",

@@ -85,6 +85,8 @@ export function InventoryList({ items, types, orgSlug }: InventoryListProps) {
   const [isPending, startTransition] = useTransition();
   const toast = useToast();
   const newButtonRef = useRef<HTMLButtonElement>(null);
+  // The row that opened the drawer, kept while the drawer switches to other items (focus returns here on close).
+  const openerIdRef = useRef<string | null>(null);
 
   const counts = useMemo(() => tabCounts(items, types), [items, types]);
   const typeById = useMemo(() => new Map(types.map((x) => [x.id, x] as const)), [types]);
@@ -102,9 +104,14 @@ export function InventoryList({ items, types, orgSlug }: InventoryListProps) {
     setQ("");
     setChips({ active: false, inactive: false });
   }
+  function openDrawer(target: DrawerTarget) {
+    openerIdRef.current = target.kind === "item" ? target.id : null;
+    setDrawer(target);
+  }
   function restoreTarget(): HTMLElement | null {
-    if (drawer?.kind === "item") {
-      const row = document.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(drawer.id)}"]`);
+    const id = openerIdRef.current;
+    if (id) {
+      const row = document.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(id)}"]`);
       if (row) return row;
     }
     return newButtonRef.current;
@@ -128,11 +135,11 @@ export function InventoryList({ items, types, orgSlug }: InventoryListProps) {
   if (items.length === 0) {
     return (
       <>
-        <PageHeader onNew={() => setDrawer({ kind: "new" })} buttonRef={newButtonRef} />
+        <PageHeader onNew={() => openDrawer({ kind: "new" })} buttonRef={newButtonRef} />
         <div className="rounded-sm border border-dashed border-border-strong bg-bg-white px-8 py-[52px] text-center">
           {BOX}
           <p className="mb-3.5 text-[15px] font-extrabold text-text-heading">{t("emptyTitle")}</p>
-          <button type="button" onClick={() => setDrawer({ kind: "new" })} className={C.btnP}>
+          <button type="button" onClick={() => openDrawer({ kind: "new" })} className={C.btnP}>
             {PLUS}
             {t("newItem")}
           </button>
@@ -181,7 +188,7 @@ export function InventoryList({ items, types, orgSlug }: InventoryListProps) {
     const matchText = Object.values(matchRows).join(" · ");
     const partRaw = partLabelOf(it, type);
     const part = partRaw ?? t("partOther");
-    const open = () => setDrawer({ kind: "item", id: it.id });
+    const open = () => openDrawer({ kind: "item", id: it.id });
     return (
       <tr
         key={it.id}
@@ -201,7 +208,7 @@ export function InventoryList({ items, types, orgSlug }: InventoryListProps) {
           {matchText ? <div className="mt-0.5 font-mono text-[11px] text-text-muted">{matchText}</div> : null}
           <AlsoMatchedBy
             others={alsoMatchedBy(it, matchRows, items)}
-            onOpenItem={(id) => setDrawer({ kind: "item", id })}
+            onOpenItem={(id) => openDrawer({ kind: "item", id })}
             inList
           />
         </td>
@@ -243,7 +250,7 @@ export function InventoryList({ items, types, orgSlug }: InventoryListProps) {
   return (
     <>
       <LoadingOverlay visible={isPending} />
-      <PageHeader onNew={() => setDrawer({ kind: "new" })} buttonRef={newButtonRef} />
+      <PageHeader onNew={() => openDrawer({ kind: "new" })} buttonRef={newButtonRef} />
 
       <div role="tablist" aria-label={t("tabsLabel")} className="mb-3.5 flex overflow-x-auto border-b border-border">
         {tabs.map(([id, label]) => {
