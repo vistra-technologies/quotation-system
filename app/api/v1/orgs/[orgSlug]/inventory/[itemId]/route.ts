@@ -17,6 +17,7 @@ import {
   DuplicateInventoryCodeError,
   InvalidComponentTypeError,
   InvalidPartKeyError,
+  InvalidAttributesError,
 } from "@/lib/data/catalog";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
@@ -89,11 +90,13 @@ export const GET = withRoute(
  *
  * Body: at least one of code, name, componentTypeId, measurementUnit, perUnitQuantity, active,
  * soldInWholePacks (boolean), partKey (string | null; validated against the item's component type after
- * this update, "" is treated as null). Changing componentTypeId without partKey clears partKey (S37-5).
+ * this update, "" is treated as null), attributes (the Matches rows, validated against the item's component type
+ * after this update). Changing componentTypeId without partKey clears partKey, and without attributes clears the
+ * Matches rows (S37-5); attributes omitted with the type unchanged is left untouched and not re-validated.
  * All fields are optional; only supplied fields are updated.
  *
  * Returns 200 with { item } on success.
- * Returns 400 on invalid field types, an invalid partKey, or empty body.
+ * Returns 400 on invalid field types, an invalid partKey, invalid Matches rows, or empty body.
  * Returns 404 if the item is not found in the org (tenancy guard: wrong-org items
  *   are indistinguishable from missing items).
  * Returns 409 if the new code collides with an existing item in the org.
@@ -167,10 +170,14 @@ export const PATCH = withRoute(
   if (b.partKey !== undefined && b.partKey !== null && typeof b.partKey !== "string") {
     return apiBadRequest("partKey must be a string or null");
   }
+  // Stage 37 S37-2: attributes are the Matches rows (an object); the row checks run in updateInventoryItem.
+  if (b.attributes !== undefined && (typeof b.attributes !== "object" || b.attributes === null || Array.isArray(b.attributes))) {
+    return apiBadRequest("attributes must be an object");
+  }
 
   const updateFields = [
     "code", "name", "componentTypeId", "measurementUnit", "perUnitQuantity", "active",
-    "soldInWholePacks", "partKey",
+    "soldInWholePacks", "partKey", "attributes",
   ];
   const hasAnyField = updateFields.some((f) => b[f] !== undefined);
   if (!hasAnyField) {
@@ -188,6 +195,7 @@ export const PATCH = withRoute(
       soldInWholePacks: b.soldInWholePacks as boolean | undefined,
       // Stage 37 Q-D21: blank means Other (null).
       partKey: typeof b.partKey === "string" ? b.partKey.trim() || null : (b.partKey as null | undefined),
+      attributes: b.attributes as object | undefined,
     });
     if (!item) {
       return apiNotFound("Inventory item not found");
@@ -202,6 +210,9 @@ export const PATCH = withRoute(
     }
     if (err instanceof InvalidPartKeyError) {
       return apiBadRequest(err.message);
+    }
+    if (err instanceof InvalidAttributesError) {
+      return apiBadRequest(err.errors.join("; "));
     }
     log.error("[PATCH /api/v1/orgs/[orgSlug]/inventory/[itemId]] updateInventoryItem", { err });
     return apiServerError();

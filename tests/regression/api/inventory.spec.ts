@@ -409,6 +409,58 @@ test.describe("inventory: CRUD rules", () => {
     await rejected(r.res, 400, msg);
   });
 
+  // Matches rows (S37-2): a throwaway org B type with a dropdown (offered ID1/ID2), a free-text field and a checkbox.
+  test("Stage 37 B2 AC3 (S37-2): Matches rows are checked against the live schema (400 per rule, 200 valid); identical rows both save; a type change clears them", async ({ run, orgB }) => {
+    const B = (p: string) => orgApi(run.orgB.slug, p);
+    const categoryId = (await ok<{ categories: { id: string }[] }>(await orgB.get(B("/component-categories")))).categories[0].id;
+    const fieldsSchema = [
+      { key: "grade", label: "Grade", type: "dropdown", required: false, basic: true },
+      { key: "size", label: "Size", type: "field", required: false, basic: true },
+      { key: "film", label: "Film", type: "checkbox", required: false, basic: false },
+    ];
+    const mkType = async (schema: unknown[]) =>
+      (await ok<{ componentType: { id: string } }>(
+        await orgB.post(B("/component-types"), { data: { code: `RGR${tag().toUpperCase()}`, name: `${run.prefix}mt-${tag()}`, categoryId, fieldsSchema: schema } }),
+        201,
+      )).componentType.id;
+    const typeA = await mkType(fieldsSchema);
+    const typeB = await mkType([{ key: "other", label: "Other", type: "field", required: false, basic: true }]);
+    await ok(await orgB.put(B(`/component-types/${typeA}/field-values`), { data: { fieldOptionsConfig: { grade: { options: ["ID1", "ID2"] } } } }));
+    const mk = (attributes: unknown, over: Record<string, unknown> = {}) =>
+      orgB.post(B("/inventory"), { data: { code: `${run.prefix}mr-${tag()}`, name: "n", measurementUnit: "m²", componentTypeId: typeA, attributes, ...over } });
+
+    // 400 per rule (the first error is the response text)
+    await rejected(await mk({ nope: "x" }), 400, 'Matches row "nope": unknown field for this component type');
+    await rejected(await mk({ " grade": "ID1" }), 400, 'Matches row " grade": unknown field for this component type'); // no trimming
+    await rejected(await mk({ grade: "ID9" }), 400, 'Matches row "grade": "ID9" is not a value this organization offers');
+    await rejected(await mk({ grade: "" }), 400, 'Matches row "grade" needs a value');
+    await rejected(await mk({ size: "   " }), 400, 'Matches row "size" needs a value');
+    await rejected(await mk({ size: "12.760" }), 400, 'Matches row "size": "12.760" is not in canonical form (use "12.76")');
+    await rejected(await mk({ film: "yes" }), 400, 'Matches row "film": the value must be Yes or No');
+    await rejected(await mk({ size: 12 }), 400, 'Matches row "size" must be a string value');
+    await rejected(await mk([]), 400, "attributes must be an object");
+    await rejected(await mk({ grade: "ID1" }, { componentTypeId: undefined }), 400, "Matches rows need a component type");
+
+    // 200 for a valid set; two items with identical Matches both save (Q-D26)
+    const rows = { grade: "ID1", size: "12.76", film: "No" };
+    const a = await ok<{ item: Item }>(await mk(rows), 201);
+    const b = await ok<{ item: Item }>(await mk(rows), 201);
+    expect(a.item.attributes).toEqual(rows);
+    expect(b.item.attributes).toEqual(rows);
+    expect((await ok<{ item: Item }>(await orgB.get(B(`/inventory/${a.item.id}`)))).item.attributes).toEqual(rows);
+
+    // PATCH: rows validated against the item's type; omitted = untouched; supplied = replaced
+    await rejected(await orgB.patch(B(`/inventory/${a.item.id}`), { data: { attributes: { grade: "ID9" } } }), 400, /not a value this organization offers/);
+    expect((await ok<{ item: Item }>(await orgB.patch(B(`/inventory/${a.item.id}`), { data: { name: "renamed" } }))).item.attributes).toEqual(rows);
+    expect((await ok<{ item: Item }>(await orgB.patch(B(`/inventory/${a.item.id}`), { data: { attributes: { grade: "ID2" } } }))).item.attributes).toEqual({ grade: "ID2" });
+
+    // a type change clears the rows (S37-5); the same request may bring rows valid for the NEW type
+    expect((await ok<{ item: Item }>(await orgB.patch(B(`/inventory/${b.item.id}`), { data: { componentTypeId: typeB } }))).item).toMatchObject({ componentTypeId: typeB, attributes: {} });
+    const moved = await ok<{ item: Item }>(await orgB.patch(B(`/inventory/${a.item.id}`), { data: { componentTypeId: typeB, attributes: { other: "x" } } }));
+    expect(moved.item.attributes).toEqual({ other: "x" });
+    await rejected(await orgB.patch(B(`/inventory/${a.item.id}`), { data: { componentTypeId: typeA, attributes: { other: "x" } } }), 400, /unknown field/);
+  });
+
   test("DELETE → 204 with an empty body; afterwards GET / PATCH / DELETE → 404 and the list no longer has it", async ({ as, f, url, ledger }) => {
     const it = await f.inventoryItem();
     const d = await as.member.delete(url(`/inventory/${it.id}`));

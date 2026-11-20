@@ -27,7 +27,7 @@ export interface FormulaDef {
   grain: "CELL" | "PARTITION" | "ROOM_SIDE" | "ROOM_JUNCTION";
   /** expr-eval expression; absent = always fires. */
   condition?: string;
-  /** `{param.x}` — plain string substitution, never expr-eval. Exactly one of materialCode / materialMatch. */
+  /** `{param.x}`: plain string substitution, never expr-eval. Exactly one of materialCode / materialMatch. */
   materialCode?: string;
   /**
    * Stage 37: bill every ACTIVE inventory item of `itemType` (must equal `slot`) whose Matches rows all equal the

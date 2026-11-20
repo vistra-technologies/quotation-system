@@ -6,7 +6,7 @@ import {
   type CalculationLoad,
 } from "@/lib/data/calculations";
 import { loadInventoryMap, type InventoryRow } from "@/lib/data/inventory";
-import { addUnlinkedCodeProblems, usedSelectionIds } from "@/lib/inventory-link";
+import { addUnlinkedCodeProblems, matchRowKeysByType, usedSelectionIds } from "@/lib/inventory-link";
 import { matchCandidatesFrom } from "@/lib/materials/match";
 import { loadConfigSnapshot } from "@/lib/config-snapshot";
 import { resolveFormulaSetPin } from "@/lib/data/formula-pin";
@@ -524,7 +524,10 @@ function addUnlinkedProblems(
   inventoryMap: Map<string, InventoryRow>,
   collector: ProblemCollector,
 ): void {
+  const rowKeys = matchRowKeysByType(inventoryMap.values());
+  const none: ReadonlySet<string> = new Set();
   addUnlinkedCodeProblems(collector, {
+    matchRowKeys: (typeId) => rowKeys.get(typeId) ?? none,
     selections: loaded.input.selections,
     usedSelectionIds: usedSelectionIds(loaded.input.floors),
     snapshotTypes: loaded.input.snapshot.componentTypes ?? [],

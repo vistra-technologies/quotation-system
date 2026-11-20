@@ -1,7 +1,8 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
-import { parseFieldsSchema } from "@/lib/parse-field-config";
+import { parseFieldsSchema, parseFieldOptionsConfig } from "@/lib/parse-field-config";
+import { validateMatchAttributes } from "@/lib/inventory-matches";
 
 // ─── Domain errors ────────────────────────────────────────────────────────────
 
@@ -39,6 +40,46 @@ export class InvalidPartKeyError extends Error {
     super("partKey must be the key of an inventory-linked field of the item's component type");
     this.name = "InvalidPartKeyError";
   }
+}
+
+/**
+ * Thrown by createInventoryItem / updateInventoryItem when `attributes` (the Matches rows) fail the save checks
+ * (Stage 37 S37-2): unknown field key, a value the org does not offer, empty, non-canonical, a checkbox other than
+ * Yes/No, a non-string value, rows without a component type. Maps to a 400; `errors[0]` is the response text.
+ */
+export class InvalidAttributesError extends Error {
+  readonly errors: string[];
+  constructor(errors: string[]) {
+    super(errors[0] ?? "Invalid Matches rows");
+    this.name = "InvalidAttributesError";
+    this.errors = errors;
+  }
+}
+
+/**
+ * The S37-2 save check: `attributes` against the LIVE schema and org options of the item's component type
+ * (S37-6). No rows is always valid. Throws InvalidAttributesError.
+ */
+async function assertValidAttributes(
+  organizationId: string,
+  componentTypeId: string | null,
+  attributes: unknown,
+): Promise<void> {
+  const isObject = typeof attributes === "object" && attributes !== null && !Array.isArray(attributes);
+  if (isObject && Object.keys(attributes as object).length === 0) return;
+  if (!isObject) throw new InvalidAttributesError(["attributes must be an object of Matches rows"]);
+  if (!componentTypeId) throw new InvalidAttributesError(["Matches rows need a component type"]);
+  const ct = await prisma.componentType.findFirst({
+    where: { id: componentTypeId, organizationId },
+    select: { fieldsSchema: true, orgConfig: { select: { fieldOptionsConfig: true } } },
+  });
+  if (!ct) throw new InvalidAttributesError(["Matches rows need a component type of this organization"]);
+  const errors = validateMatchAttributes(
+    attributes,
+    parseFieldsSchema(ct.fieldsSchema),
+    ct.orgConfig ? parseFieldOptionsConfig(ct.orgConfig.fieldOptionsConfig) : null,
+  );
+  if (errors.length > 0) throw new InvalidAttributesError(errors);
 }
 
 /** Keys of the `inventoryLinked` fields of one org-owned ComponentType (null if the type is not in the org). */
@@ -121,7 +162,7 @@ export interface CreateInventoryItemData {
   componentTypeId?: string | null;
   perUnitQuantity?: number;
   active?: boolean;
-  /** Untyped JSONB — defaults to {} when omitted. */
+  /** Matches rows (Stage 37): fieldKey -> value, validated by assertValidAttributes. Defaults to {} when omitted. */
   attributes?: object;
   /** Stage 37 Q-D16: whole packs (default true) or exact quantity. */
   soldInWholePacks?: boolean;
@@ -143,6 +184,11 @@ export interface UpdateInventoryItemData {
   soldInWholePacks?: boolean;
   /** Send null to clear. Cleared automatically when componentTypeId changes and partKey is not supplied. */
   partKey?: string | null;
+  /**
+   * Matches rows (Stage 37 S37-2). Omitted + same type = untouched and not re-validated; omitted + type changed =
+   * cleared to {} (S37-5); supplied = validated against the item's (new) type.
+   */
+  attributes?: object;
 }
 
 /**
@@ -169,6 +215,11 @@ export async function createInventoryItem(
   // Stage 37 Q-D21: partKey only against the item's own component type's inventory-linked fields.
   if (data.partKey) {
     await assertValidPartKey(session.organizationId, data.componentTypeId ?? null, data.partKey);
+  }
+
+  // Stage 37 S37-2: Matches rows are checked against the live schema before anything is written.
+  if (data.attributes !== undefined) {
+    await assertValidAttributes(session.organizationId, data.componentTypeId ?? null, data.attributes);
   }
 
   try {
@@ -238,8 +289,8 @@ export async function updateInventoryItem(
   }
 
   // Stage 37 Q-D21 / S37-5: partKey is validated against the NEW type; a type change without an explicit
-  // partKey clears it. (Batch 2 adds clearing the Matches rows in `attributes` on the same path.)
-  if (data.partKey !== undefined || data.componentTypeId !== undefined) {
+  // partKey clears it, and clears the Matches rows in `attributes` unless new rows are supplied (S37-2 check).
+  if (data.partKey !== undefined || data.componentTypeId !== undefined || data.attributes !== undefined) {
     const current = await prisma.inventoryItem.findFirst({
       where: { id: itemId, organizationId: session.organizationId },
       select: { componentTypeId: true },
@@ -252,6 +303,12 @@ export async function updateInventoryItem(
       update.partKey = data.partKey;
     } else if (data.partKey === null || typeChanged) {
       update.partKey = null;
+    }
+    if (data.attributes !== undefined) {
+      await assertValidAttributes(session.organizationId, newTypeId ?? null, data.attributes);
+      update.attributes = data.attributes as Prisma.InputJsonValue;
+    } else if (typeChanged) {
+      update.attributes = {};
     }
   }
 

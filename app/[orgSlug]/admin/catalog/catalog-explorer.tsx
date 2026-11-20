@@ -18,6 +18,8 @@ export interface CatalogComponentType {
   fieldOptionsConfig: FieldOptionsConfig;
   /** Stage 35 B8: the org's ACTIVE inventory item codes of this type (the Catalog editor flags unsaved values against it). */
   inventoryLinkCodes: string[];
+  /** Stage 37 Q1: linked fields that are Matches row keys; the per-code check skips them. */
+  inventoryMatchLinkedKeys: string[];
 }
 
 interface CatalogExplorerProps {
@@ -75,7 +77,7 @@ export function CatalogExplorer({ orgSlug, componentTypes, canAddInventory }: Ca
   // Stage 35 S35-5: gated fields whose `in` values this org's controller cannot produce (warn-only).
   const neverCount = neverShownKeys(activeFields, activeConfig).size;
   // Stage 35 S35-8: missing inventory values; the pill steps through the offending fields in tree order.
-  const activeIssues = inventoryLinkIssues(active.fieldsSchema, activeConfig, (code) => linkedByType[active.id]?.has(code) === true);
+  const activeIssues = inventoryLinkIssues(active.fieldsSchema, activeConfig, (code) => linkedByType[active.id]?.has(code) === true, new Set(active.inventoryMatchLinkedKeys));
   const missingTotal = missingCount(activeIssues);
   const offenders = offenderKeys(activeFields, activeIssues);
 
@@ -176,6 +178,7 @@ export function CatalogExplorer({ orgSlug, componentTypes, canAddInventory }: Ca
           savedConfig={configsByType[openAttr.typeId] ?? {}}
           typeName={componentTypes.find((ct) => ct.id === openAttr.typeId)?.name ?? ""}
           linkedCodes={linkedByType[openAttr.typeId] ?? new Set<string>()}
+          matchLinkedKeys={new Set(componentTypes.find((ct) => ct.id === openAttr.typeId)?.inventoryMatchLinkedKeys ?? [])}
           canAddInventory={canAddInventory}
           onInventoryAdded={(code) => handleInventoryAdded(openAttr.typeId, code)}
           openFieldKey={openAttr.fieldKey}

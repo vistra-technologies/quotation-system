@@ -149,3 +149,81 @@ test("ProblemCollector.hasCode matches by code and kind", () => {
   assert.equal(c.hasCode("A", ["INACTIVE_ITEM"]), false);
   assert.equal(c.hasCode("B", ["UNRESOLVED_CODE"]), false);
 });
+
+// ── Stage 37 B2: match-linked fields (Q1) and the combination check (Q-D27) ──────────────────────────────────
+import { inventoryCombinationIssues, matchLinkedKeys, matchRowKeysByType } from "@/lib/inventory-link";
+
+const GLASS = [
+  f("glassType", { inventoryLinked: true }),
+  f("thickness", { dependsOn: "glassType", inventoryLinked: true }),
+  f("hingeCode", { inventoryLinked: true }),
+  f("film", { type: "checkbox" }),
+];
+const GLASS_CFG: FieldOptionsConfig = {
+  glassType: { options: ["ID1", "ID2"] },
+  thickness: { valueMap: { ID1: ["12.76"], ID2: ["10", "12"] } },
+  hingeCode: { options: ["H1"] },
+};
+const item = (rows: Record<string, string>, active = true) => ({ active, rows });
+
+test("matchLinkedKeys: only linked choice fields that are a row key; a field no item has rows for stays a code field", () => {
+  const keys = matchLinkedKeys(GLASS, new Set(["glassType", "thickness", "film"]));
+  assert.deepEqual([...keys], ["glassType", "thickness"]); // hingeCode has no rows; film is not linked
+});
+
+test("matchRowKeysByType collects keys per type, active or inactive, ignoring typeless items", () => {
+  const m = matchRowKeysByType([
+    { componentTypeId: "t1", rows: { a: "1" } },
+    { componentTypeId: "t1", rows: { b: "2" } },
+    { componentTypeId: null, rows: { c: "3" } },
+    { componentTypeId: "t2" },
+  ]);
+  assert.deepEqual([...(m.get("t1") ?? [])].sort(), ["a", "b"]);
+  assert.equal(m.has("t2"), false);
+});
+
+test("inventoryLinkIssues skips match-linked fields (skipKeys) and still reports code fields", () => {
+  const all = inventoryLinkIssues(GLASS, GLASS_CFG, () => false);
+  assert.deepEqual(Object.keys(all).sort(), ["glassType", "hingeCode", "thickness"]);
+  const skipped = inventoryLinkIssues(GLASS, GLASS_CFG, () => false, new Set(["glassType", "thickness"]));
+  assert.deepEqual(Object.keys(skipped), ["hingeCode"]);
+});
+
+test("combination check: covered by a plain item, not by a film-only item, covered by a broader item", () => {
+  const rows = (g: string, t: string) => ({ glassType: g, thickness: t });
+  const full = [
+    item(rows("ID1", "12.76")), item(rows("ID2", "10")), item(rows("ID2", "12")),
+  ];
+  assert.deepEqual(inventoryCombinationIssues(GLASS, GLASS_CFG, full), []);
+
+  // only a film item for ID2/12: reported (the Film row is not a linked field, so it does not cover)
+  const filmOnly = [item(rows("ID1", "12.76")), item(rows("ID2", "10")), item({ ...rows("ID2", "12"), film: "Yes" })];
+  assert.deepEqual(inventoryCombinationIssues(GLASS, GLASS_CFG, filmOnly), [{ glassType: "ID2", thickness: "12" }]);
+
+  // a broader item (fewer rows) covers every thickness of ID2
+  const broad = [item(rows("ID1", "12.76")), item({ glassType: "ID2" })];
+  assert.deepEqual(inventoryCombinationIssues(GLASS, GLASS_CFG, broad), []);
+
+  // an inactive item covers nothing
+  const inactive = [item(rows("ID1", "12.76")), item(rows("ID2", "10")), item(rows("ID2", "12"), false)];
+  assert.deepEqual(inventoryCombinationIssues(GLASS, GLASS_CFG, inactive), [{ glassType: "ID2", thickness: "12" }]);
+});
+
+test("combination check: only the row-key fields form combinations; no rows anywhere means no combination fields", () => {
+  // thickness is not a row key here, so only glassType is match-linked: one combination per glassType value
+  const out = inventoryCombinationIssues(GLASS, GLASS_CFG, [item({ glassType: "ID9" })]);
+  assert.deepEqual(out, [{ glassType: "ID1" }, { glassType: "ID2" }]);
+  assert.deepEqual(inventoryCombinationIssues(GLASS, GLASS_CFG, []), []);
+});
+
+test("addUnlinkedCodeProblems skips a match-linked field (its value is matched, not a code)", () => {
+  const c = new ProblemCollector();
+  addUnlinkedCodeProblems(c, {
+    selections: [{ id: "s1", componentTypeId: "t1", config: { hasLeaf: "No", frameCode: "ID1" } }],
+    usedSelectionIds: ["s1"],
+    snapshotTypes: [TYPE],
+    isLinked: () => false,
+    matchRowKeys: () => new Set(["frameCode"]),
+  });
+  assert.equal(c.hasAny(), false);
+});

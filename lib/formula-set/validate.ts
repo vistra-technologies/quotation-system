@@ -250,7 +250,7 @@ export function validateFormulaSetBody(body: unknown): { ok: true } | { ok: fals
       if (parseErr) errors.push(`formula "${id}": quantity is not a valid expression: ${parseErr}`);
     }
 
-    // Billing target — exactly one of materialCode (plain substitution, not parsed) or materialMatch
+    // Billing target: exactly one of materialCode (plain substitution, not parsed) or materialMatch
     // (Stage 37: bill every active item whose Matches rows equal the Selection). `where` was dropped in favour
     // of Matches rows on the inventory item, so it is rejected explicitly.
     if (Object.prototype.hasOwnProperty.call(fRec, "where")) {

@@ -17,7 +17,9 @@ import {
   ComponentTypeGuardError,
 } from "@/lib/formula-compat";
 import type { FormulaSetBody } from "@/lib/summary/types";
-import { inventoryLinkIssues } from "@/lib/inventory-link";
+import { inventoryCombinationIssues, inventoryLinkIssues, matchLinkedKeys } from "@/lib/inventory-link";
+import type { MatchRowItem } from "@/lib/inventory-link";
+import { readMatchRows } from "@/lib/inventory-matches";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -113,41 +115,66 @@ export async function listComponentTypes(
   return parsed.map((t) => ({
     ...t,
     inventoryLinkIssues: linkIssuesOf(t, linked),
-    inventoryLinkCodes: [...(linked.get(t.id) ?? [])].sort(),
+    inventoryLinkCodes: [...(linked.codes.get(t.id) ?? [])].sort(),
+    // Stage 37 Q1: linked fields that are Matches row keys (combination fields, not code fields) and the
+    // combinations of them no active item covers. Batch 3 shows them; Batch 2 only serves the data.
+    inventoryMatchLinkedKeys: [...matchKeysOf(t, linked)],
+    inventoryCombinationIssues: inventoryCombinationIssues(t.fieldsSchema, t.fieldOptionsConfig, linked.items.get(t.id) ?? []),
   }));
 }
 
+/** Stage 35 + 37: what the inventoryLinked checks read about one org's items, per componentTypeId. */
+interface LinkedInventory {
+  /** Codes of the ACTIVE items (Stage 35 per-code check). */
+  codes: Map<string, Set<string>>;
+  /** Every item (active or not) with its Matches rows (Stage 37 combination check, Q1). */
+  items: Map<string, MatchRowItem[]>;
+}
+
 /**
- * Stage 35 S35-7/S35-8: for the types that have an `inventoryLinked` field, the codes of the org's ACTIVE
- * InventoryItems per componentTypeId. One read, skipped entirely when no type has a linked field. An inactive,
- * other-type or NULL-type item never appears here, so each counts as missing.
+ * Stage 35 S35-7/S35-8 (+ Stage 37 Q1): for the types that have an `inventoryLinked` field, the org's
+ * InventoryItems per componentTypeId: active codes, and every item's Matches rows. One read, skipped entirely
+ * when no type has a linked field. An inactive, other-type or NULL-type item never counts as a code.
  */
 async function loadLinkedCodes(
   organizationId: string,
   types: Array<{ id: string; fieldsSchema: FieldEntry[] }>,
-): Promise<Map<string, Set<string>>> {
+): Promise<LinkedInventory> {
   const typeIds = types.filter((t) => t.fieldsSchema.some((f) => f.inventoryLinked === true)).map((t) => t.id);
-  const byType = new Map<string, Set<string>>();
-  if (typeIds.length === 0) return byType;
+  const out: LinkedInventory = { codes: new Map(), items: new Map() };
+  if (typeIds.length === 0) return out;
   const items = await prisma.inventoryItem.findMany({
-    where: { organizationId, active: true, componentTypeId: { in: typeIds } },
-    select: { code: true, componentTypeId: true },
+    where: { organizationId, componentTypeId: { in: typeIds } },
+    select: { code: true, componentTypeId: true, active: true, attributes: true },
   });
   for (const it of items) {
     if (!it.componentTypeId) continue;
-    const set = byType.get(it.componentTypeId) ?? new Set<string>();
+    const rows = readMatchRows(it.attributes);
+    if (Object.keys(rows).length > 0) {
+      const list = out.items.get(it.componentTypeId) ?? [];
+      list.push({ active: it.active, rows });
+      out.items.set(it.componentTypeId, list);
+    }
+    if (!it.active) continue;
+    const set = out.codes.get(it.componentTypeId) ?? new Set<string>();
     set.add(it.code);
-    byType.set(it.componentTypeId, set);
+    out.codes.set(it.componentTypeId, set);
   }
-  return byType;
+  return out;
 }
 
-function linkIssuesOf(
-  t: { id: string; fieldsSchema: FieldEntry[]; fieldOptionsConfig: FieldOptionsConfig | null },
-  linked: Map<string, Set<string>>,
-): Record<string, string[]> {
-  const codes = linked.get(t.id);
-  return inventoryLinkIssues(t.fieldsSchema, t.fieldOptionsConfig, (code) => codes?.has(code) === true);
+type LinkTypeInput = { id: string; fieldsSchema: FieldEntry[]; fieldOptionsConfig: FieldOptionsConfig | null };
+
+/** Q1: this type's match-linked field keys (linked dropdown/radio fields that are a Matches row key somewhere). */
+function matchKeysOf(t: LinkTypeInput, linked: LinkedInventory): Set<string> {
+  const rowKeys = new Set<string>();
+  for (const it of linked.items.get(t.id) ?? []) for (const k of Object.keys(it.rows)) rowKeys.add(k);
+  return matchLinkedKeys(t.fieldsSchema, rowKeys);
+}
+
+function linkIssuesOf(t: LinkTypeInput, linked: LinkedInventory): Record<string, string[]> {
+  const codes = linked.codes.get(t.id);
+  return inventoryLinkIssues(t.fieldsSchema, t.fieldOptionsConfig, (code) => codes?.has(code) === true, matchKeysOf(t, linked));
 }
 
 /**
@@ -167,7 +194,13 @@ export async function getComponentTypeById(session: SessionData, id: string) {
     fieldsSchema: parseFieldsSchema(rest.fieldsSchema),
     fieldOptionsConfig: orgConfig ? parseFieldOptionsConfig(orgConfig.fieldOptionsConfig) : null,
   };
-  return { ...t, inventoryLinkIssues: linkIssuesOf(t, await loadLinkedCodes(session.organizationId, [t])) };
+  const linked = await loadLinkedCodes(session.organizationId, [t]);
+  return {
+    ...t,
+    inventoryLinkIssues: linkIssuesOf(t, linked),
+    inventoryMatchLinkedKeys: [...matchKeysOf(t, linked)],
+    inventoryCombinationIssues: inventoryCombinationIssues(t.fieldsSchema, t.fieldOptionsConfig, linked.items.get(t.id) ?? []),
+  };
 }
 
 // ─── Mutations ────────────────────────────────────────────────────────────────

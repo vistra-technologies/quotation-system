@@ -657,6 +657,60 @@ test.describe("catalog: create / edit / field values (throwaway org B)", () => {
     expect(await issuesOf()).toEqual({ code: [c3] });
   });
 
+  // Stage 37 B2 (Q1, Q-D27, API AC5): a linked field with Matches rows is a combination field; a combination covered
+  // only by an item with an extra non-linked row (Film) is reported; covered by a plain item it is not. Org B only.
+  test("component-types ?include=inventoryLinkIssues carries inventoryCombinationIssues: a film-only item does not cover a combination, a plain item does; combination fields leave the per-code issues", async ({ run, orgB }) => {
+    const B = (p: string) => orgApi(run.orgB.slug, p);
+    const sfx = tag();
+    const fields: Field[] = [
+      { key: "grade", label: "Grade", type: "dropdown", required: true, basic: true, inventoryLinked: true },
+      { key: "size", label: "Size", type: "dropdown", required: true, basic: true, dependsOn: "grade", inventoryLinked: true },
+      { key: "hinge", label: "Hinge", type: "dropdown", required: false, basic: false, inventoryLinked: true },
+      { key: "film", label: "Film", type: "checkbox", required: false, basic: false },
+    ];
+    const ct = await mkBType({ run, orgB }, fields);
+    const hingeCode = `${run.prefix}cmb-h-${sfx}`;
+    const config: Config = {
+      grade: { options: ["G1", "G2"] },
+      size: { valueMap: { G1: ["S1"], G2: ["S2"] } },
+      hinge: { options: [hingeCode] },
+    };
+    await ok(await orgB.put(B(`/component-types/${ct.id}/field-values`), { data: { fieldOptionsConfig: config } }));
+    type Row = CT & { inventoryLinkIssues: Record<string, string[]>; inventoryCombinationIssues: Array<Record<string, string>>; inventoryMatchLinkedKeys: string[] };
+    const read = async () => (await listTypesWithIssues(orgB, run.orgB.slug)).find((x) => x.id === ct.id) as Row;
+    const mkItem = async (suffix: string, attributes: Record<string, string>) =>
+      (await ok<{ item: { id: string } }>(
+        await orgB.post(B("/inventory"), { data: { code: `${run.prefix}cmb-${suffix}-${sfx}`, name: "n", measurementUnit: "m²", componentTypeId: ct.id, attributes } }),
+        201,
+      )).item.id;
+
+    // no rows anywhere: every linked field is a code field, no combination issue
+    const before = await read();
+    expect(before.inventoryMatchLinkedKeys).toEqual([]);
+    expect(before.inventoryCombinationIssues).toEqual([]);
+    expect(Object.keys(before.inventoryLinkIssues).sort()).toEqual(["grade", "hinge", "size"]);
+
+    // one item with rows covers G1/S1; G2/S2 is uncovered; grade and size are now combination fields (not code fields)
+    await mkItem("a", { grade: "G1", size: "S1" });
+    const afterA = await read();
+    expect(afterA.inventoryMatchLinkedKeys.sort()).toEqual(["grade", "size"]);
+    expect(afterA.inventoryCombinationIssues).toEqual([{ grade: "G2", size: "S2" }]);
+    expect(afterA.inventoryLinkIssues).toEqual({ hinge: [hingeCode] }); // the per-code check is unchanged for a code field
+
+    // an item whose rows include Film (not a linked field) does not cover the combination
+    await mkItem("film", { grade: "G2", size: "S2", film: "Yes" });
+    expect((await read()).inventoryCombinationIssues).toEqual([{ grade: "G2", size: "S2" }]);
+
+    // a plain item covers it
+    await mkItem("plain", { grade: "G2", size: "S2" });
+    expect((await read()).inventoryCombinationIssues).toEqual([]);
+
+    // by-id carries the same combination data (list = by-id)
+    const one = (await ok<{ componentType: Row }>(await orgB.get(B(`/component-types/${ct.id}`)))).componentType;
+    expect(one.inventoryCombinationIssues).toEqual([]);
+    expect(one.inventoryMatchLinkedKeys.sort()).toEqual(["grade", "size"]);
+  });
+
   // Stage 31 S31-10: POST with a code the org already has maps the P2002 to 409 (was a 500, backlog).
   test("POST with a duplicate code → 409 (Code already in use in this organization); no second row", async ({ run, orgB }) => {
     const a = await mkBType({ run, orgB });

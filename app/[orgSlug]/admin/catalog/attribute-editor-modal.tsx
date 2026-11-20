@@ -21,6 +21,8 @@ interface AttributeEditorModalProps {
   typeName: string;
   /** Stage 35 B8: the org's active inventory codes of this type; the DRAFT values are checked against it. */
   linkedCodes: ReadonlySet<string>;
+  /** Stage 37 Q1: linked fields that are Matches row keys; not checked as codes. */
+  matchLinkedKeys: ReadonlySet<string>;
   canAddInventory: boolean;
   onInventoryAdded: (code: string) => void;
   onClose: () => void;
@@ -58,6 +60,7 @@ export function AttributeEditorModal({
   openFieldKey,
   typeName,
   linkedCodes,
+  matchLinkedKeys,
   canAddInventory,
   onInventoryAdded,
   onClose,
@@ -76,7 +79,7 @@ export function AttributeEditorModal({
   const currentField = findAttr(fieldsSchema, currentFieldKey) as FieldEntry;
   // Stage 35 B8: the same rule the server runs (lib/inventory-link.ts), on the unsaved draft, so a value is flagged
   // the moment it is added or renamed.
-  const draftIssues = inventoryLinkIssues(fieldsSchema, draftConfig, (code) => linkedCodes.has(code));
+  const draftIssues = inventoryLinkIssues(fieldsSchema, draftConfig, (code) => linkedCodes.has(code), matchLinkedKeys);
   const plan = flow ? flow.plan : [currentFieldKey, ...descendants(fieldsSchema, currentFieldKey)];
   const curEmpty = emptyGroupCount(fieldsSchema, draftConfig, currentField);
   const nextField = (() => {

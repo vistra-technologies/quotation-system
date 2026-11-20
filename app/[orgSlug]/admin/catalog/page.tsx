@@ -20,6 +20,8 @@ interface ComponentTypeRow {
   fieldOptionsConfig: FieldOptionsConfig | null;
   // Stage 35 B8: the org's active inventory codes of this type (opt-in via ?include=inventoryLinkIssues).
   inventoryLinkCodes?: string[];
+  /** Stage 37 Q1: linked fields that are Matches row keys (combination fields, skipped by the per-code check). */
+  inventoryMatchLinkedKeys?: string[];
 }
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -84,6 +86,7 @@ export default async function FieldValuesPage({
     ...ct,
     fieldOptionsConfig: ct.fieldOptionsConfig ?? ({} as FieldOptionsConfig),
     inventoryLinkCodes: ct.inventoryLinkCodes ?? [],
+    inventoryMatchLinkedKeys: ct.inventoryMatchLinkedKeys ?? [],
   }));
   // Quick-add needs MANAGE_PRICING (enforced by POST …/inventory); without it the tag still shows.
   const canAddInventory = me.adminPermissions.includes("MANAGE_PRICING");

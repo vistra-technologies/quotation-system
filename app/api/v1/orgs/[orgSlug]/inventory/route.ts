@@ -15,6 +15,7 @@ import {
   DuplicateInventoryCodeError,
   InvalidComponentTypeError,
   InvalidPartKeyError,
+  InvalidAttributesError,
 } from "@/lib/data/catalog";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
@@ -92,7 +93,9 @@ export const GET = withRoute(
  * Auth: authenticated org member with MANAGE_PRICING permission.
  *
  * Required body fields: code (string), name (string), measurementUnit (string).
- * Optional body fields: perUnitQuantity (number > 0), active (boolean), attributes (object),
+ * Optional body fields: perUnitQuantity (number > 0), active (boolean), attributes (object: the Matches rows, fieldKey -> value, checked against
+ * the item's component type: unknown key, value not offered, empty, non-canonical, checkbox not Yes/No, no
+ * component type -> 400),
  * soldInWholePacks (boolean, default true), partKey (string | null; must be an inventory-linked field
  * key of the item's component type, "" is treated as null).
  *
@@ -209,6 +212,10 @@ export const POST = withRoute(
     }
     if (err instanceof InvalidPartKeyError) {
       return apiBadRequest(err.message);
+    }
+    // Stage 37 S37-2: the Matches rows failed the save checks; the first error is the response text.
+    if (err instanceof InvalidAttributesError) {
+      return apiBadRequest(err.errors.join("; "));
     }
     log.error("[POST /api/v1/orgs/[orgSlug]/inventory] createInventoryItem", { err });
     return apiServerError();

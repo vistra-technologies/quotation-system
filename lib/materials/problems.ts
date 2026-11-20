@@ -56,7 +56,7 @@ export interface CalculationProblem {
   reason?: "NOT_STARTED" | "MALFORMED" | "GLASS_CELL" | "DOOR_CELL";
   /** The offending material code (UNRESOLVED_CODE / UNIT_MISMATCH / INACTIVE_ITEM). */
   code?: string;
-  /** UNRESOLVED_MATCH — the Selection's choices that were matched on, e.g. "ID1 · 12.76". */
+  /** UNRESOLVED_MATCH: the Selection's choices that were matched on, e.g. "ID1 · 12.76". */
   matchChoices?: string;
   /** UNIT_MISMATCH — what the formula declared. */
   expectedUnit?: string;
