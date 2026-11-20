@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from "react";
 import type { SupportedCurrency } from "@/lib/currency";
+import type { InquiryDetails } from "@/lib/quick-estimate/details-band";
 import type { EstimateDraft } from "@/lib/quick-estimate/lines";
 import type { EstimateType } from "@/lib/quick-estimate/palette";
 import type { PricingLookup } from "@/lib/quick-estimate/suggest";
@@ -16,7 +17,7 @@ export interface InquiryMode {
   isUpdate: boolean;
   onAttach: (snapshot: EstimateDraft) => void;
   /** Read when the export step opens, so it reflects the live form: "Prepared for" default and project name. */
-  getExportMeta: () => { preparedFor: string; projectName: string };
+  getExportMeta: () => { preparedFor: string; details: InquiryDetails };
 }
 
 export type OpenRequest =

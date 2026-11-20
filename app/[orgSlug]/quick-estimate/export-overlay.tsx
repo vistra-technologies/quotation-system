@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { SupportedCurrency } from "@/lib/currency";
 import type { EstimateResult, ValueLine } from "@/lib/quick-estimate/estimate";
+import type { InquiryDetails } from "@/lib/quick-estimate/details-band";
 import { ExportPreview } from "./export-preview";
 import { useFocusTrap } from "./use-focus-trap";
 import "./quick-estimate.css";
@@ -14,7 +15,7 @@ interface ExportOverlayProps {
   lines: ValueLine[];
   result: EstimateResult;
   initialPreparedFor: string;
-  projectName: string;
+  details: InquiryDetails;
   onClose: () => void;
 }
 
@@ -24,7 +25,7 @@ interface ExportOverlayProps {
  * CSS variables live on `.qe-root`, so it is portalled into one. Esc and Back close it and focus returns to
  * whatever opened it.
  */
-export function ExportOverlay({ orgName, currency, lines, result, initialPreparedFor, projectName, onClose }: ExportOverlayProps) {
+export function ExportOverlay({ orgName, currency, lines, result, initialPreparedFor, details, onClose }: ExportOverlayProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   // Captured during the first render: ExportPreview focuses its input in an effect, which runs before this one.
   const [opener] = useState(() => document.activeElement as HTMLElement | null);
@@ -51,7 +52,7 @@ export function ExportOverlay({ orgName, currency, lines, result, initialPrepare
         lines={lines}
         result={result}
         initialPreparedFor={initialPreparedFor}
-        projectName={projectName}
+        details={details}
         onBack={onClose}
       />
     </div>,

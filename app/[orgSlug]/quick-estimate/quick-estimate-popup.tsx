@@ -7,6 +7,7 @@ import { SelectField } from "@/components/select-field";
 import { SUPPORTED_CURRENCIES, type SupportedCurrency } from "@/lib/currency";
 import { isAreaUnit, type AreaUnit } from "@/lib/quick-estimate/area-units";
 import { computeEstimate, isInvalidQty, MAX_LINE_DESCRIPTION, UNIT_AREA, UNIT_SQFT, type EstimateLineResult } from "@/lib/quick-estimate/estimate";
+import type { InquiryDetails } from "@/lib/quick-estimate/details-band";
 import { formatAmount, formatMoney } from "@/lib/quick-estimate/format";
 import { sameDraft } from "@/lib/quick-estimate/inquiry-draft";
 import { toValueLines, type DraftLine } from "@/lib/quick-estimate/lines";
@@ -226,7 +227,7 @@ export function QuickEstimatePopup({ orgName, types, state, onClose, inquiryMode
   // What the popup was opened with: the discard confirm compares against it (S33-23).
   const [opened] = useState(() => state.draft);
   // Inquiry exports prefill "Prepared for" and add the project name; read when the export step opens.
-  const [exportMeta, setExportMeta] = useState<{ preparedFor: string; projectName: string } | null>(null);
+  const [exportMeta, setExportMeta] = useState<{ preparedFor: string; details: InquiryDetails } | null>(null);
   // A focus move to run after the next render (new DOM must exist first). Refs only: no state in effects.
   const afterRender = useRef<(() => void) | null>(null);
 
@@ -337,7 +338,7 @@ export function QuickEstimatePopup({ orgName, types, state, onClose, inquiryMode
           lines={valueLines}
           result={result}
           initialPreparedFor={exportMeta?.preparedFor}
-          projectName={exportMeta?.projectName}
+          details={exportMeta?.details}
           onBack={backToEdit}
         />
       ) : (

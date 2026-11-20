@@ -19,6 +19,7 @@ import { EstimateActionButton } from "../../quick-estimate/estimate-action-butto
 import { EstimatePanel } from "../../quick-estimate/estimate-panel";
 import { useEstimate, type InquiryMode } from "../../quick-estimate/estimate-provider";
 import { evaluateEstimate } from "../../quick-estimate/estimate-summary";
+import type { InquiryDetails } from "@/lib/quick-estimate/details-band";
 import { ExportOverlay } from "../../quick-estimate/export-overlay";
 import { UndoToast, useUndoToast } from "../../quick-estimate/undo-toast";
 import { createInquiry, type CreateInquiryState } from "../actions";
@@ -173,7 +174,7 @@ export function CreateInquiryForm({
   const [attached, setAttached] = useState<AttachedEstimate | null>(null);
   const [folded, setFolded] = useState<boolean[]>([false, false, false]);
   // Set while the export overlay is open: the live End client / project name, read when it was opened.
-  const [exporting, setExporting] = useState<{ preparedFor: string; projectName: string } | null>(null);
+  const [exporting, setExporting] = useState<{ preparedFor: string; details: InquiryDetails } | null>(null);
   const formCurrency: SupportedCurrency = isSupportedCurrency(selectedCurrency) ? selectedCurrency : "INR";
   const hasDraft = est.draft.hasDraft;
 
@@ -184,7 +185,19 @@ export function CreateInquiryForm({
   function readExportMeta() {
     const fd = formRef.current ? new FormData(formRef.current) : null;
     const text = (k: string) => String(fd?.get(k) ?? "").trim();
-    return { preparedFor: text("endClientName"), projectName: text("name") };
+    // No inquiry number yet (not created), and the destination is derived from the company server side: both omitted.
+    const details: InquiryDetails = {
+      projectName: text("name"),
+      location: text("projectLocation"),
+      deadline: text("projectDeadline"),
+      endClientName: text("endClientName"),
+      gstNumber: text("endClientGstNumber"),
+      mainContractor: text("mainContractorName"),
+      interiorContractor: text("interiorContractorName"),
+      mainConsultant: text("mainConsultantName"),
+      interiorConsultant: text("interiorConsultantName"),
+    };
+    return { preparedFor: details.endClientName ?? "", details };
   }
 
   /** The popup's primary button (Attach / Update): keep the snapshot, write it back to the draft (D-23), fold. */
@@ -747,7 +760,7 @@ export function CreateInquiryForm({
           lines={attached.input.lines}
           result={evaluateEstimate({ currency: attached.currency, ...attached.input })}
           initialPreparedFor={exporting.preparedFor}
-          projectName={exporting.projectName}
+          details={exporting.details}
           onClose={() => setExporting(null)}
         />
       )}

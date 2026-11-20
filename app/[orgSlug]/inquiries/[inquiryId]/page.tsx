@@ -308,7 +308,19 @@ export default async function InquiryDetailPage({
           inquiryId={inquiryId}
           status={inquiry.status}
           currency={inquiry.currency}
-          projectName={inquiry.name}
+          details={{
+            inquiryNumber: formattedInquiryNumber,
+            projectName: inquiry.name,
+            location: inquiry.projectLocation ?? "",
+            destination: inquiry.destinationCountry,
+            deadline: inquiry.projectDeadline ?? "",
+            endClientName: inquiry.endClientName ?? "",
+            gstNumber: inquiry.endClientGstNumber ?? "",
+            mainContractor: inquiry.mainContractorName ?? "",
+            interiorContractor: inquiry.interiorContractorName ?? "",
+            mainConsultant: inquiry.mainConsultantName ?? "",
+            interiorConsultant: inquiry.interiorConsultantName ?? "",
+          }}
           endClientName={inquiry.endClientName}
           quickEstimate={inquiry.quickEstimate ?? null}
         />

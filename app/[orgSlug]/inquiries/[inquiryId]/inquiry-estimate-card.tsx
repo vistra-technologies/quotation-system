@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { isSupportedCurrency, type SupportedCurrency } from "@/lib/currency";
 import { draftToInput, storedToDraft, storedToInput, type EstimateInput } from "@/lib/quick-estimate/inquiry-draft";
+import type { InquiryDetails } from "@/lib/quick-estimate/details-band";
 import type { InquiryQuickEstimateV1 } from "@/lib/quick-estimate/inquiry-estimate";
 import { emptyDraft } from "@/lib/quick-estimate/lines";
 import { EstimateActionButton } from "../../quick-estimate/estimate-action-button";
@@ -22,7 +23,8 @@ interface InquiryEstimateCardProps {
   status: string;
   /** `Inquiry.currency`: the popup is locked to it and a different estimate currency shows the drift chip (D-25). */
   currency: string;
-  projectName: string;
+  /** Inquiry fields printed in the PDF details band (QP-1/QP-8). */
+  details: InquiryDetails;
   endClientName: string | null;
   quickEstimate: InquiryQuickEstimateV1 | null;
 }
@@ -39,7 +41,7 @@ function formatUpdated(iso: string): string {
  * `updateInquiryEstimate` server action (PATCH). It edits a storage-free session copy and never reads or writes
  * the shared draft.
  */
-export function InquiryEstimateCard({ orgSlug, inquiryId, status, currency, projectName, endClientName, quickEstimate }: InquiryEstimateCardProps) {
+export function InquiryEstimateCard({ orgSlug, inquiryId, status, currency, details, endClientName, quickEstimate }: InquiryEstimateCardProps) {
   const t = useTranslations("quickEstimate");
   const router = useRouter();
   const est = useEstimate();
@@ -88,7 +90,7 @@ export function InquiryEstimateCard({ orgSlug, inquiryId, status, currency, proj
       currency: inquiryCurrency,
       isUpdate,
       onAttach: (snapshot) => save(draftToInput(snapshot), () => showToast(isUpdate ? t("toastUpdated") : t("toastAttached"))),
-      getExportMeta: () => ({ preparedFor: endClientName ?? "", projectName }),
+      getExportMeta: () => ({ preparedFor: endClientName ?? "", details }),
     };
     let seq = 0;
     est.session.reset(
@@ -159,7 +161,7 @@ export function InquiryEstimateCard({ orgSlug, inquiryId, status, currency, proj
           lines={view.lines}
           result={evaluateEstimate(view)}
           initialPreparedFor={endClientName ?? ""}
-          projectName={projectName}
+          details={details}
           onClose={() => setExporting(false)}
         />
       )}

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslations } from "next-intl";
 import type { SupportedCurrency } from "@/lib/currency";
 import type { EstimateResult, ValueLine } from "@/lib/quick-estimate/estimate";
+import { buildDetailsBand, buildMetaLines, type DetailsLabels, type InquiryDetails } from "@/lib/quick-estimate/details-band";
 import { generateQuickEstimatePdf } from "@/lib/quick-estimate/pdf";
 import { buildSheet, type SheetLabels } from "@/lib/quick-estimate/sheet";
 
@@ -14,13 +15,12 @@ interface ExportPreviewProps {
   result: EstimateResult;
   /** Inquiry exports: the End client name as the starting "Prepared for" (the user can clear it for the blank rule). */
   initialPreparedFor?: string;
-  /** Inquiry exports: added as a meta line when non-empty (D-21). */
-  projectName?: string;
+  /** Inquiry exports only (QP-2/QP-9): the inquiry's details for the band and the meta inquiry number. */
+  details?: InquiryDetails;
   onBack: () => void;
 }
 
 const PREPARED_FOR_MAX = 80;
-const PROJECT_NAME_MAX = 40;
 
 function localDateParts(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -32,7 +32,7 @@ function localDateParts(d: Date) {
  * never sent anywhere) and Download. The preview and the PDF are built from the same `buildSheet`, so the
  * wording and numbers can't drift.
  */
-export function ExportPreview({ orgName, currency, lines, result, initialPreparedFor, projectName, onBack }: ExportPreviewProps) {
+export function ExportPreview({ orgName, currency, lines, result, initialPreparedFor, details, onBack }: ExportPreviewProps) {
   const t = useTranslations("quickEstimate");
   const [preparedFor, setPreparedFor] = useState(() => (initialPreparedFor ?? "").trim().slice(0, PREPARED_FOR_MAX));
   const [busy, setBusy] = useState(false);
@@ -48,10 +48,26 @@ export function ExportPreview({ orgName, currency, lines, result, initialPrepare
   const labels: SheetLabels = { subtotal: t("subtotal"), discount: t("discount"), tax: t("tax"), total: t("total") };
   const sheet = buildSheet(lines, result, currency, labels);
   const forName = preparedFor.trim();
-  // Right-aligned in the header: a long name would run into the org name, so it is shortened.
-  const trimmedProject = (projectName ?? "").trim();
-  const project = trimmedProject.length > PROJECT_NAME_MAX ? `${trimmedProject.slice(0, PROJECT_NAME_MAX - 1)}…` : trimmedProject;
-  const metaLines = project ? [today.label, currency, project] : [today.label, currency];
+  // QP-2/QP-9: the source is the caller's, never inferred from the typed name. Currency is in the Rate header (QP-5).
+  const source = details ? "inquiry" : "standalone";
+  const bandLabels: DetailsLabels = {
+    projectHeading: t("pdfBandProject"),
+    partiesHeading: t("pdfBandParties"),
+    inquiryNo: t("pdfBandInquiryNo"),
+    projectName: t("pdfBandProjectName"),
+    location: t("pdfBandLocation"),
+    destination: t("pdfBandDestination"),
+    deadline: t("pdfBandDeadline"),
+    endClient: t("pdfBandEndClient"),
+    gstNumber: t("pdfBandGst"),
+    mainContractor: t("pdfBandMainContractor"),
+    interiorContractor: t("pdfBandInteriorContractor"),
+    mainConsultant: t("pdfBandMainConsultant"),
+    interiorConsultant: t("pdfBandInteriorConsultant"),
+  };
+  const band = details ? buildDetailsBand(details, bandLabels) : [];
+  const metaLines = buildMetaLines(today.label, details?.inquiryNumber?.trim() || undefined);
+  const rateHead = t("pdfColRate", { currency });
 
   async function download() {
     setBusy(true);
@@ -62,8 +78,10 @@ export function ExportPreview({ orgName, currency, lines, result, initialPrepare
         title: t("pdfTitle"),
         preparedForLabel: t("pdfPreparedFor"),
         preparedFor: forName,
+        source,
+        band,
         metaLines,
-        head: { item: t("pdfColItem"), qty: t("pdfColQty"), rate: t("pdfColRate"), amount: t("pdfColAmount") },
+        head: { item: t("pdfColItem"), qty: t("pdfColQty"), rate: rateHead, amount: t("pdfColAmount") },
         sheet,
         disclaimer: t("disclaimer"),
         filename: `project-estimate-${today.iso}.pdf`,
@@ -126,11 +144,26 @@ export function ExportPreview({ orgName, currency, lines, result, initialPrepare
               ))}
             </div>
           </div>
+          {band.length > 0 && (
+            <div className="qe-s-band" data-testid="qe-s-band">
+              {band.map((col) => (
+                <div key={col.heading}>
+                  <div className="qe-s-band-h">{col.heading}</div>
+                  {col.rows.map((r) => (
+                    <div key={r.key} className="qe-s-kv">
+                      <span>{r.key}</span>
+                      <span>{r.value}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
           <div className="qe-s-row qe-h">
             <span>#</span>
             <span>{t("pdfColItem")}</span>
             <span>{t("pdfColQty")}</span>
-            <span>{t("pdfColRate")}</span>
+            <span>{rateHead}</span>
             <span>{t("pdfColAmount")}</span>
           </div>
           <div className="qe-s-rows">

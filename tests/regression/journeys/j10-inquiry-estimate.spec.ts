@@ -13,6 +13,7 @@
  * INR 20,000.00. createInquiry redirects to the LIST, so step 7 finds the row by name and opens its detail.
  */
 import { randomBytes } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { test, expect } from "../fixtures/test";
 import { orgUrl } from "../../e2e/helpers";
 import { createLedgered, distributorCompanyId } from "../api/project-helpers";
@@ -24,7 +25,9 @@ import type { Locator, Page } from "@playwright/test";
 test.use({ trace: "off" });
 
 type StoredEstimate = { currency: string; lines: Array<{ qty: number; unitPrice: number }> } | null;
-type InquiryRead = { inquiry: { id: string; name: string; status: string; quickEstimate: StoredEstimate } };
+type InquiryRead = {
+  inquiry: { id: string; name: string; status: string; inquiryNumber: number; companyInquiryNumber: number | null; quickEstimate: StoredEstimate };
+};
 
 const SLOW = { timeout: 20_000 };
 
@@ -248,7 +251,7 @@ test("J10: Quick Estimate on inquiries — attach on New Inquiry, Create, detail
       await expect(section.getByTestId("qe-est-table").locator("thead")).not.toHaveCSS("display", "none");
     });
 
-    await test.step("9. Export PDF: End client prefilled, project name on the sheet, blank rule when cleared, project-estimate-*.pdf", async () => {
+    await test.step("9. Export PDF: End client prefilled, details band (Stage 37 QP), blank rule when cleared, project-estimate-*.pdf", async () => {
       await section.getByRole("button", { name: "Export PDF" }).click();
       const preview = page.getByRole("dialog", { name: "Export PDF" });
       await expect(preview).toBeVisible();
@@ -256,11 +259,31 @@ test("J10: Quick Estimate on inquiries — attach on New Inquiry, Create, detail
       await expect(preview.getByTestId("qe-s-for")).toHaveText(`Prepared for: ${endClient}`);
       await expect(preview.locator(".qe-sheet")).toContainText(name);
       await expect(preview.locator(".qe-sheet")).not.toContainText(run.users.admin.username);
+      // Stage 37 QP-1/QP-8/QP-5: an inquiry-sourced sheet carries the details band and the inquiry number, no
+      // budget/phone/email/address, no currency in the meta block; the Rate header holds the currency.
+      const read = (await getJson<InquiryRead>(as.admin, T(c, `/inquiries/${inquiryId}`))).inquiry;
+      const display = read.companyInquiryNumber != null ? `INQ-${read.companyInquiryNumber}` : `#${read.inquiryNumber}`;
+      const bandEl = preview.getByTestId("qe-s-band");
+      await expect(bandEl).toContainText(name);
+      await expect(bandEl).toContainText("RGR City");
+      await expect(bandEl).toContainText("RGR Main");
+      await expect(bandEl).toContainText(endClient);
+      await expect(bandEl).toContainText(display);
+      await expect(bandEl).not.toContainText(/budget|phone|email|address/i);
+      await expect(preview.locator(".qe-s-meta")).toContainText(display);
+      await expect(preview.locator(".qe-s-meta")).not.toContainText("INR");
+      await expect(preview.locator(".qe-s-row.qe-h")).toContainText("Rate (INR)");
       await preview.getByLabel("Prepared for").fill("");
       await expect(preview.getByTestId("qe-s-for")).toHaveText("Prepared for:");
       await preview.getByLabel("Prepared for").fill(endClient);
       const [download] = await Promise.all([page.waitForEvent("download"), preview.getByRole("button", { name: "Download" }).click()]);
       expect(download.suggestedFilename()).toMatch(/^project-estimate-\d{4}-\d{2}-\d{2}\.pdf$/);
+      // the PDF itself (jsPDF writes uncompressed text): details band, inquiry number, Rate header, no long dash
+      const pdfText = readFileSync(await download.path(), "latin1");
+      expect(pdfText.startsWith("%PDF")).toBe(true);
+      for (const part of ["PROJECT DETAILS", "PARTIES", name, endClient, display]) expect(pdfText).toContain(part);
+      expect(pdfText).toContain("Rate \\(INR\\)");
+      expect(pdfText).not.toMatch(/[\u2013\u2014]/);
       await preview.getByRole("button", { name: "Back to estimate" }).click();
       await expect(preview).toHaveCount(0);
     });

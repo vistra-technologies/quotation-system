@@ -5,8 +5,13 @@
  *
  * No i18n and no maths here: the caller passes already translated strings and a `Sheet` built by
  * `buildSheet` (the same one the export preview renders). Helvetica is WinAnsi: `²` and `—` are in that
- * set; negative amounts arrive with an ASCII hyphen from `buildSheet`.
+ * set; negative amounts arrive with an ASCII hyphen from `buildSheet`. Stage 37 (QP-1 to QP-9): an inquiry-sourced
+ * PDF gets a project details band; every drawn string goes through `stripLongDashes` (no U+2013/U+2014).
+ * Not supported: Arabic, Devanagari and other non-Latin scripts (and emoji) in party names print as boxes
+ * (OPEN-1, decided 2026-11-20: documented limit, no embedded font or transliteration).
  */
+import type { jsPDF } from "jspdf";
+import { stripLongDashes, type BandColumn } from "./details-band";
 import type { Sheet } from "./sheet";
 
 const MARGIN = 44;
@@ -19,9 +24,13 @@ export interface QuickEstimatePdfInput {
   title: string;
   /** "Prepared for" */
   preparedForLabel: string;
-  /** The name typed by the user; empty draws a blank 50 mm rule to write on by hand. */
+  /** The name typed by the user (standalone) or the End client name (inquiry); empty draws a blank 50 mm rule. */
   preparedFor: string;
-  /** Right-aligned meta lines: date, currency. */
+  /** QP-9: "inquiry" draws the details band, "standalone" never does (the two must not mix). */
+  source: "standalone" | "inquiry";
+  /** Inquiry source only: the details band columns from `buildDetailsBand` (empty = no band). */
+  band: BandColumn[];
+  /** Right-aligned meta lines from `buildMetaLines`: inquiry number (inquiry only) then the date. */
   metaLines: string[];
   head: { item: string; qty: string; rate: string; amount: string };
   sheet: Sheet;
@@ -30,7 +39,32 @@ export interface QuickEstimatePdfInput {
   filename: string;
 }
 
-export async function generateQuickEstimatePdf(input: QuickEstimatePdfInput): Promise<void> {
+/** Builds the document without saving it (the unit tests read it back). */
+export async function renderQuickEstimatePdf(raw: QuickEstimatePdfInput): Promise<jsPDF> {
+  const input: QuickEstimatePdfInput = {
+    ...raw,
+    orgName: stripLongDashes(raw.orgName),
+    title: stripLongDashes(raw.title),
+    preparedForLabel: stripLongDashes(raw.preparedForLabel),
+    preparedFor: stripLongDashes(raw.preparedFor),
+    metaLines: raw.metaLines.map(stripLongDashes),
+    head: {
+      item: stripLongDashes(raw.head.item),
+      qty: stripLongDashes(raw.head.qty),
+      rate: stripLongDashes(raw.head.rate),
+      amount: stripLongDashes(raw.head.amount),
+    },
+    sheet: {
+      rows: raw.sheet.rows.map((r) => ({
+        ...r,
+        name: stripLongDashes(r.name),
+        variant: stripLongDashes(r.variant),
+        ...(r.description ? { description: stripLongDashes(r.description) } : {}),
+      })),
+      totals: raw.sheet.totals.map((t) => ({ ...t, label: stripLongDashes(t.label), value: stripLongDashes(t.value) })),
+    },
+    disclaimer: stripLongDashes(raw.disclaimer),
+  };
   const { jsPDF } = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
 
@@ -46,14 +80,14 @@ export async function generateQuickEstimatePdf(input: QuickEstimatePdfInput): Pr
   doc.text(input.orgName, MARGIN, 58);
   doc.setFontSize(9);
   doc.setTextColor(...GREEN);
-  doc.text(input.title.split("").join(" "), MARGIN, 74);
+  doc.text(input.title.split("").join(" "), MARGIN, 84); // QP-6: more air under the org name
 
   // "Prepared for: <name>", or the label followed by a blank 50 mm rule (always present, D-16).
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.setTextColor(100, 100, 100);
   const forPrefix = `${input.preparedForLabel}: `;
-  const forY = 92;
+  const forY = 102;
   doc.text(forPrefix, MARGIN, forY);
   const forX = MARGIN + doc.getTextWidth(forPrefix);
   if (input.preparedFor) {
@@ -74,14 +108,55 @@ export async function generateQuickEstimatePdf(input: QuickEstimatePdfInput): Pr
     doc.text(line, right, metaY, { align: "right" });
     metaY += 12;
   });
-  const ruleY = Math.max(106, metaY + 4);
+  const ruleY = Math.max(120, metaY + 4);
   doc.setDrawColor(...GREEN);
   doc.setLineWidth(1.5);
   doc.line(MARGIN, ruleY, right, ruleY);
 
+  // Project details band (QP-1/QP-2): inquiry source only, two key/value columns, empty fields already dropped.
+  let tableTop = ruleY + 14;
+  const band = input.source === "inquiry" ? input.band : [];
+  if (band.length > 0) {
+    const gap = 16;
+    const colW = (right - MARGIN - gap) / 2;
+    const keyW = 75;
+    const valW = colW - keyW - 6;
+    let bandEnd = ruleY + 12;
+    band.forEach((col, ci) => {
+      const x = MARGIN + ci * (colW + gap);
+      let y = ruleY + 22;
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(150, 150, 150);
+      doc.text(stripLongDashes(col.heading).toUpperCase(), x, y);
+      doc.setDrawColor(236, 236, 236);
+      doc.setLineWidth(0.5);
+      doc.line(x, y + 4, x + colW, y + 4);
+      y += 16;
+      for (const row of col.rows) {
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(7.5);
+        doc.setTextColor(150, 150, 150);
+        doc.text(stripLongDashes(row.key), x, y);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(68, 68, 68);
+        const lines = doc.splitTextToSize(row.value, valW) as string[];
+        doc.text(lines, x + keyW + 6, y);
+        y += lines.length * 11 + 3;
+      }
+      bandEnd = Math.max(bandEnd, y);
+    });
+    const sepY = bandEnd + 4;
+    doc.setDrawColor(236, 236, 236);
+    doc.setLineWidth(0.5);
+    doc.line(MARGIN, sepY, right, sepY);
+    tableTop = sepY + 12;
+  }
+
   // Line table.
   autoTable(doc, {
-    startY: ruleY + 14,
+    startY: tableTop,
     margin: { left: MARGIN, right: MARGIN },
     head: [["#", input.head.item, input.head.qty, input.head.rate, input.head.amount]],
     body: input.sheet.rows.map((r) => [
@@ -144,5 +219,10 @@ export async function generateQuickEstimatePdf(input: QuickEstimatePdfInput): Pr
   doc.setTextColor(136, 136, 136);
   doc.text(input.disclaimer, MARGIN, footY);
 
+  return doc;
+}
+
+export async function generateQuickEstimatePdf(input: QuickEstimatePdfInput): Promise<void> {
+  const doc = await renderQuickEstimatePdf(input);
   doc.save(input.filename);
 }

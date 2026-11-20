@@ -661,6 +661,11 @@
 .qe-s-for-rule { display: inline-block; width: 50mm; border-bottom: 1px solid #999; vertical-align: baseline; }
 .qe-s-meta { text-align: right; color: #666; line-height: 1.6; }
 .qe-s-meta b { color: #222; }
+.qe-s-band { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; padding: 12px 0 10px; border-bottom: 1px solid #ececec; }
+.qe-s-band-h { font-size: 7.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: #999; padding-bottom: 4px; margin-bottom: 6px; border-bottom: 1px solid #ececec; }
+.qe-s-kv { display: grid; grid-template-columns: 75px 1fr; gap: 2px 6px; margin-bottom: 3px; align-items: baseline; }
+.qe-s-kv > span:first-child { font-size: 7.5px; font-weight: 800; color: #999; }
+.qe-s-kv > span:last-child { color: #444; overflow-wrap: anywhere; }
 .qe-s-row { display: grid; grid-template-columns: 18px 1fr 70px 84px 90px; gap: 8px; padding: 9px 6px; border-bottom: 1px solid #ececec; align-items: start; }
 .qe-s-row.qe-h { color: #888; font-size: 8px; font-weight: 800; letter-spacing: 0.1em; border-bottom-color: #ccc; margin-top: 22px; }
 .qe-s-rows .qe-s-row:nth-child(even) { background: #f8f9f4; }

@@ -150,6 +150,8 @@ test("J9: Quick Estimate — maths, % and fixed discount, draft kept on close, C
       await expect(preview.getByText("Tax 18%")).toBeVisible();
       await expect(preview.locator(".qe-sheet")).not.toContainText(run.users.admin.username); // no user identity on the sheet (D-15)
       await expect(preview.getByTestId("qe-s-for")).toHaveText("Prepared for:");
+      await expect(preview.getByTestId("qe-s-band")).toHaveCount(0); // Stage 37 QP-2: no details band on a standalone PDF
+      await expect(preview.locator(".qe-s-row.qe-h")).toContainText("Rate (INR)"); // QP-5: currency in the Rate header
       await preview.getByLabel("Prepared for").fill("Regression Test");
       await expect(preview.getByTestId("qe-s-for")).toHaveText("Prepared for: Regression Test");
       const [download] = await Promise.all([page.waitForEvent("download"), preview.getByRole("button", { name: "Download" }).click()]);
