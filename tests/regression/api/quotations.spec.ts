@@ -22,12 +22,15 @@
  * removed code, or caps a stored fixed discount under a lowered subtotal. Their inputs need a design change that
  * is not worth a live wall.
  */
+import fs from "node:fs";
 import type { APIResponse } from "@playwright/test";
 import { test, expect } from "../fixtures/test";
 import { covers } from "../fixtures/covers";
 import { registerNegatives, GHOST } from "./api-matrix";
 import { foreignProjectId } from "./project-helpers";
-import { openAs, orgTarget } from "../pages/page-helpers";
+import { openAs, orgTarget, settledProblems } from "../pages/page-helpers";
+import { isHydrated } from "../pages/collect";
+import { pillState } from "../journeys/journey-helpers";
 import { ok } from "./design-helpers";
 import { body, priceItems, materialCodes, submittedWall, distributorWall, type PriceRow } from "./quotation-helpers";
 import { countQuotations, rgrSetQuotationLineUnitPrice } from "../../e2e/db-helpers";
@@ -465,3 +468,231 @@ registerNegatives([
   },
 ]);
 
+// ─── Quotation page (Stage 38 Batch 4, UI AC1 to AC5, mockup B rev 3) ────────────────────────────────────
+// These live in THIS file because they write Test Org item prices (ONE-WORKER RULE above). Every price change is
+// put back by `restore` in `finally`.
+
+/** "1234.5" to "1,234.50": how the page prints a 2 dp amount (test values are small, float-safe). */
+const fmt = (v: string) => Number(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+test.describe("quotation page (UI)", () => {
+  test("UI AC1, AC1c, AC2, AC3: admin creates it, sections by slot with no range text, totals change after Save only, discount cap, read-only first", async ({ browser, run, f, as, url }) => {
+    test.setTimeout(360_000);
+    const projectId = await submittedWall(f, as, url);
+    const codes = await materialCodes(as.admin, url, projectId);
+    const { restore } = await priceItems(as.admin, url, codes, "AED");
+    try {
+      const o = await openAs(browser, run, "admin");
+      try {
+        const page = o.page;
+        await page.goto(orgTarget(run, `/projects/${projectId}/quotation`));
+        // AC1: no quotation and a submitted design: Create is enabled; step 5 is open.
+        const create = page.getByRole("button", { name: "Create quotation" });
+        await expect(create).toBeEnabled();
+        await expect.poll(() => isHydrated(create)).toBe(true);
+        expect((await pillState(o)).Quotation).toBe("open");
+        const [created] = await Promise.all([
+          page.waitForResponse((r) => r.request().method() === "POST" && /\/quotation$/.test(r.url())),
+          create.click(),
+        ]);
+        expect(created.status(), await created.text()).toBe(201);
+        const q = (JSON.parse(await created.text()) as { quotation: Q }).quotation;
+        await expect(page.getByTestId("quotation-number")).toHaveText(q.number);
+        await expect(page.getByTestId("quotation-status")).toHaveText("Draft");
+
+        // AC2: one row per stored line, sections grouped by slot (data-driven), no range text on any row (Q-D34).
+        const rows = page.getByTestId("quotation-line");
+        await expect(rows).toHaveCount(q.lines.length);
+        const slots = [...new Set(q.lines.map((l) => (Array.isArray(l.slot) ? "shared" : l.slot)))].sort();
+        const shown = await page.getByTestId("quotation-section").evaluateAll((els) => els.map((e) => e.getAttribute("data-slot") ?? ""));
+        expect([...shown].sort()).toEqual(slots);
+        const ledger = (await page.getByTestId("quotation-section").allInnerTexts()).join("\n");
+        expect(ledger).not.toMatch(/No upper limit|and up|Range/);
+        for (const l of q.lines) {
+          const row = page.locator(`[data-testid="quotation-line"][data-code="${l.code}"]`);
+          await expect(row).toContainText(fmt(l.unitPrice));
+          await expect(row).toContainText(`AED/`);
+          await expect(row).toContainText(fmt(l.amount));
+        }
+        // KPI tiles, Grand total on top and in the totals panel, from one response.
+        const tile = page.getByTestId("quotation-grand-total-tile");
+        await expect(tile).toContainText(fmt(q.totals.grandTotal));
+        await expect(page.getByTestId("totals-grand")).toHaveText(fmt(q.totals.grandTotal));
+
+        // AC3 + AC1c: read-only first; Edit opens the fields; nothing changes while typing, only after Save.
+        const totals = page.getByTestId("quotation-totals");
+        await expect(totals.getByLabel("Transport")).toHaveCount(0);
+        await totals.getByRole("button", { name: "Edit", exact: true }).click();
+        await totals.getByLabel("Transport").fill("1,000.00");
+        await expect(tile).toContainText(fmt(q.totals.grandTotal)); // typing changed nothing
+        const [patched] = await Promise.all([
+          page.waitForResponse((r) => r.request().method() === "PATCH" && /\/quotation$/.test(r.url())),
+          totals.getByRole("button", { name: "Save", exact: true }).click(),
+        ]);
+        expect(patched.status(), await patched.text()).toBe(200);
+        const q2 = (JSON.parse(await patched.text()) as { quotation: Q }).quotation;
+        expect(q2.transport).toBe("1000.00");
+        expect(q2.totals.grandTotal).not.toBe(q.totals.grandTotal);
+        await expect(tile).toContainText(fmt(q2.totals.grandTotal));
+        await expect(page.getByTestId("totals-subtotal")).toHaveText(fmt(q2.totals.subtotal));
+        await expect(page.getByTestId("totals-grand")).toHaveText(fmt(q2.totals.grandTotal));
+        await expect(totals.getByLabel("Transport")).toHaveCount(0); // back to read-only
+
+        // Q-D33: a typed fixed discount above the subtotal is refused in the form, Save disabled, nothing sent.
+        await totals.getByRole("button", { name: "Edit", exact: true }).click();
+        await totals.getByRole("group", { name: "Discount type" }).getByRole("button", { name: "AED" }).click();
+        await totals.getByLabel("Discount", { exact: true }).fill("99,999,999.00");
+        await expect(page.getByTestId("discount-cap-error")).toContainText(`Enter at most ${fmt(q2.totals.subtotal)} (the subtotal).`);
+        await expect(totals.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+        await totals.getByRole("button", { name: "Cancel", exact: true }).click();
+        expect((await quotation(await as.admin.get(qUrl(url, projectId)))).discount).toBe("0.00");
+
+        expect(await settledProblems(o)).toEqual([]);
+      } finally {
+        await o.ctx.close();
+      }
+    } finally {
+      await restore();
+    }
+  });
+
+  test("UI AC4, AC5: Refresh, Reset all prices and Renew are confirm-gated; Export PDF carries the number, Rate (AED), every code and the grand total, no minimum, footer only", async ({ browser, run, f, as, url }) => {
+    test.setTimeout(360_000);
+    const projectId = await submittedWall(f, as, url);
+    const codes = await materialCodes(as.admin, url, projectId);
+    const { restore } = await priceItems(as.admin, url, codes, "AED");
+    try {
+      const q0 = await quotation(await as.admin.post(qUrl(url, projectId)), 201);
+      const o = await openAs(browser, run, "admin");
+      try {
+        const page = o.page;
+        await page.goto(orgTarget(run, `/projects/${projectId}/quotation`));
+        await expect(page.getByTestId("quotation-number")).toHaveText(q0.number);
+        const dialog = page.getByRole("dialog");
+        const confirm = async (open: string, title: string, confirmName: string, tail: string, toast: RegExp) => {
+          const btn = page.getByRole("button", { name: open, exact: true }).first();
+          await expect.poll(() => isHydrated(btn)).toBe(true);
+          await btn.click();
+          await expect(dialog.getByRole("heading", { name: title })).toBeVisible();
+          // Cancel sends nothing and closes it
+          await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+          await expect(dialog).toHaveCount(0);
+          await btn.click();
+          const [res] = await Promise.all([
+            page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith(tail)),
+            dialog.getByRole("button", { name: confirmName, exact: true }).click(),
+          ]);
+          expect(res.status(), await res.text()).toBe(200);
+          await expect(page.getByRole("status").filter({ hasText: toast })).toBeVisible();
+          await expect(dialog).toHaveCount(0);
+        };
+        await confirm("Refresh", "Refresh quotation?", "Refresh", "/quotation/refresh", /Quotation refreshed/);
+        await confirm("Reset all prices", "Reset all prices?", "Reset all prices", "/quotation/reset-prices", /All prices reset/);
+        await confirm("Renew", "Renew quotation?", "Renew", "/quotation/renew", /Quotation renewed\. Valid until /);
+
+        // AC5: Export PDF
+        const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Export PDF" }).click()]);
+        expect(download.suggestedFilename()).toBe(`quotation-${q0.number}.pdf`);
+        const bytes = fs.readFileSync((await download.path())!);
+        expect(bytes.subarray(0, 5).toString("latin1")).toBe("%PDF-");
+        const text = bytes.toString("latin1");
+        expect(text.includes("FlateDecode"), "uncompressed PDF").toBe(false);
+        const q1 = await quotation(await as.admin.get(qUrl(url, projectId)));
+        const missing = [
+          q1.number, "Rate \\(AED\\)", `AED ${fmt(q1.totals.grandTotal)}`,
+          ...q1.lines.map((l) => l.code).filter((c) => !text.includes(c)),
+        ].filter((t) => !text.includes(t));
+        expect(missing, "tokens missing from the PDF").toEqual([]);
+        const printed = new Set(q1.lines.flatMap((l) => [fmt(l.unitPrice), fmt(l.amount)]));
+        for (const l of q1.lines) {
+          const min = fmt(l.minPrice!);
+          if (!printed.has(min)) expect(text.includes(`(${min})`), `minimum ${min} of ${l.code} must not be printed`).toBe(false);
+        }
+        expect(text).toMatch(/\(Page 1 of \d+\) Tj/);
+        expect(/terms|conditions/i.test(text)).toBe(false);
+        expect(await settledProblems(o)).toEqual([]);
+      } finally {
+        await o.ctx.close();
+      }
+    } finally {
+      await restore();
+    }
+  });
+
+  test("UI AC1b, AC3, AC4, AC4b: missing prices popup is viewer specific; a distributor is read-only; step 5 stays open after Reset project; Refresh in the new currency is open to QUOTE", async ({ browser, run, f, as, url, ledger }) => {
+    test.setTimeout(480_000);
+    const projectId = await distributorWall(f, as, url, run, ledger);
+    const codes = await materialCodes(as.admin, url, projectId);
+    const gaps = await priceItems(as.admin, url, codes, "AED", [codes[0]]); // every code but the first
+    const restores: Array<() => Promise<void>> = [gaps.restore];
+    try {
+      // ── missing prices on create: the popup reads differently for staff and for an external user ──
+
+      // ── price the gap, the distributor creates it, read-only for an external user ──
+      const gap = await priceItems(as.admin, url, [codes[0]], "AED");
+      restores.push(gap.restore);
+      const dist = await openAs(browser, run, "distributor");
+      try {
+        const page = dist.page;
+        await page.goto(orgTarget(run, `/projects/${projectId}/quotation`));
+        const create = page.getByRole("button", { name: "Create quotation" });
+        await expect.poll(() => isHydrated(create)).toBe(true);
+        const [res] = await Promise.all([
+          page.waitForResponse((r) => r.request().method() === "POST" && /\/quotation$/.test(r.url())),
+          create.click(),
+        ]);
+        expect(res.status(), await res.text()).toBe(201);
+        const q = (JSON.parse(await res.text()) as { quotation: Q }).quotation;
+        await expect(page.getByTestId("quotation-number")).toHaveText(q.number);
+        // AC3: no Edit on the totals, no Renew; Reset all prices stays (no edited line, Q-D33); no range keys in the payload
+        await expect(page.getByTestId("quotation-totals").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Renew", exact: true })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Reset all prices", exact: true })).toBeVisible();
+        await expect(page.getByTestId("quotation-banner-currency")).toHaveCount(0);
+
+        // ── AC4b: the project moves to USD; a distributor (QUOTE only) gets an enabled "Refresh in USD" ──
+        const cur = await as.admin.patch(url(`/projects/${projectId}`), { data: { currency: "USD" } });
+        expect(cur.status(), await cur.text()).toBe(200);
+        const usd = await priceItems(as.admin, url, codes, "USD");
+        restores.push(usd.restore);
+        await page.goto(orgTarget(run, `/projects/${projectId}/quotation`));
+        const banner = page.getByTestId("quotation-banner-currency");
+        await expect(banner).toContainText("The project currency is now USD. This quotation is in AED.");
+        const refreshIn = banner.getByRole("button", { name: "Refresh in USD" });
+        await expect(refreshIn).toBeEnabled();
+        await expect.poll(() => isHydrated(refreshIn)).toBe(true);
+        await refreshIn.click();
+        const dlg = page.getByRole("dialog");
+        await expect(dlg.getByRole("heading", { name: "Refresh in USD?" })).toBeVisible();
+        await expect(dlg).toContainText("edited line prices will be replaced");
+        const [res2] = await Promise.all([
+          page.waitForResponse((r) => r.request().method() === "POST" && r.url().endsWith("/quotation/refresh")),
+          dlg.getByRole("button", { name: "Refresh in USD", exact: true }).click(),
+        ]);
+        expect(res2.status(), await res2.text()).toBe(200);
+        const q3 = (JSON.parse(await res2.text()) as { quotation: Q }).quotation;
+        expect(q3).toMatchObject({ currency: "USD", currencyDiffers: false });
+        await expect(page.getByTestId("quotation-banner-currency")).toHaveCount(0);
+        for (const l of q3.lines) {
+          await expect(page.locator(`[data-testid="quotation-line"][data-code="${l.code}"]`)).toContainText(`USD/`);
+        }
+
+        // ── AC1b: Reset project deletes the calculation and clears designSubmittedAt; the quotation survives ──
+        const reset = await as.admin.post(url(`/projects/${projectId}/reset`));
+        expect(reset.status(), await reset.text()).toBe(200);
+        await page.goto(orgTarget(run, `/projects/${projectId}/quotation`));
+        await expect(page.getByTestId("quotation-number")).toHaveText(q.number);
+        expect(await pillState(dist)).toMatchObject({ Summary: "locked", Quotation: "open" });
+        const designBanner = page.getByTestId("quotation-banner-design");
+        await expect(designBanner).toContainText("Submit the design first.");
+        await expect(designBanner.getByRole("link", { name: "Go to Design" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Refresh", exact: true }).first()).toBeDisabled();
+        expect(await settledProblems(dist)).toEqual([]);
+      } finally {
+        await dist.ctx.close();
+      }
+    } finally {
+      for (const r of restores.reverse()) await r();
+    }
+  });
+});

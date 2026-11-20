@@ -71,7 +71,7 @@ export const PAGES: PageRow[] = [
   { path: "/[orgSlug]/projects/[projectId]/design", access: "org", project: true, expectsText: /Wall Details/, primary: { role: "button", name: /^Submit Design$/ } },
   { path: "/[orgSlug]/projects/[projectId]/edit", access: "org", project: true, expectsText: /Edit Project/, primary: { role: "button", name: /^Save Changes$/ } },
   { path: "/[orgSlug]/projects/[projectId]/summary", access: "org", project: true, expectsText: /Export PDF/, primary: { role: "button", name: /^Recompute$/ } },
-  { path: "/[orgSlug]/projects/[projectId]/quotation", access: "org", project: true, expectsText: /Coming Soon/ },
+  { path: "/[orgSlug]/projects/[projectId]/quotation", access: "org", project: true, expectsText: /No quotation yet/, primary: { role: "button", name: /^Create quotation$/ } },
   // The suite's own GLASS rename window (projects.spec.ts) can make a config update available for a moment.
   { path: "/[orgSlug]/projects/[projectId]/update-configuration", access: "org", project: true, expectsText: /Configuration is already up to date|Formula/ },
 
