@@ -3,7 +3,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MEASUREMENT_UNITS, isMeasurementUnit } from "../../lib/units";
+import { MEASUREMENT_UNITS, isMeasurementUnit, packLabel, unitForQuantity, unitSymbol } from "../../lib/units";
 
 test("every label has the form `symbol (Name)`", () => {
   for (const u of MEASUREMENT_UNITS) {
@@ -41,4 +41,20 @@ test("ft² and roll are valid units; unknown values are not", () => {
 test("unit values are unique", () => {
   const values = MEASUREMENT_UNITS.map((u) => u.value);
   assert.equal(new Set(values).size, values.length);
+});
+
+test("unitSymbol covers every unit; an unknown legacy value is shown as stored", () => {
+  assert.deepEqual(MEASUREMENT_UNITS.map((u) => unitSymbol(u.value)), ["m", "pc", "m²", "mm", "ft", "ft²", "set", "roll"]);
+  assert.equal(unitSymbol("kg"), "kg");
+});
+
+test("packLabel: singular at 1, plural sets and rolls above 1, symbols unchanged", () => {
+  assert.equal(packLabel("metres", 1), "1 m");
+  assert.equal(packLabel("metres", "2.5000"), "2.5 m");
+  assert.equal(packLabel("set", 1), "1 set");
+  assert.equal(packLabel("set", 3), "3 sets");
+  assert.equal(packLabel("roll", "25"), "25 rolls");
+  assert.equal(packLabel("m²", 4), "4 m²");
+  assert.equal(packLabel("pieces", 1000), "1,000 pc");
+  assert.equal(unitForQuantity("roll", 0.5), "roll");
 });

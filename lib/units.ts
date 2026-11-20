@@ -28,3 +28,35 @@ export function isMeasurementUnit(v: unknown): v is MeasurementUnit {
 }
 
 export const MEASUREMENT_UNIT_LIST = MEASUREMENT_UNITS.map((u) => `"${u.value}"`).join(" or ");
+
+/** Short symbol shown next to a quantity ("m", "pc", "m²", "set"). An unknown legacy value is shown as stored. */
+const UNIT_SYMBOLS: Record<MeasurementUnit, string> = {
+  metres: "m",
+  pieces: "pc",
+  "m²": "m²",
+  mm: "mm",
+  ft: "ft",
+  "ft²": "ft²",
+  set: "set",
+  roll: "roll",
+};
+
+/** Symbols that take an "s" when the quantity is above 1 (a pack of 3 sets), the rest are unit symbols. */
+const PLURAL_SYMBOLS: ReadonlySet<string> = new Set(["set", "roll"]);
+
+export function unitSymbol(value: string): string {
+  return isMeasurementUnit(value) ? UNIT_SYMBOLS[value] : value;
+}
+
+/** The unit as it reads next to a pack size: singular at 1 or less, plural for sets and rolls above 1. */
+export function unitForQuantity(value: string, quantity: number): string {
+  const symbol = unitSymbol(value);
+  return quantity > 1 && PLURAL_SYMBOLS.has(symbol) ? `${symbol}s` : symbol;
+}
+
+/** "1 m", "3 sets", "2.5 m": the Pack column and the drawer's Pack size row. */
+export function packLabel(value: string, pack: number | string): string {
+  const n = Number(pack);
+  const shown = Number.isFinite(n) ? n.toLocaleString("en-US", { maximumFractionDigits: 4 }) : String(pack);
+  return `${shown} ${unitForQuantity(value, n)}`;
+}

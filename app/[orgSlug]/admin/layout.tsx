@@ -62,6 +62,9 @@ export default async function AdminLayout({
     externalCompanies: allMessages.externalCompanies,
     // Stage 36 Batch 3: the Product Pricing page's client components (AGENTS.md namespace wiring).
     productPricing: allMessages.productPricing,
+    // Stage 37 Batch 3: the Inventory page and the item drawer (also opened over the Catalog page) call
+    // useTranslations("inventory") on the client (AGENTS.md namespace wiring).
+    inventory: allMessages.inventory,
     // Toast component requires this namespace — needed independently by H-16 (_inventory-list.tsx)
     // and Stage 27 (the Catalog page's option-editor save-success toast). Toast calls
     // useTranslations("toast") internally regardless of whether a custom `message` is passed, so the
