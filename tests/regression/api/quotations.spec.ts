@@ -627,6 +627,49 @@ test.describe("quotation page (UI)", () => {
     const restores: Array<() => Promise<void>> = [gaps.restore];
     try {
       // ── missing prices on create: the popup reads differently for staff and for an external user ──
+      // codes[0] is still unpriced here: both create attempts are refused (422) and write nothing.
+      for (const who of ["distributor", "admin"] as const) {
+        const o = await openAs(browser, run, who);
+        try {
+          await o.page.goto(orgTarget(run, `/projects/${projectId}/quotation`));
+          const create = o.page.getByRole("button", { name: "Create quotation" });
+          await expect(create).toBeEnabled();
+          await expect.poll(() => isHydrated(create)).toBe(true);
+          const [res] = await Promise.all([
+            o.page.waitForResponse((r) => r.request().method() === "POST" && /\/quotation$/.test(r.url())),
+            create.click(),
+          ]);
+          expect(res.status(), await res.text()).toBe(422);
+          const dlg = o.page.getByRole("dialog", { name: "Quotation can't be created" });
+          await expect(dlg).toBeVisible();
+          const row = dlg.getByTestId("problem-row");
+          await expect(row).toHaveCount(1);
+          await expect(row).toContainText("has no AED price");
+          await expect(row).toContainText(`Code: ${codes[0]}`);
+          if (who === "admin") {
+            await expect(dlg).toContainText("Fix your inventory");
+            await expect(dlg.getByRole("link", { name: "Go" })).toHaveAttribute("href", /\/admin\/inventory/);
+          } else {
+            await expect(dlg).toContainText("Missing prices");
+            await expect(dlg).toContainText("1 item has no AED price. Ask your admin to add it.");
+            await expect(dlg).not.toContainText("Fix your inventory");
+            await expect(dlg.getByRole("link", { name: "Go" })).toHaveCount(0);
+          }
+          expect(await countQuotations(projectId)).toBe(0); // nothing was written
+        } finally {
+          await o.ctx.close();
+        }
+      }
+
+      // ── M-3: an architect (no QUOTE) sees the no-access state, no Create ──
+      const arch = await openAs(browser, run, "architect");
+      try {
+        await arch.page.goto(orgTarget(run, `/projects/${projectId}/quotation`));
+        await expect(arch.page.getByTestId("quotation-no-access")).toContainText("You don't have access to quotations");
+        await expect(arch.page.getByRole("button", { name: "Create quotation" })).toHaveCount(0);
+      } finally {
+        await arch.ctx.close();
+      }
 
       // ── price the gap, the distributor creates it, read-only for an external user ──
       const gap = await priceItems(as.admin, url, [codes[0]], "AED");

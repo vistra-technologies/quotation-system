@@ -293,6 +293,7 @@ export function QuotationPage(props: QuotationPageProps) {
         <QuotationBanners
           q={q}
           designNeedsSubmit={refreshDisabled}
+          refreshDisabled={refreshDisabled}
           designHref={designHref}
           canReset={canReset}
           canRenew={props.canExtend}

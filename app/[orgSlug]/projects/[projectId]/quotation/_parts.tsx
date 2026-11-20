@@ -196,6 +196,8 @@ export interface BannersProps {
   q: QuotationDto;
   /** The design changed and the project has no calculation to refresh from: the action is Go to Design. */
   designNeedsSubmit: boolean;
+  /** No OK calculation: every Refresh entry point is disabled (same rule as the header button). */
+  refreshDisabled: boolean;
   designHref: string;
   canReset: boolean;
   canRenew: boolean;
@@ -244,7 +246,7 @@ export function QuotationBanners(p: BannersProps) {
         <Banner
           tone="info"
           testId="quotation-banner-currency"
-          actions={<button type="button" disabled={p.busy} onClick={p.onRefreshCurrency} className={SM_BTN}><RefreshIcon />{t("refreshIn", { currency: q.projectCurrency })}</button>}
+          actions={<button type="button" disabled={p.busy || p.refreshDisabled} title={p.refreshDisabled ? t("submitFirstTitle") : undefined} onClick={p.onRefreshCurrency} className={SM_BTN}><RefreshIcon />{t("refreshIn", { currency: q.projectCurrency })}</button>}
         >
           {t("bannerCurrency", { projectCurrency: q.projectCurrency, currency: q.currency })}
         </Banner>
