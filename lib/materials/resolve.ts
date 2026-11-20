@@ -38,9 +38,16 @@ interface AggGroup {
  */
 const PACK_EPSILON = 1e-9;
 
-/** Round half up to `dp` decimals via exponent strings (avoids 1.005 * 100 float drift). */
+/**
+ * Round half up (away from zero for negatives) to `dp` decimals. Numeric, so it is finite for every
+ * finite input (no exponent-string parsing). `toPrecision(15)` absorbs 1.005 * 100 float drift.
+ */
 function roundHalfUp(x: number, dp: number): number {
-  return Number(`${Math.round(Number(`${x}e${dp}`))}e-${dp}`);
+  if (!Number.isFinite(x)) return 0;
+  const f = 10 ** dp;
+  const scaled = Number((Math.abs(x) * f).toPrecision(15));
+  const r = Math.round(scaled) / f;
+  return r === 0 ? 0 : Math.sign(x) * r;
 }
 
 /**

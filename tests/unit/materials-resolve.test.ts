@@ -343,9 +343,20 @@ describe("itemQuantity (Stage 37 Q-D16)", () => {
     ["exact m2 rounds half up", 27.305, 1, false, "m²", 27.31],
     ["exact m2 1.005 -> 1.01 (no float drift)", 1.005, 1, false, "m²", 1.01],
     ["exact pieces use 2 dp", 2.346, 1, false, "pieces", 2.35],
+    ["near-zero exponent-form requirement (5e-7 m) -> 0", 5e-7, 1, false, "metres", 0],
+    ["near-zero m2 noise (1e-17) -> 0", 1e-17, 1, false, "m²", 0],
+    ["negative float noise (-2e-17) -> 0", -2e-17, 1, false, "m²", 0],
+    ["tiny requirement against a large pack -> 0", 0.001, 10000, false, "metres", 0],
+    ["tiny m2 requirement against a 5000 roll -> 0", 0.004, 5000, false, "m²", 0],
+    ["large pack, exact: 1e6 / 4", 1e6, 4, false, "m²", 250000],
+    ["huge requirement stays finite", 1e22, 1, false, "m²", 1e22],
   ];
   for (const [title, req, per, whole, unit, expected] of cases) {
-    test(title, () => assert.equal(itemQuantity(req, per, whole, unit), expected));
+    test(title, () => {
+      const q = itemQuantity(req, per, whole, unit);
+      assert.ok(Number.isFinite(q), `non-finite: ${q}`);
+      assert.equal(q, expected);
+    });
   }
 });
 

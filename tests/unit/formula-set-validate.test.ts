@@ -44,6 +44,15 @@ describe("v1 regression (Stage 23 seeded document)", () => {
   });
 });
 
+describe("Stage 37 measurement units on formulas", () => {
+  for (const unit of ["roll", "ft²"]) {
+    test(`unit "${unit}" validates`, () => {
+      const result = validateFormulaSetBody(minimalV2({ unit }));
+      assert.equal(result.ok, true, result.ok ? "" : (result as { ok: false; errors: string[] }).errors.join("; "));
+    });
+  }
+});
+
 // ── v2 — Validator 1: undeclared param.* ──────────────────────────────────────────────────────
 
 describe("Validator 1 — undeclared param.*", () => {
