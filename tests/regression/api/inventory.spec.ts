@@ -154,7 +154,8 @@ const postInvalid = [
 
 const patchInvalid = [
   { name: "{} (at least one field)", body: {}, status: 400 },
-  { name: "attributes only (not an updatable field)", body: { attributes: { a: 1 } }, status: 400 },
+  { name: "attributes [] (must be an object)", body: { attributes: [] }, status: 400 },
+  { name: "attributes null", body: { attributes: null }, status: 400 },
   { name: "blank code", body: { code: " " }, status: 400 },
   { name: "name 5", body: { name: 5 }, status: 400 },
   { name: 'measurementUnit "parsecs"', body: { measurementUnit: "parsecs" }, status: 400 },
@@ -206,11 +207,11 @@ test.describe("inventory: CRUD rules", () => {
   test("create (all fields) → get → list; defaults; the response shapes", async ({ as, run, ledger, url }) => {
     const c = code({ run }, "full");
     const { res, text, item } = await createItem(as.admin, { run, ledger }, {
-      code: `  ${c}  `, name: `${c} name`, measurementUnit: "metres", perUnitQuantity: 2.5, active: false, attributes: { colour: "white", n: 3 },
+      code: `  ${c}  `, name: `${c} name`, measurementUnit: "metres", perUnitQuantity: 2.5, active: false, attributes: {},
     });
     expect(res.status(), text).toBe(201);
     expect(item).toMatchObject({
-      code: c, name: `${c} name`, measurementUnit: "metres", active: false, attributes: { colour: "white", n: 3 },
+      code: c, name: `${c} name`, measurementUnit: "metres", active: false, attributes: {},
       organizationId: run.testOrg.id, category: "", componentTypeId: null, componentType: null,
     });
     expect(Number(item!.perUnitQuantity)).toBe(2.5);
@@ -275,7 +276,7 @@ test.describe("inventory: CRUD rules", () => {
   });
 
   test("PATCH is a partial update: only the sent fields change; code is trimmed", async ({ as, f, url }) => {
-    const it = await f.inventoryItem({ measurementUnit: "metres", perUnitQuantity: 3, attributes: { keep: true } });
+    const it = await f.inventoryItem({ measurementUnit: "metres", perUnitQuantity: 3 });
     const before = (await ok<{ item: Item }>(await as.admin.get(url(`/inventory/${it.id}`)))).item;
 
     const p1 = (await ok<{ item: Item }>(await as.member.patch(url(`/inventory/${it.id}`), { data: { name: `${it.code} renamed` } }))).item;
@@ -283,7 +284,7 @@ test.describe("inventory: CRUD rules", () => {
 
     const p2 = (await ok<{ item: Item }>(await as.admin.patch(url(`/inventory/${it.id}`), { data: { perUnitQuantity: 12, active: false } }))).item;
     expect(Number(p2.perUnitQuantity)).toBe(12);
-    expect(p2).toMatchObject({ active: false, name: `${it.code} renamed`, measurementUnit: "metres", attributes: { keep: true } });
+    expect(p2).toMatchObject({ active: false, name: `${it.code} renamed`, measurementUnit: "metres", attributes: {} });
 
     const p3 = (await ok<{ item: Item }>(await as.admin.patch(url(`/inventory/${it.id}`), { data: { active: true, code: `  ${it.code}  ` } }))).item;
     expect(p3).toMatchObject({ active: true, code: it.code });

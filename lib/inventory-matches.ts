@@ -32,7 +32,9 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 export function canonicalMatchValue(raw: unknown, fieldType: string): string | null {
   if (fieldType === "checkbox") {
     if (raw === true || raw === "Yes") return "Yes";
-    if (raw === false || raw === "No") return "No";
+    // An untouched checkbox is absent from the stored Selection but renders unchecked: it is "No".
+    // (Hidden checkboxes never reach here: the matcher checks visibility first.)
+    if (raw === false || raw === "No" || raw === undefined || raw === null) return "No";
     return null;
   }
   if (CHOICE_TYPES.has(fieldType)) {

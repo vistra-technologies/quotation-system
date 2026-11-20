@@ -54,6 +54,16 @@ describe("matchItems (S37-1)", () => {
     assert.equal(matchItems([glass], query({ glassType: "ID1" })).matched.length, 0);
   });
 
+  test("an untouched visible checkbox is No; a hidden one never matches", () => {
+    const no = cand("NO", { glassType: "ID1", film: "No" });
+    const yes = cand("YES", { glassType: "ID1", film: "Yes" });
+    const vals = { glassType: "ID1" }; // film absent from the stored Selection
+    assert.deepEqual(matchItems([no, yes], query(vals)).matched.map((c) => c.code), ["NO"]);
+    const hidden = matchItems([no], query(vals, { visibleKeys: new Set(["glassType"]) }));
+    assert.equal(hidden.matched.length, 0);
+    assert.equal(matchItems([cand("T", { note: "x" })], query({ glassType: "ID1" })).matched.length, 0);
+  });
+
   test("another unit, another type, an item with no rows: not candidates", () => {
     const v = { glassType: "ID1", thickness: "12.76" };
     assert.equal(matchItems([cand("U", glass.rows, { measurementUnit: "pieces" })], query(v)).matched.length, 0);
@@ -82,8 +92,10 @@ describe("matchItems (S37-1)", () => {
 
   test("the matcher is Prisma-free", () => {
     const src = readFileSync("lib/materials/match.ts", "utf8");
-    assert.ok(!/from ["'][^"']*(prisma|lib\/data\/(?!inventory["']))/.test(src));
-    assert.ok(!/import \{[^}]*\} from "@\/lib\/data\/inventory"/.test(src), "type-only import of InventoryRow");
+    assert.ok(!/from ["'][^"']*prisma/.test(src));
+    // every import from lib/data/* must be `import type`
+    const dataImports = src.match(/^import[^;]*from ["'][^"']*lib\/data\/[^"']*["'];?/gm) ?? [];
+    for (const line of dataImports) assert.ok(/^import type /.test(line), `non-type import from lib/data: ${line}`);
   });
 });
 
