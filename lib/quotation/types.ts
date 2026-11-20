@@ -10,6 +10,8 @@ export interface QuotationLine {
   /** ComponentType.code(s) whose formula produced the line (material list `slot`). */
   slot: string | string[];
   unit: string;
+  /** Pack size of the item (material list `perUnitQuantity`), frozen with the line (the PDF prints it). */
+  perUnitQuantity: number;
   /** The material-list quantity as is (Q-D16). */
   quantity: number;
   /** Max price at the time the line was priced (2 dp). */
@@ -37,6 +39,7 @@ export interface MaterialLineInput {
   name: string;
   slot: string | string[];
   unit: string;
+  perUnitQuantity: number;
   quantity: number;
 }
 

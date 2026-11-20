@@ -30,6 +30,7 @@ export interface QuotationRow {
   subtotal: Dec;
   grandTotal: Dec;
   pricedAt: Date;
+  quantitiesAt: Date;
   validUntil: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -62,6 +63,22 @@ export interface ViewContext {
   /** `ProjectCalculation.computedAt`, or null when the project has no calculation. */
   calcComputedAt: Date | null;
   now: Date;
+  /**
+   * Staff only (Q-D34): when false, each line omits `defaultPrice`, `minPrice` and `allowAbove`, so an external user
+   * never receives the org's price floor. `anyLineEdited` stays (the Reset button state).
+   */
+  showRange: boolean;
+}
+
+/** A line as the API returns it: the range fields are present for staff only. */
+export type QuotationLineView = Omit<QuotationLine, "defaultPrice" | "minPrice" | "allowAbove"> &
+  Partial<Pick<QuotationLine, "defaultPrice" | "minPrice" | "allowAbove">>;
+
+function lineView(line: QuotationLine, showRange: boolean): QuotationLineView {
+  if (showRange) return line;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { defaultPrice, minPrice, allowAbove, ...rest } = line;
+  return rest;
 }
 
 export interface QuotationView {
@@ -73,7 +90,7 @@ export interface QuotationView {
   currency: string;
   projectCurrency: string;
   currencyDiffers: boolean;
-  lines: QuotationLine[];
+  lines: QuotationLineView[];
   transport: string;
   otherCharges: string;
   discountType: DiscountType;
@@ -83,6 +100,7 @@ export interface QuotationView {
   anyLineEdited: boolean;
   designChanged: boolean;
   pricedAt: Date;
+  quantitiesAt: Date;
   validUntil: Date;
   discountAppliedAt: Date | null;
   createdAt: Date;
@@ -100,7 +118,7 @@ export function serializeQuotation(row: QuotationRow, ctx: ViewContext): Quotati
     currency: row.currency,
     projectCurrency: ctx.projectCurrency,
     currencyDiffers: row.currency !== ctx.projectCurrency,
-    lines,
+    lines: lines.map((l) => lineView(l, ctx.showRange)),
     transport: toFixed2(row.transport),
     otherCharges: toFixed2(row.otherCharges),
     discountType: row.discountType as DiscountType,
@@ -115,8 +133,9 @@ export function serializeQuotation(row: QuotationRow, ctx: ViewContext): Quotati
       grandTotal: centsToFixed(t.grandTotal),
     },
     anyLineEdited: anyLineEdited(lines),
-    designChanged: isDesignChanged(ctx.calcComputedAt, row.pricedAt),
+    designChanged: isDesignChanged(ctx.calcComputedAt, row.quantitiesAt),
     pricedAt: row.pricedAt,
+    quantitiesAt: row.quantitiesAt,
     validUntil: row.validUntil,
     discountAppliedAt: row.discountAppliedAt,
     createdAt: row.createdAt,

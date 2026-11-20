@@ -771,7 +771,8 @@ model Quotation {
   taxPercent              Decimal      @default(0)
   subtotal                Decimal
   grandTotal              Decimal
-  pricedAt                DateTime
+  pricedAt                DateTime     // prices last taken from Inventory (create, Refresh, Reset all prices)
+  quantitiesAt            DateTime     // quantities last taken from a calculation (create and Refresh ONLY; drives the design-changed flag)
   validUntil              DateTime
   createdByUserId         String?
   createdAt               DateTime     @default(now())

@@ -13,6 +13,11 @@
  * `finally` (rule 10). The "edited line" state has no API yet (Batch 5): `rgrSetQuotationLineUnitPrice` writes it
  * directly, scoped to the Test Org / rgr- orgs.
  *
+ * ONE-WORKER RULE: every test that writes Test Org item prices lives in THIS file (the quotation tests, the projects
+ * "AC3 missingPrices" test and the Summary-notice page test, both moved here), because a file runs on one worker, in
+ * order. No other spec may write Test Org item prices: a second writer interleaves record/restore and leaves
+ * prices changed or makes a quotation create see a price another test just cleared.
+ *
  * Not covered live (unit-tested in tests/unit/quotation.test.ts): a Refresh that adds a NEW unpriced code, drops a
  * removed code, or caps a stored fixed discount under a lowered subtotal. Their inputs need a design change that
  * is not worth a live wall.
@@ -22,6 +27,8 @@ import { test, expect } from "../fixtures/test";
 import { covers } from "../fixtures/covers";
 import { registerNegatives, GHOST } from "./api-matrix";
 import { foreignProjectId } from "./project-helpers";
+import { openAs, orgTarget } from "../pages/page-helpers";
+import { ok } from "./design-helpers";
 import { body, priceItems, materialCodes, submittedWall, distributorWall, type PriceRow } from "./quotation-helpers";
 import { countQuotations, rgrSetQuotationLineUnitPrice } from "../../e2e/db-helpers";
 
@@ -35,14 +42,14 @@ covers("POST /api/v1/orgs/[orgSlug]/projects/[projectId]/quotation/renew");
 const DAY = 24 * 60 * 60 * 1000;
 
 type Line = {
-  code: string; name: string; slot: string | string[]; unit: string; quantity: number;
-  defaultPrice: string; minPrice: string; allowAbove: boolean; unitPrice: string; amount: string;
+  code: string; name: string; slot: string | string[]; unit: string; perUnitQuantity: number; quantity: number;
+  defaultPrice?: string; minPrice?: string; allowAbove?: boolean; unitPrice: string; amount: string;
 };
 type Totals = { linesTotal: string; subtotal: string; discountAmount: string; discountedAmount: string; taxAmount: string; grandTotal: string };
 type Q = {
   id: string; projectId: string; quotationNumber: number; number: string; status: string; currency: string; projectCurrency: string;
   currencyDiffers: boolean; lines: Line[]; transport: string; otherCharges: string; discountType: string; discount: string;
-  taxPercent: string; totals: Totals; anyLineEdited: boolean; designChanged: boolean; pricedAt: string; validUntil: string;
+  taxPercent: string; totals: Totals; anyLineEdited: boolean; designChanged: boolean; pricedAt: string; quantitiesAt: string; validUntil: string;
 };
 
 const quotation = async (r: APIResponse, status = 200) => (await body<{ quotation: Q }>(r, status)).quotation;
@@ -55,6 +62,9 @@ const lineAmount = (quantity: number, unitCents: number) => Math.floor((Math.rou
 const pct = (c: number, hundredths: number) => Math.floor((c * hundredths + 5000) / 10000);
 
 const qUrl = (url: (p: string) => string, projectId: string, tail = "") => url(`/projects/${projectId}/quotation${tail}`);
+
+// The page test below carries session cookies: no traces (same as pages.spec.ts).
+test.use({ trace: "off" });
 
 test.describe("quotation: create and read (API AC3)", () => {
   test("create → 201 QT number, lines at the Inventory max, validUntil = +30 days; second create 409; GET equals it", async ({ as, f, url }) => {
@@ -73,7 +83,9 @@ test.describe("quotation: create and read (API AC3)", () => {
       expect(q).toMatchObject({ projectId, status: "DRAFT", currency: "AED", projectCurrency: "AED", currencyDiffers: false, designChanged: false, anyLineEdited: false });
       expect(q.lines.map((l) => l.code)).toEqual(expect.arrayContaining(codes));
       expect(q.lines).toHaveLength(codes.length);
+      const calc = await body<{ materialList: { code: string; perUnitQuantity: number }[] }>(await as.admin.get(url(`/projects/${projectId}/calculation`)), 200);
       for (const l of q.lines) {
+        expect(l.perUnitQuantity, `${l.code} pack size`).toBe(calc.materialList.find((x) => x.code === l.code)!.perUnitQuantity);
         expect(l.unitPrice, l.code).toBe(price.get(l.code));
         expect(l.defaultPrice, l.code).toBe(price.get(l.code));
         expect(l.amount, l.code).toBe(fixed(lineAmount(l.quantity, cents(l.unitPrice))));
@@ -160,9 +172,21 @@ test.describe("quotation: refresh (API AC5), reset prices and renew (API AC6)", 
       expect(rc.status(), await rc.text()).toBe(200);
       expect((await quotation(await as.member.get(qUrl(url, projectId)))).designChanged).toBe(true);
 
+      // Q-D36: Reset all prices re-prices the STORED quantities, so it must not clear the banner (quantitiesAt untouched)
+      const reset = await quotation(await as.member.post(qUrl(url, projectId, "/reset-prices")));
+      expect(reset.designChanged).toBe(true);
+      expect(reset.quantitiesAt).toBe(q0.quantitiesAt);
+      expect(Date.parse(reset.pricedAt)).toBeGreaterThan(Date.parse(q0.pricedAt));
+      const renewed = await quotation(await as.admin.post(qUrl(url, projectId, "/renew")));
+      expect(renewed.designChanged).toBe(true);
+      const patched = await quotation(await as.member.patch(qUrl(url, projectId), { data: { taxPercent: "5" } }));
+      expect(patched.designChanged).toBe(true);
+      expect(patched.quantitiesAt).toBe(q0.quantitiesAt);
+
       const q1 = await quotation(await as.member.post(qUrl(url, projectId, "/refresh")));
       expect(q1.designChanged).toBe(false);
-      expect(q1.validUntil).toBe(q0.validUntil);
+      expect(Date.parse(q1.quantitiesAt)).toBeGreaterThan(Date.parse(q0.quantitiesAt));
+      expect(q1.validUntil).toBe(patched.validUntil); // Refresh never touches validUntil
       expect(Date.parse(q1.pricedAt)).toBeGreaterThan(Date.parse(q0.pricedAt));
       expect(q1.lines.map((l) => [l.code, l.unitPrice, l.defaultPrice])).toEqual(q0.lines.map((l) => [l.code, l.unitPrice, l.defaultPrice]));
       expect(q1.quotationNumber).toBe(q0.quotationNumber);
@@ -212,7 +236,15 @@ test.describe("quotation: permissions and the edited-line gates (API AC7, AC7b, 
     try {
       restores.push((await priceItems(as.admin, url, codes, "AED")).restore);
       const q0 = await quotation(await as.distributor.post(qUrl(url, projectId)), 201);
-      expect((await as.distributor.get(qUrl(url, projectId))).status()).toBe(200);
+      // Q-D34: an external user never receives the price floor (minPrice / allowAbove / defaultPrice), on create or GET
+      const noRange = ["amount", "code", "name", "perUnitQuantity", "quantity", "slot", "unit", "unitPrice"];
+      for (const l of q0.lines) expect(Object.keys(l).sort(), l.code).toEqual(noRange);
+      const dGet = await as.distributor.get(qUrl(url, projectId));
+      expect(dGet.status()).toBe(200);
+      for (const l of (await quotation(dGet)).lines) expect(Object.keys(l).sort(), l.code).toEqual(noRange);
+      // staff do get it
+      const staff0 = await quotation(await as.admin.get(qUrl(url, projectId)));
+      for (const l of staff0.lines) expect([l.defaultPrice, l.minPrice], l.code).toEqual([expect.stringMatching(/^\d+\.\d{2}$/), expect.stringMatching(/^\d+\.\d{2}$/)]);
       expect((await as.distributor.patch(qUrl(url, projectId), { data: { transport: "1.00" } })).status()).toBe(403);
       expect((await as.distributor.post(qUrl(url, projectId, "/renew"))).status()).toBe(403);
       expect((await as.architect.get(qUrl(url, projectId))).status()).toBe(403);
@@ -221,8 +253,8 @@ test.describe("quotation: permissions and the edited-line gates (API AC7, AC7b, 
       expect((await quotation(await as.distributor.post(qUrl(url, projectId, "/reset-prices")))).anyLineEdited).toBe(false);
 
       // API AC7b: one edited line -> QUOTE alone is refused, APPLY_DISCOUNT holders may reset
-      const edited = fixed(cents(q0.lines[0].minPrice)); // the first code is priced 100.00, min 80.00
-      expect(edited).not.toBe(q0.lines[0].defaultPrice);
+      const edited = fixed(cents(staff0.lines[0].minPrice!)); // the first code is priced 100.00, min 80.00
+      expect(edited).not.toBe(staff0.lines[0].defaultPrice);
       await rgrSetQuotationLineUnitPrice(projectId, edited);
       expect((await quotation(await as.admin.get(qUrl(url, projectId)))).anyLineEdited).toBe(true);
       const denied = await as.distributor.post(qUrl(url, projectId, "/reset-prices"));
@@ -236,11 +268,11 @@ test.describe("quotation: permissions and the edited-line gates (API AC7, AC7b, 
 
       const cleared = await quotation(await as.member.post(qUrl(url, projectId, "/reset-prices")));
       expect(cleared.anyLineEdited).toBe(false);
-      expect(cleared.lines[0].unitPrice).toBe(cleared.lines[0].defaultPrice);
+      expect(cleared.lines[0].unitPrice).toBe(cleared.lines[0].defaultPrice); // (member = staff, sees the range)
 
       // API AC7d, currency change: a fixed discount, an edit, then the project moves to USD
       expect((await quotation(await as.member.patch(qUrl(url, projectId), { data: { discountType: "FIXED", discount: "10.00" } }))).discount).toBe("10.00");
-      await rgrSetQuotationLineUnitPrice(projectId, fixed(cents(q0.lines[0].minPrice)));
+      await rgrSetQuotationLineUnitPrice(projectId, fixed(cents(staff0.lines[0].minPrice!)));
       const patch = await as.admin.patch(url(`/projects/${projectId}`), { data: { currency: "USD" } });
       expect(patch.status(), await patch.text()).toBe(200);
       const usd = await priceItems(as.admin, url, codes, "USD");
@@ -310,6 +342,80 @@ test.describe("quotation: deleted with its project (API AC9)", () => {
       const del = await as.admin.delete(url(`/projects/${projectId}`));
       expect(del.status(), await del.text()).toBe(200);
       expect(await countQuotations(projectId)).toBe(0);
+    } finally {
+      await restore();
+    }
+  });
+});
+
+// ─── moved here (Test Org price writers, one worker) ────────────────────────────────────────────────────────
+
+test.describe("Test Org price writers kept in this file", () => {
+  // Was projects.spec.ts "AC3": the calculation GET lists material-list items with no price in the project currency.
+  test("projects AC3: missingPrices lists unpriced list items; pricing one in the project currency removes it (prices restored)", async ({ as, f, url }) => {
+    test.setTimeout(180_000);
+    const projectId = await submittedWall(f, as, url);
+    type Calc = { materialList: { code: string }[]; missingPrices: { currency: string; items: { code: string; name: string }[] } };
+    const readCalc = async () => await body<Calc>(await as.member.get(url(`/projects/${projectId}/calculation`)), 200);
+    const before = await readCalc();
+    const { currency } = before.missingPrices;
+    const target = before.missingPrices.items[0]?.code ?? before.materialList[0].code;
+    const inv = await body<{ items: { id: string; code: string; prices: PriceRow[] }[] }>(await as.admin.get(url("/inventory")), 200);
+    const item = inv.items.find((i) => i.code === target);
+    expect(item, `inventory item ${target}`).toBeTruthy();
+    // Rule 10: record the item's own price list first and put exactly that back, even when an assertion fails.
+    const prior = item!.prices.map((x) => ({ currency: x.currency, price: x.price, minPrice: x.minPrice, allowAbove: x.allowAbove }));
+    try {
+      const others = prior.filter((x) => x.currency !== currency);
+      // Unpriced first (positive half): the target must be listed whatever the Test Org already had priced.
+      const clear = await as.admin.put(url(`/inventory/${item!.id}/prices`), { data: others });
+      expect(clear.status(), await clear.text()).toBe(200);
+      const unpriced = await readCalc();
+      expect(unpriced.missingPrices.currency).toBe(currency);
+      expect(unpriced.missingPrices.items.map((i) => i.code)).toContain(target);
+      expect(unpriced.missingPrices.items.find((i) => i.code === target)!.name).toEqual(expect.any(String));
+      // Then priced: it disappears and nothing else changes.
+      const put = await as.admin.put(url(`/inventory/${item!.id}/prices`), { data: [...others, { currency, price: "10.00", minPrice: "8.00", allowAbove: false }] });
+      expect(put.status(), await put.text()).toBe(200);
+      const after = await readCalc();
+      expect(after.missingPrices.currency).toBe(currency);
+      expect(after.missingPrices.items.map((i) => i.code)).not.toContain(target);
+      expect(after.missingPrices.items.length).toBe(unpriced.missingPrices.items.length - 1);
+    } finally {
+      const back = await as.admin.put(url(`/inventory/${item!.id}/prices`), { data: prior });
+      expect(back.status(), await back.text()).toBe(200);
+    }
+    // restored: the target is listed again exactly when it was before this test touched it
+    expect((await readCalc()).missingPrices.items.map((i) => i.code).includes(target)).toBe(before.missingPrices.items.some((i) => i.code === target));
+    // and the restore is exact
+    const finalInv = await body<{ items: { id: string; prices: PriceRow[] }[] }>(await as.admin.get(url("/inventory")), 200);
+    expect(finalInv.items.find((i) => i.id === item!.id)!.prices.map((x) => ({ currency: x.currency, price: x.price, minPrice: x.minPrice, allowAbove: x.allowAbove }))).toEqual(prior);
+  });
+
+  // Stage 38 B2 review N3: the notice's "Open Inventory" link needs MANAGE_PRICING: a distributor sees the notice without it.
+  test("UI AC3b: Summary missing-price notice, a distributor sees it but no 'Open Inventory' link; an admin sees the link", async ({ browser, run, f, as, url, ledger }) => {
+    test.setTimeout(240_000);
+    const projectId = await distributorWall(f, as, url, run, ledger);
+    const codes = await materialCodes(as.admin, url, projectId);
+    const { restore } = await priceItems(as.admin, url, [codes[0]], "AED", [codes[0]]); // AED = the project currency
+    try {
+      const calc = await ok<{ missingPrices: { currency: string; items: { code: string }[] } }>(await as.admin.get(url(`/projects/${projectId}/calculation`)));
+      expect(calc.missingPrices.items.map((i) => i.code)).toContain(codes[0]);
+      const n = calc.missingPrices.items.length;
+      const text = `${n === 1 ? "1 item has" : `${n} items have`} no AED price; a quotation can't be made yet.`;
+      for (const who of ["distributor", "admin"] as const) {
+        const o = await openAs(browser, run, who);
+        try {
+          await o.page.goto(orgTarget(run, `/projects/${projectId}/summary`));
+          const notice = o.page.getByTestId("missing-prices-notice").filter({ visible: true });
+          await expect(notice).toContainText(text);
+          const link = notice.getByRole("link", { name: "Open Inventory" });
+          if (who === "distributor") await expect(link).toHaveCount(0);
+          else await expect(link).toHaveAttribute("href", /\/admin\/inventory$/);
+        } finally {
+          await o.ctx.close();
+        }
+      }
     } finally {
       await restore();
     }

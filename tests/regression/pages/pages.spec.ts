@@ -29,7 +29,6 @@ import type { Role, RunState } from "../fixtures/run-state";
 import { deniedRolesFor, ROLES, ROLE_PERMISSIONS } from "../api/permissions";
 import { distributorCompanyId, glassConfig, orgApi, tag } from "../api/project-helpers";
 import { ok } from "../api/design-helpers";
-import { distributorWall, materialCodes, priceItems } from "../api/quotation-helpers";
 import { addSelection, sharedItems } from "../journeys/journey-helpers";
 import { doorCfg } from "../engine/materials";
 import { rgrSetSelectionConfig } from "../../e2e/db-helpers";
@@ -2448,38 +2447,6 @@ test.describe("Stage 38 B2: Organization Settings page, throwaway org B", () => 
       await expect(o.page.getByRole("link", { name: "Inventory" })).toBeVisible();
       await expect(o.page.getByRole("link", { name: "Organization Settings" })).toHaveCount(0);
     });
-  });
-});
-
-// Stage 38 Batch 3 (carried N3) - the notice's "Open Inventory" link needs MANAGE_PRICING: a distributor sees the
-// notice without it. The unpriced state is made deterministic by clearing ONE code's price in the project currency and
-// putting the item's own price list back in `finally` (rule 10).
-test.describe("Stage 38 B3: Summary missing-price notice without MANAGE_PRICING", () => {
-  test("UI AC3b: a distributor sees the notice but no 'Open Inventory' link; an admin sees the link", async ({ browser, run, f, as, url, ledger }) => {
-    test.setTimeout(240_000);
-    const projectId = await distributorWall(f, as, url, run, ledger);
-    const codes = await materialCodes(as.admin, url, projectId);
-    const { restore } = await priceItems(as.admin, url, [codes[0]], "AED", [codes[0]]); // AED = the project currency
-    try {
-      const calc = await ok<{ missingPrices: { currency: string; items: { code: string }[] } }>(await as.admin.get(url(`/projects/${projectId}/calculation`)));
-      expect(calc.missingPrices.items.map((i) => i.code)).toContain(codes[0]);
-      const n = calc.missingPrices.items.length;
-      const text = `${n === 1 ? "1 item has" : `${n} items have`} no AED price; a quotation can't be made yet.`;
-      await withPage({ browser, run }, "distributor", undefined, async (o) => {
-        await o.page.goto(orgTarget(run, `/projects/${projectId}/summary`));
-        const notice = o.page.getByTestId("missing-prices-notice").filter({ visible: true });
-        await expect(notice).toContainText(text);
-        await expect(notice.getByRole("link", { name: "Open Inventory" })).toHaveCount(0);
-      });
-      await withPage({ browser, run }, "admin", undefined, async (o) => {
-        await o.page.goto(orgTarget(run, `/projects/${projectId}/summary`));
-        const notice = o.page.getByTestId("missing-prices-notice").filter({ visible: true });
-        await expect(notice).toContainText(text);
-        await expect(notice.getByRole("link", { name: "Open Inventory" })).toHaveAttribute("href", /\/admin\/inventory$/);
-      });
-    } finally {
-      await restore();
-    }
   });
 });
 

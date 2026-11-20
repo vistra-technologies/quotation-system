@@ -45,6 +45,7 @@ const QUOTATION_SELECT = {
   subtotal: true,
   grandTotal: true,
   pricedAt: true,
+  quantitiesAt: true,
   validUntil: true,
   createdAt: true,
   updatedAt: true,
@@ -89,6 +90,7 @@ function toMaterialInputs(json: unknown): MaterialLineInput[] {
       name: typeof l.name === "string" ? l.name : l.code,
       slot: (Array.isArray(l.slot) || typeof l.slot === "string" ? l.slot : "") as string | string[],
       unit: typeof l.unit === "string" ? l.unit : "",
+      perUnitQuantity: typeof l.perUnitQuantity === "number" ? l.perUnitQuantity : 1,
       quantity: l.quantity,
     });
   }
@@ -118,8 +120,9 @@ async function lockRow(tx: Tx, table: "Quotation" | "Project", id: string) {
   else await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${id} FOR UPDATE`;
 }
 
-function viewOf(row: QuotationRow, projectCurrency: string, calcComputedAt: Date | null): QuotationView {
-  return serializeQuotation(row, { projectCurrency, calcComputedAt, now: new Date() });
+function viewOf(session: SessionData, row: QuotationRow, projectCurrency: string, calcComputedAt: Date | null): QuotationView {
+  // Q-D34: the price range is staff-only; an external user never receives it.
+  return serializeQuotation(row, { projectCurrency, calcComputedAt, now: new Date(), showRange: !session.isExternal });
 }
 
 /** The values written whenever lines or inputs change: totals recomputed from them, never from the client. */
@@ -157,7 +160,7 @@ export async function getQuotation(session: SessionData, projectId: string): Pro
     where: { projectId, organizationId: session.organizationId },
     select: { computedAt: true },
   });
-  return { kind: "ok", quotation: viewOf(row, project.currency, calc?.computedAt ?? null) };
+  return { kind: "ok", quotation: viewOf(session, row, project.currency, calc?.computedAt ?? null) };
 }
 
 // ─── create ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -202,12 +205,13 @@ async function createOnce(session: SessionData, projectId: string): Promise<Quot
           lines: built.lines as unknown as Prisma.InputJsonValue,
           ...totalsData(built.lines, { transport: 0, otherCharges: 0, discountType: "PERCENT", discount: 0, taxHundredths: 0 }),
           pricedAt: now,
+          quantitiesAt: now,
           validUntil: validityFrom(now),
           createdByUserId: session.userId,
         },
         select: QUOTATION_SELECT,
       });
-      return { kind: "ok", quotation: viewOf(row, project.currency, calc.computedAt) };
+      return { kind: "ok", quotation: viewOf(session, row, project.currency, calc.computedAt) };
     });
   } catch (err) {
     if (typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "P2002") {
@@ -251,17 +255,17 @@ async function withLockedQuotation(
   });
 }
 
-async function finish(l: Locked, data: Prisma.QuotationUpdateInput): Promise<QuotationOutcome> {
+async function finish(session: SessionData, l: Locked, data: Prisma.QuotationUpdateInput): Promise<QuotationOutcome> {
   const row = await l.tx.quotation.update({ where: { id: l.row.id }, data, select: QUOTATION_SELECT });
   const calc = await l.tx.projectCalculation.findFirst({ where: { projectId: row.projectId }, select: { computedAt: true } });
-  return { kind: "ok", quotation: viewOf(row, l.project.currency, calc?.computedAt ?? null) };
+  return { kind: "ok", quotation: viewOf(session, row, l.project.currency, calc?.computedAt ?? null) };
 }
 
 /**
  * POST refresh (Q-D10, Q-D15, Q-D35): quantities from the latest calculation; same currency keeps stored prices
  * and ranges (new codes at the current max, dropped codes drop); a currency change re-prices every line at the
- * current max, moves `currency` to the project's and zeroes a fixed discount. `pricedAt` = now, `validUntil`
- * untouched.
+ * current max, moves `currency` to the project's and zeroes a fixed discount. `pricedAt` and `quantitiesAt` = now,
+ * `validUntil` untouched.
  */
 export function refreshQuotation(session: SessionData, projectId: string): Promise<QuotationOutcome> {
   return withLockedQuotation(session, projectId, async (l) => {
@@ -277,10 +281,12 @@ export function refreshQuotation(session: SessionData, projectId: string): Promi
     const inputs = currentInputs(l.row);
     const zeroFixed = changed && inputs.discountType === "FIXED";
     if (zeroFixed) inputs.discount = 0;
-    return finish(l, {
+    const now = new Date();
+    return finish(session, l, {
       lines: result.lines as unknown as Prisma.InputJsonValue,
       currency: target,
-      pricedAt: new Date(),
+      pricedAt: now,
+      quantitiesAt: now,
       ...(zeroFixed ? { discount: 0 } : {}),
       ...totalsData(result.lines, inputs),
     });
@@ -289,7 +295,8 @@ export function refreshQuotation(session: SessionData, projectId: string): Promi
 
 /**
  * POST reset-prices (Q-D15, Q-D33): the STORED quantities re-priced at the current Inventory values in the
- * quotation's currency; edits discarded; `pricedAt` = now and `validUntil` restarted. Gate: QUOTE (route) while no
+ * quotation's currency; edits discarded; `pricedAt` = now and `validUntil` restarted; `quantitiesAt` is NOT touched
+ * (Reset never refreshes quantities, so the design-changed flag survives it, Q-D36). Gate: QUOTE (route) while no
  * line is edited, APPLY_DISCOUNT once any line is (`canApplyDiscount`, decided by the route).
  */
 export function resetQuotationPrices(session: SessionData, projectId: string, canApplyDiscount: boolean): Promise<QuotationOutcome> {
@@ -300,7 +307,7 @@ export function resetQuotationPrices(session: SessionData, projectId: string, ca
     const result = repriceLines(lines, prices);
     if (!result.ok) return { kind: "missingPrices", missing: result.missing, currency: l.row.currency };
     const now = new Date();
-    return finish(l, {
+    return finish(session, l, {
       lines: result.lines as unknown as Prisma.InputJsonValue,
       pricedAt: now,
       validUntil: validityFrom(now),
@@ -312,7 +319,7 @@ export function resetQuotationPrices(session: SessionData, projectId: string, ca
 /** POST renew (Q-D18, Q-D20): `validUntil` + 30 days from the later of now and the current expiry; no repricing. */
 export function renewQuotation(session: SessionData, projectId: string): Promise<QuotationOutcome> {
   return withLockedQuotation(session, projectId, (l) =>
-    finish(l, { validUntil: renewedValidUntil(l.row.validUntil, new Date()) }),
+    finish(session, l, { validUntil: renewedValidUntil(l.row.validUntil, new Date()) }),
   );
 }
 
@@ -342,7 +349,7 @@ export function updateQuotationInputs(
       const error = checkDiscount(next.discountType, next.discount, subtotal);
       if (error) return { kind: "invalidInput", error };
     }
-    return finish(l, {
+    return finish(session, l, {
       transport: centsToFixed(next.transport),
       otherCharges: centsToFixed(next.otherCharges),
       discountType: next.discountType,

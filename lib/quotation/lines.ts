@@ -34,6 +34,7 @@ function withPrice(
     name: src.name,
     slot: src.slot,
     unit: src.unit,
+    perUnitQuantity: src.perUnitQuantity,
     quantity: src.quantity,
     defaultPrice: centsToFixed(defaultCents),
     minPrice: centsToFixed(minCents),

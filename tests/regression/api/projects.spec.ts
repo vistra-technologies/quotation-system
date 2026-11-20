@@ -499,42 +499,7 @@ test.describe("projects: submit design / calculation / recompute", () => {
     expect(g).toMatchObject({ selectionCount: 1, partitionCount: 1, designSubmittedAt: sp.designSubmittedAt });
   });
 
-  test("AC3: missingPrices lists unpriced list items; pricing one in the project currency removes it (prices restored)", async ({ as, f, url }) => {
-    const w = await readyWall(f, as.admin, url);
-    await expectSubmitted(await as.member.post(url(`/projects/${w.projectId}/submit-design`)));
-    type Calc = { materialList: { code: string }[]; missingPrices: { currency: string; items: { code: string; name: string }[] } };
-    const readCalc = async () => (await json<Calc>(await as.member.get(url(`/projects/${w.projectId}/calculation`))));
-    const before = await readCalc();
-    const { currency } = before.missingPrices;
-    const target = before.missingPrices.items[0]?.code ?? before.materialList[0].code;
-    const inv = await json<{ items: { id: string; code: string; prices: { currency: string; price: string; minPrice: string; allowAbove: boolean }[] }[] }>(await as.admin.get(url("/inventory")));
-    const item = inv.items.find((i) => i.code === target);
-    expect(item, `inventory item ${target}`).toBeTruthy();
-    // Rule 10: record the item's own price list first and put exactly that back, even when an assertion fails.
-    const prior = item!.prices.map((x) => ({ currency: x.currency, price: x.price, minPrice: x.minPrice, allowAbove: x.allowAbove }));
-    try {
-      const others = prior.filter((x) => x.currency !== currency);
-      // Unpriced first (positive half): the target must be listed whatever the Test Org already had priced.
-      const clear = await as.admin.put(url(`/inventory/${item!.id}/prices`), { data: others });
-      expect(clear.status(), await clear.text()).toBe(200);
-      const unpriced = await readCalc();
-      expect(unpriced.missingPrices.currency).toBe(currency);
-      expect(unpriced.missingPrices.items.map((i) => i.code)).toContain(target);
-      expect(unpriced.missingPrices.items.find((i) => i.code === target)!.name).toEqual(expect.any(String));
-      // Then priced: it disappears and nothing else changes.
-      const put = await as.admin.put(url(`/inventory/${item!.id}/prices`), { data: [...others, { currency, price: "10.00", minPrice: "8.00", allowAbove: false }] });
-      expect(put.status(), await put.text()).toBe(200);
-      const after = await readCalc();
-      expect(after.missingPrices.currency).toBe(currency);
-      expect(after.missingPrices.items.map((i) => i.code)).not.toContain(target);
-      expect(after.missingPrices.items.length).toBe(unpriced.missingPrices.items.length - 1);
-    } finally {
-      const back = await as.admin.put(url(`/inventory/${item!.id}/prices`), { data: prior });
-      expect(back.status(), await back.text()).toBe(200);
-    }
-    // restored: the target is listed again exactly when it was before this test touched it
-    expect((await readCalc()).missingPrices.items.map((i) => i.code).includes(target)).toBe(before.missingPrices.items.some((i) => i.code === target));
-  });
+  // The Stage 38 AC3 test that WRITES Test Org item prices lives in quotations.spec.ts (one file = one worker).
 
   test("recompute: never computed → 409; after submit → 200 with a later computedAt; designSubmittedAt untouched", async ({ as, f, url }) => {
     const fresh = await f.project();

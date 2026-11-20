@@ -9,7 +9,7 @@ import { missingPriceReport } from "../../lib/quotation/problems";
 import { rowTotals, serializeQuotation, type QuotationRow } from "../../lib/quotation/view";
 import type { MaterialLineInput, PriceInfo, QuotationLine } from "../../lib/quotation/types";
 
-const m = (code: string, quantity: number, slot: string | string[] = "GLASS"): MaterialLineInput => ({ code, name: `${code} name`, slot, unit: "pieces", quantity });
+const m = (code: string, quantity: number, slot: string | string[] = "GLASS"): MaterialLineInput => ({ code, name: `${code} name`, slot, unit: "pieces", perUnitQuantity: 3, quantity });
 const prices = (o: Record<string, [number, number, boolean?]>): Map<string, PriceInfo> =>
   new Map(Object.entries(o).map(([c, [price, minPrice, allowAbove]]) => [c, { price, minPrice, allowAbove: allowAbove ?? false }]));
 
@@ -50,7 +50,7 @@ test("buildLines prices every line at the Inventory max with unitPrice = default
   assert.equal(r.ok, true);
   if (!r.ok) return;
   assert.deepEqual(r.lines[0], {
-    code: "A", name: "A name", slot: "GLASS", unit: "pieces", quantity: 2,
+    code: "A", name: "A name", slot: "GLASS", unit: "pieces", perUnitQuantity: 3, quantity: 2,
     defaultPrice: "2800.00", minPrice: "2400.00", allowAbove: true, unitPrice: "2800.00", amount: "5600.00",
   });
   assert.equal(r.lines[1].amount, "15.02"); // 1.5 x 10.01
@@ -63,7 +63,7 @@ test("buildLines: any unpriced code blocks, listing each once with its name (Q-D
 });
 
 function line(code: string, quantity: number, unit: string, def: string, min: string, allowAbove = false): QuotationLine {
-  return { code, name: `${code} name`, slot: "GLASS", unit: "pieces", quantity, defaultPrice: def, minPrice: min, allowAbove, unitPrice: unit, amount: "0.00" };
+  return { code, name: `${code} name`, slot: "GLASS", unit: "pieces", perUnitQuantity: 3, quantity, defaultPrice: def, minPrice: min, allowAbove, unitPrice: unit, amount: "0.00" };
 }
 
 test("refreshLines (same currency): existing codes keep price and range, new codes take current values, dropped codes drop", () => {
@@ -198,14 +198,14 @@ function row(over: Partial<QuotationRow> = {}): QuotationRow {
     lines: [line("A", 2, "2500.00", "2800.00", "2400.00")].map((l) => ({ ...l, amount: "5000.00" })),
     transport: "0", otherCharges: "0", discount: "0", discountType: "PERCENT", discountAppliedAt: null, taxPercent: "0",
     subtotal: "5000", grandTotal: "5000",
-    pricedAt: new Date("2026-11-20T10:00:00Z"), validUntil: new Date("2026-12-20T10:00:00Z"),
+    pricedAt: new Date("2026-11-20T10:00:00Z"), quantitiesAt: new Date("2026-11-20T10:00:00Z"), validUntil: new Date("2026-12-20T10:00:00Z"),
     createdAt: new Date("2026-11-20T10:00:00Z"), updatedAt: new Date("2026-11-20T10:00:00Z"),
     ...over,
   };
 }
 
 test("serializeQuotation: number, derived status and flags, 2 dp strings, totals recomputed from lines", () => {
-  const v = serializeQuotation(row({ currency: "INR" }), { projectCurrency: "AED", calcComputedAt: new Date("2026-11-21T00:00:00Z"), now: new Date("2027-01-01T00:00:00Z") });
+  const v = serializeQuotation(row({ currency: "INR" }), { projectCurrency: "AED", calcComputedAt: new Date("2026-11-21T00:00:00Z"), now: new Date("2027-01-01T00:00:00Z"), showRange: true });
   assert.equal(v.number, "QT-2026-0003");
   assert.equal(v.status, "EXPIRED");
   assert.equal(v.currencyDiffers, true);
@@ -219,5 +219,30 @@ test("rowTotals caps a stored fixed discount above a lowered subtotal and keeps 
   const r = row({ discountType: "FIXED", discount: "9999.00" });
   const t = rowTotals(r);
   assert.deepEqual([t.discountAmount, t.grandTotal], [500000, 0]);
-  assert.equal(serializeQuotation(r, { projectCurrency: "INR", calcComputedAt: null, now: new Date("2026-11-21T00:00:00Z") }).discount, "9999.00");
+  assert.equal(serializeQuotation(r, { projectCurrency: "INR", calcComputedAt: null, now: new Date("2026-11-21T00:00:00Z"), showRange: true }).discount, "9999.00");
+});
+
+test("refreshLines takes the pack size from the new list; repriceLines keeps the stored one", () => {
+  const existing = [{ ...line("A", 1, "10.00", "10.00", "5.00"), perUnitQuantity: 3 }];
+  const list = [{ ...m("A", 2), perUnitQuantity: 6 }];
+  const r = refreshLines(list, existing, prices({}), false);
+  assert.equal(r.ok && r.lines[0].perUnitQuantity, 6);
+  const rp = repriceLines(existing, prices({ A: [100, 50] }));
+  assert.equal(rp.ok && rp.lines[0].perUnitQuantity, 3);
+});
+
+test("serializeQuotation without showRange omits defaultPrice, minPrice and allowAbove from every line (Q-D34), keeps anyLineEdited", () => {
+  const ctx = { projectCurrency: "INR", calcComputedAt: new Date("2026-11-20T09:00:00Z"), now: new Date("2026-11-21T00:00:00Z") };
+  const ext = serializeQuotation(row(), { ...ctx, showRange: false });
+  assert.deepEqual(Object.keys(ext.lines[0]).sort(), ["amount", "code", "name", "perUnitQuantity", "quantity", "slot", "unit", "unitPrice"]);
+  assert.equal(ext.anyLineEdited, true);
+  const staff = serializeQuotation(row(), { ...ctx, showRange: true });
+  assert.deepEqual([staff.lines[0].defaultPrice, staff.lines[0].minPrice, staff.lines[0].allowAbove], ["2800.00", "2400.00", false]);
+});
+
+test("designChanged reads quantitiesAt, not pricedAt: a Reset (newer pricedAt) keeps it set (Q-D36)", () => {
+  const afterReset = row({ pricedAt: new Date("2026-11-20T12:00:00Z"), quantitiesAt: new Date("2026-11-20T10:00:00Z") });
+  const ctx = { projectCurrency: "INR", calcComputedAt: new Date("2026-11-20T11:00:00Z"), now: new Date("2026-11-21T00:00:00Z"), showRange: true };
+  assert.equal(serializeQuotation(afterReset, ctx).designChanged, true);
+  assert.equal(serializeQuotation({ ...afterReset, quantitiesAt: new Date("2026-11-20T11:30:00Z") }, ctx).designChanged, false);
 });

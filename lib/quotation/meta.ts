@@ -28,7 +28,10 @@ export function deriveStatus(stored: string, validUntil: Date, now: Date): Quota
   return validUntil.getTime() < now.getTime() ? "EXPIRED" : "DRAFT";
 }
 
-/** S38-6: no calculation, or the calculation is newer than the last pricing. */
-export function isDesignChanged(calcComputedAt: Date | null, pricedAt: Date): boolean {
-  return calcComputedAt === null || calcComputedAt.getTime() > pricedAt.getTime();
+/**
+ * S38-6 (amended by Q-D36): no calculation, or the calculation is newer than the moment the stored QUANTITIES were
+ * taken (`quantitiesAt`: create and Refresh only, so a Reset all prices never clears it).
+ */
+export function isDesignChanged(calcComputedAt: Date | null, quantitiesAt: Date): boolean {
+  return calcComputedAt === null || calcComputedAt.getTime() > quantitiesAt.getTime();
 }
