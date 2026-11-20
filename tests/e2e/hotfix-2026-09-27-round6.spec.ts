@@ -16,7 +16,7 @@
  *   - Test users created before spec runs:
  *       e2e-r6-testadmin (Admin role)  — used for org-admin UI tests
  *       e2e-r6-passtest (Member role)  — used for password-set end-to-end test
- *     Both are in e2e-testorg and cleaned up by the Cleanup test at the end.
+ *     Both are in e2e-testorg and cleaned up by the Cleanup test at the end.
  *
  * NOTE: SA Users page requires an org to be selected via the OrgPicker before
  * user rows appear. Navigate to /controls/users?orgId=<id> directly to skip

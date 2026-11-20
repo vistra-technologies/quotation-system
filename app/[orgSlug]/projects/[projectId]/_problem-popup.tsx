@@ -36,6 +36,7 @@ import {
   wallSummary,
   type RoomGroup,
 } from "@/lib/materials/problem-groups";
+import { orgPath, resolveGoHref } from "@/lib/materials/problem-links";
 
 // ─── Scope-specific visual config ────────────────────────────────────────────
 
@@ -140,50 +141,6 @@ function GoArrowIcon() {
       <path d="M2 9L9 2M9 2H4M9 2v5" />
     </svg>
   );
-}
-
-// ─── Link builder ─────────────────────────────────────────────────────────────
-
-function orgPath(isSubdomain: boolean, orgSlug: string, subpath: string): string {
-  return isSubdomain ? subpath : `/${orgSlug}${subpath}`;
-}
-
-// ─── Go link resolver ─────────────────────────────────────────────────────────
-
-/**
- * Returns the href for the problem's "Go" link, or null if this problem has
- * no navigable locus (no link should be shown).
- */
-function resolveGoHref(
-  problem: CalculationProblem,
-  orgSlug: string,
-  projectId: string,
-  isSubdomain: boolean,
-): string | null {
-  switch (problem.scope) {
-    case "DESIGN": {
-      const partitionId = problem.locus?.partitionId;
-      if (!partitionId) return null;
-      return orgPath(isSubdomain, orgSlug, `/projects/${projectId}/design?partition=${partitionId}`);
-    }
-    case "SELECTION": {
-      // selectionId present → has a navigable partition in locus
-      const partitionId = problem.locus?.partitionId;
-      const selectionId = problem.locus?.selectionId;
-      if (!selectionId || !partitionId) return null;
-      return orgPath(isSubdomain, orgSlug, `/projects/${projectId}/design?partition=${partitionId}`);
-    }
-    case "INVENTORY": {
-      if (problem.kind === "UNRESOLVED_MATCH") {
-        const typeCode = problem.locus?.componentTypeCode;
-        return orgPath(isSubdomain, orgSlug, typeCode ? `/admin/inventory?type=${encodeURIComponent(typeCode)}` : "/admin/inventory");
-      }
-      if (!problem.code) return null;
-      return orgPath(isSubdomain, orgSlug, "/admin/inventory");
-    }
-    case "FORMULA_SET":
-      return null;
-  }
 }
 
 // ─── Problem row ──────────────────────────────────────────────────────────────

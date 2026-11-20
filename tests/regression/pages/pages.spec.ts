@@ -1930,26 +1930,48 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       201,
     )).componentType;
     await ok(await orgB.put(B(`/component-types/${type.id}/field-values`), { data: { fieldOptionsConfig: { grade: { options: ["A", "B"] }, hinge: { options: ["HG1"] } } } }));
+    // a second type, the target of the type-change flow
+    const type2 = (await ok<{ componentType: { id: string; name: string; code: string } }>(
+      await orgB.post(B("/component-types"), {
+        data: { code: `RGRJ${tag().toUpperCase()}`, name: `${run.prefix}inv2-${tag()}`, categoryId: cats[0].id, fieldsSchema: [fld("size", "Size")] },
+      }),
+      201,
+    )).componentType;
     const mk = async (c: string, over: Record<string, unknown> = {}) =>
       (await ok<{ item: { id: string } }>(await orgB.post(B("/inventory"), { data: { code: c, name: `${c} name`, measurementUnit: "pieces", ...over } }), 201)).item.id;
     const p = run.prefix.toUpperCase();
-    const a1 = `${p}A1`, a2 = `${p}A2`, a3 = `${p}A3`, u1 = `${p}U1`;
-    await mk(a1, { componentTypeId: type.id, partKey: "hinge", attributes: { grade: "A" } });
-    await mk(a2, { componentTypeId: type.id, attributes: { grade: "A" } });
-    await mk(a3, { componentTypeId: type.id, active: false, attributes: { grade: "A" } });
-    await mk(u1);
+    const a1 = `${p}A1`, a2 = `${p}A2`, a3 = `${p}A3`, u1 = `${p}U1`, n1 = `${p}N1`;
+    const created: string[] = []; // item ids to delete in finally (org B is also hard-deleted at teardown)
 
+    try {
     await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
       const page = o.page;
-      const row = (c: string) => page.locator("tr[data-row-id]").filter({ hasText: c });
       const drawer = page.getByRole("dialog", { name: /./ });
+      const tab = (name: RegExp) => page.getByRole("tab", { name });
+      // org B is shared in a full pages run: read the tab counts BEFORE creating this test's items, assert deltas
+      const countOf = async (name: RegExp) => {
+        const t = tab(name);
+        if ((await t.count()) === 0) return 0;
+        return Number((((await t.first().textContent()) ?? "").match(/(\d+)\s*$/) ?? [])[1] ?? 0);
+      };
       await page.goto(orgUrl(run.orgB.slug, "/admin/inventory"));
       await expect(page.getByRole("heading", { name: "Inventory", exact: true })).toBeVisible();
+      const allBase = await countOf(/^All\s*\d+$/);
+      const unassignedBase = await countOf(/^Unassigned\s*\d+$/);
+      const a1Id = await mk(a1, { componentTypeId: type.id, partKey: "hinge", attributes: { grade: "A" } });
+      const a2Id = await mk(a2, { componentTypeId: type.id, attributes: { grade: "A" } });
+      const a3Id = await mk(a3, { componentTypeId: type.id, active: false, attributes: { grade: "A" } });
+      const u1Id = await mk(u1);
+      created.push(a1Id, a2Id, a3Id, u1Id);
+      // rows by id: a row's text also carries "Also matched by <other code>", so a text filter would match two rows
+      const rowId = (id: string) => page.locator(`tr[data-row-id="${id}"]`);
+      const row = (c: string) => rowId({ [a1]: a1Id, [a2]: a2Id, [a3]: a3Id, [u1]: u1Id }[c] as string);
+      await page.reload();
+      await expect(page.getByRole("heading", { name: "Inventory", exact: true })).toBeVisible();
 
-      // tabs with counts: All 4, the type 3, Unassigned 1
-      const tab = (name: RegExp) => page.getByRole("tab", { name });
-      await expect(tab(/^All\s*4$/)).toBeVisible();
-      await expect(tab(/^Unassigned\s*1$/)).toBeVisible();
+      // tabs with counts: All +4, the own type exactly 3, Unassigned +1
+      await expect(tab(new RegExp(`^All\\s*${allBase + 4}$`))).toBeVisible();
+      await expect(tab(new RegExp(`^Unassigned\\s*${unassignedBase + 1}$`))).toBeVisible();
       await tab(new RegExp(`^${type.name}\\s*3$`)).click();
       // Part groups: Hinge (A1) and Other (A2, A3)
       await expect(page.getByRole("rowgroup").filter({ hasText: /Hinge/ })).toBeVisible();
@@ -2027,6 +2049,64 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       await expect(confirm).toBeVisible();
       expect(((await confirm.textContent()) ?? "").match(/[–—]| - /)).toBeNull();
       await confirm.getByRole("button", { name: "Cancel" }).click();
+      await expect(confirm).toHaveCount(0);
+      await expect(row(a3)).toHaveCount(1);
+
+      // Save, edit: rename A2, Save changes, the drawer is back in the read-only view with the new name (no toast on update)
+      const renamed = `${a2} renamed`;
+      await row(a2).click();
+      await drawer.getByRole("button", { name: "Edit" }).click();
+      await drawer.getByLabel("Name", { exact: true }).fill(renamed);
+      await drawer.getByRole("button", { name: "Save changes" }).click();
+      await expect(drawer.getByRole("button", { name: "Edit" })).toBeVisible();
+      await expect(drawer).toContainText(renamed);
+      await expect(page.getByText("Item added to inventory")).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await expect(drawer).toHaveCount(0);
+      await expect(row(a2)).toContainText(renamed);
+
+      // S37-5: changing the type of a saved item that has a Part or rows asks first. Cancel keeps the type;
+      // Change type clears the Part and the Matches rows in the draft; Save persists the new type with no Part/rows
+      await row(a1).click();
+      await drawer.getByRole("button", { name: "Edit" }).click();
+      const compSel = drawer.getByLabel("Component type");
+      await compSel.click();
+      await page.getByRole("option", { name: type2.name, exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Change component type?" })).toBeVisible();
+      const tc = page.getByRole("dialog").filter({ hasText: "Change component type?" });
+      await tc.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Change component type?" })).toHaveCount(0);
+      await expect(compSel).toContainText(type.name);
+      await expect(drawer.getByRole("button", { name: /^Remove match Grade/ })).toBeVisible();
+      await compSel.click();
+      await page.getByRole("option", { name: type2.name, exact: true }).click();
+      await page.getByRole("dialog").filter({ hasText: "Change component type?" }).getByRole("button", { name: "Change type", exact: true }).click();
+      await expect(compSel).toContainText(type2.name);
+      await expect(drawer.getByRole("button", { name: /^Remove match/ })).toHaveCount(0);
+      await drawer.getByRole("button", { name: "Save changes" }).click();
+      await expect(drawer.getByRole("button", { name: "Edit" })).toBeVisible();
+      await expect(drawer).toContainText(type2.name);
+      await expect(drawer.getByText("No matches")).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(drawer).toHaveCount(0);
+      // A1 left this type tab, so A2 is no longer matched by it
+      await expect(row(a1)).toHaveCount(0);
+      await expect(row(a2)).not.toContainText("Also matched by");
+
+      // New item: Create item closes the drawer, the toast shows (create only) and the row appears
+      await page.getByRole("button", { name: "New item", exact: true }).click();
+      await expect(drawer).toBeVisible();
+      await drawer.getByLabel("Code", { exact: true }).fill(n1);
+      await drawer.getByLabel("Name", { exact: true }).fill(`${n1} name`);
+      await drawer.getByLabel("Component type").click();
+      await page.getByRole("option", { name: type.name, exact: true }).click();
+      await drawer.getByLabel("Unit", { exact: true }).click();
+      await page.getByRole("option", { name: "pc (Pieces)", exact: true }).click();
+      await drawer.getByRole("button", { name: "Create item" }).click();
+      await expect(page.getByText("Item added to inventory")).toBeVisible();
+      await expect(drawer).toHaveCount(0);
+      const newRow = page.locator("tr[data-row-id]").filter({ has: page.locator("td:first-child", { hasText: new RegExp(`^${n1}$`) }) });
+      await expect(newRow).toHaveCount(1);
 
       // ?type=<code> preselects that tab; an unknown code means All
       await page.goto(orgUrl(run.orgB.slug, `/admin/inventory?type=${type.code}`));
@@ -2034,5 +2114,13 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       await page.goto(orgUrl(run.orgB.slug, "/admin/inventory?type=NOPE"));
       await expect(tab(/^All/)).toHaveAttribute("aria-selected", "true");
     });
+    } finally {
+      // the created item (UI flow) is found by code; every id is deleted, prefix asserted first
+      const all = await orgB.get(B("/inventory")).then((r) => r.json()).catch(() => ({ items: [] as { id: string; code: string }[] }));
+      for (const it of (all.items ?? []) as { id: string; code: string }[]) {
+        if (it.code === n1 && it.code.startsWith(p)) created.push(it.id);
+      }
+      for (const id of created) await orgB.delete(B(`/inventory/${id}`)).catch(() => undefined);
+    }
   });
 });
