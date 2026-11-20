@@ -1,321 +1,423 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useRef, useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { LoadingOverlay } from "@/components/loading-overlay";
-import { SelectField } from "@/components/select-field";
-import { TrashIcon } from "@/components/trash-icon";
 import { Toast, useToast } from "@/components/toast";
-import { ItemFormModal } from "./_item-form-modal";
-import type { ItemFormData, ComponentTypeOption } from "./_item-form-modal";
+import { TrashIcon } from "@/components/trash-icon";
+import {
+  DEFAULT_SORT,
+  alsoMatchedBy,
+  filterItems,
+  groupByPart,
+  partLabelOf,
+  sortItems,
+  tabCounts,
+} from "@/lib/inventory-list";
+import type { ListItem, ListType, SortKey, SortState } from "@/lib/inventory-list";
+import { readMatchRows } from "@/lib/inventory-matches";
+import { packLabel } from "@/lib/units";
 import { deleteInventoryItem } from "./actions";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-/** Shape returned by GET /api/v1/orgs/[orgSlug]/inventory (JSON-serialised). */
-export interface InventoryItemRow {
-  id: string;
-  /** Legacy free-text category — kept in DB for audit; UI now uses componentType relation (H-17). */
-  category: string;
-  /** H-17: FK to ComponentType. Null for items created before the FK existed or not mapped. */
-  componentTypeId: string | null;
-  /** H-17: joined ComponentType row for display. Null when componentTypeId is null. */
-  componentType: { id: string; code: string } | null;
-  code: string;
-  name: string;
-  measurementUnit: string;
-  /** Prisma Decimal serialises as a string via JSON; treat as displayable. */
-  perUnitQuantity: string | number;
-  active: boolean;
-  /** ISO date string — used for "Last added" default sort (H-15). */
-  createdAt: string;
-}
-
-// H-15: sort options.
-type SortKey = "lastAdded" | "component" | "name";
+import { AlsoMatchedBy, InventoryItemDrawer } from "./_item-drawer";
+import type { DrawerTarget } from "./_item-drawer";
+import { ACTIVE_BADGE, C, INACTIVE_BADGE, UNASSIGNED_BADGE } from "./_styles";
 
 interface InventoryListProps {
-  items: InventoryItemRow[];
+  items: ListItem[];
+  types: ListType[];
   orgSlug: string;
-  componentTypes: ComponentTypeOption[];
 }
 
-// ─── Delete button ────────────────────────────────────────────────────────────
+const PLUS = (
+  <svg viewBox="0 0 12 12" fill="none" className="h-3 w-3" aria-hidden="true">
+    <path d="M6 1v10M1 6h10" stroke="white" strokeWidth="2" strokeLinecap="round" />
+  </svg>
+);
+const SEARCH = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-text-placeholder)" strokeWidth="1.75" strokeLinecap="round" className="absolute left-[9px] top-1/2 h-3.5 w-3.5 -translate-y-1/2" aria-hidden="true">
+    <circle cx="11" cy="11" r="8" />
+    <path d="m21 21-4.35-4.35" />
+  </svg>
+);
+const BOX = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-border-strong)" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" className="mx-auto mb-3.5 block h-10 w-10" aria-hidden="true">
+    <path d="M21 8 12 3 3 8v8l9 5 9-5z" />
+    <path d="m3 8 9 5 9-5M12 13v8" />
+  </svg>
+);
+const CHEV_R = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+    <path d="m9 18 6-6-6-6" />
+  </svg>
+);
+const SORT_UP = (
+  <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" aria-hidden="true">
+    <path d="M6 2 10 8H2z" fill="currentColor" />
+  </svg>
+);
+const SORT_DOWN = (
+  <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" aria-hidden="true">
+    <path d="M6 10 2 4h8z" fill="currentColor" />
+  </svg>
+);
+const SORT_NONE = (
+  <svg viewBox="0 0 12 12" className="h-2.5 w-2.5 opacity-40" aria-hidden="true">
+    <path d="M6 1 9 5H3zM6 11 3 7h6z" fill="currentColor" />
+  </svg>
+);
 
 /**
- * Per-row delete action for inventory items.
- *
- * Icon-only trash button opens a themed ConfirmDialog naming the item's
- * Code + Name. On confirmation, calls the deleteInventoryItem server action.
- *
- * Hotfix 2026-09-27 H-6.
+ * The Inventory list (Client Component), mockup A rev 7: header with "New item", component type tabs with
+ * counts, search plus Active/Inactive chips, a sortable table (Part groups inside a type tab) and the modal
+ * item drawer. Filtering, grouping and sorting are the pure functions of `lib/inventory-list`.
  */
-function DeleteInventoryItemButton({
-  orgSlug,
-  itemId,
-  itemCode,
-  itemName,
-}: {
-  orgSlug: string;
-  itemId: string;
-  itemCode: string;
-  itemName: string;
-}) {
+export function InventoryList({ items, types, orgSlug }: InventoryListProps) {
+  const t = useTranslations("inventory");
+  const [tab, setTab] = useState<string>("all");
+  const [q, setQ] = useState("");
+  const [chips, setChips] = useState({ active: false, inactive: false });
+  const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
+  const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>({});
+  const [drawer, setDrawer] = useState<DrawerTarget | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ListItem | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const toast = useToast();
+  const newButtonRef = useRef<HTMLButtonElement>(null);
 
-  function handleDeleteConfirm() {
-    setIsConfirmOpen(false);
-    setErrorMessage(null);
+  const counts = useMemo(() => tabCounts(items, types), [items, types]);
+  const typeById = useMemo(() => new Map(types.map((x) => [x.id, x] as const)), [types]);
+  const rows = useMemo(
+    () => sortItems(filterItems(items, { tab, q, ...chips }), sort, types),
+    [items, tab, q, chips, sort, types],
+  );
+  const isTypeTab = tab !== "all" && tab !== "none";
+  const showComp = tab === "all";
+
+  function onSort(key: SortKey) {
+    setSort((s) => (s.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
+  }
+  function clearFilters() {
+    setQ("");
+    setChips({ active: false, inactive: false });
+  }
+  function restoreTarget(): HTMLElement | null {
+    if (drawer?.kind === "item") {
+      const row = document.querySelector<HTMLElement>(`[data-row-id="${CSS.escape(drawer.id)}"]`);
+      if (row) return row;
+    }
+    return newButtonRef.current;
+  }
+  function confirmDelete() {
+    if (!deleteTarget) return;
     const formData = new FormData();
     formData.set("orgSlug", orgSlug);
-    formData.set("itemId", itemId);
+    formData.set("itemId", deleteTarget.id);
+    setDeleteError(null);
     startTransition(async () => {
       try {
         await deleteInventoryItem(formData);
+        setDeleteTarget(null);
       } catch (err) {
-        setErrorMessage(
-          err instanceof Error ? err.message : "Delete failed — please try again.",
-        );
+        setDeleteError(err instanceof Error && err.message ? err.message : t("deleteFailed"));
       }
     });
   }
 
+  if (items.length === 0) {
+    return (
+      <>
+        <PageHeader onNew={() => setDrawer({ kind: "new" })} buttonRef={newButtonRef} />
+        <div className="rounded-sm border border-dashed border-border-strong bg-bg-white px-8 py-[52px] text-center">
+          {BOX}
+          <p className="mb-3.5 text-[15px] font-extrabold text-text-heading">{t("emptyTitle")}</p>
+          <button type="button" onClick={() => setDrawer({ kind: "new" })} className={C.btnP}>
+            {PLUS}
+            {t("newItem")}
+          </button>
+        </div>
+        {drawer ? (
+          <InventoryItemDrawer
+            target={drawer}
+            items={items}
+            types={types}
+            onClose={() => setDrawer(null)}
+            onOpenItem={(id) => setDrawer({ kind: "item", id })}
+            getRestoreTarget={restoreTarget}
+          />
+        ) : null}
+        <Toast {...toast} />
+      </>
+    );
+  }
+
+  const tabs: Array<[string, string]> = [["all", t("tabAll")], ...types.map((x): [string, string] => [x.id, x.name]), ["none", t("tabUnassigned")]];
+  const ncol = 4 + (showComp ? 2 : 0) + 1;
+
+  // Plain render helpers (not components): a component defined here would remount every row on each render.
+  function sortTh(k: SortKey, label: string, extra?: string) {
+    const on = sort.key === k;
+    return (
+      <th key={k} className={`${C.th} ${extra ?? ""}`} aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
+        <button
+          type="button"
+          onClick={() => onSort(k)}
+          className={`inline-flex items-center gap-1.5 rounded-sm hover:text-text-heading focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${on ? "text-text-heading" : ""}`}
+        >
+          {label}
+          {on ? (sort.dir === 1 ? SORT_UP : SORT_DOWN) : SORT_NONE}
+        </button>
+      </th>
+    );
+  }
+
+  function renderRow(it: ListItem) {
+    const type = it.componentTypeId ? typeById.get(it.componentTypeId) : undefined;
+    const dim = !it.active;
+    const tone = dim ? "text-text-muted" : "";
+    const selected = drawer?.kind === "item" && drawer.id === it.id;
+    const matchRows = readMatchRows(it.attributes);
+    const matchText = Object.values(matchRows).join(" · ");
+    const partRaw = partLabelOf(it, type);
+    const part = partRaw ?? t("partOther");
+    const open = () => setDrawer({ kind: "item", id: it.id });
+    return (
+      <tr
+        key={it.id}
+        tabIndex={0}
+        data-row-id={it.id}
+        onClick={open}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && e.target === e.currentTarget) open();
+        }}
+        className={`group cursor-pointer hover:[&>td]:bg-bg-hover focus-visible:[&>td]:outline focus-visible:[&>td]:outline-2 focus-visible:[&>td]:-outline-offset-2 focus-visible:[&>td]:outline-primary last:[&>td]:border-b-0 ${selected ? "[&>td]:bg-primary-softer" : ""}`}
+      >
+        <td className={`${C.td} ${tone} ${selected ? "shadow-[inset_3px_0_0_var(--color-primary)]" : ""} whitespace-nowrap font-mono text-xs ${dim ? "" : "text-text-heading"}`}>
+          {it.code}
+        </td>
+        <td className={`${C.td} ${tone}`}>
+          <div className={`line-clamp-2 max-w-[360px] font-semibold ${dim ? "" : "text-text-heading"}`}>{it.name}</div>
+          {matchText ? <div className="mt-0.5 font-mono text-[11px] text-text-muted">{matchText}</div> : null}
+          <AlsoMatchedBy
+            others={alsoMatchedBy(it, matchRows, items)}
+            onOpenItem={(id) => setDrawer({ kind: "item", id })}
+            inList
+          />
+        </td>
+        {showComp ? (
+          <td className={`${C.td} ${tone} whitespace-nowrap`}>
+            {type ? type.name : <span className={UNASSIGNED_BADGE}>{t("unassigned")}</span>}
+            {type ? <div className="mt-0.5 text-[11.5px] text-text-muted min-[1440px]:hidden">{part}</div> : null}
+          </td>
+        ) : null}
+        {showComp ? (
+          <td className={`${C.td} ${tone} hidden whitespace-nowrap min-[1440px]:table-cell ${type && !partRaw ? "text-text-muted" : ""}`}>
+            {type ? part : ""}
+          </td>
+        ) : null}
+        <td className={`${C.td} ${tone} whitespace-nowrap tabular-nums`}>{packLabel(it.measurementUnit, it.perUnitQuantity)}</td>
+        <td className={C.td}>
+          <span className={it.active ? ACTIVE_BADGE : INACTIVE_BADGE}>{it.active ? t("statusActive") : t("statusInactive")}</span>
+        </td>
+        <td className={`${C.td} px-3 text-right`}>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setDeleteError(null);
+              setDeleteTarget(it);
+            }}
+            aria-label={t("deleteItem", { code: it.code })}
+            className="ml-auto flex h-7 w-7 items-center justify-center rounded-sm border border-border text-red-600 opacity-60 hover:bg-red-50 hover:text-red-700 focus-visible:opacity-100 group-hover:opacity-100"
+          >
+            <TrashIcon />
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
+  const groups = isTypeTab ? groupByPart(rows, typeById.get(tab)) : [];
+
   return (
     <>
       <LoadingOverlay visible={isPending} />
+      <PageHeader onNew={() => setDrawer({ kind: "new" })} buttonRef={newButtonRef} />
+
+      <div role="tablist" aria-label={t("tabsLabel")} className="mb-3.5 flex overflow-x-auto border-b border-border">
+        {tabs.map(([id, label]) => {
+          const on = tab === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              onClick={() => setTab(id)}
+              className={`-mb-px whitespace-nowrap border-b-[3px] px-[18px] py-[9px] text-[13px] font-bold focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary ${on ? "border-primary text-primary-dark" : "border-transparent text-text-muted hover:text-text-body"}`}
+            >
+              {label}
+              <span className="ml-1.5 text-[11.5px] font-normal text-text-muted">{counts[id] ?? 0}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="relative w-[260px]">
+          {SEARCH}
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            aria-label={t("searchLabel")}
+            placeholder={t("searchPlaceholder")}
+            className="h-8 w-full rounded-full border border-border bg-bg-white pl-[30px] pr-3 text-[13px] text-text-body placeholder:text-text-muted focus:border-primary focus:outline-none focus:shadow-[0_0_0_2px_rgba(78,127,88,.15)]"
+          />
+        </div>
+        {(["active", "inactive"] as const).map((k) => (
+          <button
+            key={k}
+            type="button"
+            aria-pressed={chips[k]}
+            onClick={() => setChips((c) => ({ ...c, [k]: !c[k] }))}
+            className={`${C.chip} ${chips[k] ? C.chipOn : C.chipOff}`}
+          >
+            {k === "active" ? t("chipActive") : t("chipInactive")}
+          </button>
+        ))}
+        <span className="ml-auto whitespace-nowrap text-xs text-text-muted">{t("itemCount", { count: rows.length })}</span>
+      </div>
+
+      <div className="overflow-hidden rounded-sm border border-border bg-bg-white">
+        <table className="w-full border-collapse">
+          <thead className="bg-bg-subtle">
+            <tr>
+              {sortTh("code", t("colCode"))}
+              {sortTh("name", t("colName"), "min-w-[180px]")}
+              {showComp ? sortTh("comp", t("colComponent")) : null}
+              {showComp ? sortTh("part", t("colPart"), "hidden min-[1440px]:table-cell") : null}
+              {sortTh("pack", t("colPack"))}
+              {sortTh("status", t("colStatus"))}
+              <th className={`${C.th} w-[52px]`}>
+                <span className="sr-only">{t("colActions")}</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={ncol} className="px-3.5 py-10 text-center">
+                  <p className="text-[13px] font-bold text-text-heading">{t("noResults")}</p>
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="mt-2 inline-flex h-7 items-center rounded-sm px-2.5 text-xs font-bold text-primary-dark hover:bg-primary-softer focus-visible:outline-2 focus-visible:outline-primary"
+                  >
+                    {t("clearFilters")}
+                  </button>
+                </td>
+              </tr>
+            ) : isTypeTab ? (
+              groups.map((g) => {
+                const gk = `${tab}:${g.key ?? ""}`;
+                const closed = !!closedGroups[gk];
+                const label = g.label ?? t("partOther");
+                return (
+                  <GroupRows
+                    key={gk}
+                    colSpan={ncol}
+                    label={label}
+                    count={g.items.length}
+                    closed={closed}
+                    onToggle={() => setClosedGroups((c) => ({ ...c, [gk]: !c[gk] }))}
+                    toggleLabel={closed ? t("expandGroup", { part: label }) : t("collapseGroup", { part: label })}
+                  >
+                    {g.items.map(renderRow)}
+                  </GroupRows>
+                );
+              })
+            ) : (
+              rows.map(renderRow)
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {drawer ? (
+        <InventoryItemDrawer
+          target={drawer}
+          items={items}
+          types={types}
+          onClose={() => setDrawer(null)}
+          onOpenItem={(id) => setDrawer({ kind: "item", id })}
+          getRestoreTarget={restoreTarget}
+        />
+      ) : null}
+
       <ConfirmDialog
-        isOpen={isConfirmOpen}
-        title={`Delete ${itemCode}`}
-        message={`Delete inventory item "${itemCode} — ${itemName}"? This cannot be undone.`}
-        confirmLabel="Delete"
-        onConfirm={handleDeleteConfirm}
-        onCancel={() => setIsConfirmOpen(false)}
-        errorMessage={errorMessage}
+        isOpen={deleteTarget !== null}
+        title={t("deleteTitle", { code: deleteTarget?.code ?? "" })}
+        message={t("deleteMessage", { code: deleteTarget?.code ?? "", name: deleteTarget?.name ?? "" })}
+        confirmLabel={t("deleteConfirm")}
+        cancelLabel={t("cancel")}
+        errorMessage={deleteError}
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
       />
-      <button
-        type="button"
-        onClick={() => setIsConfirmOpen(true)}
-        disabled={isPending}
-        aria-label={`Delete item ${itemCode}`}
-        title={`Delete item ${itemCode}`}
-        className="flex h-7 w-7 items-center justify-center rounded-sm border border-border text-red-600 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
-      >
-        <TrashIcon />
-      </button>
+      <Toast {...toast} />
     </>
   );
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+function PageHeader({ onNew, buttonRef }: { onNew: () => void; buttonRef: React.RefObject<HTMLButtonElement | null> }) {
+  const t = useTranslations("inventory");
+  return (
+    <div className="mb-5 flex items-center justify-between gap-4">
+      <h1 className="text-2xl font-extrabold tracking-tight text-text-heading">{t("pageTitle")}</h1>
+      <button ref={buttonRef} type="button" onClick={onNew} className={C.btnP}>
+        {PLUS}
+        {t("newItem")}
+      </button>
+    </div>
+  );
+}
 
-/**
- * Interactive inventory list (Client Component).
- *
- * Renders the "Inventory Items" card with the table, the "New item" primary
- * button in the card header, and per-row Edit and Delete action buttons.
- * Manages modal open/close state and triggers `router.refresh()` after a
- * successful save so the parent Server Component re-fetches the updated list.
- *
- * Changes vs. original (hotfix 2026-09-27):
- *   H-3: Status (active/inactive) column removed entirely.
- *   H-5: "Category" column header renamed to "Component".
- *   H-6: Delete action added per row.
- */
-export function InventoryList({ items, orgSlug, componentTypes }: InventoryListProps) {
-  const router = useRouter();
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<ItemFormData | null>(null);
-  // H-15: sort state — "lastAdded" is the default.
-  const [sortKey, setSortKey] = useState<SortKey>("lastAdded");
-  // H-16: toast state.
-  const toast = useToast();
-
-  function openCreate() {
-    setEditingItem(null);
-    setModalOpen(true);
-  }
-
-  function openEdit(item: InventoryItemRow) {
-    setEditingItem({
-      id: item.id,
-      code: item.code,
-      name: item.name,
-      // H-17: pass componentTypeId (FK) for pre-population in edit mode.
-      componentTypeId: item.componentTypeId,
-      measurementUnit: item.measurementUnit,
-      perUnitQuantity: item.perUnitQuantity,
-    });
-    setModalOpen(true);
-  }
-
-  function closeModal() {
-    setModalOpen(false);
-    setEditingItem(null);
-  }
-
-  function handleSuccess() {
-    const wasCreate = editingItem === null; // H-16: detect create vs edit before closeModal clears state
-    closeModal();
-    router.refresh();
-    // H-16: show toast only on create, not edit.
-    if (wasCreate) {
-      toast.show("Item added to inventory");
-    }
-  }
-
-  // H-15: client-side sort over the already-fetched items array.
-  const sortedItems = [...items].sort((a, b) => {
-    if (sortKey === "lastAdded") {
-      // Most-recently-created first.
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    }
-    if (sortKey === "component") {
-      const ac = a.componentType?.code ?? "";
-      const bc = b.componentType?.code ?? "";
-      return ac.localeCompare(bc);
-    }
-    // "name"
-    return a.name.localeCompare(b.name);
-  });
-
+function GroupRows({
+  colSpan,
+  label,
+  count,
+  closed,
+  onToggle,
+  toggleLabel,
+  children,
+}: {
+  colSpan: number;
+  label: string;
+  count: number;
+  closed: boolean;
+  onToggle: () => void;
+  toggleLabel: string;
+  children: React.ReactNode;
+}) {
   return (
     <>
-      <div className="rounded-md border border-border bg-bg-card shadow-card">
-        {/* Card header */}
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-sm font-bold text-text-body">
-              Inventory Items
-            </h2>
-            <span className="rounded-full bg-border px-2.5 py-0.5 text-xs font-bold text-text-muted">
-              {items.length}
-            </span>
-          </div>
-          <div className="flex items-center gap-2.5">
-            {/* H-20: "Sort by:" label + shared SelectField replacing native <select> */}
-            <span className="text-xs font-bold text-text-muted">Sort by:</span>
-            <div className="w-36">
-              <SelectField
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value as SortKey)}
-                className="rounded-sm border border-border bg-bg-white px-2.5 py-1.5 text-xs font-bold text-text-body hover:border-[#b9c2ae] focus:border-primary focus:outline-none focus:shadow-[0_0_0_2px_rgba(78,127,88,.15)]"
-              >
-                <option value="lastAdded">Last added</option>
-                <option value="component">Component</option>
-                <option value="name">Name</option>
-              </SelectField>
-            </div>
-            <button
-              type="button"
-              onClick={openCreate}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-primary-dark bg-primary px-3.5 py-2 text-xs font-extrabold text-white hover:bg-primary-dark"
-            >
-              <svg
-                viewBox="0 0 12 12"
-                fill="none"
-                className="h-3 w-3"
-                aria-hidden="true"
-              >
-                <path
-                  d="M6 1v10M1 6h10"
-                  stroke="white"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                />
-              </svg>
-              New item
-            </button>
-          </div>
-        </div>
-
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left">
-                {/* H-5: "Category" → "Component" */}
-                <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Component
-                </th>
-                <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Code
-                </th>
-                <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Name
-                </th>
-                <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Qty / unit
-                </th>
-                <th className="px-5 py-3.5 text-xs font-bold uppercase tracking-wider text-text-muted">
-                  Unit of measure
-                </th>
-                {/* H-3: Status column removed */}
-                {/* Actions column — no heading */}
-                <th className="px-5 py-3.5" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {sortedItems.map((item) => (
-                <tr key={item.id} className="hover:bg-primary-softer/40">
-                  <td className="px-5 py-4 font-mono text-xs text-text-muted">
-                    {/* H-17: display ComponentType code from the real FK relation */}
-                    {item.componentType?.code ?? ""}
-                  </td>
-                  <td className="px-5 py-4 font-mono text-xs text-text-muted">
-                    {item.code}
-                  </td>
-                  <td className="px-5 py-4 font-semibold text-text-heading">
-                    {item.name}
-                  </td>
-                  <td className="px-5 py-4 text-text-body">
-                    {item.perUnitQuantity}
-                  </td>
-                  <td className="px-5 py-4 text-text-body">
-                    {item.measurementUnit}
-                  </td>
-                  {/* H-3: no Status cell */}
-                  <td className="px-3 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(item)}
-                        className="inline-flex items-center gap-1.5 rounded-sm border border-border bg-bg-white px-3 py-1.5 text-xs font-bold text-text-body hover:border-[#b9c2ae] hover:text-text-heading"
-                      >
-                        Edit
-                      </button>
-                      {/* H-6: delete action */}
-                      <DeleteInventoryItemButton
-                        orgSlug={orgSlug}
-                        itemId={item.id}
-                        itemCode={item.code}
-                        itemName={item.name}
-                      />
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Modal — rendered outside the table so it overlays the full viewport */}
-      {modalOpen && (
-        <ItemFormModal
-          mode={editingItem ? "edit" : "create"}
-          item={editingItem ?? undefined}
-          orgSlug={orgSlug}
-          componentTypes={componentTypes}
-          onSuccess={handleSuccess}
-          onClose={closeModal}
-        />
-      )}
-
-      {/* H-16: toast shown after a successful item creation */}
-      <Toast {...toast} />
+      <tr>
+        <th scope="rowgroup" colSpan={colSpan} className="border-b border-border bg-bg-card p-0 text-left">
+          <button
+            type="button"
+            aria-expanded={!closed}
+            aria-label={toggleLabel}
+            onClick={onToggle}
+            className="flex w-full items-center gap-2 px-3.5 py-2 text-left hover:bg-bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary"
+          >
+            <span className={`text-text-muted transition-transform ${closed ? "" : "rotate-90"}`}>{CHEV_R}</span>
+            <span className="text-[13px] font-extrabold text-text-heading">{label}</span>
+            <span className="rounded-full bg-border px-2 py-px text-[11px] font-bold text-text-muted">{count}</span>
+          </button>
+        </th>
+      </tr>
+      {closed ? null : children}
     </>
   );
 }

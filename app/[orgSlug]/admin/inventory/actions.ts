@@ -40,7 +40,7 @@ export const deleteInventoryItem = withAction(
   }
 
   if (!res.ok) {
-    let errorMessage = "An unexpected error occurred — please try again.";
+    let errorMessage = "An unexpected error occurred. Please try again.";
     try {
       const body = (await res.json()) as { error?: string };
       errorMessage = apiErrorMessage(body, errorMessage);

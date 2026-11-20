@@ -20,7 +20,8 @@ export function AdminContentShell({ children }: { children: React.ReactNode }) {
   const segment = useSelectedLayoutSegment();
 
   // Stage 36: the Product Pricing table (up to six columns plus the right drawer) also fills the column.
-  if (segment === "catalog" || segment === "product-pricing") {
+  // Stage 37 Batch 3: so does the Inventory table (mockup A rev 7: `w-full px-8 pb-12 pt-6`).
+  if (segment === "catalog" || segment === "product-pricing" || segment === "inventory") {
     return <div className="w-full px-8 pb-12 pt-6">{children}</div>;
   }
 

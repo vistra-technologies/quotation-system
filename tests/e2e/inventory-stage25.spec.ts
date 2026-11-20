@@ -8,7 +8,7 @@
  *   a. Wrong-role RBAC redirect — distributor and architect roles hit /{orgSlug}/inventory
  *      and must be redirected to /{orgSlug}/dashboard (never see the inventory UI).
  *   b. Authorized user — company member (MANAGE_PRICING) sees /inventory list with the
- *      correct "Inventory Management" heading.
+ *      correct "Inventory" heading.
  *
  * Note: the ItemPrice CRUD round-trip test from the old pricing-stage3 spec is NOT
  * replaced here — the prices sub-page and price UI were removed in S25-7.
@@ -70,9 +70,9 @@ test("distributor role is redirected away from /inventory to /dashboard", async 
 
   await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 20_000 });
 
-  // Inventory Management heading must NOT be visible
+  // Inventory heading must NOT be visible
   await expect(
-    page.getByRole("heading", { name: "Inventory Management" }),
+    page.getByRole("heading", { name: "Inventory", exact: true }),
   ).not.toBeVisible();
   // Dashboard heading MUST be visible
   await expect(page.locator("h1")).toContainText(/Welcome/i, { timeout: 10_000 });
@@ -95,7 +95,7 @@ test("architect role is redirected away from /inventory to /dashboard", async ({
   await page.waitForURL(orgUrlPattern("acme-glass", "/dashboard"), { timeout: 20_000 });
 
   await expect(
-    page.getByRole("heading", { name: "Inventory Management" }),
+    page.getByRole("heading", { name: "Inventory", exact: true }),
   ).not.toBeVisible();
   await expect(page.locator("h1")).toContainText(/Welcome/i, { timeout: 10_000 });
 });
@@ -103,14 +103,14 @@ test("architect role is redirected away from /inventory to /dashboard", async ({
 // ---------------------------------------------------------------------------
 // Authorized: company member (MANAGE_PRICING) sees /inventory list
 // ---------------------------------------------------------------------------
-test("company member can view /inventory list page (Inventory Management heading)", async ({
+test("company member can view /inventory list page (Inventory heading)", async ({
   page,
 }) => {
   await signIn(page, "member");
 
   await page.goto(orgUrl("acme-glass", "/admin/inventory"));
   await expect(
-    page.getByRole("heading", { name: "Inventory Management" }),
+    page.getByRole("heading", { name: "Inventory", exact: true }),
   ).toBeVisible({ timeout: 30_000 });
 
   // Table heading should say "Inventory Items" (S25-6 rename)
