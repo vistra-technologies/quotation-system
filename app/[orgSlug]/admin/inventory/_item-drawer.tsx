@@ -46,6 +46,8 @@ interface ItemDrawerProps {
   /** After a successful save; the owner refreshes the list (and closes the drawer on create). */
   onSaved: (kind: "created" | "updated") => void;
   getRestoreTarget?: () => HTMLElement | null;
+  /** Catalog quick-add (B3-D2/D3): open a new item with the type, Part and Code prefilled and locked. */
+  prefill?: { typeId: string; partKey: string; code: string };
 }
 
 type Confirm = { kind: "discard"; then: () => void } | { kind: "type"; typeId: string } | null;
@@ -65,6 +67,7 @@ export function InventoryItemDrawer({
   onOpenItem,
   onSaved,
   getRestoreTarget,
+  prefill,
 }: ItemDrawerProps) {
   const t = useTranslations("inventory");
   const titleId = useId();
@@ -72,7 +75,15 @@ export function InventoryItemDrawer({
   const targetKey = target.kind === "item" ? target.id : "new";
   const item = target.kind === "item" ? (items.find((i) => i.id === target.id) ?? null) : null;
   const type = item?.componentTypeId ? types.find((x) => x.id === item.componentTypeId) : undefined;
-  const original = useMemo<ItemDraft>(() => (item ? draftFromItem(item) : blankDraft()), [item]);
+  const original = useMemo<ItemDraft>(
+    () =>
+      item
+        ? draftFromItem(item)
+        : prefill
+          ? { ...blankDraft(), componentTypeId: prefill.typeId, partKey: prefill.partKey, code: prefill.code }
+          : blankDraft(),
+    [item, prefill],
+  );
 
   const [mode, setMode] = useState<"view" | "edit">(isNew ? "edit" : "view");
   const [draft, setDraft] = useState<ItemDraft>(original);
@@ -256,6 +267,7 @@ export function InventoryItemDrawer({
             onTypeChange={onTypeChange}
             onRows={(rows: DraftRow[]) => patch({ rows })}
             onOpenItem={(id) => guard(() => onOpenItem(id))}
+            locks={prefill && isNew ? { code: prefill.code !== "", type: true, part: true } : undefined}
           />
         ) : item ? (
           <ItemView item={item} type={type} items={items} onOpenItem={(id) => guard(() => onOpenItem(id))} />

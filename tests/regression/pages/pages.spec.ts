@@ -1320,7 +1320,7 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
   // Stage 35 Batch 6 — inventory-link UI + quick-add. Org B only: the quick-added rows live in org B and go with it
   // at teardown (the org hard-delete cascades every org-scoped table), so no Test-Org / shared data is touched.
   // The `hinge` field is linked too, so there are two offending fields (the pill needs two to step through).
-  test("B6/B8 UI AC1-AC3 org Catalog (MANAGE_PRICING): cube + red card tag + pill, card/tag/pill open the editor, the pill steps in tree order, chip badges + tooltip + live unsaved flag, quick-add locks code + type and has no price, the badge and counts drop, keyboard path, a 409 shows inline and keeps the typed values", async ({ browser, run, orgB }) => {
+  test("B6/B8 UI AC1-AC3 org Catalog (MANAGE_PRICING): cube + red card tag + pill, card/tag/pill open the editor, the pill steps in tree order, chip badges + tooltip + live unsaved flag, quick-add drawer locks code, type and Part and has no price, the badge and counts drop, keyboard path, a 409 shows inline and keeps the typed values", async ({ browser, run, orgB }) => {
     test.setTimeout(180_000);
     const fx = await getFx(run, orgB);
     // an item with code H2 but NO component type: it still counts as missing for the type, and makes the quick-add of H2 a 409
@@ -1401,31 +1401,38 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
       await expect(page.getByRole("button", { name: "Discard" })).toHaveCount(0);
       await badges.nth(1).click();
       await addBtn.click();
-      const panel = dlg.getByTestId("quick-add-panel");
+      // Stage 37 B3-D2/D3: the shared Inventory drawer opens over the editor, type, Part and Code locked
+      const panel = page.getByRole("dialog", { name: "New item" });
+      await expect(panel).toBeVisible();
       await expect(panel.getByTestId("quick-add-code")).toContainText("H2");
       await expect(panel.getByTestId("quick-add-type")).toContainText(fx.type.name);
+      await expect(panel.getByTestId("quick-add-part")).toContainText("Hinge");
       await expect(panel.getByText(/price/i)).toHaveCount(0); // G0-c: no price field
-      await expect(panel.getByLabel("Per-unit qty")).toHaveValue("1");
+      await expect(panel.getByLabel("Pack size")).toHaveValue("1");
 
       // AC3: a 409 duplicate code shows inline and keeps what was typed
-      await panel.getByLabel("Name", { exact: true }).fill("Hinge two");
-      await panel.getByLabel("Per-unit qty").fill("2.5");
+      await panel.getByLabel("Name", { exact: false }).first().fill("Hinge two");
+      await panel.getByLabel("Pack size").fill("2.5");
       await panel.getByRole("combobox").click();
-      await page.getByRole("option", { name: "set", exact: true }).click();
-      await panel.getByRole("button", { name: "Add item" }).click();
-      await expect(panel.getByRole("alert")).toContainText("This code already exists in Inventory.");
-      await expect(panel.getByRole("link", { name: "Open Inventory" })).toBeVisible();
-      await expect(panel.getByLabel("Name", { exact: true })).toHaveValue("Hinge two");
-      await expect(panel.getByLabel("Per-unit qty")).toHaveValue("2.5");
+      await page.getByRole("option", { name: "set (Sets)", exact: true }).click();
+      await panel.getByRole("button", { name: "Create item" }).click();
+      await expect(panel.getByText("This code is already in use.").first()).toBeVisible();
+      await expect(panel.getByRole("alert")).toBeVisible();
+      await expect(panel.getByLabel("Name", { exact: false }).first()).toHaveValue("Hinge two");
+      await expect(panel.getByLabel("Pack size")).toHaveValue("2.5");
       await expect(panel.getByRole("combobox")).toContainText("set");
       await panel.getByRole("button", { name: "Cancel" }).click();
+      await page.getByRole("button", { name: "Discard", exact: true }).last().click(); // dirty drawer: Discard changes?
       await expect(panel).toHaveCount(0);
+      await expect(dlg.getByTestId("editor-not-in-inventory-pill")).toHaveText("2 not in inventory"); // the editor kept its state
 
-      // the successful add: "In inventory · <name>", the editor's missing count and the pill drop by one
+      // the successful add: the editor's missing count and the pill drop by one
       await badges.nth(0).click();
       await addBtn.click();
-      await panel.getByLabel("Name", { exact: true }).fill("Hinge one");
-      await panel.getByRole("button", { name: "Add item" }).click();
+      await panel.getByLabel("Name", { exact: false }).first().fill("Hinge one");
+      await panel.getByRole("combobox").click();
+      await page.getByRole("option", { name: "m (Metre)", exact: true }).click();
+      await panel.getByRole("button", { name: "Create item" }).click();
       await expect(panel).toHaveCount(0);
       await expect(badges).toHaveCount(1); // H1's badge is gone; no "In inventory" text
       await expect(dlg.getByTestId("editor-not-in-inventory-pill")).toHaveText("1 not in inventory");
@@ -1902,6 +1909,130 @@ test.describe.serial("Stage 36 B3: Product Pricing admin page, throwaway org B",
       await expect(dlg).toBeVisible();
       await expect(dlg).toContainText("Single · 12 mm");
       await page.unroute("**/product-pricing");
+    });
+  });
+});
+
+// Stage 37 Batch 3 - the Inventory page (list states + modal drawer). Throwaway org B only: its own type and items go
+// with org B at teardown (the org hard-delete cascades every org-scoped table), so no Test-Org data is touched.
+test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
+  test("UI AC1-AC3 /admin/inventory: tabs with counts, search + chips, Part groups, sort, read-only drawer then Edit, Matches rows (a used field is not offered), Also matched by (active items only), the modal drawer (scrim and Escape close, page behind inert, focus returns), the discard confirm, a dash-free delete confirm, ?type preselects the tab", async ({ browser, run, orgB }) => {
+    test.setTimeout(180_000);
+    const B = (p: string) => orgApi(run.orgB.slug, p);
+    const cats = (await ok<{ categories: { id: string }[] }>(await orgB.get(B("/component-categories")))).categories;
+    const fld = (key: string, label: string, over: Record<string, unknown> = {}) =>
+      ({ key, label, type: "dropdown", required: false, basic: true, ...over });
+    const code = `RGRI${tag().toUpperCase()}`;
+    const type = (await ok<{ componentType: { id: string; name: string; code: string } }>(
+      await orgB.post(B("/component-types"), {
+        data: { code, name: `${run.prefix}inv-${tag()}`, categoryId: cats[0].id, fieldsSchema: [fld("grade", "Grade"), fld("hinge", "Hinge", { inventoryLinked: true })] },
+      }),
+      201,
+    )).componentType;
+    await ok(await orgB.put(B(`/component-types/${type.id}/field-values`), { data: { fieldOptionsConfig: { grade: { options: ["A", "B"] }, hinge: { options: ["HG1"] } } } }));
+    const mk = async (c: string, over: Record<string, unknown> = {}) =>
+      (await ok<{ item: { id: string } }>(await orgB.post(B("/inventory"), { data: { code: c, name: `${c} name`, measurementUnit: "pieces", ...over } }), 201)).item.id;
+    const p = run.prefix.toUpperCase();
+    const a1 = `${p}A1`, a2 = `${p}A2`, a3 = `${p}A3`, u1 = `${p}U1`;
+    await mk(a1, { componentTypeId: type.id, partKey: "hinge", attributes: { grade: "A" } });
+    await mk(a2, { componentTypeId: type.id, attributes: { grade: "A" } });
+    await mk(a3, { componentTypeId: type.id, active: false, attributes: { grade: "A" } });
+    await mk(u1);
+
+    await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
+      const page = o.page;
+      const row = (c: string) => page.locator("tr[data-row-id]").filter({ hasText: c });
+      const drawer = page.getByRole("dialog", { name: /./ });
+      await page.goto(orgUrl(run.orgB.slug, "/admin/inventory"));
+      await expect(page.getByRole("heading", { name: "Inventory", exact: true })).toBeVisible();
+
+      // tabs with counts: All 4, the type 3, Unassigned 1
+      const tab = (name: RegExp) => page.getByRole("tab", { name });
+      await expect(tab(/^All\s*4$/)).toBeVisible();
+      await expect(tab(/^Unassigned\s*1$/)).toBeVisible();
+      await tab(new RegExp(`^${type.name}\\s*3$`)).click();
+      // Part groups: Hinge (A1) and Other (A2, A3)
+      await expect(page.getByRole("rowgroup").filter({ hasText: /Hinge/ })).toBeVisible();
+      await page.getByRole("button", { name: "Collapse Other" }).click();
+      await expect(row(a2)).toHaveCount(0);
+      await page.getByRole("button", { name: "Expand Other" }).click();
+      await expect(row(a2)).toHaveCount(1);
+
+      // search + chips + empty state
+      await page.getByLabel("Search code or name").fill(a3);
+      await expect(page.getByText("1 item", { exact: true })).toBeVisible();
+      await page.getByLabel("Search code or name").fill("");
+      await page.getByRole("button", { name: "Inactive", exact: true }).click();
+      await expect(row(a3)).toHaveCount(1);
+      await expect(row(a1)).toHaveCount(0);
+      await page.getByLabel("Search code or name").fill("zzz-no-such");
+      await expect(page.getByText("No items match your filters")).toBeVisible();
+      await page.getByRole("button", { name: "Clear filters" }).click();
+      await expect(row(a1)).toHaveCount(1);
+
+      // sort: two clicks on Code = descending, within each Part group
+      await page.getByRole("button", { name: /^Code/ }).click();
+      await page.getByRole("button", { name: /^Code/ }).click();
+      const codes = (await page.locator("tr[data-row-id] td:first-child").allTextContents()).map((c) => c.trim()).filter((c) => c.startsWith(p));
+      expect(codes).toEqual([a1, a3, a2]);
+
+      // Also matched by: A1 and A2 (both active, same rows) link each other; inactive A3 is never offered
+      await expect(row(a1)).toContainText(`Also matched by ${a2}`);
+      await expect(row(a2)).toContainText(`Also matched by ${a1}`);
+      await expect(row(a1)).not.toContainText(a3);
+
+      // read-only drawer first, then Edit; modal: the page behind is inert, Escape closes, focus returns to the row
+      const opener = row(a1);
+      await opener.click();
+      await expect(drawer).toBeVisible();
+      await expect(drawer.getByRole("button", { name: "Edit" })).toBeVisible();
+      await expect(drawer.getByText("Grade")).toBeVisible();
+      await expect(drawer.getByText(/price/i)).toHaveCount(0);
+      expect(await page.evaluate(() => Array.from(document.body.children).some((e) => (e as HTMLElement).inert))).toBe(true);
+      await page.keyboard.press("Escape");
+      await expect(drawer).toHaveCount(0);
+      await expect(opener).toBeFocused();
+      // the scrim closes it too
+      await opener.click();
+      await expect(drawer).toBeVisible();
+      await page.mouse.click(5, 300);
+      await expect(drawer).toHaveCount(0);
+
+      // Edit: Matches rows. Grade is used, so the picker of a new row offers Hinge only
+      await opener.click();
+      await drawer.getByRole("button", { name: "Edit" }).click();
+      await expect(drawer.getByRole("button", { name: /^Remove match Grade/ })).toBeVisible();
+      await drawer.getByRole("button", { name: "Add match" }).click();
+      await drawer.getByRole("combobox").last().click();
+      await expect(page.getByRole("option", { name: "Grade", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("option", { name: "Hinge", exact: true })).toHaveCount(1);
+      await page.keyboard.press("Escape");
+      await drawer.getByRole("button", { name: /^Remove match Choose a field/ }).click();
+      await drawer.getByRole("button", { name: /^Remove match Grade/ }).click();
+      await expect(drawer.getByText("No matches")).toBeVisible();
+      // dirty: the scrim asks "Discard changes?"; Keep editing stays, Cancel then Discard returns to the read-only view
+      await page.mouse.click(5, 300);
+      await expect(page.getByRole("heading", { name: "Discard changes?" })).toBeVisible();
+      await page.getByRole("button", { name: "Keep editing" }).click();
+      await expect(drawer).toBeVisible();
+      await drawer.getByRole("button", { name: "Cancel" }).click();
+      await page.getByRole("button", { name: "Discard", exact: true }).click();
+      await expect(drawer.getByRole("button", { name: "Edit" })).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(drawer).toHaveCount(0);
+
+      // the delete confirm text carries no dash
+      await page.getByRole("button", { name: `Delete item ${a3}` }).click();
+      const confirm = page.getByRole("dialog").filter({ hasText: "This cannot be undone." });
+      await expect(confirm).toBeVisible();
+      expect(((await confirm.textContent()) ?? "").match(/[–—]| - /)).toBeNull();
+      await confirm.getByRole("button", { name: "Cancel" }).click();
+
+      // ?type=<code> preselects that tab; an unknown code means All
+      await page.goto(orgUrl(run.orgB.slug, `/admin/inventory?type=${type.code}`));
+      await expect(tab(new RegExp(`^${type.name}`))).toHaveAttribute("aria-selected", "true");
+      await page.goto(orgUrl(run.orgB.slug, "/admin/inventory?type=NOPE"));
+      await expect(tab(/^All/)).toHaveAttribute("aria-selected", "true");
     });
   });
 });

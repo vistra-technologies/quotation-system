@@ -29,6 +29,8 @@ interface InventoryListProps {
   items: ListItem[];
   types: ListType[];
   orgSlug: string;
+  /** Tab selected on first render ("all", "none" or a type id). */
+  initialTab?: string;
 }
 
 const PLUS = (
@@ -74,9 +76,9 @@ const SORT_NONE = (
  * counts, search plus Active/Inactive chips, a sortable table (Part groups inside a type tab) and the modal
  * item drawer. Filtering, grouping and sorting are the pure functions of `lib/inventory-list`.
  */
-export function InventoryList({ items, types, orgSlug }: InventoryListProps) {
+export function InventoryList({ items, types, orgSlug, initialTab = "all" }: InventoryListProps) {
   const t = useTranslations("inventory");
-  const [tab, setTab] = useState<string>("all");
+  const [tab, setTab] = useState<string>(initialTab);
   const [q, setQ] = useState("");
   const [chips, setChips] = useState({ active: false, inactive: false });
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);

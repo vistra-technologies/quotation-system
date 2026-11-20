@@ -14,7 +14,8 @@
  * Link rules (resolved decisions):
  *   DESIGN   + locus.partitionId   → design?partition=[partitionId]  (configure mode deep-link)
  *   SELECTION + locus.selectionId  → design?partition=[locus.partitionId]  (always has partitionId)
- *   INVENTORY + p.code             → /inventory  (generic, no deep-link into item popup)
+ *   INVENTORY + p.code             → /admin/inventory  (generic, no deep-link into the item drawer)
+ *   UNRESOLVED_MATCH               → /admin/inventory?type=<componentTypeCode>  (preselects that type tab)
  *   FORMULA_SET                    → no link (no user-facing locus yet)
  *   Any problem without a navigable locus → no link, show no-locus note
  *
@@ -173,6 +174,10 @@ function resolveGoHref(
       return orgPath(isSubdomain, orgSlug, `/projects/${projectId}/design?partition=${partitionId}`);
     }
     case "INVENTORY": {
+      if (problem.kind === "UNRESOLVED_MATCH") {
+        const typeCode = problem.locus?.componentTypeCode;
+        return orgPath(isSubdomain, orgSlug, typeCode ? `/admin/inventory?type=${encodeURIComponent(typeCode)}` : "/admin/inventory");
+      }
       if (!problem.code) return null;
       return orgPath(isSubdomain, orgSlug, "/admin/inventory");
     }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -8,7 +8,7 @@ import { descendants, emptyGroupCount, findAttr, isChain, sync } from "./catalog
 import { AttributeStepEditor } from "./attribute-step-editor";
 import { apiErrorMessage } from "@/lib/api-error-message";
 import { inventoryLinkIssues } from "@/lib/inventory-link";
-import { InventoryQuickAddPanel } from "./inventory-quick-add-panel";
+import { InventoryItemDrawer } from "../inventory/_item-drawer";
 
 interface AttributeEditorModalProps {
   orgSlug: string;
@@ -73,8 +73,17 @@ export function AttributeEditorModal({
   const [pendingDiscard, setPendingDiscard] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  // The missing value whose "Add to inventory" panel is open (null = closed).
+  // The missing value whose "Add to inventory" drawer is open (null = closed).
   const [quickAddCode, setQuickAddCode] = useState<string | null>(null);
+  // Stage 37 B3-D2: the shared Inventory drawer, opened over this modal with type, Part and Code prefilled and locked.
+  const quickAddPrefill = useMemo(
+    () => (quickAddCode === null ? undefined : { typeId, partKey: currentFieldKey, code: quickAddCode }),
+    [quickAddCode, typeId, currentFieldKey],
+  );
+  const quickAddTypes = useMemo(
+    () => [{ id: typeId, code: "", name: typeName, fieldsSchema, fieldOptionsConfig: savedConfig }],
+    [typeId, typeName, fieldsSchema, savedConfig],
+  );
 
   const currentField = findAttr(fieldsSchema, currentFieldKey) as FieldEntry;
   // Stage 35 B8: the same rule the server runs (lib/inventory-link.ts), on the unsaved draft, so a value is flagged
@@ -219,7 +228,7 @@ export function AttributeEditorModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="ed-modal-title"
-          className={`flex max-h-[88vh] w-full flex-col rounded-md ${quickAddCode !== null ? "max-w-[1000px]" : "max-w-[660px]"} bg-bg-white shadow-[0_24px_60px_-16px_rgba(27,40,30,.35)]`}
+          className={`flex max-h-[88vh] w-full max-w-[660px] flex-col rounded-md bg-bg-white shadow-[0_24px_60px_-16px_rgba(27,40,30,.35)]`}
         >
           <div className="flex flex-shrink-0 items-start justify-between gap-3 px-5.5 pt-4.5">
             <div>
@@ -360,21 +369,6 @@ export function AttributeEditorModal({
               key={currentFieldKey}
             />
           </div>
-          {quickAddCode !== null && (
-            <InventoryQuickAddPanel
-              key={quickAddCode}
-              orgSlug={orgSlug}
-              typeId={typeId}
-              typeName={typeName}
-              partKey={currentFieldKey}
-              code={quickAddCode}
-              onCancel={() => setQuickAddCode(null)}
-              onAdded={() => {
-                onInventoryAdded(quickAddCode);
-                setQuickAddCode(null);
-              }}
-            />
-          )}
           </div>
 
           <div className="flex flex-shrink-0 items-center gap-2.5 border-t border-border px-5.5 py-4">
@@ -417,6 +411,22 @@ export function AttributeEditorModal({
         }}
         onCancel={() => setPendingDiscard(false)}
       />
+
+      {quickAddPrefill && (
+        <InventoryItemDrawer
+          target={{ kind: "new" }}
+          items={[]}
+          types={quickAddTypes}
+          orgSlug={orgSlug}
+          prefill={quickAddPrefill}
+          onClose={() => setQuickAddCode(null)}
+          onOpenItem={() => {}}
+          onSaved={() => {
+            if (quickAddCode !== null) onInventoryAdded(quickAddCode);
+            setQuickAddCode(null);
+          }}
+        />
+      )}
     </>
   );
 }

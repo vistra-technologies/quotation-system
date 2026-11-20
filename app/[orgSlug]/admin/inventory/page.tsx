@@ -33,10 +33,13 @@ interface ApiType {
  */
 export default async function InventoryPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orgSlug: string }>;
+  searchParams: Promise<{ type?: string | string[] }>;
 }) {
   const { orgSlug } = await params;
+  const { type: typeParam } = await searchParams;
 
   const [inventoryRes, componentTypesRes] = await Promise.all([
     internalFetch(`/api/v1/orgs/${orgSlug}/inventory`),
@@ -75,5 +78,9 @@ export default async function InventoryPage({
       }))
     : [];
 
-  return <InventoryList items={items} types={types} orgSlug={orgSlug} />;
+  // ?type=<ComponentType code> preselects that tab (the Submit Design problem popup link); unknown codes mean All.
+  const typeCode = Array.isArray(typeParam) ? typeParam[0] : typeParam;
+  const initialTab = types.find((x) => x.code === typeCode)?.id ?? "all";
+
+  return <InventoryList items={items} types={types} orgSlug={orgSlug} initialTab={initialTab} />;
 }

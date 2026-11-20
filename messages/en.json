@@ -566,6 +566,7 @@
     "namePlaceholder": "e.g. Frosted laminated glass 15.2 mm",
     "selectUnit": "Select unit",
     "selectNone": "None",
+    "locked": "Locked",
     "unitsFallback": "units",
     "yes": "Yes",
     "no": "No",

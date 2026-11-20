@@ -34,6 +34,30 @@ interface ItemFormProps {
   onTypeChange: (typeId: string) => void;
   onRows: (rows: DraftRow[]) => void;
   onOpenItem: (id: string) => void;
+  /** Catalog quick-add: these fields show their prefilled value read-only with a lock (D2, D3). */
+  locks?: { code?: boolean; type?: boolean; part?: boolean };
+}
+
+const LOCK_ICON = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 shrink-0 text-text-muted">
+    <rect x="5" y="11" width="14" height="10" rx="2" />
+    <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+  </svg>
+);
+
+function LockedValue({ value, mono, label, testId }: { value: string; mono?: boolean; label: string; testId: string }) {
+  return (
+    <div
+      aria-disabled="true"
+      data-testid={testId}
+      className={`${C.input} ${C.inOk} flex items-center justify-between gap-2 bg-bg-subtle text-text-heading ${mono ? "font-mono text-[13px]" : ""}`}
+    >
+      <span className="truncate">{value}</span>
+      <span role="img" aria-label={label} title={label}>
+        {LOCK_ICON}
+      </span>
+    </div>
+  );
 }
 
 function Field({
@@ -92,6 +116,7 @@ export function ItemForm({
   onTypeChange,
   onRows,
   onOpenItem,
+  locks,
 }: ItemFormProps) {
   const t = useTranslations("inventory");
   const uid = useId();
@@ -113,14 +138,18 @@ export function ItemForm({
         <div className="flex flex-col gap-3.5">
           <div className="grid grid-cols-2 gap-3.5">
             <Field label={t("fieldCode")} htmlFor={id("code")} required error={codeError}>
-              <input
-                id={id("code")}
-                value={draft.code}
-                disabled={saving}
-                onChange={(e) => onPatch({ code: e.target.value })}
-                placeholder={t("codePlaceholder")}
-                className={`${inputCls(!!codeError)} font-mono text-[13px] placeholder:font-sans placeholder:text-text-muted`}
-              />
+              {locks?.code ? (
+                <LockedValue value={draft.code} mono label={t("locked")} testId="quick-add-code" />
+              ) : (
+                <input
+                  id={id("code")}
+                  value={draft.code}
+                  disabled={saving}
+                  onChange={(e) => onPatch({ code: e.target.value })}
+                  placeholder={t("codePlaceholder")}
+                  className={`${inputCls(!!codeError)} font-mono text-[13px] placeholder:font-sans placeholder:text-text-muted`}
+                />
+              )}
             </Field>
             <Field label={t("fieldName")} htmlFor={id("name")} required error={err(errors.name)}>
               <input
@@ -135,20 +164,24 @@ export function ItemForm({
           </div>
           <div className="grid grid-cols-2 gap-3.5">
             <Field label={t("fieldComponent")} htmlFor={id("type")} error={err(errors.component)}>
-              <SelectField
-                id={id("type")}
-                value={draft.componentTypeId}
-                placeholder={t("selectNone")}
-                disabled={saving}
-                className={`${inputCls(!!errors.component)} text-left`}
-                onChange={(e) => onTypeChange(e.target.value)}
-              >
-                {types.map((x) => (
-                  <option key={x.id} value={x.id}>
-                    {x.name}
-                  </option>
-                ))}
-              </SelectField>
+              {locks?.type ? (
+                <LockedValue value={draftType?.name ?? ""} label={t("locked")} testId="quick-add-type" />
+              ) : (
+                <SelectField
+                  id={id("type")}
+                  value={draft.componentTypeId}
+                  placeholder={t("selectNone")}
+                  disabled={saving}
+                  className={`${inputCls(!!errors.component)} text-left`}
+                  onChange={(e) => onTypeChange(e.target.value)}
+                >
+                  {types.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+                </SelectField>
+              )}
             </Field>
             <Field
               label={
@@ -158,20 +191,28 @@ export function ItemForm({
               }
               htmlFor={id("part")}
             >
-              <SelectField
-                id={id("part")}
-                value={partValue}
-                disabled={saving || !draft.componentTypeId}
-                className={`${inputCls(false)} text-left`}
-                onChange={(e) => onPatch({ partKey: e.target.value === "" ? null : e.target.value })}
-              >
-                {parts.map((p) => (
-                  <option key={p.key} value={p.key}>
-                    {p.label}
-                  </option>
-                ))}
-                <option value="">{t("partOther")}</option>
-              </SelectField>
+              {locks?.part ? (
+                <LockedValue
+                  value={parts.find((p) => p.key === partValue)?.label ?? t("partOther")}
+                  label={t("locked")}
+                  testId="quick-add-part"
+                />
+              ) : (
+                <SelectField
+                  id={id("part")}
+                  value={partValue}
+                  disabled={saving || !draft.componentTypeId}
+                  className={`${inputCls(false)} text-left`}
+                  onChange={(e) => onPatch({ partKey: e.target.value === "" ? null : e.target.value })}
+                >
+                  {parts.map((p) => (
+                    <option key={p.key} value={p.key}>
+                      {p.label}
+                    </option>
+                  ))}
+                  <option value="">{t("partOther")}</option>
+                </SelectField>
+              )}
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3.5">
@@ -237,7 +278,7 @@ export function ItemForm({
               {t("matchesHeading")} <InfoTip text={t("tipMatches")} />
             </span>
           </h3>
-          <MatchesEditor type={draftType} rows={draft.rows} onChange={onRows} showAll={showAllRowErrors} disabled={saving} />
+          <MatchesEditor type={draftType} rows={draft.rows} onChange={onRows} showAll={showAllRowErrors} disabled={saving || !!locks?.type} />
           <AlsoMatchedBy others={alsoMatched} onOpenItem={onOpenItem} />
         </section>
       ) : null}
