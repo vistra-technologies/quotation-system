@@ -2024,7 +2024,8 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       await drawer.getByRole("button", { name: "Edit" }).click();
       await expect(drawer.getByRole("button", { name: /^Remove match Grade/ })).toBeVisible();
       await drawer.getByRole("button", { name: "Add match" }).click();
-      await drawer.getByRole("combobox").last().click();
+      // the new row's field picker (the last combobox is its disabled value picker)
+      await drawer.getByRole("combobox").filter({ hasText: "Choose a field" }).click();
       await expect(page.getByRole("option", { name: "Grade", exact: true })).toHaveCount(0);
       await expect(page.getByRole("option", { name: "Hinge", exact: true })).toHaveCount(1);
       await page.keyboard.press("Escape");
