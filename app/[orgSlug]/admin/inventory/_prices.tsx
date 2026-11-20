@@ -30,7 +30,7 @@ const CLOSE_X = (
 function AmountCurrency({ currency, value }: { currency: string; value: string }) {
   return (
     <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-      <span className="font-extrabold tabular-nums text-text-heading">{formatPriceAmount(value)}</span>
+      <span className="font-extrabold tabular-nums text-text-heading">{formatPriceAmount(value)}</span>{" "}
       <span className="text-[12.5px] text-text-muted">{currency}</span>
     </span>
   );

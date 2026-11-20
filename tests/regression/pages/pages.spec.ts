@@ -1675,12 +1675,12 @@ test.describe("Stage 36 B1: Product spec toggle (SuperAdmin edit form), throwawa
 // option removal that orphans a row all go with org B at teardown (rule 10 n/a, nothing in the Test Org is written).
 // The GET-failure banner (UI AC2) is a server-side fetch, so a browser route cannot fail it; it is covered by the page code
 // path and the by-design 4xx/5xx API specs, not here.
-// M-1 (Stage 37 bugs-1): was test.describe.serial, so one failure skipped the rest of the block as "did not run". The
-// file runs in parallel mode, so the block is pinned to "default": its tests share org B's pricing rows and must still
-// run in order in ONE worker, but a failure no longer skips the rest (a failed test restarts the worker and the next
-// test reports its own result).
+// M-1 (Stage 37 bugs-1): was test.describe.serial, so one failure skipped the rest of the block as "did not run" (and
+// AC4 / AC3b, which depend on earlier tests' rows, never reported their own result). Now every test builds its OWN
+// component type and rows in org B (`getFx` is not cached), so the tests are independent: they run in the file's
+// parallel mode and each one reports its own pass or fail. (A mode "default" describe would still inherit the file's
+// parallel mode, so it would not pin the order either.)
 test.describe("Stage 36 B3: Product Pricing admin page, throwaway org B", () => {
-  test.describe.configure({ mode: "default" });
   const fld = (key: string, label: string, over: Record<string, unknown> = {}) =>
     ({ key, label, type: "dropdown", required: false, basic: true, ...over });
   const SCHEMA = [
@@ -1696,7 +1696,6 @@ test.describe("Stage 36 B3: Product Pricing admin page, throwaway org B", () => 
     },
   };
   type Guarded = import("../fixtures/clients").Guarded;
-  let fxP: Promise<{ B: (p: string) => string; typeId: string; code: string; plainCode: string }> | undefined;
   async function fixture(run: RunState, orgB: Guarded) {
     const B = (p: string) => orgApi(run.orgB.slug, p);
     const cats = (await ok<{ categories: { id: string }[] }>(await orgB.get(B("/component-categories")))).categories;
@@ -1710,7 +1709,7 @@ test.describe("Stage 36 B3: Product Pricing admin page, throwaway org B", () => 
     const plain = await mk(`RGRPN${tag().toUpperCase()}`, [fld("kind", "Kind")]);
     return { B, typeId: spec.id, code: spec.code, plainCode: plain.code };
   }
-  const getFx = (run: RunState, orgB: Guarded) => (fxP ??= fixture(run, orgB));
+  const getFx = (run: RunState, orgB: Guarded) => fixture(run, orgB);
   const key = (glass: string, thick: string) => JSON.stringify({ glass, thick });
 
   test("UI AC1 flyout: Product Pricing for a MANAGE_PRICING user only, no SuperAdmin text or /controls link on the page", async ({ browser, run, orgB }) => {
@@ -1724,7 +1723,7 @@ test.describe("Stage 36 B3: Product Pricing admin page, throwaway org B", () => 
       await expect(link).toBeVisible();
       await link.click();
       await expect(page.getByRole("heading", { name: "Product Pricing" })).toBeVisible();
-      await expect(page.getByTestId(`type-tab-${fx.code}`)).toBeVisible();
+      await expect(page.getByTestId(`type-tab-${fx.code}`).filter({ visible: true })).toBeVisible();
       await expect(page.getByText(/SuperAdmin/i)).toHaveCount(0);
       await expect(page.locator('main a[href*="/controls"]')).toHaveCount(0);
     });
@@ -1740,7 +1739,7 @@ test.describe("Stage 36 B3: Product Pricing admin page, throwaway org B", () => 
     await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
       const page = o.page;
       await page.goto(orgUrl(run.orgB.slug, "/admin/product-pricing"));
-      const tab = page.getByTestId(`type-tab-${fx.code}`);
+      const tab = page.getByTestId(`type-tab-${fx.code}`).filter({ visible: true });
       await tab.click();
       await expect(tab).toContainText("0 / 3 priced");
       await expect(page.getByRole("columnheader", { name: "Glass type" })).toBeVisible();
@@ -1756,7 +1755,7 @@ test.describe("Stage 36 B3: Product Pricing admin page, throwaway org B", () => 
       await expect(rows).toHaveCount(3);
       await page.getByRole("button", { name: "Show orphaned" }).click();
       await expect(rows).toHaveCount(0);
-      await page.getByTestId(`type-tab-${fx.plainCode}`).click();
+      await page.getByTestId(`type-tab-${fx.plainCode}`).filter({ visible: true }).click();
       await expect(page.getByText("Contact the Easeetool team to add product specifications to your catalog.")).toBeVisible();
       const go = page.getByRole("link", { name: "Go to catalog" });
       await expect(go).toHaveAttribute("href", /\/admin\/catalog$/);
@@ -1775,7 +1774,7 @@ test.describe("Stage 36 B3: Product Pricing admin page, throwaway org B", () => 
         if (r.method() === "PUT" && r.url().includes("/product-pricing")) puts.push(r.postData() ?? "");
       });
       await page.goto(orgUrl(run.orgB.slug, "/admin/product-pricing"));
-      const tab = page.getByTestId(`type-tab-${fx.code}`);
+      const tab = page.getByTestId(`type-tab-${fx.code}`).filter({ visible: true });
       await tab.click();
       const rows = page.getByTestId("pricing-row");
       const dlg = page.getByRole("dialog");
@@ -1861,7 +1860,7 @@ test.describe("Stage 36 B3: Product Pricing admin page, throwaway org B", () => 
     await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
       const page = o.page;
       await page.goto(orgUrl(run.orgB.slug, "/admin/product-pricing"));
-      const tab = page.getByTestId(`type-tab-${fx.code}`);
+      const tab = page.getByTestId(`type-tab-${fx.code}`).filter({ visible: true });
       await tab.click();
       await expect(page.getByText("1 orphaned combination")).toBeVisible();
       await expect(tab).toContainText("1 / 2 priced");
@@ -1888,7 +1887,7 @@ test.describe("Stage 36 B3: Product Pricing admin page, throwaway org B", () => 
     await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
       const page = o.page;
       await page.goto(orgUrl(run.orgB.slug, "/admin/product-pricing"));
-      await page.getByTestId(`type-tab-${fx.code}`).click();
+      await page.getByTestId(`type-tab-${fx.code}`).filter({ visible: true }).click();
       const rows = page.getByTestId("pricing-row");
       const dlg = page.getByRole("dialog");
       await rows.filter({ hasText: "Double" }).first().click();
@@ -1932,7 +1931,7 @@ test.describe("Stage 36 B3: Product Pricing admin page, throwaway org B", () => 
     await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
       const page = o.page;
       await page.goto(orgUrl(run.orgB.slug, "/admin/product-pricing"));
-      await page.getByTestId(`type-tab-${fx.code}`).click();
+      await page.getByTestId(`type-tab-${fx.code}`).filter({ visible: true }).click();
       const rows = page.getByTestId("pricing-row");
       const rowA = rows.filter({ hasText: "Single" }).filter({ hasText: "12 mm" });
       const rowB = rows.filter({ hasText: "Double" }).first();
@@ -2416,12 +2415,13 @@ test.describe("Stage 38 B2: Organization Settings page, throwaway org B", () => 
       await page.getByRole("combobox").last().click();
       await page.getByRole("option", { name: label[next], exact: true }).click();
       await save.click();
-      await expect(page.getByRole("alert")).toHaveText("currency must be one of INR, AED, USD");
+      const alert = page.locator('section[aria-labelledby="sec-general"] [role="alert"]'); // not the route announcer
+      await expect(alert).toHaveText("currency must be one of INR, AED, USD");
       await expect(save).toBeEnabled();
       // 5xx: the Reference code shows
       reply = { status: 500, body: { error: "Internal server error", requestId: "rgr-ref-1" } };
       await save.click();
-      await expect(page.getByRole("alert")).toContainText("(Reference: rgr-ref-1)");
+      await expect(alert).toContainText("(Reference: rgr-ref-1)");
       // success: one PATCH body per attempt, read-only again, toast, no confirm dialog
       reply = null;
       await save.click();
@@ -2456,7 +2456,7 @@ test.describe("Stage 38 B2: Summary missing-price notice", () => {
     await withPage({ browser, run }, "admin", undefined, async (o) => {
       await o.page.goto(orgTarget(run, `/projects/${w.projectId}/summary`));
       await expect(o.page.getByRole("button", { name: /^Recompute$/ })).toBeVisible();
-      const notice = o.page.getByTestId("missing-prices-notice");
+      const notice = o.page.getByTestId("missing-prices-notice").filter({ visible: true });
       if (n === 0) {
         await expect(notice).toHaveCount(0);
       } else {
