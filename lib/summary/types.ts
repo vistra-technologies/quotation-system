@@ -27,8 +27,13 @@ export interface FormulaDef {
   grain: "CELL" | "PARTITION" | "ROOM_SIDE" | "ROOM_JUNCTION";
   /** expr-eval expression; absent = always fires. */
   condition?: string;
-  /** `{param.x}` — plain string substitution, never expr-eval. */
-  materialCode: string;
+  /** `{param.x}` — plain string substitution, never expr-eval. Exactly one of materialCode / materialMatch. */
+  materialCode?: string;
+  /**
+   * Stage 37: bill every ACTIVE inventory item of `itemType` (must equal `slot`) whose Matches rows all equal the
+   * Selection's visible values (formula-engine.md 7a). Exactly one of materialCode / materialMatch.
+   */
+  materialMatch?: { itemType: string };
   /** A lib/units.ts MEASUREMENT_UNITS value — hard-matched against InventoryItem.measurementUnit. */
   unit: string;
   /** expr-eval expression. */

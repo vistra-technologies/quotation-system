@@ -53,6 +53,41 @@ describe("Stage 37 measurement units on formulas", () => {
   }
 });
 
+describe("Stage 37 B2 materialMatch (Unit AC2)", () => {
+  const match = (over: Record<string, unknown> = {}) => {
+    const b = minimalV2({ materialCode: undefined, materialMatch: { itemType: "GLASS" }, unit: "m²", ...over });
+    return validateFormulaSetBody(b);
+  };
+  const errorsOf = (r: ReturnType<typeof validateFormulaSetBody>) => (r.ok ? [] : (r as { ok: false; errors: string[] }).errors);
+
+  test("a valid materialMatch passes", () => {
+    const r = match();
+    assert.equal(r.ok, true, errorsOf(r).join("; "));
+  });
+
+  test("where present is rejected", () => {
+    assert.ok(errorsOf(match({ where: { a: "b" } })).some((e) => /"where" is not supported/.test(e)));
+  });
+
+  test("itemType must equal the slot", () => {
+    assert.ok(errorsOf(match({ materialMatch: { itemType: "DOOR" } })).some((e) => /must equal the formula slot "GLASS"/.test(e)));
+  });
+
+  test("both or neither of materialCode / materialMatch", () => {
+    assert.ok(errorsOf(match({ materialCode: "{param.glassCode}" })).some((e) => /not both/.test(e)));
+    assert.ok(errorsOf(match({ materialMatch: undefined })).some((e) => /exactly one of materialCode or materialMatch is required/.test(e)));
+  });
+
+  test("materialMatch shape: only itemType, an object", () => {
+    assert.ok(errorsOf(match({ materialMatch: { itemType: "GLASS", extra: 1 } })).some((e) => /only accepts itemType/.test(e)));
+    assert.ok(errorsOf(match({ materialMatch: "GLASS" })).some((e) => /must be an object/.test(e)));
+  });
+
+  test("existing materialCode documents still pass", () => {
+    assert.equal(validateFormulaSetBody(minimalV2()).ok, true);
+  });
+});
+
 // ── v2 — Validator 1: undeclared param.* ──────────────────────────────────────────────────────
 
 describe("Validator 1 — undeclared param.*", () => {

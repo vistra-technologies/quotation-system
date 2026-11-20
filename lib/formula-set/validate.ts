@@ -250,9 +250,37 @@ export function validateFormulaSetBody(body: unknown): { ok: true } | { ok: fals
       if (parseErr) errors.push(`formula "${id}": quantity is not a valid expression: ${parseErr}`);
     }
 
-    // materialCode — required string (plain substitution, not parsed)
-    if (typeof fRec.materialCode !== "string") {
+    // Billing target — exactly one of materialCode (plain substitution, not parsed) or materialMatch
+    // (Stage 37: bill every active item whose Matches rows equal the Selection). `where` was dropped in favour
+    // of Matches rows on the inventory item, so it is rejected explicitly.
+    if (Object.prototype.hasOwnProperty.call(fRec, "where")) {
+      errors.push(`formula "${id}": "where" is not supported; item selection is done by Matches rows on inventory items`);
+    }
+    const hasCode = fRec.materialCode !== undefined;
+    const hasMatch = fRec.materialMatch !== undefined;
+    if (hasCode && hasMatch) {
+      errors.push(`formula "${id}": exactly one of materialCode or materialMatch is allowed, not both`);
+    } else if (!hasCode && !hasMatch) {
+      errors.push(`formula "${id}": exactly one of materialCode or materialMatch is required`);
+    }
+    if (hasCode && typeof fRec.materialCode !== "string") {
       errors.push(`formula "${id}": materialCode must be a string`);
+    }
+    if (hasMatch) {
+      const mm = fRec.materialMatch;
+      if (!isRecord(mm)) {
+        errors.push(`formula "${id}": materialMatch must be an object { itemType }`);
+      } else {
+        const extra = Object.keys(mm).filter((k) => k !== "itemType");
+        if (extra.length > 0) {
+          errors.push(`formula "${id}": materialMatch only accepts itemType (got ${extra.join(", ")})`);
+        }
+        if (typeof mm.itemType !== "string") {
+          errors.push(`formula "${id}": materialMatch.itemType must be a string`);
+        } else if (mm.itemType !== fRec.slot) {
+          errors.push(`formula "${id}": materialMatch.itemType "${mm.itemType}" must equal the formula slot "${String(fRec.slot)}"`);
+        }
+      }
     }
 
     // ── grain namespace checks ────────────────────────────────────────────────────────────────

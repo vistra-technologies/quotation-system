@@ -28,6 +28,8 @@ interface AggGroup {
   sampleLines: RawMaterialLine[];
   /** Total number of rawLines in the group (for occurrenceCount). */
   lineCount: number;
+  /** Stage 37: the group's lines came from a `materialMatch` formula (never mixed with code lines). */
+  viaMatch: boolean;
 }
 
 // ─── Quantity rounding (Stage 37 Q-D16) ───────────────────────────────────────
@@ -91,7 +93,7 @@ export function resolveAndAggregate(
   const groups = new Map<string, AggGroup>();
 
   for (const line of rawLines) {
-    const key = `${line.code}|${line.unit}`;
+    const key = `${line.code}|${line.unit}|${line.viaMatch ? "m" : "c"}`;
     const existing = groups.get(key);
     if (existing) {
       existing.requirement += line.requirement;
@@ -106,6 +108,7 @@ export function resolveAndAggregate(
         slots: new Set([line.slot]),
         sampleLines: [line],
         lineCount: 1,
+        viaMatch: line.viaMatch === true,
       });
     }
   }
@@ -114,7 +117,7 @@ export function resolveAndAggregate(
   const materialList: MaterialListLine[] = [];
 
   for (const group of groups.values()) {
-    const { code, unit, requirement, slots, sampleLines, lineCount } = group;
+    const { code, unit, requirement, slots, sampleLines, lineCount, viaMatch } = group;
 
     /** Build the occurrences[] array for a failed group (up to 5 entries). */
     const buildOccurrences = () =>
@@ -144,6 +147,20 @@ export function resolveAndAggregate(
         kind: "UNRESOLVED_CODE",
         scope: "INVENTORY",
         message: `No inventory item found for code "${code}"`,
+        code,
+        occurrences: buildOccurrences(),
+        occurrenceCount: lineCount,
+      });
+      continue;
+    }
+
+    // Step 2b-2 (Stage 37, S37-4): an item WITH Matches rows is billed only through a `materialMatch` it matches;
+    // a `materialCode` line naming it is unresolved (an item with no rows is never a match candidate).
+    if (!viaMatch && item.rows && Object.keys(item.rows).length > 0) {
+      collector.add({
+        kind: "UNRESOLVED_CODE",
+        scope: "INVENTORY",
+        message: `Inventory item "${code}" is billed by match only, not by code`,
         code,
         occurrences: buildOccurrences(),
         occurrenceCount: lineCount,

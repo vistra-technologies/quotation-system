@@ -85,7 +85,7 @@ function fieldChanges(before: Rec | undefined, after: Rec | undefined): FieldCha
 }
 
 /** Show order that matches how formulas read: quantity first, then the rest as authored. */
-const FIELD_ORDER = ["quantity", "condition", "materialCode", "unit", "grain", "slot"];
+const FIELD_ORDER = ["quantity", "condition", "materialCode", "materialMatch", "unit", "grain", "slot"];
 function sortFields(fields: FieldChange[]): FieldChange[] {
   const rank = (f: string) => {
     const i = FIELD_ORDER.indexOf(f);

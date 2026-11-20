@@ -14,6 +14,7 @@ export type CalculationProblemKind =
   // — material (phase B): the design is sound, the data behind it is not —
   | "MISSING_PARAM"            // a dereferenced required param is blank on the Selection
   | "UNRESOLVED_CODE"          // non-blank code, no matching InventoryItem in this org
+  | "UNRESOLVED_MATCH"         // a materialMatch formula fired and no active item's Matches rows equal the Selection (Stage 37)
   | "UNIT_MISMATCH"            // row found, wrong measurementUnit
   | "INACTIVE_ITEM"            // row found, active: false
   | "NON_FINITE_QUANTITY"      // a quantity expression produced NaN/Infinity
@@ -55,6 +56,8 @@ export interface CalculationProblem {
   reason?: "NOT_STARTED" | "MALFORMED" | "GLASS_CELL" | "DOOR_CELL";
   /** The offending material code (UNRESOLVED_CODE / UNIT_MISMATCH / INACTIVE_ITEM). */
   code?: string;
+  /** UNRESOLVED_MATCH — the Selection's choices that were matched on, e.g. "ID1 · 12.76". */
+  matchChoices?: string;
   /** UNIT_MISMATCH — what the formula declared. */
   expectedUnit?: string;
   /** UNIT_MISMATCH — what the InventoryItem carries. */
@@ -104,6 +107,8 @@ function dedupeKey(p: CalculationProblem): string {
     case "DESIGN":
       return `${p.kind}|${p.locus?.partitionId ?? ""}|${p.locus?.sectionIndex ?? ""}|${p.locus?.cellIndex ?? ""}`;
     case "INVENTORY":
+      // Stage 37: an UNRESOLVED_MATCH has no code; one problem per (item type, choices).
+      if (p.kind === "UNRESOLVED_MATCH") return `${p.kind}|${p.locus?.componentTypeCode ?? ""}|${p.matchChoices ?? ""}`;
       return `${p.kind}|${p.code ?? ""}`;
     default: // "SELECTION" | "FORMULA_SET"
       return `${p.kind}|${p.code ?? ""}|${p.locus?.selectionId ?? ""}|${p.locus?.fieldKey ?? ""}|${p.locus?.formulaId ?? ""}`;

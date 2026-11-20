@@ -87,6 +87,32 @@ test.describe("SuperAdmin formula sets", () => {
     expect((await list(sa)).filter((s) => s.name.startsWith(bad))).toEqual([]);
   });
 
+  test("Stage 37 B2 materialMatch validator: where / itemType != slot / both / neither -> 400 with the exact error; a valid materialMatch set is accepted", async ({ sa, run, ledger }) => {
+    const bad = `${run.prefix}fsmm-${tag()}`;
+    const slots = { GLASS: { role: "glass" } };
+    const f = (over: Record<string, unknown>) => ({
+      schemaVersion: 2, slots, formulas: [{ id: "glassPane", slot: "GLASS", grain: "CELL", unit: "m²", quantity: "cell.widthMm * cell.heightMm / 1000000", ...over }],
+    });
+    const cases: Array<[string, unknown, string]> = [
+      ["where present", f({ materialMatch: { itemType: "GLASS" }, where: { a: "b" } }), `formula "glassPane": "where" is not supported; item selection is done by Matches rows on inventory items`],
+      ["itemType != slot", f({ materialMatch: { itemType: "DOOR" } }), `formula "glassPane": materialMatch.itemType "DOOR" must equal the formula slot "GLASS"`],
+      ["both keys", f({ materialMatch: { itemType: "GLASS" }, materialCode: "X" }), `formula "glassPane": exactly one of materialCode or materialMatch is allowed, not both`],
+      ["neither key", f({}), `formula "glassPane": exactly one of materialCode or materialMatch is required`],
+    ];
+    for (const [what, body, msg] of cases) {
+      const r = await sa.post(`${SA}/formula-sets`, { data: { name: bad, body } });
+      await undoAcceptedFormulaSet(sa, r, what);
+      const res = await json<{ error: string; validationErrors: string[] }>(r, 400, what);
+      expect(res.error, what).toBe("Validation failed");
+      expect(res.validationErrors, what).toContain(msg);
+    }
+    expect((await list(sa)).filter((s) => s.name.startsWith(bad))).toEqual([]);
+
+    const ok = await postFormulaSet(sa, ledger, { name: `${run.prefix}fsmm-ok-${tag()}`, body: f({ materialMatch: { itemType: "GLASS" } }) });
+    const created = (await json<{ formulaSet: FormulaSetDetail }>(ok, 201)).formulaSet;
+    expect(created.body).toEqual(f({ materialMatch: { itemType: "GLASS" } }));
+  });
+
   test("POST creates v1 (name trimmed, a sent `version` ignored, unlocked); the same name again becomes v2; audit INSERT at platform scope", async ({ sa, run, ledger }) => {
     name = `${run.prefix}fs-${tag()}`;
     const body = await seededBody(sa, run);

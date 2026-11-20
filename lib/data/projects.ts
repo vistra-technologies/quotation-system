@@ -7,6 +7,7 @@ import {
 } from "@/lib/data/calculations";
 import { loadInventoryMap, type InventoryRow } from "@/lib/data/inventory";
 import { addUnlinkedCodeProblems, usedSelectionIds } from "@/lib/inventory-link";
+import { matchCandidatesFrom } from "@/lib/materials/match";
 import { loadConfigSnapshot } from "@/lib/config-snapshot";
 import { resolveFormulaSetPin } from "@/lib/data/formula-pin";
 import { ownedProjectWhere } from "@/lib/data/ownership";
@@ -592,6 +593,7 @@ export async function submitDesign(
     const roomLabels = new Map<string, string>();
     const partitionLabels = new Map<string, string>();
     const materialsInput = buildMaterialsInputHelper(loaded, roomLabels, partitionLabels);
+    materialsInput.inventory = matchCandidatesFrom(inventoryMap);
     const { rawLines, byRoom, collector } = buildMaterials(materialsInput);
     const materialList = resolveAndAggregate(rawLines, inventoryMap, collector, roomLabels, partitionLabels);
     addUnlinkedProblems(loaded, inventoryMap, collector);
@@ -707,6 +709,7 @@ export async function recomputeProject(
     const roomLabels = new Map<string, string>();
     const partitionLabels = new Map<string, string>();
     const materialsInput = buildMaterialsInputHelper(loaded, roomLabels, partitionLabels);
+    materialsInput.inventory = matchCandidatesFrom(inventoryMap);
     const { rawLines, byRoom, collector } = buildMaterials(materialsInput);
     const materialList = resolveAndAggregate(rawLines, inventoryMap, collector, roomLabels, partitionLabels);
     addUnlinkedProblems(loaded, inventoryMap, collector);

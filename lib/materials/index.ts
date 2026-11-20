@@ -17,6 +17,7 @@ import { ProblemCollector } from "./problems";
 import { evaluateAll } from "./evaluate";
 import type { EvalFloor, EvalInput, RawMaterialLine } from "./evaluate";
 import type { ParsedDesign, ParsedSection, ParsedCell } from "./geometry";
+import type { MatchCandidate } from "./match";
 
 export type { RawMaterialLine };
 
@@ -49,6 +50,8 @@ export interface MaterialsInput {
     label?: string;
     config: unknown;
   }>;
+  /** Stage 37: inventory items with Matches rows (`matchCandidatesFrom`); candidates for `materialMatch` formulas. */
+  inventory?: MatchCandidate[];
 }
 
 // ─── Output contract ──────────────────────────────────────────────────────────
@@ -168,6 +171,7 @@ export function buildMaterials(input: MaterialsInput): MaterialsResult {
     selectionMap,
     componentTypeCodeMap,
     designMap,
+    matchCandidates: input.inventory,
   };
 
   const collector = new ProblemCollector();

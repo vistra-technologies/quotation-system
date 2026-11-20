@@ -21,6 +21,9 @@ import { applyFieldVisibility, visibilityFieldsFromRaw } from "../field-visibili
 import { derivePartitionGeometry } from "./geometry";
 import type { ParsedDesign } from "./geometry";
 import { ProblemCollector } from "./problems";
+import { matchItems } from "./match";
+import type { MatchCandidate } from "./match";
+import { canonicalMatchValue } from "../inventory-matches";
 
 const parser = new Parser();
 
@@ -39,6 +42,8 @@ export interface RawMaterialLine {
   formulaId: string;
   roomId: string;
   partitionId: string;
+  /** Stage 37: the line came from a `materialMatch` formula (one line per matched item). */
+  viaMatch?: boolean;
 }
 
 // ─── Evaluator input (pre-processed by buildMaterials in index.ts) ───────────
@@ -75,6 +80,8 @@ export interface EvalInput {
   componentTypeCodeMap: Map<string, string>;
   /** partitionId → ParsedDesign (for neighborDesignResolver) */
   designMap: Map<string, ParsedDesign>;
+  /** Stage 37: inventory items with Matches rows (candidates for `materialMatch` formulas). Absent = none. */
+  matchCandidates?: MatchCandidate[];
 }
 
 // ─── Recording param Proxy ────────────────────────────────────────────────────
@@ -189,12 +196,31 @@ interface PreparedSelection {
   label?: string;
   /** Schema keys hidden for this Selection's values. */
   hidden: ReadonlySet<string>;
+  /** Schema keys visible for this Selection's values (the matcher reads only these). */
+  visibleKeys: ReadonlySet<string>;
+  /** fieldKey -> field type, in schema order (snapshot schema, S37-6). */
+  fieldTypes: ReadonlyMap<string, string>;
+}
+
+function fieldTypesFromRaw(raw: unknown): Map<string, string> {
+  const out = new Map<string, string>();
+  if (!Array.isArray(raw)) return out;
+  for (const f of raw) {
+    if (typeof f === "object" && f !== null && typeof (f as { key?: unknown }).key === "string") {
+      const t = (f as { type?: unknown }).type;
+      out.set((f as { key: string }).key, typeof t === "string" ? t : "field");
+    }
+  }
+  return out;
 }
 
 /** Run the one visibility pass for every Selection against its snapshot type's schema. */
 function prepareSelections(input: EvalInput): Map<string, PreparedSelection> {
   const fieldsByType = new Map(
     (input.snapshot.componentTypes ?? []).map((t) => [t.id, visibilityFieldsFromRaw(t.fieldsSchema)] as const),
+  );
+  const typesByType = new Map(
+    (input.snapshot.componentTypes ?? []).map((t) => [t.id, fieldTypesFromRaw(t.fieldsSchema)] as const),
   );
   const out = new Map<string, PreparedSelection>();
   for (const [id, sel] of input.selectionMap) {
@@ -205,9 +231,109 @@ function prepareSelections(input: EvalInput): Map<string, PreparedSelection> {
       config: values,
       label: sel.label,
       hidden: new Set(fields.filter((f) => !visibleKeys.has(f.key)).map((f) => f.key)),
+      visibleKeys,
+      fieldTypes: typesByType.get(sel.componentTypeId) ?? new Map(),
     });
   }
   return out;
+}
+
+// ─── materialMatch (Stage 37) ─────────────────────────────────────────────────
+
+/** Where a match firing happened, for loci and occurrence text. */
+interface MatchSite {
+  floorId: string;
+  roomId: string;
+  roomLabel: string;
+  partitionId: string;
+  partitionLabel: string;
+  selectionId: string;
+}
+
+/**
+ * A `materialMatch` formula fired with finite requirement `req`: bill every ACTIVE matched item with the FULL
+ * requirement (one raw line per item, like a code line, S37-3). No active match: INACTIVE_ITEM per inactive item that
+ * would have matched, else UNRESOLVED_MATCH naming the Selection's choices.
+ */
+function emitMatchLines(
+  rawLines: RawMaterialLine[],
+  collector: ProblemCollector,
+  candidates: ReadonlyArray<MatchCandidate>,
+  formula: { id: string; unit: string },
+  slotCode: string,
+  sel: PreparedSelection,
+  site: MatchSite,
+  req: number,
+): void {
+  const { matched, inactive } = matchItems(candidates, {
+    typeId: sel.componentTypeId,
+    unit: formula.unit,
+    values: sel.config,
+    visibleKeys: sel.visibleKeys,
+    fieldTypes: sel.fieldTypes,
+  });
+  if (matched.length > 0) {
+    for (const item of matched) {
+      rawLines.push({
+        code: item.code,
+        unit: formula.unit,
+        requirement: req,
+        slot: slotCode,
+        formulaId: formula.id,
+        roomId: site.roomId,
+        partitionId: site.partitionId,
+        viaMatch: true,
+      });
+    }
+    return;
+  }
+  const occurrences = [{ roomName: site.roomLabel, partitionLabel: site.partitionLabel, fieldKey: formula.id }];
+  if (inactive.length > 0) {
+    for (const item of inactive) {
+      collector.add({
+        kind: "INACTIVE_ITEM",
+        scope: "INVENTORY",
+        message: `Inventory item "${item.code}" is inactive`,
+        code: item.code,
+        occurrences,
+      });
+    }
+    return;
+  }
+  // Choices: the Selection's visible values of fields some item of this type has a Matches row on (schema order),
+  // else every visible dropdown/radio value.
+  const rowKeys = new Set<string>();
+  for (const c of candidates) {
+    if (c.componentTypeId !== sel.componentTypeId) continue;
+    for (const k of Object.keys(c.rows)) rowKeys.add(k);
+  }
+  const choose = (only: (key: string, type: string) => boolean): string[] => {
+    const out: string[] = [];
+    for (const [key, type] of sel.fieldTypes) {
+      if (!sel.visibleKeys.has(key) || !only(key, type)) continue;
+      const v = canonicalMatchValue(sel.config[key], type);
+      if (v !== null) out.push(v);
+    }
+    return out;
+  };
+  let choices = choose((key) => rowKeys.has(key));
+  if (choices.length === 0) choices = choose((_, type) => type === "dropdown" || type === "radio");
+  const text = choices.length > 0 ? choices.join(" · ") : "this selection";
+  collector.add({
+    kind: "UNRESOLVED_MATCH",
+    scope: "INVENTORY",
+    message: `No active ${slotCode} inventory item matches ${text}`,
+    matchChoices: text,
+    locus: {
+      floorId: site.floorId,
+      roomId: site.roomId,
+      partitionId: site.partitionId,
+      selectionId: site.selectionId,
+      componentTypeCode: slotCode,
+      formulaId: formula.id,
+    },
+    occurrences,
+  });
 }
 
 // ─── Main evaluator ───────────────────────────────────────────────────────────
@@ -221,6 +347,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
   const rawLines: RawMaterialLine[] = [];
   const { formulaSetBody, floors, componentTypeCodeMap, designMap } = input;
   const selectionMap = prepareSelections(input);
+  const matchCandidates = input.matchCandidates ?? [];
   const formulas = formulaSetBody.formulas ?? [];
   const cellFormulas = formulas.filter(f => f.grain === "CELL");
   const partitionFormulas = formulas.filter(f => f.grain === "PARTITION");
@@ -350,8 +477,22 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
               // Round metres to 3dp
               const req = formula.unit === "metres" ? Math.round(quantity * 1000) / 1000 : quantity;
 
+              if (formula.materialMatch) {
+                emitMatchLines(rawLines, collector, matchCandidates, formula, slotCode, sel, {
+                  floorId: floor.id,
+                  roomId: room.id,
+                  roomLabel: room.label,
+                  partitionId: partition.id,
+                  partitionLabel: partition.label,
+                  selectionId: cell.selectionId!,
+                }, req);
+                calcScope[formula.id] = req; // finite quantity: downstream calc.* readers see no noise
+                flushHidden();
+                continue;
+              }
+
               // Substitute materialCode (reads through the same proxy — records MISSING_PARAM if blank)
-              const code = substituteCode(formula.materialCode, readParam);
+              const code = substituteCode(formula.materialCode ?? "", readParam);
               if (code === "") {
                 // A hidden code param: the formula's own problem is HIDDEN_PARAM. Its quantity is finite, so keep it in
                 // calcScope; downstream `calc.<id>` readers then do not add NON_FINITE_QUANTITY noise to the one real problem.
@@ -389,7 +530,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
         // Build slot → first Selection config map (section order, then cell order) for this partition.
         // Confirmed with human (partition.md "No mixed-glass partitions"): every cell in a partition
         // resolves to the same param values, so using the first cell of each slot type is sufficient.
-        const slotFirstSel = new Map<string, { selectionId: string; config: Record<string, unknown>; label?: string; hidden: ReadonlySet<string> }>();
+        const slotFirstSel = new Map<string, { selectionId: string; config: Record<string, unknown>; label?: string; hidden: ReadonlySet<string>; prep: PreparedSelection }>();
         for (const section of parsedDesign.sections) {
           for (const cell of section.cells) {
             if (!cell.selectionId) continue;
@@ -397,7 +538,7 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
             if (!sel) continue;
             const slotCode = componentTypeCodeMap.get(sel.componentTypeId);
             if (!slotCode || slotFirstSel.has(slotCode)) continue;
-            slotFirstSel.set(slotCode, { selectionId: cell.selectionId, config: sel.config, label: sel.label, hidden: sel.hidden });
+            slotFirstSel.set(slotCode, { selectionId: cell.selectionId, config: sel.config, label: sel.label, hidden: sel.hidden, prep: sel });
           }
         }
 
@@ -519,7 +660,21 @@ export function evaluateAll(input: EvalInput, collector: ProblemCollector): RawM
 
           const req = formula.unit === "metres" ? Math.round(quantity * 1000) / 1000 : quantity;
 
-          const code = substituteCode(formula.materialCode, readParam);
+          if (formula.materialMatch) {
+            emitMatchLines(rawLines, collector, matchCandidates, formula, formula.slot, selInfo.prep, {
+              floorId: floor.id,
+              roomId: room.id,
+              roomLabel: room.label,
+              partitionId: partition.id,
+              partitionLabel: partition.label,
+              selectionId: selInfo.selectionId,
+            }, req);
+            calcScope[formula.id] = req;
+            flushHidden();
+            continue;
+          }
+
+          const code = substituteCode(formula.materialCode ?? "", readParam);
           if (code === "") {
             if (hiddenReads.size > 0) calcScope[formula.id] = req; // see the CELL pass: no cascade noise from a HIDDEN_PARAM
             flushHidden();

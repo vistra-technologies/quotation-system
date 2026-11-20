@@ -10,6 +10,7 @@
  */
 import type { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
+import { readMatchRows } from "@/lib/inventory-matches";
 
 type Db = Prisma.TransactionClient | typeof prisma;
 
@@ -26,6 +27,8 @@ export interface InventoryRow {
   componentTypeId: string | null;
   /** Stage 37 Q-D16: true = round up to whole packs; false = exact quantity. */
   soldInWholePacks: boolean;
+  /** Stage 37 B2: Matches rows (`attributes` read as fieldKey -> value strings; none = `{}`). Absent in tests = none. */
+  rows?: Record<string, string>;
 }
 
 /**
@@ -47,6 +50,7 @@ export async function loadInventoryMap(
       active: true,
       componentTypeId: true,
       soldInWholePacks: true,
+      attributes: true,
     },
   });
 
@@ -60,6 +64,7 @@ export async function loadInventoryMap(
       active: item.active,
       componentTypeId: item.componentTypeId,
       soldInWholePacks: item.soldInWholePacks,
+      rows: readMatchRows(item.attributes),
     });
   }
   return map;
