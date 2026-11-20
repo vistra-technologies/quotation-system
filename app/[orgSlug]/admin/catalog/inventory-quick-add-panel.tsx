@@ -11,6 +11,8 @@ interface InventoryQuickAddPanelProps {
   orgSlug: string;
   typeId: string;
   typeName: string;
+  /** Stage 37 Q-D21: key of the inventory-linked field the missing value belongs to; stored as the item's partKey. */
+  partKey: string;
   /** The missing value; becomes the item's `code`. Locked. */
   code: string;
   onCancel: () => void;
@@ -37,7 +39,7 @@ const LOCK = (
  * component type are prefilled and locked; there is no price field and no ItemPrice write. A refusal (409
  * duplicate code, 400, 5xx) shows inline and keeps what was typed (the state lives here, never reset).
  */
-export function InventoryQuickAddPanel({ orgSlug, typeId, typeName, code, onCancel, onAdded }: InventoryQuickAddPanelProps) {
+export function InventoryQuickAddPanel({ orgSlug, typeId, typeName, partKey, code, onCancel, onAdded }: InventoryQuickAddPanelProps) {
   const [name, setName] = useState("");
   const [unit, setUnit] = useState<string>(MEASUREMENT_UNITS[0].value);
   const [qty, setQty] = useState("1");
@@ -59,7 +61,7 @@ export function InventoryQuickAddPanel({ orgSlug, typeId, typeName, code, onCanc
       const res = await fetch(`/api/v1/orgs/${orgSlug}/inventory`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, name: name.trim(), measurementUnit: unit, componentTypeId: typeId, perUnitQuantity }),
+        body: JSON.stringify({ code, name: name.trim(), measurementUnit: unit, componentTypeId: typeId, perUnitQuantity, partKey }),
       });
       if (res.status === 201) {
         onAdded(name.trim());

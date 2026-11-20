@@ -42,12 +42,14 @@ type Item = {
   attributes: Record<string, unknown>;
   componentTypeId: string | null;
   componentType: { id: string; code: string; name: string } | null;
+  soldInWholePacks: boolean;
+  partKey: string | null;
   prices?: unknown[];
 };
 type Problem = { kind: string; scope: string; message: string; code?: string };
 
-const UNITS = ["metres", "pieces", "m²", "mm", "ft", "set"] as const;
-const UNIT_ERR = 'measurementUnit is required and must be "metres" or "pieces" or "m²" or "mm" or "ft" or "set"';
+const UNITS = ["metres", "pieces", "m²", "mm", "ft", "ft²", "set", "roll"] as const;
+const UNIT_ERR = 'measurementUnit is required and must be "metres" or "pieces" or "m²" or "mm" or "ft" or "ft²" or "set" or "roll"';
 
 /** Per-worker memo; a REJECTED promise is evicted so a transient failure is retried by the next caller. */
 const memo = new Map<string, Promise<unknown>>();
@@ -230,7 +232,7 @@ test.describe("inventory: CRUD rules", () => {
     expect(Number(d.item!.perUnitQuantity)).toBe(1);
   });
 
-  test("every measurementUnit round-trips (create with m², PATCH through all six)", async ({ as, run, ledger, url }) => {
+  test("every measurementUnit round-trips (create with m², PATCH through all eight, incl. ft² and roll)", async ({ as, run, ledger, url }) => {
     const { res, text, item } = await createItem(as.admin, { run, ledger }, { code: code({ run }, "units"), name: "units", measurementUnit: "m²" });
     expect(res.status(), text).toBe(201);
     expect(item!.measurementUnit).toBe("m²");
@@ -313,6 +315,98 @@ test.describe("inventory: CRUD rules", () => {
     const d = await createItem(as.member, { run, ledger }, { code: code({ run }, "door"), name: "door item", measurementUnit: "set", componentTypeId: door });
     expect(d.res.status(), d.text).toBe(201);
     expect(d.item!.componentType).toEqual({ id: door, code: "DOOR", name: expect.any(String) });
+  });
+
+  test("Stage 37 AC3/AC5: soldInWholePacks and partKey default to true / null and round-trip through create, PATCH, GET and the list", async ({ as, run, ledger, url }) => {
+    const plain = await createItem(as.admin, { run, ledger }, { code: code({ run }, "wp-dflt"), name: "defaults", measurementUnit: "pieces" });
+    expect(plain.res.status(), plain.text).toBe(201);
+    expect(plain.item).toMatchObject({ soldInWholePacks: true, partKey: null });
+
+    const exact = await createItem(as.admin, { run, ledger }, { code: code({ run }, "wp-off"), name: "exact", measurementUnit: "metres", soldInWholePacks: false });
+    expect(exact.res.status(), exact.text).toBe(201);
+    expect(exact.item).toMatchObject({ soldInWholePacks: false, partKey: null });
+
+    const p = (await ok<{ item: Item }>(await as.member.patch(url(`/inventory/${plain.item!.id}`), { data: { soldInWholePacks: false } }))).item;
+    expect(p.soldInWholePacks).toBe(false);
+    const back = (await ok<{ item: Item }>(await as.admin.patch(url(`/inventory/${plain.item!.id}`), { data: { soldInWholePacks: true } }))).item;
+    expect(back.soldInWholePacks).toBe(true);
+
+    const g = (await ok<{ item: Item }>(await as.admin.get(url(`/inventory/${exact.item!.id}`)))).item;
+    expect(g).toMatchObject({ soldInWholePacks: false, partKey: null });
+    const list = (await ok<{ items: Item[] }>(await as.admin.get(url("/inventory")))).items;
+    expect(list.find((x) => x.id === exact.item!.id)).toMatchObject({ soldInWholePacks: false, partKey: null });
+    // AC5: every existing row reads a boolean and a string-or-null (the migration default is true / NULL)
+    for (const x of list) {
+      expect(typeof x.soldInWholePacks).toBe("boolean");
+      expect(x.partKey === null || typeof x.partKey === "string").toBe(true);
+    }
+  });
+
+  test("Stage 37 AC3: soldInWholePacks and partKey wrong types are 400 on POST and PATCH; nothing changes", async ({ as, f, run, ledger, url }) => {
+    const base = { name: "n", measurementUnit: "pieces" };
+    for (const [extra, msg] of [
+      [{ soldInWholePacks: "yes" }, "soldInWholePacks must be a boolean"],
+      [{ soldInWholePacks: null }, "soldInWholePacks must be a boolean"],
+      [{ partKey: 5 }, "partKey must be a string or null"],
+    ] as const) {
+      const r = await createItem(as.admin, { run, ledger }, { ...base, code: code({ run }, "pk-bad"), ...extra });
+      await rejected(r.res, 400, msg);
+    }
+    const it = await f.inventoryItem();
+    await rejected(await as.admin.patch(url(`/inventory/${it.id}`), { data: { soldInWholePacks: 1 } }), 400, "soldInWholePacks must be a boolean");
+    await rejected(await as.admin.patch(url(`/inventory/${it.id}`), { data: { partKey: false } }), 400, "partKey must be a string or null");
+    expect((await ok<{ item: Item }>(await as.admin.get(url(`/inventory/${it.id}`)))).item).toMatchObject({ soldInWholePacks: true, partKey: null });
+  });
+
+  // partKey needs a component type with an inventoryLinked field: a throwaway type in org B (rule 10, no Test Org
+  // ComponentType is edited); the Test Org is only used to prove that its own type refuses a key it does not have.
+  test("Stage 37 AC3 (Q-D21): partKey must be an inventory-linked field key of the item's own type (400); blank is null; a type change clears it", async ({ as, run, ledger, orgB }) => {
+    const B = (p: string) => orgApi(run.orgB.slug, p);
+    const categoryId = (await ok<{ categories: { id: string }[] }>(await orgB.get(B("/component-categories")))).categories[0].id;
+    const mkType = async (fieldsSchema: unknown[]) =>
+      (await ok<{ componentType: { id: string } }>(
+        await orgB.post(B("/component-types"), { data: { code: `RGR${tag().toUpperCase()}`, name: `${run.prefix}pk-${tag()}`, categoryId, fieldsSchema } }),
+        201,
+      )).componentType.id;
+    const linked = { key: "kind", label: "Kind", type: "dropdown", required: false, basic: true, inventoryLinked: true };
+    const plainField = { key: "note", label: "Note", type: "dropdown", required: false, basic: false };
+    const typeA = await mkType([linked, plainField]);
+    const typeB = await mkType([{ ...linked, key: "other" }]);
+    const mk = async (data: Record<string, unknown>) =>
+      orgB.post(B("/inventory"), { data: { code: `${run.prefix}pk-${tag()}`, name: "n", measurementUnit: "pieces", ...data } });
+    const msg = "partKey must be the key of an inventory-linked field of the item's component type";
+
+    // POST: a linked key is accepted; a non-linked key, an unknown key and a key with no type are 400
+    const accepted = await ok<{ item: Item }>(await mk({ componentTypeId: typeA, partKey: "kind" }), 201);
+    expect(accepted.item).toMatchObject({ partKey: "kind", componentTypeId: typeA });
+    await rejected(await mk({ componentTypeId: typeA, partKey: "note" }), 400, msg);
+    await rejected(await mk({ componentTypeId: typeA, partKey: "nope" }), 400, msg);
+    await rejected(await mk({ partKey: "kind" }), 400, msg);
+    // a blank key is Other (null)
+    const blank = await ok<{ item: Item }>(await mk({ componentTypeId: typeA, partKey: "  " }), 201);
+    expect(blank.item.partKey).toBeNull();
+
+    // PATCH: same rules, validated against the item's type
+    const id = accepted.item.id;
+    await rejected(await orgB.patch(B(`/inventory/${id}`), { data: { partKey: "note" } }), 400, msg);
+    await rejected(await orgB.patch(B(`/inventory/${blank.item.id}`), { data: { componentTypeId: null, partKey: "kind" } }), 400, msg);
+    expect((await ok<{ item: Item }>(await orgB.get(B(`/inventory/${id}`)))).item.partKey).toBe("kind");
+    // the same type re-sent does not clear; null clears
+    expect((await ok<{ item: Item }>(await orgB.patch(B(`/inventory/${id}`), { data: { componentTypeId: typeA, name: "renamed" } }))).item.partKey).toBe("kind");
+    expect((await ok<{ item: Item }>(await orgB.patch(B(`/inventory/${id}`), { data: { partKey: null } }))).item.partKey).toBeNull();
+    // a type change clears an existing partKey; type + partKey in one request keeps the key (validated against the NEW type)
+    await ok(await orgB.patch(B(`/inventory/${id}`), { data: { partKey: "kind" } }));
+    const moved = (await ok<{ item: Item }>(await orgB.patch(B(`/inventory/${id}`), { data: { componentTypeId: typeB } }))).item;
+    expect(moved).toMatchObject({ componentTypeId: typeB, partKey: null });
+    const both = (await ok<{ item: Item }>(await orgB.patch(B(`/inventory/${id}`), { data: { componentTypeId: typeA, partKey: "kind" } }))).item;
+    expect(both).toMatchObject({ componentTypeId: typeA, partKey: "kind" });
+    // the old type's key is not valid on the new type
+    await rejected(await orgB.patch(B(`/inventory/${id}`), { data: { componentTypeId: typeB, partKey: "kind" } }), 400, msg);
+
+    // the Test Org: a key its GLASS type does not own is refused (nothing is stored; any wrongly created row is ledgered)
+    const glass = await typeIdIn(as.admin, run.testOrg.slug, "GLASS");
+    const r = await createItem(as.admin, { run, ledger }, { code: code({ run }, "pk-glass"), name: "n", measurementUnit: "pieces", componentTypeId: glass, partKey: "rgr-no-such-field" });
+    await rejected(r.res, 400, msg);
   });
 
   test("DELETE → 204 with an empty body; afterwards GET / PATCH / DELETE → 404 and the list no longer has it", async ({ as, f, url, ledger }) => {

@@ -122,6 +122,15 @@ describe("buildMaterialPdfTables", () => {
     for (const t of tables) assert.equal(t.totalRow, undefined);
   });
 
+  test("decimal item quantities print as stored (Stage 37: 27.3 and 0.125)", () => {
+    const tables = buildMaterialPdfTables(
+      [line({ code: "G1", slot: "GLASS", quantity: 27.3 }), line({ code: "G2", slot: "GLASS", quantity: 0.125 })],
+      snapshot(),
+    );
+    const qtys = tables.flatMap((t) => t.body.map((r) => r[4]));
+    assert.deepEqual(qtys.sort(), ["0.125", "27.3"]);
+  });
+
   test("section order matches buildMaterialSections() order (snapshot order, then unmatched, then Shared)", () => {
     const materialList: MaterialListLine[] = [
       line({ code: "SEAL-1", slot: "SEALANT" }),

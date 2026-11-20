@@ -363,6 +363,7 @@ export function AttributeEditorModal({
               orgSlug={orgSlug}
               typeId={typeId}
               typeName={typeName}
+              partKey={currentFieldKey}
               code={quickAddCode}
               onCancel={() => setQuickAddCode(null)}
               onAdded={() => {

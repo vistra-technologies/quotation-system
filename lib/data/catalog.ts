@@ -1,6 +1,7 @@
 import { Prisma } from "@/app/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
+import { parseFieldsSchema } from "@/lib/parse-field-config";
 
 // ─── Domain errors ────────────────────────────────────────────────────────────
 
@@ -27,6 +28,43 @@ export class InvalidComponentTypeError extends Error {
     super("ComponentType not found or belongs to a different org");
     this.name = "InvalidComponentTypeError";
   }
+}
+
+/**
+ * Thrown by createInventoryItem / updateInventoryItem when `partKey` is not the key of an
+ * `inventoryLinked` field of the item's component type (Stage 37 Q-D21): maps to a 400.
+ */
+export class InvalidPartKeyError extends Error {
+  constructor() {
+    super("partKey must be the key of an inventory-linked field of the item's component type");
+    this.name = "InvalidPartKeyError";
+  }
+}
+
+/** Keys of the `inventoryLinked` fields of one org-owned ComponentType (null if the type is not in the org). */
+async function loadLinkedFieldKeys(
+  organizationId: string,
+  componentTypeId: string,
+): Promise<string[] | null> {
+  const ct = await prisma.componentType.findFirst({
+    where: { id: componentTypeId, organizationId },
+    select: { fieldsSchema: true },
+  });
+  if (!ct) return null;
+  return parseFieldsSchema(ct.fieldsSchema)
+    .filter((f) => f.inventoryLinked === true)
+    .map((f) => f.key);
+}
+
+/** Throws InvalidPartKeyError unless `partKey` is an inventory-linked field key of `componentTypeId`. */
+async function assertValidPartKey(
+  organizationId: string,
+  componentTypeId: string | null,
+  partKey: string,
+): Promise<void> {
+  if (!componentTypeId) throw new InvalidPartKeyError();
+  const keys = await loadLinkedFieldKeys(organizationId, componentTypeId);
+  if (!keys || !keys.includes(partKey)) throw new InvalidPartKeyError();
 }
 
 // ─── Reads ───────────────────────────────────────────────────────────────────
@@ -85,6 +123,10 @@ export interface CreateInventoryItemData {
   active?: boolean;
   /** Untyped JSONB — defaults to {} when omitted. */
   attributes?: object;
+  /** Stage 37 Q-D16: whole packs (default true) or exact quantity. */
+  soldInWholePacks?: boolean;
+  /** Stage 37 Q-D21: inventory-linked field key this item is a value of; null/undefined = Other. */
+  partKey?: string | null;
 }
 
 export interface UpdateInventoryItemData {
@@ -98,6 +140,9 @@ export interface UpdateInventoryItemData {
   measurementUnit?: string;
   perUnitQuantity?: number;
   active?: boolean;
+  soldInWholePacks?: boolean;
+  /** Send null to clear. Cleared automatically when componentTypeId changes and partKey is not supplied. */
+  partKey?: string | null;
 }
 
 /**
@@ -121,6 +166,11 @@ export async function createInventoryItem(
     if (!ct) throw new InvalidComponentTypeError();
   }
 
+  // Stage 37 Q-D21: partKey only against the item's own component type's inventory-linked fields.
+  if (data.partKey) {
+    await assertValidPartKey(session.organizationId, data.componentTypeId ?? null, data.partKey);
+  }
+
   try {
     return await prisma.inventoryItem.create({
       data: {
@@ -135,6 +185,8 @@ export async function createInventoryItem(
         attributes: (data.attributes ?? {}) as Prisma.InputJsonValue,
         // H-17: real FK to ComponentType (nullable).
         componentTypeId: data.componentTypeId ?? null,
+        soldInWholePacks: data.soldInWholePacks ?? true,
+        partKey: data.partKey ?? null,
       },
       include: {
         componentType: { select: { id: true, code: true, name: true } },
@@ -168,6 +220,7 @@ export async function updateInventoryItem(
   if (data.measurementUnit !== undefined) update.measurementUnit = data.measurementUnit;
   if (data.perUnitQuantity !== undefined) update.perUnitQuantity = data.perUnitQuantity;
   if (data.active !== undefined) update.active = data.active;
+  if (data.soldInWholePacks !== undefined) update.soldInWholePacks = data.soldInWholePacks;
 
   // H-17: componentTypeId is a nullable FK — explicitly include it in the sentinel
   // so `hasAnyField` checks still work correctly.
@@ -182,6 +235,24 @@ export async function updateInventoryItem(
       select: { id: true },
     });
     if (!ct) throw new InvalidComponentTypeError();
+  }
+
+  // Stage 37 Q-D21 / S37-5: partKey is validated against the NEW type; a type change without an explicit
+  // partKey clears it. (Batch 2 adds clearing the Matches rows in `attributes` on the same path.)
+  if (data.partKey !== undefined || data.componentTypeId !== undefined) {
+    const current = await prisma.inventoryItem.findFirst({
+      where: { id: itemId, organizationId: session.organizationId },
+      select: { componentTypeId: true },
+    });
+    if (!current) return null; // not found or wrong org
+    const newTypeId = data.componentTypeId !== undefined ? data.componentTypeId : current.componentTypeId;
+    const typeChanged = data.componentTypeId !== undefined && data.componentTypeId !== current.componentTypeId;
+    if (data.partKey) {
+      await assertValidPartKey(session.organizationId, newTypeId ?? null, data.partKey);
+      update.partKey = data.partKey;
+    } else if (data.partKey === null || typeChanged) {
+      update.partKey = null;
+    }
   }
 
   try {

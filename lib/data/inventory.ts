@@ -24,6 +24,8 @@ export interface InventoryRow {
   active: boolean;
   /** Stage 35 S35-7: the ComponentType the item belongs to (legacy rows: null), for the inventoryLinked check. */
   componentTypeId: string | null;
+  /** Stage 37 Q-D16: true = round up to whole packs; false = exact quantity. */
+  soldInWholePacks: boolean;
 }
 
 /**
@@ -44,6 +46,7 @@ export async function loadInventoryMap(
       perUnitQuantity: true,
       active: true,
       componentTypeId: true,
+      soldInWholePacks: true,
     },
   });
 
@@ -56,6 +59,7 @@ export async function loadInventoryMap(
       perUnitQuantity: Number(item.perUnitQuantity),
       active: item.active,
       componentTypeId: item.componentTypeId,
+      soldInWholePacks: item.soldInWholePacks,
     });
   }
   return map;

@@ -369,6 +369,34 @@ test.describe("calculation engine: refusals keep the stored calculation", () => 
     expect(Date.parse(after.computedAt)).toBeGreaterThan(Date.parse(before.computedAt));
   });
 
+  test("Stage 37 AC4: soldInWholePacks=false bills the exact quantity (4 / 3 = 1.333 m) while a whole-packs item stays ceil; restoring true restores the list", async ({ as, f, run }) => {
+    const c = { as, f, run };
+    // A dedicated item set: flipping a shared item would change the other cases.
+    const g = await makeItemSet(testOrgItems(f), run.prefix, "GLASS", "engExact");
+    const { projectId, partitionIds: [p1] } = await project(c, [wall(4000, 3000), PLAIN, PLAIN, PLAIN]);
+    const sel = await selection(c, projectId, "GLASS", glassCfg(g));
+    await setDesign(c, p1, 3000, glass4(sel));
+    const before = await submit(c, projectId);
+    expectLines(before.materialList, g, SCENARIO1_WALL_WALL); // profileU: requirement 4, perUnit 3 -> ceil = 2
+
+    const item = U(c, `/inventory/${g.ids.u_profile}`);
+    try {
+      const off = await as.admin.patch(item, { data: { soldInWholePacks: false } });
+      expect(off.status(), await off.text()).toBe(200);
+      const r = await as.admin.post(U(c, `/projects/${projectId}/recompute`));
+      expect(r.status(), await r.text()).toBe(200);
+      const after = await readCalc(as.admin, run.testOrg.slug, projectId);
+      // metres: 3 decimals, half up; every other line is unchanged (whole packs stay ceil)
+      expectLines(after.materialList, g, { ...SCENARIO1_WALL_WALL, profileU: { requirement: 4, quantity: 1.333 } });
+    } finally {
+      const on = await as.admin.patch(item, { data: { soldInWholePacks: true } });
+      expect(on.status(), await on.text()).toBe(200);
+    }
+    const r2 = await as.admin.post(U(c, `/projects/${projectId}/recompute`));
+    expect(r2.status(), await r2.text()).toBe(200);
+    expect((await readCalc(as.admin, run.testOrg.slug, projectId)).materialList).toEqual(before.materialList);
+  });
+
   test("UNRESOLVED_CODE and UNIT_MISMATCH: 422 with the exact problems; nothing is written", async ({ as, f, run }) => {
     const c = { as, f, run };
     const g = await itemSet(c, "gA", "GLASS");

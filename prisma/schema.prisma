@@ -262,6 +262,10 @@ model InventoryItem {
   active           Boolean        @default(true)
   // H-17: real FK to ComponentType (nullable — old rows and uncategorised items stay NULL until backfill)
   componentTypeId  String?
+  // Stage 37 Q-D16: true = purchased in whole packs (ceil on the project total); false = exact quantity.
+  soldInWholePacks Boolean        @default(true)
+  // Stage 37 Q-D21: which inventoryLinked field of the component type this item is a value of (label only; null = Other).
+  partKey          String?
   createdAt        DateTime       @default(now())
   updatedAt        DateTime       @updatedAt
 

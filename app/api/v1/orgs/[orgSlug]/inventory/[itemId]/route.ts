@@ -16,6 +16,7 @@ import {
   deleteInventoryItem,
   DuplicateInventoryCodeError,
   InvalidComponentTypeError,
+  InvalidPartKeyError,
 } from "@/lib/data/catalog";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
@@ -86,11 +87,13 @@ export const GET = withRoute(
  *
  * Auth: authenticated org member with MANAGE_PRICING permission.
  *
- * Body: at least one of code, name, measurementUnit, perUnitQuantity, active.
+ * Body: at least one of code, name, componentTypeId, measurementUnit, perUnitQuantity, active,
+ * soldInWholePacks (boolean), partKey (string | null; validated against the item's component type after
+ * this update, "" is treated as null). Changing componentTypeId without partKey clears partKey (S37-5).
  * All fields are optional; only supplied fields are updated.
  *
  * Returns 200 with { item } on success.
- * Returns 400 on invalid field types or empty body.
+ * Returns 400 on invalid field types, an invalid partKey, or empty body.
  * Returns 404 if the item is not found in the org (tenancy guard: wrong-org items
  *   are indistinguishable from missing items).
  * Returns 409 if the new code collides with an existing item in the org.
@@ -158,8 +161,17 @@ export const PATCH = withRoute(
   if (b.active !== undefined && typeof b.active !== "boolean") {
     return apiBadRequest("active must be a boolean");
   }
+  if (b.soldInWholePacks !== undefined && typeof b.soldInWholePacks !== "boolean") {
+    return apiBadRequest("soldInWholePacks must be a boolean");
+  }
+  if (b.partKey !== undefined && b.partKey !== null && typeof b.partKey !== "string") {
+    return apiBadRequest("partKey must be a string or null");
+  }
 
-  const updateFields = ["code", "name", "componentTypeId", "measurementUnit", "perUnitQuantity", "active"];
+  const updateFields = [
+    "code", "name", "componentTypeId", "measurementUnit", "perUnitQuantity", "active",
+    "soldInWholePacks", "partKey",
+  ];
   const hasAnyField = updateFields.some((f) => b[f] !== undefined);
   if (!hasAnyField) {
     return apiBadRequest("At least one field must be provided for update");
@@ -173,6 +185,9 @@ export const PATCH = withRoute(
       measurementUnit: b.measurementUnit as string | undefined,
       perUnitQuantity: b.perUnitQuantity as number | undefined,
       active: b.active as boolean | undefined,
+      soldInWholePacks: b.soldInWholePacks as boolean | undefined,
+      // Stage 37 Q-D21: blank means Other (null).
+      partKey: typeof b.partKey === "string" ? b.partKey.trim() || null : (b.partKey as null | undefined),
     });
     if (!item) {
       return apiNotFound("Inventory item not found");
@@ -184,6 +199,9 @@ export const PATCH = withRoute(
     }
     if (err instanceof InvalidComponentTypeError) {
       return apiUnprocessable(err.message);
+    }
+    if (err instanceof InvalidPartKeyError) {
+      return apiBadRequest(err.message);
     }
     log.error("[PATCH /api/v1/orgs/[orgSlug]/inventory/[itemId]] updateInventoryItem", { err });
     return apiServerError();

@@ -6,7 +6,7 @@
  */
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { resolveAndAggregate } from "../../lib/materials/resolve";
+import { resolveAndAggregate, itemQuantity } from "../../lib/materials/resolve";
 import { ProblemCollector } from "../../lib/materials/problems";
 import type { RawMaterialLine } from "../../lib/materials/evaluate";
 import type { InventoryRow } from "../../lib/data/inventory";
@@ -22,6 +22,7 @@ function makeInventoryMap(items: Array<[string, Partial<InventoryRow>]>): Map<st
       perUnitQuantity: overrides.perUnitQuantity ?? 1,
       active: overrides.active ?? true,
       componentTypeId: overrides.componentTypeId ?? null,
+      soldInWholePacks: overrides.soldInWholePacks ?? true,
     });
   }
   return m;
@@ -199,9 +200,9 @@ describe("resolveAndAggregate — slot merge and determinism", () => {
     ]);
     // CODE-A exists only for "metres"; create a separate entry for "pieces" to avoid UNIT_MISMATCH
     const invBoth = new Map(inv);
-    invBoth.set("CODE-A", { name: "Item CODE-A metres", measurementUnit: "metres", perUnitQuantity: 1, active: true, componentTypeId: null });
+    invBoth.set("CODE-A", { name: "Item CODE-A metres", measurementUnit: "metres", perUnitQuantity: 1, active: true, componentTypeId: null, soldInWholePacks: true });
     // Add a second inventory entry so "pieces" can resolve
-    invBoth.set("CODE-B", { name: "Item CODE-B pieces", measurementUnit: "pieces", perUnitQuantity: 1, active: true, componentTypeId: null });
+    invBoth.set("CODE-B", { name: "Item CODE-B pieces", measurementUnit: "pieces", perUnitQuantity: 1, active: true, componentTypeId: null, soldInWholePacks: true });
     const lines = [
       makeLine({ code: "CODE-B", unit: "pieces" }),
       makeLine({ code: "CODE-A", unit: "metres" }),
@@ -320,5 +321,66 @@ describe("resolveAndAggregate — perUnitQuantity guard (MINOR-1 — review-b5-1
     assert.equal(c.hasAny(), false);
     assert.equal(result.length, 1);
     assert.equal(result[0].quantity, Math.ceil(0.005 / 0.001)); // 5
+  });
+});
+
+// ─── Stage 37 Batch 1: rounding rules (Q-D16) ────────────────────────────────
+
+describe("itemQuantity (Stage 37 Q-D16)", () => {
+  const cases: Array<[string, number, number, boolean, string, number]> = [
+    ["whole packs, pack 1, 27.3 -> 28", 27.3, 1, true, "metres", 28],
+    ["whole packs, pack 3, 27.3 -> 10", 27.3, 3, true, "metres", 10],
+    ["exact multiple stays", 27, 1, true, "metres", 27],
+    ["float noise above a whole number does not add a pack", 27.000000000000004, 1, true, "metres", 27],
+    ["a real overshoot adds a pack", 27.00001, 1, true, "metres", 28],
+    ["tiny positive requirement -> 1 pack", 1e-12, 1, true, "metres", 1],
+    ["zero requirement -> 0", 0, 1, true, "metres", 0],
+    ["exact metres, 27.3 stays 27.3", 27.3, 1, false, "metres", 27.3],
+    ["exact metres rounds to 3 dp", 27.3004, 1, false, "metres", 27.3],
+    ["exact metres 0.125", 0.125, 1, false, "metres", 0.125],
+    ["exact metres divides by perUnit", 10, 4, false, "metres", 2.5],
+    ["exact m2 rounds to 2 dp (down)", 27.304, 1, false, "m²", 27.3],
+    ["exact m2 rounds half up", 27.305, 1, false, "m²", 27.31],
+    ["exact m2 1.005 -> 1.01 (no float drift)", 1.005, 1, false, "m²", 1.01],
+    ["exact pieces use 2 dp", 2.346, 1, false, "pieces", 2.35],
+  ];
+  for (const [title, req, per, whole, unit, expected] of cases) {
+    test(title, () => assert.equal(itemQuantity(req, per, whole, unit), expected));
+  }
+});
+
+describe("resolveAndAggregate, rounding on the project total (Stage 37)", () => {
+  test("ceil once on the project total across rooms: 0.4 + 0.4 with pack 1 -> 1, not 2", () => {
+    const inv = makeInventoryMap([["X", { perUnitQuantity: 1 }]]);
+    const lines = [
+      makeLine({ code: "X", requirement: 0.4, roomId: "room-1" }),
+      makeLine({ code: "X", requirement: 0.4, roomId: "room-2" }),
+    ];
+    const result = resolveAndAggregate(lines, inv, new ProblemCollector(), emptyLabels, emptyLabels);
+    assert.equal(result[0].quantity, 1);
+  });
+
+  test("soldInWholePacks=false carries the exact quantity into the line (27.3)", () => {
+    const inv = makeInventoryMap([["X", { perUnitQuantity: 1, soldInWholePacks: false }]]);
+    const lines = [makeLine({ code: "X", requirement: 27.3 })];
+    const result = resolveAndAggregate(lines, inv, new ProblemCollector(), emptyLabels, emptyLabels);
+    assert.equal(result[0].quantity, 27.3);
+  });
+
+  test("not whole packs still fails UNIT_MISMATCH strictly (no conversion, Q-D23)", () => {
+    const inv = makeInventoryMap([["X", { measurementUnit: "ft", soldInWholePacks: false }]]);
+    const lines = [makeLine({ code: "X", unit: "metres", requirement: 3 })];
+    const c = new ProblemCollector();
+    const result = resolveAndAggregate(lines, inv, c, emptyLabels, emptyLabels);
+    assert.equal(result.length, 0);
+    assert.equal(c.report().problems[0].kind, "UNIT_MISMATCH");
+  });
+
+  test("a roll item bills in rolls", () => {
+    const inv = makeInventoryMap([["R", { measurementUnit: "roll", perUnitQuantity: 1 }]]);
+    const lines = [makeLine({ code: "R", unit: "roll", requirement: 2 })];
+    const result = resolveAndAggregate(lines, inv, new ProblemCollector(), emptyLabels, emptyLabels);
+    assert.equal(result[0].quantity, 2);
+    assert.equal(result[0].unit, "roll");
   });
 });

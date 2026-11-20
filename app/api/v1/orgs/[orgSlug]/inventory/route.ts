@@ -14,6 +14,7 @@ import {
   createInventoryItem,
   DuplicateInventoryCodeError,
   InvalidComponentTypeError,
+  InvalidPartKeyError,
 } from "@/lib/data/catalog";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
@@ -91,10 +92,12 @@ export const GET = withRoute(
  * Auth: authenticated org member with MANAGE_PRICING permission.
  *
  * Required body fields: code (string), name (string), measurementUnit (string).
- * Optional body fields: perUnitQuantity (number > 0), active (boolean), attributes (object).
+ * Optional body fields: perUnitQuantity (number > 0), active (boolean), attributes (object),
+ * soldInWholePacks (boolean, default true), partKey (string | null; must be an inventory-linked field
+ * key of the item's component type, "" is treated as null).
  *
  * Returns 201 with { item } on success.
- * Returns 400 on missing/invalid required fields.
+ * Returns 400 on missing/invalid required fields or an invalid partKey.
  * Returns 409 if an item with the same code already exists in the org (duplicate code).
  *
  * Stage 25 Batch 7.
@@ -146,6 +149,8 @@ export const POST = withRoute(
   const perUnitQuantity = b.perUnitQuantity;
   const active = b.active;
   const attributes = b.attributes;
+  const soldInWholePacks = b.soldInWholePacks;
+  const partKeyRaw = b.partKey;
 
   if (typeof code !== "string" || code.trim() === "") {
     return apiBadRequest("code is required and must be a non-empty string");
@@ -173,6 +178,15 @@ export const POST = withRoute(
     return apiBadRequest("attributes must be an object");
   }
 
+  if (soldInWholePacks !== undefined && typeof soldInWholePacks !== "boolean") {
+    return apiBadRequest("soldInWholePacks must be a boolean");
+  }
+  if (partKeyRaw !== undefined && partKeyRaw !== null && typeof partKeyRaw !== "string") {
+    return apiBadRequest("partKey must be a string or null");
+  }
+  // Stage 37 Q-D21: blank means Other (null).
+  const partKey = typeof partKeyRaw === "string" ? partKeyRaw.trim() || null : (partKeyRaw as null | undefined);
+
   try {
     const item = await createInventoryItem(session, {
       code,
@@ -182,6 +196,8 @@ export const POST = withRoute(
       perUnitQuantity: perUnitQuantity as number | undefined,
       active: active as boolean | undefined,
       attributes: attributes as object | undefined,
+      soldInWholePacks: soldInWholePacks as boolean | undefined,
+      partKey,
     });
     return NextResponse.json({ item }, { status: 201 });
   } catch (err) {
@@ -190,6 +206,9 @@ export const POST = withRoute(
     }
     if (err instanceof InvalidComponentTypeError) {
       return apiUnprocessable(err.message);
+    }
+    if (err instanceof InvalidPartKeyError) {
+      return apiBadRequest(err.message);
     }
     log.error("[POST /api/v1/orgs/[orgSlug]/inventory] createInventoryItem", { err });
     return apiServerError();

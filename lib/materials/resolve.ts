@@ -5,7 +5,7 @@
  * `resolveAndAggregate()` is the only public API. It:
  *   1. Aggregates rawLines by (code, unit), summing requirement and merging slots.
  *   2. Resolves each group against the inventory map (UNRESOLVED_CODE / INACTIVE_ITEM / UNIT_MISMATCH).
- *   3. Applies Math.ceil() ONCE on the project total — never per-room, never per rawLine.
+ *   3. Rounds ONCE on the project total (ceil when soldInWholePacks, exact otherwise), never per-room, never per rawLine.
  *   4. Sorts the resulting list deterministically by (code, unit).
  *
  * Purity contract: imports only from lib/summary/types, lib/materials/evaluate (type-only),
@@ -28,6 +28,37 @@ interface AggGroup {
   sampleLines: RawMaterialLine[];
   /** Total number of rawLines in the group (for occurrenceCount). */
   lineCount: number;
+}
+
+// ─── Quantity rounding (Stage 37 Q-D16) ───────────────────────────────────────
+
+/**
+ * Tolerance in packs: a float sum a hair above a whole number (27.000000000000004) must not buy an
+ * extra pack. Tiny on purpose (1e-9 pack); real requirements are never this close to a boundary.
+ */
+const PACK_EPSILON = 1e-9;
+
+/** Round half up to `dp` decimals via exponent strings (avoids 1.005 * 100 float drift). */
+function roundHalfUp(x: number, dp: number): number {
+  return Number(`${Math.round(Number(`${x}e${dp}`))}e-${dp}`);
+}
+
+/**
+ * Quantity to buy for one aggregated (code, unit) group. `perUnit` must be > 0 (step 2e guards it).
+ * Whole packs: ceil once on the project total, minus the tolerance, at least 1 pack for any positive
+ * requirement. Not whole packs: the exact ratio, 3 decimals for metres and 2 for every other unit.
+ */
+export function itemQuantity(
+  requirement: number,
+  perUnit: number,
+  soldInWholePacks: boolean,
+  unit: string,
+): number {
+  const ratio = requirement / perUnit;
+  if (soldInWholePacks) {
+    return ratio > 0 ? Math.max(1, Math.ceil(ratio - PACK_EPSILON)) : 0;
+  }
+  return roundHalfUp(ratio, unit === "metres" ? 3 : 2);
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -157,8 +188,8 @@ export function resolveAndAggregate(
       continue;
     }
 
-    // Step 2f: success — ceil() applied ONCE here on the project total
-    const quantity = Math.ceil(requirement / item.perUnitQuantity);
+    // Step 2f: success: rounding applied ONCE here on the project total (Q-D16)
+    const quantity = itemQuantity(requirement, item.perUnitQuantity, item.soldInWholePacks, unit);
     const slotArr = Array.from(slots);
     materialList.push({
       code,
