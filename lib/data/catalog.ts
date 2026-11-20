@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import type { SessionData } from "@/lib/session";
 import { parseFieldsSchema, parseFieldOptionsConfig } from "@/lib/parse-field-config";
 import { validateMatchAttributes } from "@/lib/inventory-matches";
+import type { ItemPriceRow } from "@/lib/item-price";
 
 // ─── Domain errors ────────────────────────────────────────────────────────────
 
@@ -368,44 +369,42 @@ export async function assertInventoryItemInOrg(
 }
 
 /**
- * Upsert (add or update) an ItemPrice for an InventoryItem + currency pair.
- * Tenancy guard: verifies the InventoryItem belongs to the session org before writing.
+ * Replace the full price list of one InventoryItem (Stage 38, S38-3). Rows are upserted by
+ * (inventoryItemId, currency) so ItemPrice.id and createdAt stay stable; currencies absent from `rows`
+ * are deleted. One transaction. Tenancy guard: returns null when the item is missing or belongs to another org.
+ * Money arrives as validated 2 dp strings (lib/item-price.ts), never floats.
  */
-export async function upsertItemPrice(
+export async function replaceItemPrices(
   session: SessionData,
   itemId: string,
-  currency: string,
-  price: number,
-): Promise<void> {
-  await assertInventoryItemInOrg(itemId, session.organizationId);
-  await prisma.itemPrice.upsert({
-    where: {
-      inventoryItemId_currency: { inventoryItemId: itemId, currency },
-    },
-    update: { price: price.toFixed(2), organizationId: session.organizationId },
-    create: {
-      organizationId: session.organizationId,
-      inventoryItemId: itemId,
-      currency,
-      price: price.toFixed(2),
-    },
+  rows: ItemPriceRow[],
+) {
+  const owned = await prisma.inventoryItem.findFirst({
+    where: { id: itemId, organizationId: session.organizationId },
+    select: { id: true },
   });
-}
-
-/**
- * Delete a single ItemPrice row.
- * Tenancy guard: verifies the ItemPrice belongs to the session org before deleting.
- * Returns the inventoryItemId so the caller can revalidate the correct item page.
- */
-export async function deleteItemPrice(
-  session: SessionData,
-  itemPriceId: string,
-): Promise<{ inventoryItemId: string }> {
-  const existing = await prisma.itemPrice.findFirst({
-    where: { id: itemPriceId, organizationId: session.organizationId },
-    select: { id: true, inventoryItemId: true },
+  if (!owned) return null;
+  return prisma.$transaction(async (tx) => {
+    for (const r of rows) {
+      await tx.itemPrice.upsert({
+        where: { inventoryItemId_currency: { inventoryItemId: itemId, currency: r.currency } },
+        update: { price: r.price, minPrice: r.minPrice, allowAbove: r.allowAbove },
+        create: {
+          organizationId: session.organizationId,
+          inventoryItemId: itemId,
+          currency: r.currency,
+          price: r.price,
+          minPrice: r.minPrice,
+          allowAbove: r.allowAbove,
+        },
+      });
+    }
+    await tx.itemPrice.deleteMany({
+      where: { inventoryItemId: itemId, currency: { notIn: rows.map((r) => r.currency) } },
+    });
+    return tx.itemPrice.findMany({
+      where: { inventoryItemId: itemId },
+      orderBy: { currency: "asc" },
+    });
   });
-  if (!existing) throw new Error("ItemPrice not found or access denied");
-  await prisma.itemPrice.delete({ where: { id: itemPriceId } });
-  return { inventoryItemId: existing.inventoryItemId };
 }

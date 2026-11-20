@@ -46,7 +46,7 @@ export async function getOrgBySlug(slug: string) {
 export async function getOrgById(orgId: string) {
   return prisma.organization.findUnique({
     where: { id: orgId },
-    select: { name: true, slug: true },
+    select: { name: true, slug: true, defaultCurrency: true },
   });
 }
 

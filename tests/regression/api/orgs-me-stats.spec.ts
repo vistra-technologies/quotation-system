@@ -43,7 +43,7 @@ test.describe("GET /api/v1/orgs/[orgSlug]/me", () => {
       expect(Object.keys(me).sort()).toEqual(
         [
           "adminPermissions", "externalCompanyCurrency", "externalCompanyId", "externalCompanyName", "firstName", "lastName", "mobile", "name", "orgName",
-          "permissionCodes", "profileEmail", "roleName", "userId", "username",
+          "orgDefaultCurrency", "permissionCodes", "profileEmail", "roleName", "userId", "username",
         ].sort(),
       );
       expect(typeof me.firstName).toBe("string");
@@ -54,8 +54,9 @@ test.describe("GET /api/v1/orgs/[orgSlug]/me", () => {
       expect(me.userId).toBe(run.users[role].id);
       expect(me.username).toBe(run.users[role].username);
       expect(me.roleName).toBe(ROLE_NAME[role]);
+      expect(["INR", "AED", "USD"]).toContain(me.orgDefaultCurrency); // Stage 38: every user reads the org default
       expect([...(me.permissionCodes as string[])].sort()).toEqual([...ROLE_PERMISSIONS[role]].sort());
-      const adminish = ["MANAGE_USERS", "MANAGE_FEATURES", "MANAGE_PRICING"];
+      const adminish = ["MANAGE_USERS", "MANAGE_FEATURES", "MANAGE_PRICING", "MANAGE_ORG"]; // Stage 38: MANAGE_ORG clears the admin layout gate
       expect([...(me.adminPermissions as string[])].sort()).toEqual(ROLE_PERMISSIONS[role].filter((p) => adminish.includes(p)).sort());
       if (role === "admin" || role === "member") {
         expect(me.externalCompanyId).toBeNull();
@@ -333,7 +334,7 @@ test.describe("GET /api/v1/orgs (public single-org lookup, Stage 31 S31-6)", () 
 });
 
 test.describe("GET /api/v1/permissions", () => {
-  test("admin (MANAGE_FEATURES): the catalog holds the 8 permission codes, each {id, code, description}", async ({ as, run }) => {
+  test("admin (MANAGE_FEATURES): the catalog holds the 9 permission codes, each {id, code, description}", async ({ as, run }) => {
     const r = await as.admin.get(apiUrl(run.testOrg.slug, "/api/v1/permissions"));
     expect(r.status(), await r.text()).toBe(200);
     const { permissions } = (await r.json()) as { permissions: Record<string, unknown>[] };

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   SUPPORTED_CURRENCIES,
   isSupportedCurrency,
+  resolveDefaultCurrency,
   CURRENCY_ERROR_MESSAGE,
   DEFAULT_CURRENCY_ERROR_MESSAGE,
 } from "../../lib/currency";
@@ -22,4 +23,12 @@ test("the error messages are derived from the constant", () => {
   assert.equal(CURRENCY_ERROR_MESSAGE, "currency must be one of INR, AED, USD");
   // external-company wording is unchanged
   assert.equal(DEFAULT_CURRENCY_ERROR_MESSAGE, 'defaultCurrency must be "INR", "AED", or "USD"');
+});
+
+test("resolveDefaultCurrency: company wins, then org default, then INR", () => {
+  assert.equal(resolveDefaultCurrency("AED", "USD"), "AED");
+  assert.equal(resolveDefaultCurrency(null, "USD"), "USD");
+  assert.equal(resolveDefaultCurrency(undefined, "AED"), "AED");
+  assert.equal(resolveDefaultCurrency("EUR", "bogus"), "INR");
+  assert.equal(resolveDefaultCurrency(null, null), "INR");
 });

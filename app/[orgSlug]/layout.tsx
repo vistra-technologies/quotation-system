@@ -1,5 +1,5 @@
 import { internalFetch } from "@/lib/internal-fetch";
-import { isSupportedCurrency, type SupportedCurrency } from "@/lib/currency";
+import { isSupportedCurrency, resolveDefaultCurrency, type SupportedCurrency } from "@/lib/currency";
 import { usableEstimateTypes, type ComponentTypeInput, type EstimateType } from "@/lib/quick-estimate/palette";
 import { buildPricingLookup, type PricingRowInput } from "@/lib/quick-estimate/suggest";
 import { detectIsSubdomain } from "@/lib/orgHref";
@@ -108,6 +108,7 @@ export default async function OrgSlugLayout({
     mobile: string | null;
     profileEmail: string | null;
     externalCompanyCurrency: string | null;
+    orgDefaultCurrency: string;
   };
   const estimate = await typesPromise;
   const pricing = buildPricingLookup(await pricingPromise, estimate.types);
@@ -132,7 +133,7 @@ export default async function OrgSlugLayout({
       orgName={me.orgName}
       enabled={estimate.enabled}
       types={estimate.types}
-      defaultCurrency={estimateCurrency ?? "INR"}
+      defaultCurrency={resolveDefaultCurrency(estimateCurrency, me.orgDefaultCurrency)}
       pricing={pricing}
     >
     <div className="flex h-screen bg-bg-page">

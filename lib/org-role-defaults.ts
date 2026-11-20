@@ -28,6 +28,7 @@ export const DEFAULT_ROLE_DEFS: readonly RoleDef[] = [
       "MANAGE_FEATURES",
       "VIEW_ALL_DATA",
       "MANAGE_PRICING",
+      "MANAGE_ORG",
       "APPLY_DISCOUNT",
     ],
   },

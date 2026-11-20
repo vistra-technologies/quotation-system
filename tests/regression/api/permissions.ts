@@ -1,11 +1,12 @@
 import type { Role } from "../fixtures/run-state";
 
-/** The global permission catalog (lib/rbac.ts PERMISSIONS / the 8 seeded Permission rows). */
+/** The global permission catalog (lib/rbac.ts PERMISSIONS / the 9 seeded Permission rows). */
 export const PERMISSION_CODES = [
   "MANAGE_USERS",
   "MANAGE_FEATURES",
   "VIEW_ALL_DATA",
   "MANAGE_PRICING",
+  "MANAGE_ORG",
   "APPLY_DISCOUNT",
   "DESIGN",
   "QUOTE",
@@ -27,7 +28,7 @@ export const ROLE_NAME: Record<Role, string> = {
  * expectation derived from it) is updated.
  */
 export const ROLE_PERMISSIONS: Record<Role, PermissionCode[]> = {
-  admin: ["MANAGE_USERS", "MANAGE_FEATURES", "VIEW_ALL_DATA", "MANAGE_PRICING", "APPLY_DISCOUNT"],
+  admin: ["MANAGE_USERS", "MANAGE_FEATURES", "VIEW_ALL_DATA", "MANAGE_PRICING", "MANAGE_ORG", "APPLY_DISCOUNT"],
   member: ["VIEW_ALL_DATA", "MANAGE_PRICING", "APPLY_DISCOUNT"],
   distributor: ["DESIGN", "QUOTE", "ORDER"],
   architect: ["DESIGN"],

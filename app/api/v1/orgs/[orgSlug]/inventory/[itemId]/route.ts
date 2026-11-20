@@ -19,6 +19,7 @@ import {
   InvalidPartKeyError,
   InvalidAttributesError,
 } from "@/lib/data/catalog";
+import { serializeItemWithPrices } from "@/lib/item-price";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -74,7 +75,7 @@ export const GET = withRoute(
     if (!item) {
       return apiNotFound("Inventory item not found");
     }
-    return NextResponse.json({ item });
+    return NextResponse.json({ item: serializeItemWithPrices(item) });
   } catch (err) {
     log.error("[GET /api/v1/orgs/[orgSlug]/inventory/[itemId]] getInventoryItemById", { err });
     return apiServerError();

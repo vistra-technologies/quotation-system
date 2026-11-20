@@ -29,6 +29,8 @@ model Organization {
   // Stage 29: max User rows (active or not) the org may hold. SuperAdmin-edited only; DB CHECK >= 1
   // (added in the migration, which Prisma cannot express here). Enforced by lib/data/user-limit.ts.
   userLimit         Int               @default(3)
+  // Stage 38: default currency for new projects/inquiries/Quick Estimate when the user has no company currency.
+  defaultCurrency   String            @default("INR")
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
   // Stage 2 relations
@@ -286,7 +288,10 @@ model ItemPrice {
   organizationId  String
   inventoryItemId String
   currency        String        // ISO code, e.g. "AED", "USD"
-  price           Decimal
+  price           Decimal       // the Max (list) price
+  // Stage 38: the lowest price a quotation line may be edited down to (<= price); allowAbove lets a line go above price.
+  minPrice        Decimal
+  allowAbove      Boolean       @default(false)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 

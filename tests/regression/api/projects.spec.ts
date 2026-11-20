@@ -472,7 +472,16 @@ test.describe("projects: submit design / calculation / recompute", () => {
     const raw = await c.text();
     expect(raw).not.toContain("materialByRoom");
     const calc = JSON.parse(raw) as { computedAt: string; status: string; errorDetail: unknown; summary: unknown; materialList: unknown[]; formulaSet: { name: string; version: number } };
-    expect(Object.keys(calc).sort()).toEqual(["computedAt", "errorDetail", "formulaSet", "materialList", "status", "summary"]);
+    expect(Object.keys(calc).sort()).toEqual(["computedAt", "errorDetail", "formulaSet", "materialList", "missingPrices", "status", "summary"]);
+    // Stage 38 AC3: items of the list with no price in the project currency (only codes of the list, deduped).
+    const mp = (calc as unknown as { missingPrices: { currency: string; items: { code: string; name: string }[] } }).missingPrices;
+    expect(["INR", "AED", "USD"]).toContain(mp.currency);
+    const listCodes = (calc.materialList as { code: string }[]).map((l) => l.code);
+    for (const it of mp.items) {
+      expect(Object.keys(it).sort()).toEqual(["code", "name"]);
+      expect(listCodes).toContain(it.code);
+    }
+    expect(new Set(mp.items.map((i) => i.code)).size).toBe(mp.items.length);
     expect(calc.status).toBe("OK");
     expect(calc.errorDetail).toBeNull();
     expect(calc.summary).toBeTruthy();
@@ -488,6 +497,34 @@ test.describe("projects: submit design / calculation / recompute", () => {
     expect(await readProjectState(w.projectId)).toMatchObject({ designSubmittedAt: expect.any(String), calcCount: 1 });
     const g = (await json<{ project: { selectionCount: number; partitionCount: number; designSubmittedAt: string } }>(await as.admin.get(url(`/projects/${w.projectId}`)))).project;
     expect(g).toMatchObject({ selectionCount: 1, partitionCount: 1, designSubmittedAt: sp.designSubmittedAt });
+  });
+
+  test("AC3: missingPrices lists unpriced list items; pricing one in the project currency removes it (prices restored)", async ({ as, f, url }) => {
+    const w = await readyWall(f, as.admin, url);
+    await expectSubmitted(await as.member.post(url(`/projects/${w.projectId}/submit-design`)));
+    type Calc = { materialList: { code: string }[]; missingPrices: { currency: string; items: { code: string; name: string }[] } };
+    const readCalc = async () => (await json<Calc>(await as.member.get(url(`/projects/${w.projectId}/calculation`))));
+    const before = await readCalc();
+    const { currency } = before.missingPrices;
+    const target = before.missingPrices.items[0]?.code ?? before.materialList[0].code;
+    const inv = await json<{ items: { id: string; code: string; prices: { currency: string; price: string; minPrice: string; allowAbove: boolean }[] }[] }>(await as.admin.get(url("/inventory")));
+    const item = inv.items.find((i) => i.code === target);
+    expect(item, `inventory item ${target}`).toBeTruthy();
+    // Rule 10: record the item's own price list first and put exactly that back, even when an assertion fails.
+    const prior = item!.prices.map((x) => ({ currency: x.currency, price: x.price, minPrice: x.minPrice, allowAbove: x.allowAbove }));
+    try {
+      const others = prior.filter((x) => x.currency !== currency);
+      const put = await as.admin.put(url(`/inventory/${item!.id}/prices`), { data: [...others, { currency, price: "10.00", minPrice: "8.00", allowAbove: false }] });
+      expect(put.status(), await put.text()).toBe(200);
+      const after = await readCalc();
+      expect(after.missingPrices.currency).toBe(currency);
+      expect(after.missingPrices.items.map((i) => i.code)).not.toContain(target);
+      expect(after.missingPrices.items.length).toBe(before.missingPrices.items.filter((i) => i.code !== target).length);
+    } finally {
+      const back = await as.admin.put(url(`/inventory/${item!.id}/prices`), { data: prior });
+      expect(back.status(), await back.text()).toBe(200);
+    }
+    expect((await readCalc()).missingPrices.items.map((i) => i.code).includes(target)).toBe(before.missingPrices.items.some((i) => i.code === target));
   });
 
   test("recompute: never computed → 409; after submit → 200 with a later computedAt; designSubmittedAt untouched", async ({ as, f, url }) => {

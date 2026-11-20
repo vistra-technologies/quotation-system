@@ -8,9 +8,9 @@
  * Test-Org items come from `f.inventoryItem` (ledgered kind `inventoryItem`, deleted at teardown) or are
  * ledgered by hand the moment a direct POST returns 201. Org-B items go with org B at teardown.
  *
- * There is NO price write route: `ItemPrice` rows are only read (GET includes `prices`, ordered by
- * currency); `upsertItemPrice` / `deleteItemPrice` in lib/data/catalog.ts have no caller. A new item's
- * `prices` is therefore always [] here.
+ * Prices (Stage 38): `PUT /inventory/[itemId]/prices` replaces an item's whole price list (MANAGE_PRICING);
+ * GET includes `prices` ordered by currency, money as 2 dp strings. A new item starts with `prices: []`.
+ * Price tests only touch items created here (ledgered `inventoryItem`, deleted at teardown, prices cascade).
  */
 import type { APIResponse } from "@playwright/test";
 import { test, expect } from "../fixtures/test";
@@ -29,6 +29,7 @@ covers("POST /api/v1/orgs/[orgSlug]/inventory");
 covers("GET /api/v1/orgs/[orgSlug]/inventory/[itemId]");
 covers("PATCH /api/v1/orgs/[orgSlug]/inventory/[itemId]");
 covers("DELETE /api/v1/orgs/[orgSlug]/inventory/[itemId]");
+covers("PUT /api/v1/orgs/[orgSlug]/inventory/[itemId]/prices");
 
 type Item = {
   id: string;
@@ -165,6 +166,25 @@ const patchInvalid = [
   { name: "JSON null body", body: null, status: 400 },
 ];
 
+const P = { currency: "INR", price: "2800.00", minPrice: "2500.00", allowAbove: false };
+const pricesInvalid = [
+  { name: "body {} (not an array)", body: {}, status: 400 },
+  { name: "body a string", body: "x", status: 400 },
+  { name: "JSON null body", body: null, status: 400 },
+  { name: "row not an object", body: [5], status: 400 },
+  { name: 'currency "EUR"', body: [{ ...P, currency: "EUR" }], status: 400 },
+  { name: "currency missing", body: [{ price: "1", minPrice: "1", allowAbove: false }], status: 400 },
+  { name: "duplicate currency (case-insensitive)", body: [P, { ...P, currency: "inr" }], status: 400 },
+  { name: 'price "abc"', body: [{ ...P, price: "abc" }], status: 400 },
+  { name: "price with 3 decimals", body: [{ ...P, price: "10.123" }], status: 400 },
+  { name: "price negative", body: [{ ...P, price: -1 }], status: 400 },
+  { name: "minPrice negative", body: [{ ...P, minPrice: -1 }], status: 400 },
+  { name: "minPrice missing", body: [{ currency: "INR", price: "10", allowAbove: false }], status: 400 },
+  { name: "minPrice above price", body: [{ ...P, minPrice: "2800.01" }], status: 400 },
+  { name: "allowAbove missing", body: [{ currency: "INR", price: "10", minPrice: "5" }], status: 400 },
+  { name: 'allowAbove "true" (string)', body: [{ ...P, allowAbove: "true" }], status: 400 },
+];
+
 registerNegatives([
   { key: "GET /api/v1/orgs/[orgSlug]/inventory", method: "GET", path: () => "/inventory", permission: "MANAGE_PRICING" },
   {
@@ -201,7 +221,73 @@ registerNegatives([
     unknownId: () => `/inventory/${GHOST}`,
     foreignId: async (c) => `/inventory/${await foreignItemId(c)}`,
   },
-]);
+  {
+    key: "PUT /api/v1/orgs/[orgSlug]/inventory/[itemId]/prices",
+    method: "PUT",
+    path: async (c) => `/inventory/${await sharedItemId(c)}/prices`,
+    permission: "MANAGE_PRICING",
+    body: () => [], // a leaked gate would clear the shared item's prices: it has none, so nothing to lose
+    unknownId: () => `/inventory/${GHOST}/prices`,
+    foreignId: async (c) => `/inventory/${await foreignItemId(c)}/prices`,
+    invalid: pricesInvalid,
+  },
+]);
+
+test.describe("inventory: prices (PUT replaces the whole list)", () => {
+  type Price = { id: string; currency: string; price: string; minPrice: string; allowAbove: boolean };
+  const shape = (ps: Price[]) => ps.map((p) => [p.currency, p.price, p.minPrice, p.allowAbove]);
+
+  test("save two currencies: 2 dp strings ordered by currency; GET item and list agree; allowAbove round-trips", async ({ as, f, url }) => {
+    const item = await f.inventoryItem();
+    const put = await ok<{ prices: Price[] }>(await as.admin.put(url(`/inventory/${item.id}/prices`), {
+      data: [
+        { currency: "USD", price: 35.5, minPrice: "30", allowAbove: true },
+        { currency: " inr ", price: "2800", minPrice: 2500.5, allowAbove: false },
+      ],
+    }));
+    expect(shape(put.prices)).toEqual([
+      ["INR", "2800.00", "2500.50", false],
+      ["USD", "35.50", "30.00", true],
+    ]);
+    const g = await ok<{ item: Item }>(await as.member.get(url(`/inventory/${item.id}`)));
+    expect(shape(g.item.prices as Price[])).toEqual(shape(put.prices));
+    const l = await ok<{ items: Item[] }>(await as.admin.get(url("/inventory")));
+    expect(shape(l.items.find((x) => x.id === item.id)!.prices as Price[])).toEqual(shape(put.prices));
+  });
+
+  test("replace semantics: a later PUT updates in place (stable id) and drops absent currencies; [] clears; minPrice equal to price is valid", async ({ as, f, url }) => {
+    const item = await f.inventoryItem();
+    const first = await ok<{ prices: Price[] }>(await as.admin.put(url(`/inventory/${item.id}/prices`), {
+      data: [P, { currency: "AED", price: "50", minPrice: "40", allowAbove: false }],
+    }));
+    const inrId = first.prices.find((p) => p.currency === "INR")!.id;
+    const second = await ok<{ prices: Price[] }>(await as.admin.put(url(`/inventory/${item.id}/prices`), {
+      data: [{ currency: "INR", price: "3000", minPrice: "3000", allowAbove: true }],
+    }));
+    expect(second.prices).toHaveLength(1);
+    expect(second.prices[0]).toMatchObject({ id: inrId, currency: "INR", price: "3000.00", minPrice: "3000.00", allowAbove: true });
+    const cleared = await ok<{ prices: Price[] }>(await as.admin.put(url(`/inventory/${item.id}/prices`), { data: [] }));
+    expect(cleared.prices).toEqual([]);
+    expect((await ok<{ item: Item }>(await as.admin.get(url(`/inventory/${item.id}`)))).item.prices).toEqual([]);
+  });
+
+  test("a rejected PUT changes nothing; an inactive item can be priced; the { prices: [...] } wrapper is accepted", async ({ as, url, run, ledger }) => {
+    const { res, text, item } = await createItem(as.admin, { run, ledger }, { code: code({ run }, "pr-inactive"), name: "inactive priced", measurementUnit: "pieces", active: false });
+    expect(res.status(), text).toBe(201);
+    const path = url(`/inventory/${item!.id}/prices`);
+    await ok(await as.admin.put(path, { data: { prices: [P] } }));
+    await rejected(await as.admin.put(path, { data: [{ ...P, currency: "USD" }, { ...P, minPrice: "9999" }] }), 400, "INR minPrice must not exceed price");
+    const g = await ok<{ item: Item }>(await as.admin.get(url(`/inventory/${item!.id}`)));
+    expect((g.item.prices as Price[]).map((p) => p.currency)).toEqual(["INR"]);
+  });
+
+  test("cross-org: an org B item under the Test-Org slug is a 404 and keeps its empty price list", async ({ as, orgB, run }) => {
+    const id = await foreignItemId({ run, orgB });
+    await rejected(await as.admin.put(orgApi(run.testOrg.slug, `/inventory/${id}/prices`), { data: [P] }), 404, "Inventory item not found");
+    const own = await orgB.get(orgApi(run.orgB.slug, `/inventory/${id}`));
+    expect(((await own.json()) as { item: Item }).item.prices).toEqual([]);
+  });
+});
 
 test.describe("inventory: CRUD rules", () => {
   test("create (all fields) → get → list; defaults; the response shapes", async ({ as, run, ledger, url }) => {

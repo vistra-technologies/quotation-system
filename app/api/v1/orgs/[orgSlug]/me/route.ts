@@ -37,10 +37,11 @@ export const dynamic = "force-dynamic";
  *     externalCompanyName,             // null for internal users or unknown company
  *     externalCompanyCurrency,         // the company defaultCurrency (INR|AED|USD); null for internal users (Stage 33, Quick Estimate default)
  *     orgName,                         // organization display name
+ *     orgDefaultCurrency,              // Organization.defaultCurrency (INR|AED|USD), every user (Stage 38)
  *     roleName,                        // user's role display name
  *     firstName, lastName, mobile, profileEmail,  // own editable profile (Hotfix 2026-10-10)
  *     permissionCodes: string[],       // ALL effective permission codes for this role
- *     adminPermissions: string[],      // subset: MANAGE_USERS / MANAGE_FEATURES / MANAGE_PRICING only
+ *     adminPermissions: string[],      // subset: MANAGE_USERS / MANAGE_FEATURES / MANAGE_PRICING / MANAGE_ORG only (MANAGE_ORG: Stage 38, C1)
  *   }
  *
  * Consumers:
@@ -99,7 +100,8 @@ export const GET = withRoute(
       (c) =>
         c === PERMISSIONS.MANAGE_USERS ||
         c === PERMISSIONS.MANAGE_FEATURES ||
-        c === PERMISSIONS.MANAGE_PRICING,
+        c === PERMISSIONS.MANAGE_PRICING ||
+        c === PERMISSIONS.MANAGE_ORG,
     );
 
     return NextResponse.json({
@@ -112,6 +114,7 @@ export const GET = withRoute(
         ? externalCompany.defaultCurrency
         : null,
       orgName: org?.name ?? session.organizationId,
+      orgDefaultCurrency: isSupportedCurrency(org?.defaultCurrency) ? org.defaultCurrency : "INR",
       roleName: role?.name ?? session.roleId,
       firstName: profile?.firstName ?? "",
       lastName: profile?.lastName ?? "",

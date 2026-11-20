@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { getSession } from "@/lib/session";
 
 /**
- * Canonical permission codes — mirrors the 8-row Permission catalog seeded in
+ * Canonical permission codes — mirrors the 9-row Permission catalog seeded in
  * prisma/seed.ts.  Import these constants instead of using magic strings.
  */
 export const PERMISSIONS = {
@@ -10,6 +10,7 @@ export const PERMISSIONS = {
   MANAGE_FEATURES: "MANAGE_FEATURES",
   VIEW_ALL_DATA: "VIEW_ALL_DATA",
   MANAGE_PRICING: "MANAGE_PRICING",
+  MANAGE_ORG: "MANAGE_ORG",
   APPLY_DISCOUNT: "APPLY_DISCOUNT",
   DESIGN: "DESIGN",
   QUOTE: "QUOTE",

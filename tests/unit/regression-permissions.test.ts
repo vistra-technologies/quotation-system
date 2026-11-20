@@ -9,10 +9,10 @@ test("regression ROLE_PERMISSIONS mirrors lib/org-role-defaults.ts DEFAULT_ROLE_
   assert.deepEqual(fromSuite, fromDefaults);
 });
 
-test("every default-role permission is one of the 8 catalog codes", () => {
+test("every default-role permission is one of the 9 catalog codes", () => {
   const all = new Set(DEFAULT_ROLE_DEFS.flatMap((d) => d.permissions));
   for (const p of all) assert.ok((PERMISSION_CODES as readonly string[]).includes(p), p);
-  assert.equal(PERMISSION_CODES.length, 8);
+  assert.equal(PERMISSION_CODES.length, 9);
 });
 
 test("deniedRolesFor: single, any-of and explicit overrides", () => {

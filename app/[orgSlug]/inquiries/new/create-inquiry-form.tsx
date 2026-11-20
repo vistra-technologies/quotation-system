@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { LoadingOverlay } from "@/components/loading-overlay";
 import { SelectField } from "@/components/select-field";
 import { CompanyDropdown } from "@/components/company-dropdown";
-import { isSupportedCurrency, SUPPORTED_CURRENCIES, type SupportedCurrency } from "@/lib/currency";
+import { isSupportedCurrency, resolveDefaultCurrency, SUPPORTED_CURRENCIES, type SupportedCurrency } from "@/lib/currency";
 import { formatBudget, stripGroupingSeparators } from "@/lib/format-currency";
 import {
   draftToAttached,
@@ -32,6 +32,8 @@ interface CreateInquiryFormProps {
   externalCompanies: { id: string; name: string; country: "INDIA" | "UAE"; defaultCurrency: string }[];
   /** Back-navigation href for the Cancel button. */
   backHref: string;
+  /** Organization.defaultCurrency (Stage 38): the start currency when no company currency applies. */
+  orgDefaultCurrency: string;
 }
 
 const initialState: CreateInquiryState = { error: null };
@@ -127,14 +129,15 @@ export function CreateInquiryForm({
   lockedCompany,
   externalCompanies,
   backHref,
+  orgDefaultCurrency,
 }: CreateInquiryFormProps) {
   const t = useTranslations("inquiries");
   const [state, formAction, isPending] = useActionState(createInquiry, initialState);
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
 
-  // C6: currency defaults to company's defaultCurrency, else INR (decision 6).
+  // C6: currency defaults to the company's defaultCurrency, else the org default (Stage 38).
   const [selectedCurrency, setSelectedCurrency] = useState<string>(
-    lockedCompany?.defaultCurrency ?? "INR",
+    resolveDefaultCurrency(lockedCompany?.defaultCurrency, orgDefaultCurrency),
   );
 
   // C5: budget display value — controlled input, formatted on blur (decision 7).
@@ -363,7 +366,7 @@ export function CreateInquiryForm({
                       setSelectedCompanyId(id);
                       const co = externalCompanies.find((c) => c.id === id);
                       // C6: update currency default when company selection changes.
-                      setSelectedCurrency(co?.defaultCurrency ?? "INR");
+                      setSelectedCurrency(resolveDefaultCurrency(co?.defaultCurrency, orgDefaultCurrency));
                     }}
                     noneLabel={t("fieldExternalCompanyNone")}
                     ariaLabel={t("fieldExternalCompany")}

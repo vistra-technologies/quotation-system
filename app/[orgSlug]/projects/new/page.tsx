@@ -35,7 +35,10 @@ export default async function NewProjectPage({
   if (meRes.status === 401) redirect(await orgHref(orgSlug, "/login"));
   if (!meRes.ok) redirect(await orgHref(orgSlug, "/login"));
 
-  const me = (await meRes.json()) as { externalCompanyId: string | null };
+  const me = (await meRes.json()) as {
+    externalCompanyId: string | null;
+    orgDefaultCurrency: string;
+  };
 
   // country + defaultCurrency included so the form can derive GST conditional (D20)
   // and default the currency select (C6 — Stage 15 Batch F).
@@ -100,6 +103,7 @@ export default async function NewProjectPage({
         backHref={`${base}/projects`}
         lockedCompany={lockedCompany}
         externalCompanies={externalCompanies}
+        orgDefaultCurrency={me.orgDefaultCurrency}
       />
     </div>
   );

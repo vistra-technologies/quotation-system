@@ -23,6 +23,7 @@ import type { FormulaSetBody, MaterialByRoomEntry, MaterialListLine, Summary, Su
 import { ProblemCollector } from "@/lib/materials/problems";
 import { isGlassCell, type DesignSectionV2 } from "@/lib/partition-design";
 import { ownedProjectWhere } from "@/lib/data/ownership";
+import { findMissingPrices, type MissingPrice } from "@/lib/missing-prices";
 import type { SessionData } from "@/lib/session";
 
 type Db = Prisma.TransactionClient | typeof prisma;
@@ -328,6 +329,8 @@ export interface ProjectCalculationForRead {
   summary: Summary;
   materialList: MaterialListLine[];
   formulaSet: { name: string; version: number };
+  /** Project.currency, so the calculation route can compute `missingPrices` without a second project read. */
+  projectCurrency: string;
 }
 
 /**
@@ -347,7 +350,7 @@ export async function getProjectCalculationForRead(
 ): Promise<ProjectCalculationForRead | { noCalculation: true } | null> {
   const project = await prisma.project.findFirst({
     where: { id: projectId, ...ownedProjectWhere(session) },
-    select: { id: true },
+    select: { id: true, currency: true },
   });
   if (!project) return null;
 
@@ -371,5 +374,28 @@ export async function getProjectCalculationForRead(
     summary: calc.summary as unknown as Summary,
     materialList: calc.materialList as unknown as MaterialListLine[],
     formulaSet: calc.formulaSet,
+    projectCurrency: project.currency,
   };
+}
+
+/**
+ * Material-list items with no ItemPrice in `currency` (Stage 38, S38-5). One org-scoped itemPrice query for
+ * the whole list (never per line). Reused by the quotation create in Batch 3.
+ */
+export async function getMissingPrices(
+  session: SessionData,
+  currency: string,
+  materialList: ReadonlyArray<{ code: string; name: string }>,
+): Promise<MissingPrice[]> {
+  const codes = [...new Set(materialList.map((l) => l.code))];
+  if (codes.length === 0) return [];
+  const rows = await prisma.itemPrice.findMany({
+    where: {
+      organizationId: session.organizationId,
+      currency,
+      inventoryItem: { code: { in: codes } },
+    },
+    select: { inventoryItem: { select: { code: true } } },
+  });
+  return findMissingPrices(materialList, new Set(rows.map((r) => r.inventoryItem.code)));
 }

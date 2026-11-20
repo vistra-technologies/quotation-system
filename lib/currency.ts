@@ -19,3 +19,13 @@ export const DEFAULT_CURRENCY_ERROR_MESSAGE = (() => {
   const quoted = SUPPORTED_CURRENCIES.map((c) => `"${c}"`);
   return `defaultCurrency must be ${quoted.slice(0, -1).join(", ")}, or ${quoted[quoted.length - 1]}`;
 })();
+
+/**
+ * The currency a new project / inquiry / Quick Estimate starts with: the user's company currency wins,
+ * then the organization default, then INR as a last-resort safety net only (Stage 38, S38-7).
+ */
+export function resolveDefaultCurrency(companyCurrency: unknown, orgDefault: unknown): SupportedCurrency {
+  if (isSupportedCurrency(companyCurrency)) return companyCurrency;
+  if (isSupportedCurrency(orgDefault)) return orgDefault;
+  return "INR";
+}

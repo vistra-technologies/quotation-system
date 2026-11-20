@@ -4,7 +4,7 @@ import {
   apiNotFound,
   apiServerError,
 } from "@/lib/api-error";
-import { getProjectCalculationForRead } from "@/lib/data/calculations";
+import { getProjectCalculationForRead, getMissingPrices } from "@/lib/data/calculations";
 import { log } from "@/lib/logger";
 import { withRoute } from "@/lib/with-route";
 
@@ -25,6 +25,9 @@ export const dynamic = "force-dynamic";
  * Returns 404 both when the project doesn't exist/belongs to another org AND when the project exists
  * but has never been computed — the client doesn't need to distinguish the two (the Summary page reads
  * either as "no calculation to show").
+ *
+ * Stage 38: the body also carries `missingPrices: { currency, items: [{ code, name }] }`, the material-list
+ * items with no Inventory price in the project currency.
  *
  * Response body never includes `materialByRoom` (can reach ~90 KB, never needed by any read path —
  * see lib/prisma.ts's client-level omit).
@@ -58,6 +61,9 @@ export const GET = withRoute(
       return apiNotFound("No calculation found for this project");
     }
 
+    // Stage 38: material-list items with no price in the project currency (one query for the whole list).
+    const missing = await getMissingPrices(session, result.projectCurrency, result.materialList);
+
     return NextResponse.json({
       computedAt: result.computedAt,
       status: result.status,
@@ -65,6 +71,7 @@ export const GET = withRoute(
       summary: result.summary,
       materialList: result.materialList,
       formulaSet: result.formulaSet,
+      missingPrices: { currency: result.projectCurrency, items: missing },
     });
   } catch (err) {
     log.error("[GET /api/v1/orgs/[orgSlug]/projects/[projectId]/calculation] getProjectCalculationForRead", { err });
