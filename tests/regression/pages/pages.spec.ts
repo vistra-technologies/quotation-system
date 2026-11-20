@@ -1992,8 +1992,7 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       await page.getByRole("button", { name: "Clear filters" }).click();
       await expect(row(a1)).toHaveCount(1);
 
-      // sort: two clicks on Code = descending, within each Part group
-      await page.getByRole("button", { name: /^Code/ }).click();
+      // sort: Code starts ascending (mockup default), so one click = descending, within each Part group
       await page.getByRole("button", { name: /^Code/ }).click();
       const codes = (await page.locator("tr[data-row-id] td:first-child").allTextContents()).map((c) => c.trim()).filter((c) => c.startsWith(p));
       expect(codes).toEqual([a1, a3, a2]);
