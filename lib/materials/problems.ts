@@ -19,7 +19,8 @@ export type CalculationProblemKind =
   | "INACTIVE_ITEM"            // row found, active: false
   | "NON_FINITE_QUANTITY"      // a quantity expression produced NaN/Infinity
   | "HIDDEN_PARAM"            // a FIRING formula reads a field hidden by showWhen (formula-engine.md rule 8)
-  | "UNLINKED_CODE";          // a visible inventoryLinked value is not an active inventory item of its type (Stage 35 S35-8)
+  | "UNLINKED_CODE"           // a visible inventoryLinked value is not an active inventory item of its type (Stage 35 S35-8)
+  | "MISSING_PRICE";          // a quotation item has no Inventory price in the quotation currency (Stage 38 S38-5)
 
 /** Where the user has to go to fix the problem. Stage 25 groups the popup by this. */
 export type ProblemScope = "DESIGN" | "SELECTION" | "INVENTORY" | "FORMULA_SET";
@@ -56,6 +57,9 @@ export interface CalculationProblem {
   reason?: "NOT_STARTED" | "MALFORMED" | "GLASS_CELL" | "DOOR_CELL";
   /** The offending material code (UNRESOLVED_CODE / UNIT_MISMATCH / INACTIVE_ITEM). */
   code?: string;
+  /** MISSING_PRICE: the item's name and the currency it has no price in (Stage 38). */
+  itemName?: string;
+  currency?: string;
   /** UNRESOLVED_MATCH: the Selection's choices that were matched on, e.g. "ID1 · 12.76". */
   matchChoices?: string;
   /** UNIT_MISMATCH — what the formula declared. */

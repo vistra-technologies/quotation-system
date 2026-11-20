@@ -219,6 +219,14 @@ export async function rgrSeedV1Design(partitionId: string, design: Record<string
 export async function rgrInsertCalculation(projectId: string): Promise<void> {
   runDbOp("rgr:insertCalculation", { projectId });
 }
+/** Read-only: how many quotations a project has (Stage 38). */
+export async function countQuotations(projectId: string): Promise<number> {
+  return runDbOp<number>("countQuotations", { projectId });
+}
+/** Sets a quotation's first line unit price (and amount) directly; Test Org / rgr- orgs only (Stage 38). */
+export async function rgrSetQuotationLineUnitPrice(projectId: string, unitPrice: string): Promise<void> {
+  runDbOp("rgr:setQuotationLineUnitPrice", { projectId, unitPrice });
+}
 export async function rgrSetDesignSubmittedAt(projectId: string): Promise<void> {
   runDbOp("rgr:setDesignSubmittedAt", { projectId });
 }

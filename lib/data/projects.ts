@@ -828,6 +828,10 @@ export async function deleteProject(session: SessionData, projectId: string) {
     // 1–4. Selections, Rooms (+ Partitions), Floors, ProjectCalculation
     await wipeProjectData(tx, session.organizationId, projectId);
 
+    // 4b. Quotation (Stage 38, S38-D7): deleted with its project. Not in wipeProjectData: a project Reset keeps
+    //     the quotation (S38-8). Also Cascade at the DB, explicit so the order never depends on it.
+    await tx.quotation.deleteMany({ where: { projectId, organizationId: session.organizationId } });
+
     // 5. Project itself
     await tx.project.delete({ where: { id: projectId }, select: { id: true } });
   });

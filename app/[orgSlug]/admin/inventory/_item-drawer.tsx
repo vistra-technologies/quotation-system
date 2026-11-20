@@ -104,8 +104,10 @@ export function InventoryItemDrawer({
   const [mode, setMode] = useState<"view" | "edit">(isNew ? "edit" : "view");
   const [draft, setDraft] = useState<ItemDraft>(original);
   const [priceDraft, setPriceDraft] = useState<PriceDraft[]>(originalPrices);
-  // A new item whose POST succeeded but whose prices did not: Save retries only the prices (never a second POST).
+  // A new item whose POST succeeded but whose prices did not: Save never POSTs again. It PATCHes the item when its
+  // fields changed since that POST (createdSnapshot is the draft that was saved) and retries the prices.
   const [createdId, setCreatedId] = useState<string | null>(null);
+  const [createdSnapshot, setCreatedSnapshot] = useState<ItemDraft | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
@@ -120,6 +122,7 @@ export function InventoryItemDrawer({
     setDraft(original);
     setPriceDraft(originalPrices);
     setCreatedId(null);
+    setCreatedSnapshot(null);
     setAttempted(false);
     setSaving(false);
     setBanner(null);
@@ -184,11 +187,12 @@ export function InventoryItemDrawer({
     try {
       let itemId = item?.id ?? createdId;
       let itemSaved = false;
-      if (!(isNew && itemId)) {
-        const body = buildSavePayload(original, draft, draftType, formMode);
-        const url = `/api/v1/orgs/${orgSlug}/inventory${item ? `/${item.id}` : ""}`;
+      const retryingCreate = !item && createdId !== null;
+      if (!retryingCreate || (createdSnapshot !== null && isDirty(createdSnapshot, draft))) {
+        const body = retryingCreate ? buildSavePayload(createdSnapshot!, draft, draftType, "edit") : buildSavePayload(original, draft, draftType, formMode);
+        const url = `/api/v1/orgs/${orgSlug}/inventory${itemId ? `/${itemId}` : ""}`;
         const res = await fetch(url, {
-          method: item ? "PATCH" : "POST",
+          method: itemId ? "PATCH" : "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
         });
@@ -200,8 +204,9 @@ export function InventoryItemDrawer({
         }
         itemSaved = true;
         if (!item) {
-          itemId = (data as { item?: { id?: string } } | null)?.item?.id ?? null;
+          itemId = itemId ?? (data as { item?: { id?: string } } | null)?.item?.id ?? null;
           setCreatedId(itemId);
+          setCreatedSnapshot(draft);
         }
       }
       if (itemId && isPricesDirty(originalPrices, priceDraft)) {
@@ -213,8 +218,9 @@ export function InventoryItemDrawer({
         if (!res.ok) {
           const data: unknown = await res.json().catch(() => null);
           setBanner(apiErrorMessage(data, t("pricesSaveFailed")));
-          // The item itself is saved: refresh the list so the drawer's saved state matches, keep the edits.
-          if (itemSaved && item) onSaved("updated");
+          // The item itself is saved (an update, or a create whose POST/PATCH just succeeded): refresh the list so it
+          // shows (a discarded half-saved create is no longer a ghost), keep the drawer open with the edits.
+          if (itemSaved) onSaved("updated");
           return;
         }
       }

@@ -62,6 +62,8 @@ model Organization {
   activeFormulaSetId      String?
   activeFormulaSet        FormulaSet?           @relation(fields: [activeFormulaSetId], references: [id], onDelete: Restrict)
   projectCalculations     ProjectCalculation[]
+  // Stage 38
+  quotations              Quotation[]
 }
 
 // ────────────────────────────────────────────────────────────
@@ -452,6 +454,8 @@ model Project {
   formulaSetId         String?
   formulaSet           FormulaSet?      @relation(fields: [formulaSetId], references: [id], onDelete: Restrict)
   calculation          ProjectCalculation?
+  // Stage 38: deleted with the project (Cascade); one per project in the UI, schema keeps projectId non-unique (S38-D2).
+  quotations           Quotation[]
 
   @@unique([organizationId, projectNumber])
   @@unique([externalCompanyId, companyProjectNumber])
@@ -741,4 +745,38 @@ model ProjectCalculation {
   updatedAt      DateTime     @updatedAt
 
   @@index([organizationId])
+}
+
+// Stage 38 (38b): a priced quotation for a project. `lines` is a JSONB snapshot (no FK to InventoryItem, written
+// whole); money columns are 2 dp decimals computed in integer cents (lib/money.ts). Stored `status` stays DRAFT
+// (EXPIRED is derived on read); `createdByUserId` / `discountAppliedByUserId` / `externalCompanyId` are plain ids
+// with no FK on purpose (user delete and company delete flows are untouched). Deleted with its project.
+model Quotation {
+  id                      String       @id @default(uuid())
+  organizationId          String
+  organization            Organization @relation(fields: [organizationId], references: [id])
+  externalCompanyId       String?
+  projectId               String
+  project                 Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  quotationNumber         Int          // per-org running number, never resets (S38-D1)
+  status                  String       @default("DRAFT") // DRAFT | EXPIRED | ORDERED; EXPIRED is derived, not stored
+  currency                String
+  lines                   Json         @default("[]")
+  transport               Decimal      @default(0)
+  otherCharges            Decimal      @default(0)
+  discount                Decimal      @default(0) // a percent (0 to 100) or a fixed amount, per discountType
+  discountType            String       @default("PERCENT") // PERCENT | FIXED
+  discountAppliedByUserId String?
+  discountAppliedAt       DateTime?
+  taxPercent              Decimal      @default(0)
+  subtotal                Decimal
+  grandTotal              Decimal
+  pricedAt                DateTime
+  validUntil              DateTime
+  createdByUserId         String?
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  @@unique([organizationId, quotationNumber])
+  @@index([organizationId, projectId])
 }

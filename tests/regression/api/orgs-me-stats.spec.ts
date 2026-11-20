@@ -334,7 +334,7 @@ test.describe("GET /api/v1/orgs (public single-org lookup, Stage 31 S31-6)", () 
 });
 
 test.describe("GET /api/v1/permissions", () => {
-  test("admin (MANAGE_FEATURES): the catalog holds the 9 permission codes, each {id, code, description}", async ({ as, run }) => {
+  test("admin (MANAGE_FEATURES): the catalog holds the 10 permission codes, each {id, code, description}", async ({ as, run }) => {
     const r = await as.admin.get(apiUrl(run.testOrg.slug, "/api/v1/permissions"));
     expect(r.status(), await r.text()).toBe(200);
     const { permissions } = (await r.json()) as { permissions: Record<string, unknown>[] };

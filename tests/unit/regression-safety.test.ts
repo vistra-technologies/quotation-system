@@ -486,3 +486,19 @@ test("restoreDecision: original → done; the recorded temporary name → restor
   assert.equal(restoreDecision("Door (edited by a human)", p), "conflict");
   assert.equal(restoreDecision("rgr-run2-DOOR-renamed", p), "conflict"); // another run's temporary name
 });
+
+test("guard: Stage 38 mutating routes on a foreign slug are refused, the allowed slugs pass", () => {
+  const routes: Array<[string, string]> = [
+    ["PUT", "/inventory/x/prices"],
+    ["POST", "/projects/p1/quotation"],
+    ["POST", "/projects/p1/quotation/refresh"],
+    ["POST", "/projects/p1/quotation/reset-prices"],
+    ["POST", "/projects/p1/quotation/renew"],
+    ["PATCH", "/projects/p1/quotation"],
+  ];
+  for (const [method, tail] of routes) {
+    assert.throws(() => assertMutationAllowed(method, `/api/v1/orgs/cloisons${tail}`, ALLOWED), GuardError, `${method} cloisons${tail}`);
+    assertMutationAllowed(method, `/api/v1/orgs/e2e-testorg${tail}`, ALLOWED);
+    assertMutationAllowed(method, `/api/v1/orgs/rgr-abc-b${tail}`, ALLOWED);
+  }
+});

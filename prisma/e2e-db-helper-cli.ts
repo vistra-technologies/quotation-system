@@ -153,6 +153,21 @@ async function main() {
         });
         return null;
       }
+      case "countQuotations": {
+        // Read-only: quotations of one project (Stage 38 AC9: they go with their project).
+        const { projectId } = input as { projectId: string };
+        return db.quotation.count({ where: { projectId } });
+      }
+      case "setQuotationLineUnitPrice": {
+        // Test-only (rgr: scoped, keyed by projectId): sets the FIRST line's unit price (and its amount) without the
+        // line-edit route (Batch 5), so the "edited line" gates can be exercised. Test Org / rgr- orgs only.
+        const { projectId, unitPrice } = input as { projectId: string; unitPrice: string };
+        const q = await db.quotation.findFirstOrThrow({ where: { projectId }, select: { id: true, lines: true } });
+        const lines = q.lines as Array<{ quantity: number; unitPrice: string; amount: string }>;
+        lines[0] = { ...lines[0], unitPrice, amount: (Math.round(lines[0].quantity * Number(unitPrice) * 100) / 100).toFixed(2) };
+        await db.quotation.update({ where: { id: q.id }, data: { lines } });
+        return null;
+      }
       case "setDesignSubmittedAt": {
         const { projectId } = input as { projectId: string };
         await db.project.update({ where: { id: projectId }, data: { designSubmittedAt: new Date() } });
@@ -289,6 +304,7 @@ async function main() {
           { t: "partition", hasUpdatedAt: true }, { t: "projectCalculation", hasUpdatedAt: true }, { t: "componentType", hasUpdatedAt: true },
           { t: "componentTypeOrgConfig", hasUpdatedAt: true }, { t: "itemPrice", hasUpdatedAt: true },
           { t: "componentCategory", hasUpdatedAt: true }, { t: "productPricing", hasUpdatedAt: true },
+          { t: "quotation", hasUpdatedAt: true },
         ] as const;
         const counts: Record<string, Record<string, number>> = {};
         const rowsByOrg: Record<string, Record<string, Array<{ id: string; updatedAt: Date }>>> = {};

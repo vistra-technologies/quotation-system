@@ -24,7 +24,7 @@ test("assertDeletableInquiry: null → false, rgr- → true, anything else throw
 test("scopedOp maps rgr: ops to their base op and rejects unknown rgr: ops; legacy ops are unscoped", () => {
   assert.deepEqual(scopedOp("rgr:setProjectStatus"), { base: "setProjectStatus", model: "project", idKey: "projectId" });
   assert.deepEqual(scopedOp("rgr:seedV1Design"), { base: "seedV1Design", model: "partition", idKey: "partitionId" });
-  assert.deepEqual(Object.values(SCOPED_OPS).map((s) => s.base).sort(), ["insertCalculation", "seedV1Design", "setDesignSubmittedAt", "setProjectStatus", "setSelectionConfig"]);
+  assert.deepEqual(Object.values(SCOPED_OPS).map((s) => s.base).sort(), ["insertCalculation", "seedV1Design", "setDesignSubmittedAt", "setProjectStatus", "setQuotationLineUnitPrice", "setSelectionConfig"]);
   assert.equal(scopedOp("setProjectStatus"), null);
   assert.throws(() => scopedOp("rgr:dropEverything"), /refused/);
 });

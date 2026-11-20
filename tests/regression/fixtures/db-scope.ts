@@ -31,12 +31,13 @@ export const SCOPED_OPS: Record<string, { base: string; model: "project" | "part
   "rgr:setProjectStatus": { base: "setProjectStatus", model: "project", idKey: "projectId" },
   "rgr:setDesignSubmittedAt": { base: "setDesignSubmittedAt", model: "project", idKey: "projectId" },
   "rgr:insertCalculation": { base: "insertCalculation", model: "project", idKey: "projectId" },
+  "rgr:setQuotationLineUnitPrice": { base: "setQuotationLineUnitPrice", model: "project", idKey: "projectId" },
   "rgr:seedV1Design": { base: "seedV1Design", model: "partition", idKey: "partitionId" },
   "rgr:setSelectionConfig": { base: "setSelectionConfig", model: "selection", idKey: "selectionId" },
 };
 
 /** Base ops that must never run unscoped (no legacy caller): only via their rgr: name. */
-export const SCOPED_ONLY_BASES: ReadonlySet<string> = new Set(["setSelectionConfig"]);
+export const SCOPED_ONLY_BASES: ReadonlySet<string> = new Set(["setSelectionConfig", "setQuotationLineUnitPrice"]);
 
 /** The scoped-op descriptor for `op`, or null for an unscoped op. Throws on an unknown `rgr:` op. */
 export function scopedOp(op: string): (typeof SCOPED_OPS)[string] | null {

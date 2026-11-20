@@ -30,13 +30,15 @@ export const DEFAULT_ROLE_DEFS: readonly RoleDef[] = [
       "MANAGE_PRICING",
       "MANAGE_ORG",
       "APPLY_DISCOUNT",
+      "QUOTE",
+      "EXTEND_QUOTE",
     ],
   },
   {
     name: "Company Member",
     description: "Internal staff with pricing access",
     isInternalRole: true,
-    permissions: ["VIEW_ALL_DATA", "MANAGE_PRICING", "APPLY_DISCOUNT"],
+    permissions: ["VIEW_ALL_DATA", "MANAGE_PRICING", "APPLY_DISCOUNT", "QUOTE"],
   },
   {
     name: "Distributor",

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import type { getSession } from "@/lib/session";
 
 /**
- * Canonical permission codes — mirrors the 9-row Permission catalog seeded in
+ * Canonical permission codes — mirrors the 10-row Permission catalog seeded in
  * prisma/seed.ts.  Import these constants instead of using magic strings.
  */
 export const PERMISSIONS = {
@@ -14,6 +14,7 @@ export const PERMISSIONS = {
   APPLY_DISCOUNT: "APPLY_DISCOUNT",
   DESIGN: "DESIGN",
   QUOTE: "QUOTE",
+  EXTEND_QUOTE: "EXTEND_QUOTE",
   ORDER: "ORDER",
 } as const;
 
@@ -33,6 +34,18 @@ export class ForbiddenError extends Error {
     super(`Forbidden: missing permission ${permissionCode}`);
     this.name = "ForbiddenError";
   }
+}
+
+/** True when the session's role holds `permissionCode` (non-throwing sibling of requirePermission; Stage 38). */
+export async function hasPermission(
+  session: { roleId: string },
+  permissionCode: string,
+): Promise<boolean> {
+  const link = await prisma.rolePermission.findFirst({
+    where: { roleId: session.roleId, permission: { code: permissionCode } },
+    select: { roleId: true },
+  });
+  return link !== null;
 }
 
 /**

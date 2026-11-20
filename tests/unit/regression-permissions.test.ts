@@ -9,10 +9,10 @@ test("regression ROLE_PERMISSIONS mirrors lib/org-role-defaults.ts DEFAULT_ROLE_
   assert.deepEqual(fromSuite, fromDefaults);
 });
 
-test("every default-role permission is one of the 9 catalog codes", () => {
+test("every default-role permission is one of the 10 catalog codes", () => {
   const all = new Set(DEFAULT_ROLE_DEFS.flatMap((d) => d.permissions));
   for (const p of all) assert.ok((PERMISSION_CODES as readonly string[]).includes(p), p);
-  assert.equal(PERMISSION_CODES.length, 9);
+  assert.equal(PERMISSION_CODES.length, 10);
 });
 
 test("deniedRolesFor: single, any-of and explicit overrides", () => {
@@ -20,7 +20,7 @@ test("deniedRolesFor: single, any-of and explicit overrides", () => {
   assert.deepEqual(deniedRolesFor({ permission: "MANAGE_FEATURES" }), ["member", "distributor", "architect"]);
   assert.deepEqual(deniedRolesFor({ permission: "DESIGN" }), ["admin", "member"]);
   assert.deepEqual(deniedRolesFor({ permission: ["DESIGN", "VIEW_ALL_DATA"] }), []);
-  assert.deepEqual(deniedRolesFor({ permission: "QUOTE" }), ["admin", "member", "architect"]);
+  assert.deepEqual(deniedRolesFor({ permission: "QUOTE" }), ["architect"]);
   assert.deepEqual(deniedRolesFor({ permission: "DESIGN", deniedRoles: ["member"] }), ["member"]);
 });
 

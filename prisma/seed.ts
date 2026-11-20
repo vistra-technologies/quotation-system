@@ -33,7 +33,7 @@ const SEED_PASSWORD = "Seed1234!";
 // SuperAdmin or an e2e spec's own setup), it just never seeds new ones into existence.
 const organizations: { slug: string; name: string }[] = [];
 
-// ─── Global permission catalog (9 permissions) ────────────────────────────────
+// ─── Global permission catalog (10 permissions) ────────────────────────────────
 const permissionCatalog = [
   {
     code: "MANAGE_USERS",
@@ -55,6 +55,7 @@ const permissionCatalog = [
     description: "Create and update glass-partition designs",
   },
   { code: "QUOTE", description: "Generate and submit quotations" },
+  { code: "EXTEND_QUOTE", description: "Extend a quotation's validity without repricing (Renew)" },
   { code: "ORDER", description: "Convert quotations to orders" },
 ];
 

@@ -193,6 +193,10 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     projectId = (await json<{ project: { id: string } }>(p, 201)).project.id; // cascades with org C (not ledgered on its own)
     await rgrInsertCalculation(projectId);
     expect(await countProjectCalculations(orgC.id)).toBe(1);
+    // Stage 38 (API AC9): a quotation on that project (empty material list, so no prices are needed); it must go
+    // with the org in the hard-delete cascade (counted in the snapshot below).
+    const q = await admin.post(orgApi(orgC.slug, `/projects/${projectId}/quotation`));
+    expect(q.status(), await q.text()).toBe(201);
     // Stage 36: a product price row, so the suspended-org and hard-delete steps below cover ProductPricing.
     const t = await admin.get(orgApi(orgC.slug, "/component-types"));
     const glassId = (await json<{ componentTypes: { id: string; code: string }[] }>(t)).componentTypes.find((x) => x.code === "GLASS")?.id;
@@ -299,7 +303,7 @@ test.describe("throwaway org lifecycle: create → suspend → reactivate → su
     test.setTimeout(180_000);
     const before = (await regressionSnapshot()).orgs[orgC.slug] as { counts: Record<string, number> } | undefined;
     expect(before, "org C in the snapshot before the delete").toBeTruthy();
-    expect(before!.counts).toMatchObject({ user: 1, role: 4, project: 1, projectCalculation: 1, productPricing: 1 });
+    expect(before!.counts).toMatchObject({ user: 1, role: 4, project: 1, projectCalculation: 1, productPricing: 1, quotation: 1 });
     expect(before!.counts.componentType ?? 0).toBeGreaterThan(0);
 
     expect(await json(await sa.delete(`${SA}/orgs/${orgC.id}`))).toEqual({ ok: true });
