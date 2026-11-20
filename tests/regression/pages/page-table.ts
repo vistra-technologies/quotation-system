@@ -79,6 +79,7 @@ export const PAGES: PageRow[] = [
   { path: "/[orgSlug]/admin/catalog", access: { permission: "MANAGE_FEATURES" }, expectsText: /Catalog/ },
   { path: "/[orgSlug]/admin/inventory", access: { permission: "MANAGE_PRICING" }, expectsText: /Unassigned|No inventory items yet/, primary: { role: "button", name: /^New item$/ } },
   { path: "/[orgSlug]/admin/product-pricing", access: { permission: "MANAGE_PRICING" }, expectsText: /Product Pricing/ },
+  { path: "/[orgSlug]/admin/settings", access: { permission: "MANAGE_ORG" }, expectsText: /Organization Settings/, primary: { role: "button", name: /^Edit$/ } },
   { path: "/[orgSlug]/admin/users", access: { permission: "MANAGE_USERS" }, expectsText: /User Management/ },
   { path: "/[orgSlug]/admin/users/new", access: { permission: "MANAGE_USERS" }, expectsText: /Create User/ },
   { path: "/[orgSlug]/admin/users/[userId]", access: { permission: "MANAGE_USERS" }, expectsText: /User Detail/ },

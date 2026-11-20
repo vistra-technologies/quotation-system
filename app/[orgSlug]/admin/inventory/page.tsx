@@ -1,7 +1,9 @@
 import { redirect } from "next/navigation";
 import { internalFetch } from "@/lib/internal-fetch";
 import { orgHref } from "@/lib/orgHref";
+import { resolveDefaultCurrency } from "@/lib/currency";
 import type { ListItem, ListType } from "@/lib/inventory-list";
+import type { StoredPrice } from "@/lib/inventory-prices";
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import { InventoryList } from "./_inventory-list";
@@ -10,8 +12,9 @@ import { InventoryList } from "./_inventory-list";
 export const dynamic = "force-dynamic";
 
 /** The GET .../inventory row (full Prisma row plus joins); only the fields the page reads are kept. */
-interface ApiItem extends Omit<ListItem, "perUnitQuantity"> {
+interface ApiItem extends Omit<ListItem, "perUnitQuantity" | "prices"> {
   perUnitQuantity: string | number;
+  prices?: Array<StoredPrice & { id?: string }>;
 }
 
 interface ApiType {
@@ -41,9 +44,10 @@ export default async function InventoryPage({
   const { orgSlug } = await params;
   const { type: typeParam } = await searchParams;
 
-  const [inventoryRes, componentTypesRes] = await Promise.all([
+  const [inventoryRes, componentTypesRes, meRes] = await Promise.all([
     internalFetch(`/api/v1/orgs/${orgSlug}/inventory`),
     internalFetch(`/api/v1/orgs/${orgSlug}/component-types`),
+    internalFetch(`/api/v1/orgs/${orgSlug}/me`),
   ]);
 
   if (inventoryRes.status === 401 || inventoryRes.status === 403) {
@@ -53,7 +57,11 @@ export default async function InventoryPage({
   const apiItems: ApiItem[] = inventoryRes.ok
     ? ((await inventoryRes.json()) as { items: ApiItem[] }).items
     : [];
-  // Keep the payload to what the client reads (the API rows also carry price rows, ignored here).
+  // Stage 38: the list shows the org's default currency only (Q-D24); /me carries it for every user.
+  const me = meRes.ok ? ((await meRes.json()) as { orgDefaultCurrency?: unknown }) : null;
+  const defaultCurrency = resolveDefaultCurrency(null, me?.orgDefaultCurrency);
+
+  // Keep the payload to what the client reads (price rows trimmed to the four fields the UI uses).
   const items: ListItem[] = apiItems.map((i) => ({
     id: i.id,
     code: i.code,
@@ -66,6 +74,7 @@ export default async function InventoryPage({
     attributes: i.attributes,
     active: i.active,
     createdAt: i.createdAt,
+    prices: (i.prices ?? []).map((p) => ({ currency: p.currency, price: p.price, minPrice: p.minPrice, allowAbove: p.allowAbove })),
   }));
 
   const types: ListType[] = componentTypesRes.ok
@@ -82,5 +91,5 @@ export default async function InventoryPage({
   const typeCode = Array.isArray(typeParam) ? typeParam[0] : typeParam;
   const initialTab = types.find((x) => x.code === typeCode)?.id ?? "all";
 
-  return <InventoryList items={items} types={types} orgSlug={orgSlug} initialTab={initialTab} />;
+  return <InventoryList items={items} types={types} orgSlug={orgSlug} initialTab={initialTab} defaultCurrency={defaultCurrency} />;
 }

@@ -126,6 +126,8 @@ export default async function OrgSlugLayout({
   // only, no MANAGE_USERS) previously couldn't even see the Admin flyout, let alone the
   // Inventory link inside it. See inventory-gate-fix.md.
   const canManagePricing = me.adminPermissions.includes("MANAGE_PRICING");
+  // Stage 38 (Q-D24): gates the "Organization Settings" flyout link; /me lists MANAGE_ORG in adminPermissions.
+  const canManageOrg = me.adminPermissions.includes("MANAGE_ORG");
 
   return (
     <EstimateProvider
@@ -147,6 +149,7 @@ export default async function OrgSlugLayout({
         canManageUsers={canManageUsers}
         canManageFeatures={canManageFeatures}
         canManagePricing={canManagePricing}
+        canManageOrg={canManageOrg}
       />
 
       {/* Right column: top bar + page content */}

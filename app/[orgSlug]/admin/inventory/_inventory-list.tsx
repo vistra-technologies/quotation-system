@@ -14,15 +14,17 @@ import {
   groupByPart,
   partLabelOf,
   sortItems,
-  tabCounts,
+  tabPricedCounts,
 } from "@/lib/inventory-list";
 import type { ListItem, ListType, SortKey, SortState } from "@/lib/inventory-list";
 import { readMatchRows } from "@/lib/inventory-matches";
+import { priceIn } from "@/lib/inventory-prices";
+import { formatPriceAmount } from "@/lib/price-format";
 import { packLabel } from "@/lib/units";
 import { deleteInventoryItem } from "./actions";
 import { InventoryItemDrawer } from "./_item-drawer";
 import type { DrawerTarget } from "./_item-drawer";
-import { AlsoMatchedBy } from "./_parts";
+import { AlsoMatchedBy, InfoTip } from "./_parts";
 import { ACTIVE_BADGE, C, INACTIVE_BADGE, UNASSIGNED_BADGE } from "./_styles";
 
 interface InventoryListProps {
@@ -31,6 +33,8 @@ interface InventoryListProps {
   orgSlug: string;
   /** Tab selected on first render ("all", "none" or a type id). */
   initialTab?: string;
+  /** Organization.defaultCurrency: the one currency the list shows (Q-D24, Q-D30). */
+  defaultCurrency: string;
 }
 
 const PLUS = (
@@ -55,6 +59,11 @@ const CHEV_R = (
     <path d="m9 18 6-6-6-6" />
   </svg>
 );
+const UP_ARROW = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3" aria-hidden="true">
+    <path d="M12 19V5M5 12l7-7 7 7" />
+  </svg>
+);
 const SORT_UP = (
   <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" aria-hidden="true">
     <path d="M6 2 10 8H2z" fill="currentColor" />
@@ -76,11 +85,11 @@ const SORT_NONE = (
  * counts, search plus Active/Inactive chips, a sortable table (Part groups inside a type tab) and the modal
  * item drawer. Filtering, grouping and sorting are the pure functions of `lib/inventory-list`.
  */
-export function InventoryList({ items, types, orgSlug, initialTab = "all" }: InventoryListProps) {
+export function InventoryList({ items, types, orgSlug, initialTab = "all", defaultCurrency }: InventoryListProps) {
   const t = useTranslations("inventory");
   const [tab, setTab] = useState<string>(initialTab);
   const [q, setQ] = useState("");
-  const [chips, setChips] = useState({ active: false, inactive: false });
+  const [chips, setChips] = useState({ active: false, inactive: false, priced: false, unpriced: false });
   const [sort, setSort] = useState<SortState>(DEFAULT_SORT);
   const [closedGroups, setClosedGroups] = useState<Record<string, boolean>>({});
   const [drawer, setDrawer] = useState<DrawerTarget | null>(null);
@@ -93,11 +102,11 @@ export function InventoryList({ items, types, orgSlug, initialTab = "all" }: Inv
   // The row that opened the drawer, kept while the drawer switches to other items (focus returns here on close).
   const openerIdRef = useRef<string | null>(null);
 
-  const counts = useMemo(() => tabCounts(items, types), [items, types]);
+  const counts = useMemo(() => tabPricedCounts(items, types, defaultCurrency), [items, types, defaultCurrency]);
   const typeById = useMemo(() => new Map(types.map((x) => [x.id, x] as const)), [types]);
   const rows = useMemo(
-    () => sortItems(filterItems(items, { tab, q, ...chips }), sort, types),
-    [items, tab, q, chips, sort, types],
+    () => sortItems(filterItems(items, { tab, q, ...chips, currency: defaultCurrency }), sort, types, defaultCurrency),
+    [items, tab, q, chips, sort, types, defaultCurrency],
   );
   const isTypeTab = tab !== "all" && tab !== "none";
   const showComp = tab === "all";
@@ -107,7 +116,7 @@ export function InventoryList({ items, types, orgSlug, initialTab = "all" }: Inv
   }
   function clearFilters() {
     setQ("");
-    setChips({ active: false, inactive: false });
+    setChips({ active: false, inactive: false, priced: false, unpriced: false });
   }
   function onSaved(kind: "created" | "updated") {
     if (kind === "created") {
@@ -162,6 +171,7 @@ export function InventoryList({ items, types, orgSlug, initialTab = "all" }: Inv
             items={items}
             types={types}
             orgSlug={orgSlug}
+            defaultCurrency={defaultCurrency}
             onSaved={onSaved}
             onClose={() => setDrawer(null)}
             onOpenItem={(id) => setDrawer({ kind: "item", id })}
@@ -174,10 +184,10 @@ export function InventoryList({ items, types, orgSlug, initialTab = "all" }: Inv
   }
 
   const tabs: Array<[string, string]> = [["all", t("tabAll")], ...types.map((x): [string, string] => [x.id, x.name]), ["none", t("tabUnassigned")]];
-  const ncol = 4 + (showComp ? 2 : 0) + 1;
+  const ncol = 4 + (showComp ? 2 : 0) + 1 + 2;
 
   // Plain render helpers (not components): a component defined here would remount every row on each render.
-  function sortTh(k: SortKey, label: string, extra?: string) {
+  function sortTh(k: SortKey, label: string, extra?: string, tip?: string) {
     const on = sort.key === k;
     return (
       <th key={k} className={`${C.th} ${extra ?? ""}`} aria-sort={on ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
@@ -189,6 +199,11 @@ export function InventoryList({ items, types, orgSlug, initialTab = "all" }: Inv
           {label}
           {on ? (sort.dir === 1 ? SORT_UP : SORT_DOWN) : SORT_NONE}
         </button>
+        {tip ? (
+          <span className="ml-1 inline-flex align-middle">
+            <InfoTip text={tip} />
+          </span>
+        ) : null}
       </th>
     );
   }
@@ -202,6 +217,8 @@ export function InventoryList({ items, types, orgSlug, initialTab = "all" }: Inv
     const matchText = Object.values(matchRows).join(" · ");
     const partRaw = partLabelOf(it, type);
     const part = partRaw ?? t("partOther");
+    const price = priceIn(it.prices, defaultCurrency);
+    const numCell = `${C.td} ${tone} whitespace-nowrap px-3 text-right tabular-nums`;
     const open = () => openDrawer({ kind: "item", id: it.id });
     return (
       <tr
@@ -238,6 +255,23 @@ export function InventoryList({ items, types, orgSlug, initialTab = "all" }: Inv
           </td>
         ) : null}
         <td className={`${C.td} ${tone} whitespace-nowrap tabular-nums`}>{packLabel(it.measurementUnit, it.perUnitQuantity)}</td>
+        <td className={numCell} data-testid="price-max">
+          {price ? (
+            <>
+              <span className={`font-bold ${dim ? "" : "text-text-heading"}`}>{formatPriceAmount(price.price)}</span>
+              {price.allowAbove ? (
+                <span className="ml-1 inline-flex align-[-1px] text-primary-dark" role="img" aria-label={t("noUpperLimit")}>
+                  {UP_ARROW}
+                </span>
+              ) : null}
+            </>
+          ) : (
+            <span className="text-[12.5px] text-text-muted">{t("noPrice")}</span>
+          )}
+        </td>
+        <td className={numCell} data-testid="price-min">
+          {price ? <span className={`font-bold ${dim ? "" : "text-text-heading"}`}>{formatPriceAmount(price.minPrice)}</span> : null}
+        </td>
         <td className={C.td}>
           <span className={it.active ? ACTIVE_BADGE : INACTIVE_BADGE}>{it.active ? t("statusActive") : t("statusInactive")}</span>
         </td>
@@ -279,7 +313,9 @@ export function InventoryList({ items, types, orgSlug, initialTab = "all" }: Inv
               className={`-mb-px whitespace-nowrap border-b-[3px] px-[18px] py-[9px] text-[13px] font-bold focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-primary ${on ? "border-primary text-primary-dark" : "border-transparent text-text-muted hover:text-text-body"}`}
             >
               {label}
-              <span className="ml-1.5 text-[11.5px] font-normal text-text-muted">{counts[id] ?? 0}</span>
+              <span className="ml-1.5 text-[11.5px] font-normal text-text-muted">
+                {t("tabPriced", { priced: counts[id]?.priced ?? 0, total: counts[id]?.total ?? 0 })}
+              </span>
             </button>
           );
         })}
@@ -307,6 +343,18 @@ export function InventoryList({ items, types, orgSlug, initialTab = "all" }: Inv
             {k === "active" ? t("chipActive") : t("chipInactive")}
           </button>
         ))}
+        <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
+        {(["priced", "unpriced"] as const).map((k) => (
+          <button
+            key={k}
+            type="button"
+            aria-pressed={chips[k]}
+            onClick={() => setChips((c) => ({ ...c, [k]: !c[k] }))}
+            className={`${C.chip} ${chips[k] ? C.chipOn : C.chipOff}`}
+          >
+            {k === "priced" ? t("chipPriced") : t("chipUnpriced")}
+          </button>
+        ))}
         <span className="ml-auto whitespace-nowrap text-xs text-text-muted">{t("itemCount", { count: rows.length })}</span>
       </div>
 
@@ -319,6 +367,8 @@ export function InventoryList({ items, types, orgSlug, initialTab = "all" }: Inv
               {showComp ? sortTh("comp", t("colComponent")) : null}
               {showComp ? sortTh("part", t("colPart"), "hidden min-[1440px]:table-cell") : null}
               {sortTh("pack", t("colPack"))}
+              {sortTh("max", t("colMax", { currency: defaultCurrency }), "text-right !px-3", t("tipMaxColumn"))}
+              {sortTh("min", t("colMin", { currency: defaultCurrency }), "text-right !px-3")}
               {sortTh("status", t("colStatus"))}
               <th className={`${C.th} w-[52px]`}>
                 <span className="sr-only">{t("colActions")}</span>
@@ -371,6 +421,7 @@ export function InventoryList({ items, types, orgSlug, initialTab = "all" }: Inv
           items={items}
           types={types}
           orgSlug={orgSlug}
+          defaultCurrency={defaultCurrency}
           onSaved={onSaved}
           onClose={() => setDrawer(null)}
           onOpenItem={(id) => setDrawer({ kind: "item", id })}

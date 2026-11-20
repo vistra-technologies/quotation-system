@@ -8,6 +8,7 @@ import {
   buildSavePayload,
   draftFromItem,
   isDirty,
+  parsePack,
   rowIssues,
   rowsToMatchObject,
   staleIssue,
@@ -18,10 +19,19 @@ import { apiErrorMessage } from "@/lib/api-error-message";
 import { alsoMatchedBy, partLabelOf } from "@/lib/inventory-list";
 import type { ListItem, ListType } from "@/lib/inventory-list";
 import { readMatchRows } from "@/lib/inventory-matches";
+import {
+  buildPricesPayload,
+  draftsFromPrices,
+  isPricesDirty,
+  priceIssues,
+  pricesValid,
+} from "@/lib/inventory-prices";
+import type { PriceDraft } from "@/lib/inventory-prices";
 import { packLabel, unitSymbol } from "@/lib/units";
 import { DrawerShell } from "./_drawer-shell";
 import { ItemForm } from "./_item-form";
 import { AlsoMatchedBy, DRow, InfoTip } from "./_parts";
+import { PricesEdit, PricesView } from "./_prices";
 import { ACTIVE_BADGE, C, INACTIVE_BADGE, UNASSIGNED_BADGE } from "./_styles";
 
 /**
@@ -30,7 +40,8 @@ import { ACTIVE_BADGE, C, INACTIVE_BADGE, UNASSIGNED_BADGE } from "./_styles";
  * (`buildSavePayload`). Closing with unsaved edits asks "Discard changes?" (Q-D29); changing the Component type
  * of an item that has a Part or Matches rows asks first, because both are cleared (S37-5).
  *
- * Where Stage 38a's Prices section will sit: below Matches. Nothing is rendered there and no price is shown.
+ * Stage 38a: the Prices section sits below Matches (read-only rows, or the edit rows in the same form). One Save
+ * is the item request (POST or PATCH) followed by one `PUT .../prices` when the price rows changed (B2-2).
  */
 
 export type DrawerTarget = { kind: "item"; id: string } | { kind: "new" };
@@ -41,6 +52,8 @@ interface ItemDrawerProps {
   types: ListType[];
   orgSlug: string;
   onClose: () => void;
+  /** Organization.defaultCurrency: orders the price rows and the currency "Add price" offers first. */
+  defaultCurrency?: string;
   /** Switch the drawer to another item ("Also matched by" links). */
   onOpenItem: (id: string) => void;
   /** After a successful save; the owner refreshes the list (and closes the drawer on create). */
@@ -64,6 +77,7 @@ export function InventoryItemDrawer({
   types,
   orgSlug,
   onClose,
+  defaultCurrency,
   onOpenItem,
   onSaved,
   getRestoreTarget,
@@ -85,8 +99,13 @@ export function InventoryItemDrawer({
     [item, prefill],
   );
 
+  const originalPrices = useMemo<PriceDraft[]>(() => draftsFromPrices(item?.prices, defaultCurrency), [item, defaultCurrency]);
+
   const [mode, setMode] = useState<"view" | "edit">(isNew ? "edit" : "view");
   const [draft, setDraft] = useState<ItemDraft>(original);
+  const [priceDraft, setPriceDraft] = useState<PriceDraft[]>(originalPrices);
+  // A new item whose POST succeeded but whose prices did not: Save retries only the prices (never a second POST).
+  const [createdId, setCreatedId] = useState<string | null>(null);
   const [attempted, setAttempted] = useState(false);
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState<string | null>(null);
@@ -99,6 +118,8 @@ export function InventoryItemDrawer({
     setShownKey(targetKey);
     setMode(isNew ? "edit" : "view");
     setDraft(original);
+    setPriceDraft(originalPrices);
+    setCreatedId(null);
     setAttempted(false);
     setSaving(false);
     setBanner(null);
@@ -109,7 +130,7 @@ export function InventoryItemDrawer({
   const editing = mode === "edit";
   const formMode = isNew ? "create" : "edit";
   const draftType = types.find((x) => x.id === draft.componentTypeId);
-  const dirty = editing && isDirty(original, draft);
+  const dirty = editing && (isDirty(original, draft) || isPricesDirty(originalPrices, priceDraft));
 
   /** Run `action` now, or after the user confirms discarding unsaved edits. */
   function guard(action: () => void) {
@@ -119,6 +140,7 @@ export function InventoryItemDrawer({
   }
   function startEdit() {
     setDraft(original);
+    setPriceDraft(originalPrices);
     setAttempted(false);
     setBanner(null);
     setCodeTaken(false);
@@ -146,6 +168,7 @@ export function InventoryItemDrawer({
   }
 
   const validation = validateDraft(original, draft, draftType, formMode, types.length);
+  const priceProblems = priceIssues(priceDraft);
   const alsoMatched = alsoMatchedBy(
     { id: item?.id ?? "new", active: draft.active, componentTypeId: draft.componentTypeId || null },
     rowsToMatchObject(draft.rows, draftType),
@@ -156,27 +179,50 @@ export function InventoryItemDrawer({
     setAttempted(true);
     setBanner(null);
     setCodeTaken(false);
-    if (!validation.ok || saving) return;
-    const body = buildSavePayload(original, draft, draftType, formMode);
-    const url = `/api/v1/orgs/${orgSlug}/inventory${item ? `/${item.id}` : ""}`;
+    if (!validation.ok || !pricesValid(priceDraft) || saving) return;
     setSaving(true);
     try {
-      const res = await fetch(url, {
-        method: item ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        if (item) {
-          setAttempted(false);
-          setMode("view");
+      let itemId = item?.id ?? createdId;
+      let itemSaved = false;
+      if (!(isNew && itemId)) {
+        const body = buildSavePayload(original, draft, draftType, formMode);
+        const url = `/api/v1/orgs/${orgSlug}/inventory${item ? `/${item.id}` : ""}`;
+        const res = await fetch(url, {
+          method: item ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data: unknown = await res.json().catch(() => null);
+        if (!res.ok) {
+          setBanner(apiErrorMessage(data, t("saveFailed")));
+          if (res.status === 409) setCodeTaken(true);
+          return;
         }
-        onSaved(item ? "updated" : "created");
-        return;
+        itemSaved = true;
+        if (!item) {
+          itemId = (data as { item?: { id?: string } } | null)?.item?.id ?? null;
+          setCreatedId(itemId);
+        }
       }
-      const data: unknown = await res.json().catch(() => null);
-      setBanner(apiErrorMessage(data, t("saveFailed")));
-      if (res.status === 409) setCodeTaken(true);
+      if (itemId && isPricesDirty(originalPrices, priceDraft)) {
+        const res = await fetch(`/api/v1/orgs/${orgSlug}/inventory/${itemId}/prices`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prices: buildPricesPayload(priceDraft) }),
+        });
+        if (!res.ok) {
+          const data: unknown = await res.json().catch(() => null);
+          setBanner(apiErrorMessage(data, t("pricesSaveFailed")));
+          // The item itself is saved: refresh the list so the drawer's saved state matches, keep the edits.
+          if (itemSaved && item) onSaved("updated");
+          return;
+        }
+      }
+      if (item) {
+        setAttempted(false);
+        setMode("view");
+      }
+      onSaved(item ? "updated" : "created");
     } catch {
       setBanner(t("saveFailed"));
     } finally {
@@ -272,7 +318,27 @@ export function InventoryItemDrawer({
         ) : item ? (
           <ItemView item={item} type={type} items={items} onOpenItem={(id) => guard(() => onOpenItem(id))} />
         ) : null}
-        {/* Stage 38a: the Prices section sits here. No price is shown in Stage 37. */}
+        {editing ? (
+          <PricesEdit
+            rows={priceDraft}
+            issues={priceProblems}
+            showErrors={attempted}
+            measurementUnit={draft.measurementUnit}
+            perUnitQuantity={parsePack(draft.pack) ?? 1}
+            defaultCurrency={defaultCurrency}
+            saving={saving}
+            onChange={setPriceDraft}
+          />
+        ) : item ? (
+          <PricesView
+            prices={item.prices ?? []}
+            measurementUnit={item.measurementUnit}
+            perUnitQuantity={item.perUnitQuantity}
+            defaultCurrency={defaultCurrency}
+            canEdit
+            onEdit={startEdit}
+          />
+        ) : null}
       </div>
 
       {editing ? (

@@ -10,7 +10,7 @@ import { useOrgHref } from "@/lib/useOrgHref";
 import { buildPricingGrid, isPriced, type GridRow, type PricingGrid, type StoredPricingRow } from "@/lib/product-pricing/grid";
 import type { SpecField } from "@/lib/product-pricing/spec-fields";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
-import { CURRENCY_CHIP, formatAmount, PricingDrawer, unitLabel, type DrawerTarget } from "./_pricing-drawer";
+import { PriceText, PricingDrawer, type DrawerTarget } from "./_pricing-drawer";
 
 /** One active component type, trimmed by the page (spec fields only). */
 export interface PricingType {
@@ -37,14 +37,11 @@ const TH_CLS = "whitespace-nowrap border-b border-border px-3.5 py-2.5 text-left
 
 function PriceChips({ row, dim }: { row: StoredPricingRow; dim?: boolean }) {
   return (
-    <div className={`leading-[1.8] ${dim ? "opacity-70" : ""}`}>
+    <div className={`flex flex-col gap-1 ${dim ? "opacity-70" : ""}`}>
       {row.prices.map((p) => (
-        <span
-          key={`${p.currency}-${p.unit}`}
-          className={`mb-0.5 mr-1 inline-flex h-[22px] items-center whitespace-nowrap rounded-full px-2 text-[11.5px] font-bold ${CURRENCY_CHIP[p.currency]}`}
-        >
-          {formatAmount(p.amount)} {p.currency}/{unitLabel(p.unit)}
-        </span>
+        <div key={`${p.currency}-${p.unit}`} data-testid="price-line">
+          <PriceText amount={p.amount} currency={p.currency} unit={p.unit} />
+        </div>
       ))}
     </div>
   );
@@ -264,6 +261,7 @@ export function ProductPricingView({ orgSlug, types, initialRows, loadError }: P
                   key={g.key}
                   tabIndex={0}
                   data-testid="pricing-row"
+                  data-combination={g.key}
                   data-orphaned={orphaned ? "true" : undefined}
                   onClick={() => openDrawer(g)}
                   onKeyDown={(e) => {

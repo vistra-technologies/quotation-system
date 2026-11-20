@@ -25,6 +25,8 @@ interface SidebarProps {
    * (Company Member) never saw the Admin flyout at all. See inventory-gate-fix.md.
    */
   canManagePricing: boolean;
+  /** Stage 38 (Q-D24): gates the "Organization Settings" flyout link (MANAGE_ORG, Admin only by default). */
+  canManageOrg: boolean;
 }
 
 /**
@@ -52,6 +54,7 @@ export function Sidebar({
   canManageUsers,
   canManageFeatures,
   canManagePricing,
+  canManageOrg,
 }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const pathname = usePathname();
@@ -77,7 +80,7 @@ export function Sidebar({
   // flyout gained the Catalog link (gated on MANAGE_FEATURES, independent of MANAGE_USERS).
   // Bugfix 2026-09-28: also opens for canManagePricing-only roles (Company Member), so the
   // Inventory link (MANAGE_PRICING-gated) is reachable without MANAGE_USERS/MANAGE_FEATURES.
-  const showAdmin = canManageUsers || canManageFeatures || canManagePricing;
+  const showAdmin = canManageUsers || canManageFeatures || canManagePricing || canManageOrg;
 
   // Shared nav-item class builder — active state applies Sage Ease primary green.
   const navItemClass = (section: string): string => {
@@ -358,6 +361,16 @@ export function Sidebar({
                   className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
                 >
                   Product Pricing
+                </Link>
+              )}
+
+              {/* Stage 38 (Q-D24): MANAGE_ORG only. */}
+              {canManageOrg && (
+                <Link
+                  href={href("/admin/settings")}
+                  className="block rounded-md px-2.5 py-2.5 text-[13.5px] font-semibold text-text-body hover:bg-primary-softer hover:text-text-heading"
+                >
+                  Organization Settings
                 </Link>
               )}
             </div>

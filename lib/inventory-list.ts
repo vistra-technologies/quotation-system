@@ -7,6 +7,8 @@
 import type { FieldEntry } from "@/lib/types/field-entry";
 import type { FieldOptionsConfig } from "@/lib/types/field-options-config";
 import { identicalMatchSet, readMatchRows } from "@/lib/inventory-matches";
+import { isPricedIn, priceSortValue } from "@/lib/inventory-prices";
+import type { StoredPrice } from "@/lib/inventory-prices";
 
 /** One row of GET /api/v1/orgs/[orgSlug]/inventory, the fields the page reads. */
 export interface ListItem {
@@ -24,6 +26,8 @@ export interface ListItem {
   attributes: unknown;
   active: boolean;
   createdAt: string;
+  /** Stage 38: the item's price rows (every currency); absent reads as unpriced. */
+  prices?: StoredPrice[];
 }
 
 /** The slice of a ComponentType (GET .../component-types) the page needs. */
@@ -43,9 +47,13 @@ export interface ListFilters {
   /** Both on or both off means no status filter (mockup `filtered`). */
   active: boolean;
   inactive: boolean;
+  /** Stage 38: both on or both off means no price filter. "Priced" = a price in `currency` (the org default). */
+  priced?: boolean;
+  unpriced?: boolean;
+  currency?: string;
 }
 
-export type SortKey = "code" | "name" | "comp" | "part" | "pack" | "status";
+export type SortKey = "code" | "name" | "comp" | "part" | "pack" | "status" | "max" | "min";
 export interface SortState {
   key: SortKey;
   dir: 1 | -1;
@@ -101,7 +109,27 @@ export function filterItems(items: ListItem[], f: ListFilters): ListItem[] {
   const q = f.q.trim().toLowerCase();
   if (q) rows = rows.filter((i) => i.code.toLowerCase().includes(q) || i.name.toLowerCase().includes(q));
   if (f.active !== f.inactive) rows = rows.filter((i) => i.active === f.active);
+  if (f.currency && !!f.priced !== !!f.unpriced) {
+    const currency = f.currency;
+    rows = rows.filter((i) => isPricedIn(i.prices, currency) === !!f.priced);
+  }
   return rows;
+}
+
+/** Tab "N / M priced" numbers: per tab, the items priced in `currency` over the tab's items (Q-D24). */
+export function tabPricedCounts(items: ListItem[], types: ListType[], currency: string): Record<string, { priced: number; total: number }> {
+  const out: Record<string, { priced: number; total: number }> = { all: { priced: 0, total: items.length }, none: { priced: 0, total: 0 } };
+  for (const t of types) out[t.id] = { priced: 0, total: 0 };
+  for (const i of items) {
+    const priced = isPricedIn(i.prices, currency) ? 1 : 0;
+    out.all.priced += priced;
+    const key = !i.componentTypeId ? "none" : i.componentTypeId in out ? i.componentTypeId : null;
+    if (key) {
+      out[key].total += 1;
+      out[key].priced += priced;
+    }
+  }
+  return out;
 }
 
 export function tabCounts(items: ListItem[], types: ListType[]): Record<string, number> {
@@ -120,7 +148,7 @@ function compare(a: string | number, b: string | number): number {
 }
 
 /** Sort a copy. Ties fall back to the code so the order is stable. Other sorts last on Part (ascending). */
-export function sortItems(items: ListItem[], sort: SortState, types: ListType[]): ListItem[] {
+export function sortItems(items: ListItem[], sort: SortState, types: ListType[], currency = ""): ListItem[] {
   const typeById = new Map(types.map((t) => [t.id, t] as const));
   const keyOf: Record<SortKey, (i: ListItem) => string | number> = {
     code: (i) => i.code,
@@ -129,6 +157,8 @@ export function sortItems(items: ListItem[], sort: SortState, types: ListType[])
     part: (i) => partLabelOf(i, i.componentTypeId ? typeById.get(i.componentTypeId) : undefined) ?? "\uffff",
     pack: (i) => Number(i.perUnitQuantity),
     status: (i) => (i.active ? 0 : 1),
+    max: (i) => priceSortValue(i.prices, currency, "max"),
+    min: (i) => priceSortValue(i.prices, currency, "min"),
   };
   const key = keyOf[sort.key];
   return [...items].sort((x, y) => compare(key(x), key(y)) * sort.dir || compare(x.code, y.code));

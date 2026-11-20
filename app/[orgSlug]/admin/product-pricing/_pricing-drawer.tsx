@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { SelectField } from "@/components/select-field";
 import { apiErrorMessage } from "@/lib/api-error-message";
+import { formatPriceAmount, priceSuffix, priceUnitLabel } from "@/lib/price-format";
+import { DrawerShell } from "../inventory/_drawer-shell";
 import {
   hasPair,
   MAX_DESCRIPTION_LENGTH,
@@ -16,21 +18,27 @@ import {
 } from "@/lib/product-pricing/price-entries";
 import type { StoredPricingRow } from "@/lib/product-pricing/grid";
 
-/** Display label of a stored price unit (the Quick Estimate labels). */
-export function unitLabel(unit: string): string {
-  return unit === "m2" ? "m²" : unit === "sqft" ? "sq ft" : unit;
-}
+/** Display label of a Product Pricing price unit (the Quick Estimate labels). Shared formatter: `lib/price-format`. */
+export const unitLabel = priceUnitLabel;
 
-export function formatAmount(amount: number): string {
-  return amount.toLocaleString("en-US", { maximumFractionDigits: 2 });
-}
+export const formatAmount = formatPriceAmount;
 
-/** Currency chip colours, shared by the table chips and the drawer entries (mockup pc-inr / pc-aed / pc-usd). */
-export const CURRENCY_CHIP: Record<string, string> = {
-  INR: "bg-status-shipped-bg text-status-shipped-text",
-  AED: "bg-status-paid-bg text-status-paid-text",
-  USD: "bg-[#F7F5F0] text-[#6B4C0E]",
-};
+/**
+ * One price as text (Q-D22, Q-D28): the amount in bold, then a muted `<currency>/<unit>`. No pill: the amount and the
+ * suffix are separate elements with a plain space between them, so the text reads "2,800 INR/m²".
+ */
+export function PriceText({ amount, currency, unit, className = "" }: { amount: number; currency: string; unit: string; className?: string }) {
+  return (
+    <span className={`inline-flex items-baseline whitespace-nowrap ${className}`}>
+      <strong data-testid="price-amount" className="font-extrabold tabular-nums text-text-heading">
+        {formatPriceAmount(amount)}
+      </strong>{" "}
+      <span data-testid="price-suffix" className="ml-1 text-[12.5px] text-text-muted">
+        {priceSuffix(currency, priceUnitLabel(unit))}
+      </span>
+    </span>
+  );
+}
 
 const AMOUNT_PATTERN = /^(\d+\.?\d{0,2}|\.\d{1,2})$/;
 
@@ -96,27 +104,7 @@ export function PricingDrawer({ orgSlug, target, onClose, onSaved }: Props) {
   const [dupIndex, setDupIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const panelRef = useRef<HTMLDivElement>(null);
-
-  // A press outside the panel closes the drawer. A SelectField list is portalled outside the panel, so it is not "outside".
-  useEffect(() => {
-    const onDown = (e: PointerEvent) => {
-      const el = e.target as Element | null;
-      if (!el || panelRef.current?.contains(el) || el.closest('[role="listbox"]')) return;
-      onClose();
-    };
-    document.addEventListener("pointerdown", onDown);
-    return () => document.removeEventListener("pointerdown", onDown);
-  }, [onClose]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      // A SelectField closing its list on Escape calls preventDefault: that Escape is not for the drawer.
-      if (e.key === "Escape" && !e.defaultPrevented) onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  const titleId = useId();
 
   const dirty =
     JSON.stringify(sortEntries(entries)) !== JSON.stringify(savedEntries) || description.trim() !== savedDescription;
@@ -289,16 +277,20 @@ export function PricingDrawer({ orgSlug, target, onClose, onSaved }: Props) {
     );
   }
 
+  // Q-D29: modal. The shell owns the scrim (a click closes), the inert page, Escape (a SelectField that closes its
+  // own list consumes that Escape first) and the focus return to the row that opened the drawer.
   return (
-    <div className="pointer-events-none fixed inset-0 z-40 flex justify-end bg-[rgba(27,40,30,.14)]">
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-label={target.label}
-        className="pointer-events-auto flex h-full w-[360px] flex-col border-l border-border bg-bg-white shadow-[-8px_0_24px_rgba(27,40,30,.1)]"
-      >
+    <DrawerShell
+      titleId={titleId}
+      onRequestClose={onClose}
+      widthClass="w-[360px]"
+      getRestoreTarget={() => document.querySelector<HTMLElement>(`[data-combination="${CSS.escape(target.key)}"]`)}
+    >
+      <>
         <div className="flex shrink-0 items-center justify-between border-b border-border bg-gradient-to-b from-bg-card to-bg-white px-[18px] py-[15px]">
-          <span className="text-sm font-extrabold text-text-heading">{target.label}</span>
+          <span id={titleId} className="text-sm font-extrabold text-text-heading">
+            {target.label}
+          </span>
           <button
             type="button"
             onClick={onClose}
@@ -347,13 +339,9 @@ export function PricingDrawer({ orgSlug, target, onClose, onSaved }: Props) {
                       dupIndex === i ? "border-red-600 bg-danger-bg" : "border-border bg-bg-white"
                     }`}
                   >
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11.5px] font-extrabold ${CURRENCY_CHIP[e.currency]}`}>
-                      {e.currency}
+                    <span className="flex-1 text-sm">
+                      <PriceText amount={e.amount} currency={e.currency} unit={e.unit} />
                     </span>
-                    <span className="inline-flex items-center rounded-full bg-bg-subtle px-2 py-0.5 text-[11.5px] font-bold text-text-muted">
-                      {unitLabel(e.unit)}
-                    </span>
-                    <span className="flex-1 text-right text-sm font-extrabold tabular-nums text-text-heading">{formatAmount(e.amount)}</span>
                     <div className="flex gap-0.5">
                       <button
                         type="button"
@@ -430,7 +418,7 @@ export function PricingDrawer({ orgSlug, target, onClose, onSaved }: Props) {
             {t("discard")}
           </button>
         </div>
-      </div>
-    </div>
+      </>
+    </DrawerShell>
   );
 }

@@ -4,8 +4,8 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
 /**
- * The modal behaviour of the Inventory item drawer (Q-D29), nothing else: a portal to `document.body` with a
- * click-to-close scrim, a 440 px right-hand panel, everything outside inert while it is open, focus moved in and
+ * The modal behaviour of the Inventory item drawer and the Product Pricing drawer (Q-D29), nothing else: a portal to `document.body` with a
+ * click-to-close scrim, a right-hand panel (440 px by default), everything outside inert while it is open, focus moved in and
  * trapped, Escape and the scrim asking the owner to close, and focus returned to the opener on close.
  *
  * The owner decides whether a close is allowed (`onRequestClose`, for the unsaved-changes confirm) and passes any
@@ -26,6 +26,8 @@ interface DrawerShellProps {
   getRestoreTarget?: () => HTMLElement | null;
   /** Rendered inside the scrim, outside the panel (confirm dialogs). */
   overlay?: React.ReactNode;
+  /** Panel width utility; the Inventory drawer is 440 px, the Product Pricing drawer 360 px. */
+  widthClass?: string;
   children: React.ReactNode;
 }
 
@@ -35,6 +37,7 @@ export function DrawerShell({
   escapeBlocked = false,
   getRestoreTarget,
   overlay,
+  widthClass = "w-[440px]",
   children,
 }: DrawerShellProps) {
   const scrimRef = useRef<HTMLDivElement>(null);
@@ -119,7 +122,7 @@ export function DrawerShell({
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={onPanelKeyDown}
-        className="flex h-full w-[440px] max-w-full cursor-auto flex-col border-l border-border bg-bg-white shadow-[-8px_0_24px_rgba(27,40,30,.1)] outline-none"
+        className={`flex h-full ${widthClass} max-w-full cursor-auto flex-col border-l border-border bg-bg-white shadow-[-8px_0_24px_rgba(27,40,30,.1)] outline-none`}
       >
         {children}
       </aside>

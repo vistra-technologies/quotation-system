@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
 /**
  * Admin section layout (Server Component).
  *
- * Gates the entire /[orgSlug]/admin/* sub-tree on MANAGE_USERS, MANAGE_FEATURES, or
- * MANAGE_PRICING (any one of the three admin-adjacent permissions clears this layout
+ * Gates the entire /[orgSlug]/admin/* sub-tree on MANAGE_USERS, MANAGE_FEATURES, MANAGE_PRICING or
+ * MANAGE_ORG (any one of the admin-adjacent permissions clears this layout
  * gate; each page underneath still enforces its own specific permission — see
  * /api/v1/orgs/[orgSlug]/me's adminPermissions doc comment for the bugfix history).
  * A single /me call covers the gate check. Navigation for admin sections is handled
@@ -65,6 +65,9 @@ export default async function AdminLayout({
     // Stage 37 Batch 3: the Inventory page and the item drawer (also opened over the Catalog page) call
     // useTranslations("inventory") on the client (AGENTS.md namespace wiring).
     inventory: allMessages.inventory,
+    // Stage 38 Batch 2: the Organization Settings form (useTranslations("orgSettings")); its currency labels come
+    // from the externalCompanies namespace above.
+    orgSettings: allMessages.orgSettings,
     // Toast component requires this namespace — needed independently by H-16 (_inventory-list.tsx)
     // and Stage 27 (the Catalog page's option-editor save-success toast). Toast calls
     // useTranslations("toast") internally regardless of whether a custom `message` is passed, so the

@@ -62,6 +62,7 @@ coversPage("/[orgSlug]/projects/[projectId]/update-configuration");
 coversPage("/[orgSlug]/admin/catalog");
 coversPage("/[orgSlug]/admin/inventory");
 coversPage("/[orgSlug]/admin/product-pricing");
+coversPage("/[orgSlug]/admin/settings");
 coversPage("/[orgSlug]/admin/users");
 coversPage("/[orgSlug]/admin/users/new");
 coversPage("/[orgSlug]/admin/users/[userId]");
@@ -677,7 +678,8 @@ test.describe("wizard pills: Summary/Quotation lock until Submit Design, re-lock
       await name.fill(copyName);
       await o.page.getByRole("button", { name: "Duplicate", exact: true }).click();
       await expect(name).toBeHidden();
-      await expect(o.page.getByText(copyName, { exact: true }).filter({ visible: true })).toBeVisible();
+      // M-2 (Stage 37 bugs-1): the label text also sits in the pulsing loading placeholder, so match the room row by its test id
+      await expect(o.page.locator('[data-testid^="room-row-"]').filter({ hasText: copyName })).toBeVisible();
       const copy = (await rooms()).rooms.find((r) => r.label === copyName)!;
       expect(copy.id).not.toBe(w.roomId);
       expect((await rooms()).rooms).toHaveLength(2);
@@ -1673,7 +1675,12 @@ test.describe("Stage 36 B1: Product spec toggle (SuperAdmin edit form), throwawa
 // option removal that orphans a row all go with org B at teardown (rule 10 n/a, nothing in the Test Org is written).
 // The GET-failure banner (UI AC2) is a server-side fetch, so a browser route cannot fail it; it is covered by the page code
 // path and the by-design 4xx/5xx API specs, not here.
-test.describe.serial("Stage 36 B3: Product Pricing admin page, throwaway org B", () => {
+// M-1 (Stage 37 bugs-1): was test.describe.serial, so one failure skipped the rest of the block as "did not run". The
+// file runs in parallel mode, so the block is pinned to "default": its tests share org B's pricing rows and must still
+// run in order in ONE worker, but a failure no longer skips the rest (a failed test restarts the worker and the next
+// test reports its own result).
+test.describe("Stage 36 B3: Product Pricing admin page, throwaway org B", () => {
+  test.describe.configure({ mode: "default" });
   const fld = (key: string, label: string, over: Record<string, unknown> = {}) =>
     ({ key, label, type: "dropdown", required: false, basic: true, ...over });
   const SCHEMA = [
@@ -1806,7 +1813,7 @@ test.describe.serial("Stage 36 B3: Product Pricing admin page, throwaway org B",
       await dlg.getByRole("button", { name: "Save changes" }).click();
       await expect(dlg).toHaveCount(0);
       expect(puts.length, "one PUT per save").toBe(1);
-      await expect(rows.first()).toContainText("INR/pcs 2,800");
+      await expect(rows.first()).toContainText("2,800 INR/pcs");
       await expect(rows.first()).toContainText("Standard unit");
       await expect(tab).toContainText("1 / 3 priced");
       let stored = await storedRows();
@@ -1822,7 +1829,7 @@ test.describe.serial("Stage 36 B3: Product Pricing admin page, throwaway org B",
       await expect(dlg).toHaveCount(0);
       expect(puts).toHaveLength(2);
       expect(JSON.parse(puts[1]).description).toBe("Standard unit");
-      await expect(rows.first()).toContainText("INR/pcs 2,900");
+      await expect(rows.first()).toContainText("2,900 INR/pcs");
 
       // empty drawer + blank description deletes the row: back to unpriced
       await rows.first().click();
@@ -1875,7 +1882,7 @@ test.describe.serial("Stage 36 B3: Product Pricing admin page, throwaway org B",
     });
   });
 
-  test("UI AC3b drawer: Escape on a dropdown keeps the drawer open; a finished save does not close a drawer opened on another row", async ({ browser, run, orgB }) => {
+  test("UI AC3b drawer: Escape on a dropdown keeps the drawer open; a save in flight finishes, closes its own drawer and toasts (Q-D29: no other row can be opened meanwhile)", async ({ browser, run, orgB }) => {
     test.setTimeout(150_000);
     const fx = await getFx(run, orgB);
     await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
@@ -1892,7 +1899,7 @@ test.describe.serial("Stage 36 B3: Product Pricing admin page, throwaway org B",
       await page.keyboard.press("Escape");
       await expect(page.getByRole("listbox")).toHaveCount(0);
       await expect(dlg).toBeVisible();
-      // a save still in flight must not close the drawer of another row
+      // a save still in flight: the drawer is modal, so no other row can be opened meanwhile (it was possible before Q-D29)
       await dlg.getByRole("textbox", { name: "Amount" }).fill("100");
       await dlg.getByRole("button", { name: "Add", exact: true }).click();
       let release!: () => void;
@@ -1902,13 +1909,78 @@ test.describe.serial("Stage 36 B3: Product Pricing admin page, throwaway org B",
         await r.continue();
       });
       await dlg.getByRole("button", { name: "Save changes" }).click();
-      await rows.filter({ hasText: "Single" }).filter({ hasText: "12 mm" }).click();
-      await expect(dlg).toContainText("Single · 12 mm");
+      await expect(dlg).toContainText("Double");
       release();
       await expect(page.getByText("Pricing saved")).toBeVisible();
-      await expect(dlg).toBeVisible();
-      await expect(dlg).toContainText("Single · 12 mm");
+      await expect(dlg).toHaveCount(0);
       await page.unroute("**/product-pricing");
+    });
+  });
+
+  test("UI AC2b + AC2d (Stage 38 B2): prices read '<amount> <CUR>/<unit>' with a bold amount and a muted suffix, no pills; the drawer is modal (scrim click closes without reaching the row beneath, page inert, Escape and Close, focus returns)", async ({ browser, run, orgB }) => {
+    test.setTimeout(150_000);
+    const fx = await getFx(run, orgB);
+    await ok(await orgB.put(fx.B("/product-pricing"), {
+      data: {
+        componentTypeId: fx.typeId,
+        combinationKey: key("Single", "12 mm"),
+        combinationLabel: "Single · 12 mm",
+        prices: [{ currency: "INR", unit: "pcs", amount: 2800 }, { currency: "USD", unit: "pcs", amount: 40 }],
+        description: "AC2b",
+      },
+    }));
+    await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
+      const page = o.page;
+      await page.goto(orgUrl(run.orgB.slug, "/admin/product-pricing"));
+      await page.getByTestId(`type-tab-${fx.code}`).click();
+      const rows = page.getByTestId("pricing-row");
+      const rowA = rows.filter({ hasText: "Single" }).filter({ hasText: "12 mm" });
+      const rowB = rows.filter({ hasText: "Double" }).first();
+      // table: two price lines, amount and suffix are separate elements, text reads "<amount> <CUR>/<unit>"
+      const lines = rowA.getByTestId("price-line");
+      await expect(lines).toHaveCount(2);
+      await expect(rowA).toContainText("2,800 INR/pcs");
+      await expect(rowA).toContainText("40 USD/pcs");
+      await expect(lines.first().getByTestId("price-amount")).toHaveText("2,800");
+      await expect(lines.first().getByTestId("price-suffix")).toHaveText("INR/pcs");
+      await expect(lines.first().getByTestId("price-amount")).toHaveClass(/font-extrabold/);
+      await expect(lines.first().getByTestId("price-suffix")).toHaveClass(/text-text-muted/);
+      // no pill anywhere on a price: no rounded-full element and none of the old currency chip colours inside a price line
+      await expect(rowA.getByTestId("price-line").locator(".rounded-full")).toHaveCount(0);
+      await expect(rowA.locator(".bg-status-shipped-bg, .bg-status-paid-bg")).toHaveCount(0);
+
+      // drawer entries read the same
+      await rowA.click();
+      const dlg = page.getByRole("dialog");
+      await expect(dlg).toBeVisible();
+      const entries = dlg.getByTestId("price-entry");
+      await expect(entries).toHaveCount(2);
+      await expect(entries.first()).toContainText("2,800 INR/pcs");
+      await expect(entries.first().getByTestId("price-amount")).toHaveClass(/font-extrabold/);
+      await expect(entries.first().getByTestId("price-suffix")).toHaveText("INR/pcs");
+      await expect(entries.first().locator(".rounded-full")).toHaveCount(0);
+      expect(await page.evaluate(() => Array.from(document.body.children).some((e) => (e as HTMLElement).inert))).toBe(true);
+
+      // a click on the scrim over ANOTHER row closes the drawer and does not open that row
+      const box = (await rowB.boundingBox())!;
+      await page.mouse.click(box.x + 20, box.y + box.height / 2);
+      await expect(dlg).toHaveCount(0);
+      await page.waitForTimeout(400);
+      await expect(dlg).toHaveCount(0);
+
+      // Escape closes and focus returns to the row that opened the drawer
+      await rowA.focus();
+      await page.keyboard.press("Enter");
+      await expect(dlg).toBeVisible();
+      await page.keyboard.press("Escape");
+      await expect(dlg).toHaveCount(0);
+      await expect(rowA).toBeFocused();
+
+      // the Close button closes too
+      await rowA.click();
+      await dlg.getByRole("button", { name: "Close" }).click();
+      await expect(dlg).toHaveCount(0);
+      await expect(rowA).toBeFocused();
     });
   });
 });
@@ -1948,16 +2020,17 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       const page = o.page;
       const drawer = page.getByRole("dialog", { name: /./ });
       const tab = (name: RegExp) => page.getByRole("tab", { name });
-      // org B is shared in a full pages run: read the tab counts BEFORE creating this test's items, assert deltas
+      // org B is shared in a full pages run: read the tab counts BEFORE creating this test's items, assert deltas.
+      // Stage 38 (B2-1): a tab reads "<label><priced> / <total> priced"; the count is the total.
       const countOf = async (name: RegExp) => {
         const t = tab(name);
         if ((await t.count()) === 0) return 0;
-        return Number((((await t.first().textContent()) ?? "").match(/(\d+)\s*$/) ?? [])[1] ?? 0);
+        return Number((((await t.first().textContent()) ?? "").match(/\/\s*(\d+)\s*priced\s*$/) ?? [])[1] ?? 0);
       };
       await page.goto(orgUrl(run.orgB.slug, "/admin/inventory"));
       await expect(page.getByRole("heading", { name: "Inventory", exact: true })).toBeVisible();
-      const allBase = await countOf(/^All\s*\d+$/);
-      const unassignedBase = await countOf(/^Unassigned\s*\d+$/);
+      const allBase = await countOf(/^All\s*\d+ \/ \d+ priced$/);
+      const unassignedBase = await countOf(/^Unassigned\s*\d+ \/ \d+ priced$/);
       const a1Id = await mk(a1, { componentTypeId: type.id, partKey: "hinge", attributes: { grade: "A" } });
       const a2Id = await mk(a2, { componentTypeId: type.id, attributes: { grade: "A" } });
       const a3Id = await mk(a3, { componentTypeId: type.id, active: false, attributes: { grade: "A" } });
@@ -1970,9 +2043,9 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       await expect(page.getByRole("heading", { name: "Inventory", exact: true })).toBeVisible();
 
       // tabs with counts: All +4, the own type exactly 3, Unassigned +1
-      await expect(tab(new RegExp(`^All\\s*${allBase + 4}$`))).toBeVisible();
-      await expect(tab(new RegExp(`^Unassigned\\s*${unassignedBase + 1}$`))).toBeVisible();
-      await tab(new RegExp(`^${type.name}\\s*3$`)).click();
+      await expect(tab(new RegExp(`^All\\s*\\d+ / ${allBase + 4} priced$`))).toBeVisible();
+      await expect(tab(new RegExp(`^Unassigned\\s*\\d+ / ${unassignedBase + 1} priced$`))).toBeVisible();
+      await tab(new RegExp(`^${type.name}\\s*0 / 3 priced$`)).click();
       // Part groups: Hinge (A1) and Other (A2, A3)
       await expect(page.getByRole("rowgroup").filter({ hasText: /Hinge/ })).toBeVisible();
       await page.getByRole("button", { name: "Collapse Other" }).click();
@@ -2010,7 +2083,9 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       await expect(drawer).toBeVisible();
       await expect(drawer.getByRole("button", { name: "Edit" })).toBeVisible();
       await expect(drawer.getByText("Grade")).toBeVisible();
-      await expect(drawer.getByText(/price/i)).toHaveCount(0);
+      // Stage 38a: the Prices section is part of the read-only drawer (this item has no price yet)
+      await expect(drawer.getByRole("heading", { name: "Prices" })).toBeVisible();
+      await expect(drawer.getByText("No prices")).toBeVisible();
       expect(await page.evaluate(() => Array.from(document.body.children).some((e) => (e as HTMLElement).inert))).toBe(true);
       await page.keyboard.press("Escape");
       await expect(drawer).toHaveCount(0);
@@ -2124,5 +2199,271 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       }
       for (const id of created) await orgB.delete(B(`/inventory/${id}`)).catch(() => undefined);
     }
+  });
+});
+
+// Stage 38 Batch 2 (38a) - Inventory prices: the default-currency list columns, Priced/Unpriced, "N / M priced" tabs and
+// the drawer Prices section (view, validation, one PUT per save). Throwaway org B only: the type and items go with it.
+// The org's default currency is READ (via /me), never written, so this does not race the settings specs.
+test.describe("Stage 38 B2: Inventory prices, throwaway org B", () => {
+  test("UI AC1-AC2 /admin/inventory: Max/Min columns in the default currency (bold plain numbers, no unit text, 'No price', arrow for no upper limit, (i) on Max), Priced/Unpriced and 'N / M priced' tabs, the drawer Prices section (heading unit once, amount + currency only, add/validate/save/remove, discard)", async ({ browser, run, orgB }) => {
+    test.setTimeout(240_000);
+    const B = (p: string) => orgApi(run.orgB.slug, p);
+    const cats = (await ok<{ categories: { id: string }[] }>(await orgB.get(B("/component-categories")))).categories;
+    const type = (await ok<{ componentType: { id: string; name: string; code: string } }>(
+      await orgB.post(B("/component-types"), {
+        data: { code: `RGRQ${tag().toUpperCase()}`, name: `${run.prefix}prc-${tag()}`, categoryId: cats[0].id, fieldsSchema: [{ key: "grade", label: "Grade", type: "dropdown", required: false, basic: true }] },
+      }),
+      201,
+    )).componentType;
+    const cur = (await ok<{ orgDefaultCurrency: string }>(await orgB.get(B("/me")))).orgDefaultCurrency;
+    const other = cur === "INR" ? "AED" : "INR";
+    const third = ["INR", "AED", "USD"].find((c) => c !== cur && c !== other)!;
+    const p = run.prefix.toUpperCase();
+    const mk = async (c: string) =>
+      (await ok<{ item: { id: string } }>(await orgB.post(B("/inventory"), { data: { code: c, name: `${c} name`, measurementUnit: "pieces", componentTypeId: type.id } }), 201)).item.id;
+    const put = (id: string, prices: unknown[]) => orgB.put(B(`/inventory/${id}/prices`), { data: { prices } });
+    const stored = async (id: string) =>
+      (await ok<{ item: { prices: { currency: string; price: string; minPrice: string; allowAbove: boolean }[] } }>(await orgB.get(B(`/inventory/${id}`)))).item.prices;
+    const created: string[] = [];
+
+    try {
+      const i1 = await mk(`${p}P1`);
+      const i2 = await mk(`${p}P2`);
+      const i3 = await mk(`${p}P3`);
+      created.push(i1, i2, i3);
+      await ok(await put(i1, [{ currency: cur, price: 2800, minPrice: 2500, allowAbove: true }, { currency: other, price: 40, minPrice: 35, allowAbove: false }]));
+      await ok(await put(i2, [{ currency: other, price: 10, minPrice: 5, allowAbove: false }]));
+
+      await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
+        const page = o.page;
+        const drawer = page.getByRole("dialog", { name: /./ });
+        const rowId = (id: string) => page.locator(`tr[data-row-id="${id}"]`);
+        const puts: string[] = [];
+        page.on("request", (r) => {
+          if (r.method() === "PUT" && r.url().includes("/prices")) puts.push(r.postData() ?? "");
+        });
+        await page.goto(orgUrl(run.orgB.slug, "/admin/inventory"));
+
+        // tab: priced in the default currency over the tab's items
+        const tab = page.getByRole("tab", { name: new RegExp(`^${type.name}`) });
+        await expect(tab).toHaveText(`${type.name}1 / 3 priced`);
+        await tab.click();
+
+        // list columns: org default currency only, currency in the header, (i) on Max
+        await expect(page.getByRole("columnheader", { name: new RegExp(`^Max \\(${cur}\\)`) })).toBeVisible();
+        await expect(page.getByRole("columnheader", { name: new RegExp(`^Min \\(${cur}\\)`) })).toBeVisible();
+        await expect(page.getByRole("img", { name: "Prices are per pack, in the item's unit, shown in your organization's default currency" })).toBeVisible();
+        await expect(page.getByRole("columnheader", { name: /Per\b/ })).toHaveCount(0);
+        const max1 = rowId(i1).getByTestId("price-max");
+        await expect(max1).toHaveText("2,800");
+        await expect(rowId(i1).getByTestId("price-min")).toHaveText("2,500");
+        await expect(max1.getByRole("img", { name: "No upper limit" })).toBeVisible();
+        // no unit or currency text inside any price cell (Q-D30)
+        for (const cell of [max1, rowId(i1).getByTestId("price-min")]) expect(((await cell.textContent()) ?? "").trim()).toMatch(/^[\d,.]+$/);
+        // unpriced in the default currency (i2 is priced only in the other one): "No price", empty Min
+        await expect(rowId(i2).getByTestId("price-max")).toHaveText("No price");
+        await expect(rowId(i2).getByTestId("price-min")).toHaveText("");
+        await expect(rowId(i3).getByTestId("price-max")).toHaveText("No price");
+
+        // Priced / Unpriced chips
+        const priced = page.getByRole("button", { name: "Priced", exact: true });
+        const unpriced = page.getByRole("button", { name: "Unpriced", exact: true });
+        await priced.click();
+        await expect(rowId(i1)).toHaveCount(1);
+        await expect(rowId(i2)).toHaveCount(0);
+        await expect(rowId(i3)).toHaveCount(0);
+        await priced.click();
+        await unpriced.click();
+        await expect(rowId(i1)).toHaveCount(0);
+        await expect(rowId(i2)).toHaveCount(1);
+        await expect(rowId(i3)).toHaveCount(1);
+        await priced.click(); // both on = no price filter
+        await expect(rowId(i1)).toHaveCount(1);
+        await expect(rowId(i3)).toHaveCount(1);
+        await priced.click();
+        await unpriced.click();
+
+        // drawer view: heading says the unit once, rows are amount + currency only, the unpriced currency is named
+        await rowId(i1).click();
+        await expect(drawer).toBeVisible();
+        const section = drawer.getByTestId("prices-section");
+        await expect(section.getByRole("heading", { name: /^Prices/ })).toContainText("per pc");
+        const rows = section.getByTestId("price-row");
+        await expect(rows).toHaveCount(2);
+        await expect(rows.first()).toContainText(`2,800 ${cur}`);
+        await expect(rows.first()).toContainText(`2,500 ${cur}`);
+        await expect(rows.first()).toContainText("Yes");
+        await expect(rows.nth(1)).toContainText(`40 ${other}`);
+        expect(((await rows.first().textContent()) ?? "")).not.toMatch(/\/|\bpc\b/);
+        await expect(section).toContainText(`Not priced in ${third}`);
+        await page.keyboard.press("Escape");
+        await expect(drawer).toHaveCount(0);
+
+        // unpriced item: empty state, Add price enters edit mode; blank Max is refused before any request
+        await rowId(i3).click();
+        await expect(drawer.getByTestId("prices-section")).toContainText("No prices");
+        await drawer.getByRole("button", { name: "Add price" }).click();
+        await drawer.getByRole("button", { name: "Add price" }).click(); // the edit-mode button adds the row
+        await drawer.getByRole("button", { name: "Save changes" }).click();
+        await expect(drawer.getByText("Max must be 0 or more.")).toBeVisible();
+        expect(puts).toHaveLength(0);
+        // min above max
+        await drawer.getByLabel(`Max ${cur}`).fill("100");
+        await drawer.getByLabel(`Min ${cur}`).fill("150");
+        await drawer.getByRole("button", { name: "Save changes" }).click();
+        await expect(drawer.getByText("Min can't be above max.")).toBeVisible();
+        expect(puts).toHaveLength(0);
+        // valid: one PUT with 2 dp strings, then back to the read-only view
+        await drawer.getByLabel(`Min ${cur}`).fill("80");
+        await drawer.getByRole("switch", { name: `No upper limit for ${cur}` }).click();
+        await drawer.getByRole("button", { name: "Save changes" }).click();
+        await expect(drawer.getByRole("button", { name: "Edit" })).toBeVisible();
+        expect(puts).toHaveLength(1);
+        expect(JSON.parse(puts[0])).toEqual({ prices: [{ currency: cur, price: "100.00", minPrice: "80.00", allowAbove: true }] });
+        expect(await stored(i3)).toEqual([expect.objectContaining({ currency: cur, price: "100.00", minPrice: "80.00", allowAbove: true })]);
+        await expect(drawer.getByTestId("price-row")).toHaveCount(1);
+        await page.keyboard.press("Escape");
+        await expect(drawer).toHaveCount(0);
+        await expect(rowId(i3).getByTestId("price-max")).toHaveText("100");
+        await expect(tab).toHaveText(`${type.name}2 / 3 priced`);
+
+        // remove a currency row: one PUT, the other currency is gone
+        await rowId(i1).click();
+        await drawer.getByRole("button", { name: "Edit" }).click();
+        await drawer.getByRole("button", { name: `Remove ${other} price` }).click();
+        await drawer.getByRole("button", { name: "Save changes" }).click();
+        await expect(drawer.getByRole("button", { name: "Edit" })).toBeVisible();
+        expect(puts).toHaveLength(2);
+        expect((await stored(i1)).map((x) => x.currency)).toEqual([cur]);
+
+        // a price edit alone makes the drawer dirty: the scrim asks "Discard changes?", Discard leaves the stored prices alone
+        await page.keyboard.press("Escape");
+        await expect(drawer).toHaveCount(0);
+        await rowId(i2).click();
+        await drawer.getByRole("button", { name: "Edit" }).click();
+        await drawer.getByLabel(`Max ${other}`).fill("11");
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("heading", { name: "Discard changes?" })).toBeVisible();
+        await page.getByRole("button", { name: "Discard", exact: true }).click();
+        await expect(drawer).toHaveCount(0);
+        expect(puts).toHaveLength(2);
+        expect((await stored(i2))[0].price).toBe("10.00");
+
+        // no dash in the visible text of the Prices UI (Q-D25)
+        await rowId(i1).click();
+        expect(((await drawer.getByTestId("prices-section").textContent()) ?? "").match(/[–—]/)).toBeNull();
+        expect(await settledProblems(o)).toEqual([]);
+      });
+    } finally {
+      for (const id of created) await orgB.delete(B(`/inventory/${id}`)).catch(() => undefined);
+    }
+  });
+});
+
+// Stage 38 Batch 2 (38a) - Organization Settings (/admin/settings). The default currency is NEVER written here (the API
+// spec org-settings.spec.ts owns the real round trip on org B and asserts its starting value): the Save requests are
+// answered by a route stub, so this test cannot race it or leave state behind.
+test.describe("Stage 38 B2: Organization Settings page, throwaway org B", () => {
+  test("UI AC2c: flyout link for MANAGE_ORG only, title-only header, General section read-only with its own Edit, (i) tooltip, Save disabled until a change, Cancel reverts, saved toast, 400 and 5xx errors (Reference only on 5xx)", async ({ browser, run, orgB }) => {
+    test.setTimeout(150_000);
+    const label: Record<string, string> = { INR: "INR (Indian Rupee)", AED: "AED (UAE Dirham)", USD: "USD (US Dollar)" };
+    const saved = (await ok<{ defaultCurrency: string }>(await orgB.get(orgApi(run.orgB.slug, "/settings")))).defaultCurrency;
+    const next = saved === "AED" ? "USD" : "AED";
+    await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
+      const page = o.page;
+      const patches: string[] = [];
+      let reply: { status: number; body: unknown } | null = null;
+      await page.route("**/settings", async (r) => {
+        if (r.request().method() !== "PATCH") return r.continue();
+        patches.push(r.request().postData() ?? "");
+        const answer = reply ?? { status: 200, body: { defaultCurrency: next } };
+        return r.fulfill({ status: answer.status, contentType: "application/json", body: JSON.stringify(answer.body) });
+      });
+      await page.goto(orgUrl(run.orgB.slug, "/dashboard"));
+      await page.getByRole("button", { name: /Admin/ }).first().click();
+      const link = page.getByRole("link", { name: "Organization Settings" });
+      await expect(link).toBeVisible();
+      await link.click();
+
+      // title-only header, one "General" section card with its own Edit (no page-level Edit)
+      await expect(page.getByRole("heading", { level: 1, name: "Organization Settings" })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 2, name: "General" })).toBeVisible();
+      await expect(page.getByText("Default Currency", { exact: true })).toBeVisible();
+      await expect(page.getByTestId("default-currency-value")).toHaveText(label[saved]);
+      await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(1);
+      await expect(page.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
+      // (i) tooltip
+      await page.getByLabel("About Default Currency").hover();
+      await expect(page.getByRole("tooltip")).toContainText("Sets the currency the Inventory list shows, and the default currency for new projects and Quick Estimate.");
+
+      // edit: Save disabled until the value differs; Cancel reverts without a request
+      await page.getByRole("button", { name: "Edit" }).click();
+      const save = page.getByRole("button", { name: "Save", exact: true });
+      await expect(save).toBeDisabled();
+      await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(0);
+      const combo = page.getByRole("combobox").last();
+      await combo.click();
+      await page.getByRole("option", { name: label[next], exact: true }).click();
+      await expect(save).toBeEnabled();
+      await page.getByRole("button", { name: "Cancel" }).click();
+      await expect(page.getByTestId("default-currency-value")).toHaveText(label[saved]);
+      expect(patches).toHaveLength(0);
+
+      // 400: the message shows, no Reference, still editing
+      reply = { status: 400, body: { error: "currency must be one of INR, AED, USD" } };
+      await page.getByRole("button", { name: "Edit" }).click();
+      await page.getByRole("combobox").last().click();
+      await page.getByRole("option", { name: label[next], exact: true }).click();
+      await save.click();
+      await expect(page.getByRole("alert")).toHaveText("currency must be one of INR, AED, USD");
+      await expect(save).toBeEnabled();
+      // 5xx: the Reference code shows
+      reply = { status: 500, body: { error: "Internal server error", requestId: "rgr-ref-1" } };
+      await save.click();
+      await expect(page.getByRole("alert")).toContainText("(Reference: rgr-ref-1)");
+      // success: one PATCH body per attempt, read-only again, toast, no confirm dialog
+      reply = null;
+      await save.click();
+      await expect(page.getByTestId("default-currency-value")).toHaveText(label[next]);
+      await expect(page.getByText("Settings saved")).toBeVisible();
+      expect(patches.map((b) => JSON.parse(b))).toEqual([{ defaultCurrency: next }, { defaultCurrency: next }, { defaultCurrency: next }]);
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await page.unroute("**/settings");
+    });
+    // the stub never reached the server: the stored value is unchanged
+    expect((await ok<{ defaultCurrency: string }>(await orgB.get(orgApi(run.orgB.slug, "/settings")))).defaultCurrency).toBe(saved);
+    // a Company Member (no MANAGE_ORG) has no Organization Settings link in the flyout
+    await withPage({ browser, run }, "member", undefined, async (o) => {
+      await o.page.goto(orgTarget(run, "/dashboard"));
+      await o.page.getByRole("button", { name: /Admin/ }).first().click();
+      await expect(o.page.getByRole("link", { name: "Inventory" })).toBeVisible();
+      await expect(o.page.getByRole("link", { name: "Organization Settings" })).toHaveCount(0);
+    });
+  });
+});
+
+// Stage 38 Batch 2 (38a) - the Summary page's missing-price notice (Q-D8). Test Org project with a submitted design,
+// READ only: the expected count comes from the calculation API itself (prices are never written here).
+test.describe("Stage 38 B2: Summary missing-price notice", () => {
+  test("UI AC3: the notice names the count and the project currency and links to Inventory for MANAGE_PRICING; absent when every item is priced", async ({ browser, run, f, as, url }) => {
+    test.setTimeout(180_000);
+    const w = await readyWall(f, as.admin, url);
+    const submit = await as.admin.post(url(`/projects/${w.projectId}/submit-design`));
+    expect(submit.status(), await submit.text()).toBe(200);
+    const calc = await ok<{ missingPrices: { currency: string; items: { code: string }[] } }>(await as.admin.get(url(`/projects/${w.projectId}/calculation`)));
+    const n = calc.missingPrices.items.length;
+    await withPage({ browser, run }, "admin", undefined, async (o) => {
+      await o.page.goto(orgTarget(run, `/projects/${w.projectId}/summary`));
+      await expect(o.page.getByRole("button", { name: /^Recompute$/ })).toBeVisible();
+      const notice = o.page.getByTestId("missing-prices-notice");
+      if (n === 0) {
+        await expect(notice).toHaveCount(0);
+      } else {
+        await expect(notice).toContainText(`${n === 1 ? "1 item has" : `${n} items have`} no ${calc.missingPrices.currency} price; a quotation can't be made yet.`);
+        await expect(notice.getByRole("link", { name: "Open Inventory" })).toHaveAttribute("href", /\/admin\/inventory$/);
+        expect((await notice.textContent()) ?? "").not.toMatch(/[–—]/);
+      }
+    });
   });
 });

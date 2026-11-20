@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { orgHref, detectIsSubdomain } from "@/lib/orgHref";
 import { internalFetch } from "@/lib/internal-fetch";
 import { fetchProjectDetail } from "../_project-fetch";
@@ -19,6 +20,8 @@ interface CalculationResult {
   summary: Summary;
   materialList: MaterialListLine[];
   formulaSet: { name: string; version: number };
+  /** Stage 38 (Q-D8): material-list items with no ItemPrice in the project currency; absent on an old response. */
+  missingPrices?: { currency: string; items: Array<{ code: string; name: string }> };
 }
 
 const dateTimeFmt = new Intl.DateTimeFormat("en-GB", {
@@ -91,9 +94,12 @@ export default async function SummaryPage({
   // PDF header fields (Batch 4, S26-9 — no formula set name/version here). Export shouldn't hard-fail the
   // whole page over a cosmetic header field, so /me failures fall back to orgSlug (same fallback me/route.ts
   // itself uses server-side when the org lookup comes back empty).
-  const orgName = meRes.ok
-    ? ((await meRes.json()) as { orgName?: string }).orgName ?? orgSlug
-    : orgSlug;
+  const me = meRes.ok ? ((await meRes.json()) as { orgName?: string; adminPermissions?: string[] }) : null;
+  const orgName = me?.orgName ?? orgSlug;
+  // Stage 38 (Q-D8): the missing-price notice, with an Inventory link for MANAGE_PRICING holders only.
+  const missing = calc?.status === "OK" ? (calc.missingPrices?.items.length ?? 0) : 0;
+  const canManagePricing = me?.adminPermissions?.includes("MANAGE_PRICING") ?? false;
+  const tn = await getTranslations("summaryNotice");
   const { label: clientLabel, value: clientValue } = resolveClientField(
     project.externalCompany?.name ?? null,
     project.endClientName,
@@ -174,6 +180,20 @@ export default async function SummaryPage({
         ) : (
           // 200, status: OK — the real page.
           <>
+            {missing > 0 && calc.missingPrices ? (
+              <div
+                role="status"
+                data-testid="missing-prices-notice"
+                className="mb-3.5 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-sm border border-status-pending-border bg-status-pending-bg px-3.5 py-[11px] text-[13px] leading-[1.45] text-status-pending-text"
+              >
+                <span className="font-bold">{tn("missingPrices", { count: missing, currency: calc.missingPrices.currency })}</span>
+                {canManagePricing ? (
+                  <Link href={`${base}/admin/inventory`} className="font-bold underline underline-offset-2">
+                    {tn("openInventory")}
+                  </Link>
+                ) : null}
+              </div>
+            ) : null}
             <ActionRow
               isDraft={isDraft}
               showExport={true}
