@@ -4,7 +4,7 @@
  */
 
 /** Upper bound (in cents) so the value stays a safe integer and fits the DB Decimal comfortably. */
-export const MAX_CENTS = 99_999_999_999_99; // 999,999,999,999.99
+export const MAX_CENTS = 9_999_999_999_999; // 99,999,999,999.99
 
 const MONEY_RE = /^\d+(\.\d{1,2})?$/;
 
@@ -37,11 +37,20 @@ export function centsToFixed(cents: number): string {
   return `${whole}.${frac}`;
 }
 
-/** A stored decimal (Prisma Decimal, string or number) to integer cents; null if not representable. */
+/**
+ * A stored decimal (Prisma Decimal, string or number) to integer cents, no float math: the decimal string is
+ * split on ".", padded to 2 dp, and a 3rd-or-later digit rounds half-up on its first digit. Null for negatives,
+ * exponent form, junk, or above MAX_CENTS.
+ */
 export function decimalToCents(value: { toString(): string } | string | number): number | null {
-  const n = Number(value.toString());
-  if (!Number.isFinite(n) || n < 0) return null;
-  return Math.round(n * 100);
+  const text = value.toString().trim();
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(text);
+  if (!m) return null;
+  const frac = m[2] ?? "";
+  let cents = Number(m[1]) * 100 + Number(frac.slice(0, 2).padEnd(2, "0"));
+  if (frac.length > 2 && frac.charCodeAt(2) >= 53) cents += 1; // 53 = "5": half-up on the 3rd digit
+  if (!Number.isSafeInteger(cents) || cents > MAX_CENTS) return null;
+  return cents;
 }
 
 /** A stored decimal as a 2 dp string; falls back to the raw string when not representable. */

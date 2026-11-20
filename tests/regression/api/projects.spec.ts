@@ -514,16 +514,25 @@ test.describe("projects: submit design / calculation / recompute", () => {
     const prior = item!.prices.map((x) => ({ currency: x.currency, price: x.price, minPrice: x.minPrice, allowAbove: x.allowAbove }));
     try {
       const others = prior.filter((x) => x.currency !== currency);
+      // Unpriced first (positive half): the target must be listed whatever the Test Org already had priced.
+      const clear = await as.admin.put(url(`/inventory/${item!.id}/prices`), { data: others });
+      expect(clear.status(), await clear.text()).toBe(200);
+      const unpriced = await readCalc();
+      expect(unpriced.missingPrices.currency).toBe(currency);
+      expect(unpriced.missingPrices.items.map((i) => i.code)).toContain(target);
+      expect(unpriced.missingPrices.items.find((i) => i.code === target)!.name).toEqual(expect.any(String));
+      // Then priced: it disappears and nothing else changes.
       const put = await as.admin.put(url(`/inventory/${item!.id}/prices`), { data: [...others, { currency, price: "10.00", minPrice: "8.00", allowAbove: false }] });
       expect(put.status(), await put.text()).toBe(200);
       const after = await readCalc();
       expect(after.missingPrices.currency).toBe(currency);
       expect(after.missingPrices.items.map((i) => i.code)).not.toContain(target);
-      expect(after.missingPrices.items.length).toBe(before.missingPrices.items.filter((i) => i.code !== target).length);
+      expect(after.missingPrices.items.length).toBe(unpriced.missingPrices.items.length - 1);
     } finally {
       const back = await as.admin.put(url(`/inventory/${item!.id}/prices`), { data: prior });
       expect(back.status(), await back.text()).toBe(200);
     }
+    // restored: the target is listed again exactly when it was before this test touched it
     expect((await readCalc()).missingPrices.items.map((i) => i.code).includes(target)).toBe(before.missingPrices.items.some((i) => i.code === target));
   });
 

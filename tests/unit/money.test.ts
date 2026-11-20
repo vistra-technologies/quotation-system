@@ -35,3 +35,15 @@ test("decimalToCents / toFixed2 read stored Decimal strings", () => {
   assert.equal(toFixed2({ toString: () => "12.5" }), "12.50");
   assert.equal(toFixed2("2800.000000000000000000000000000000"), "2800.00");
 });
+
+test("decimalToCents rounds half-up on the 3rd digit with no float math; rejects junk", () => {
+  assert.equal(decimalToCents("1.005"), 101);
+  assert.equal(decimalToCents("1.004"), 100);
+  assert.equal(decimalToCents("0.994999"), 99);
+  assert.equal(decimalToCents("0.995"), 100);
+  assert.equal(decimalToCents("1.15"), 115);
+  assert.equal(decimalToCents(2800), 280000);
+  assert.equal(toFixed2("1.005"), "1.01");
+  for (const bad of ["-1", "1e3", "abc", "", ".5"]) assert.equal(decimalToCents(bad), null, bad);
+  assert.equal(decimalToCents(centsToFixed(MAX_CENTS + 1)), null);
+});
