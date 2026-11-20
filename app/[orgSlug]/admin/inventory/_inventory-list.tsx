@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { LoadingOverlay } from "@/components/loading-overlay";
@@ -19,8 +20,9 @@ import type { ListItem, ListType, SortKey, SortState } from "@/lib/inventory-lis
 import { readMatchRows } from "@/lib/inventory-matches";
 import { packLabel } from "@/lib/units";
 import { deleteInventoryItem } from "./actions";
-import { AlsoMatchedBy, InventoryItemDrawer } from "./_item-drawer";
+import { InventoryItemDrawer } from "./_item-drawer";
 import type { DrawerTarget } from "./_item-drawer";
+import { AlsoMatchedBy } from "./_parts";
 import { ACTIVE_BADGE, C, INACTIVE_BADGE, UNASSIGNED_BADGE } from "./_styles";
 
 interface InventoryListProps {
@@ -84,6 +86,7 @@ export function InventoryList({ items, types, orgSlug }: InventoryListProps) {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const toast = useToast();
+  const router = useRouter();
   const newButtonRef = useRef<HTMLButtonElement>(null);
   // The row that opened the drawer, kept while the drawer switches to other items (focus returns here on close).
   const openerIdRef = useRef<string | null>(null);
@@ -103,6 +106,13 @@ export function InventoryList({ items, types, orgSlug }: InventoryListProps) {
   function clearFilters() {
     setQ("");
     setChips({ active: false, inactive: false });
+  }
+  function onSaved(kind: "created" | "updated") {
+    if (kind === "created") {
+      setDrawer(null);
+      toast.show(t("itemAdded"));
+    }
+    router.refresh();
   }
   function openDrawer(target: DrawerTarget) {
     openerIdRef.current = target.kind === "item" ? target.id : null;
@@ -149,6 +159,8 @@ export function InventoryList({ items, types, orgSlug }: InventoryListProps) {
             target={drawer}
             items={items}
             types={types}
+            orgSlug={orgSlug}
+            onSaved={onSaved}
             onClose={() => setDrawer(null)}
             onOpenItem={(id) => setDrawer({ kind: "item", id })}
             getRestoreTarget={restoreTarget}
@@ -356,6 +368,8 @@ export function InventoryList({ items, types, orgSlug }: InventoryListProps) {
           target={drawer}
           items={items}
           types={types}
+          orgSlug={orgSlug}
+          onSaved={onSaved}
           onClose={() => setDrawer(null)}
           onOpenItem={(id) => setDrawer({ kind: "item", id })}
           getRestoreTarget={restoreTarget}
