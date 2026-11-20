@@ -686,7 +686,7 @@ test.describe("quotation page (UI)", () => {
       const adminName = me.name.trim() !== "" ? me.name : me.username;
       expect(q0.createdByName).toBe(adminName);
       const capped = q0.lines.find((l) => l.code === codes[1])!; // 110.00, min 90.00, capped at the stored default
-      const rowOf = (page: import("@playwright/test").Page, code: string) => page.locator(`[data-testid="quotation-line"][data-code="${code}"]`);
+      const rowOf = (page: { locator: import("@playwright/test").Page["locator"] }, code: string) => page.locator(`[data-testid="quotation-line"][data-code="${code}"]`);
 
       const o = await openAs(browser, run, "admin");
       try {
@@ -767,16 +767,18 @@ test.describe("quotation page (UI)", () => {
       const dist = await openAs(browser, run, "distributor");
       try {
         const page = dist.page;
+        // scoped to <main>: right after goto the streamed (hidden) copy of the page can still be in the DOM on the alias
+        const main = page.getByRole("main");
         await page.goto(orgTarget(run, `/projects/${projectId}/quotation`));
-        await expect(page.getByTestId("quotation-number")).toHaveText(q0.number);
-        await expect(page.getByTestId("quotation-prepared-by")).toContainText(adminName);
-        const row = rowOf(page, capped.code);
+        await expect(main.getByTestId("quotation-number")).toHaveText(q0.number);
+        await expect(main.getByTestId("quotation-prepared-by")).toContainText(adminName);
+        const row = rowOf(main, capped.code);
         await expect(row).toContainText(fmt("95.50"));
-        await expect(page.getByTestId("quotation-line-edit")).toHaveCount(0);
-        await expect(page.getByTestId("quotation-line-edited")).toHaveCount(0);
-        await expect(page.getByTestId("quotation-line-reset")).toHaveCount(0);
-        await expect(page.getByTestId("quotation-line-popover")).toHaveCount(0);
-        await expect(page.getByTestId("quotation-section").first()).not.toContainText(/Range|and up|No upper limit/);
+        await expect(main.getByTestId("quotation-line-edit")).toHaveCount(0);
+        await expect(main.getByTestId("quotation-line-edited")).toHaveCount(0);
+        await expect(main.getByTestId("quotation-line-reset")).toHaveCount(0);
+        await expect(main.getByTestId("quotation-line-popover")).toHaveCount(0);
+        await expect(main.getByTestId("quotation-section").first()).not.toContainText(/Range|and up|No upper limit/);
         expect(await settledProblems(dist)).toEqual([]);
       } finally {
         await dist.ctx.close();
