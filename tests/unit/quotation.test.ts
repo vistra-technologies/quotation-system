@@ -194,7 +194,7 @@ test("missingPriceReport: MISSING_PRICE problems in the INVENTORY scope with cod
 
 function row(over: Partial<QuotationRow> = {}): QuotationRow {
   return {
-    id: "q1", projectId: "p1", externalCompanyId: null, quotationNumber: 3, status: "DRAFT", currency: "INR",
+    id: "q1", projectId: "p1", externalCompanyId: null, createdByUserId: "u1", quotationNumber: 3, status: "DRAFT", currency: "INR",
     lines: [line("A", 2, "2500.00", "2800.00", "2400.00")].map((l) => ({ ...l, amount: "5000.00" })),
     transport: "0", otherCharges: "0", discount: "0", discountType: "PERCENT", discountAppliedAt: null, taxPercent: "0",
     subtotal: "5000", grandTotal: "5000",

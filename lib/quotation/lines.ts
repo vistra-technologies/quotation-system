@@ -9,7 +9,7 @@ import type { MaterialLineInput, PriceInfo, QuotationLine } from "./types";
 export type LinesResult = { ok: true; lines: QuotationLine[] } | { ok: false; missing: MissingPrice[] };
 
 /** quantity x unit price in cents (half-up). Throws on a quantity that cannot be a number of units. */
-function amountCents(quantity: number, unitCents: number): number {
+export function amountCents(quantity: number, unitCents: number): number {
   const milli = quantityToMilli(quantity);
   if (milli === null) throw new RangeError(`Invalid quantity ${quantity}`);
   return lineAmountCents(milli, unitCents);

@@ -8,19 +8,24 @@
  */
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import {
   formatCents,
   formatDate,
   formatMoney,
+  isEditableLine,
+  isEditedLine,
+  linePriceProblem,
   priceUnit,
   quantityParts,
   sectionTotalCents,
   sectionsOf,
   type ChargesForm,
   type Kpis,
+  type EditableLine,
   type QuotationDto,
 } from "@/lib/quotation/present";
+import { lineRange } from "@/lib/quotation/line-edit";
 import type { ConfigSnapshot } from "@/lib/config-snapshot";
 import type { DiscountType } from "@/lib/quotation/types";
 
@@ -87,9 +92,9 @@ export interface HeaderProps {
   onExport: () => void;
 }
 
-function Meta({ label, children, className, title }: { label: string; children: ReactNode; className?: string; title?: string }) {
+function Meta({ label, children, className, title, testId }: { label: string; children: ReactNode; className?: string; title?: string; testId?: string }) {
   return (
-    <div className={`flex min-w-0 flex-col gap-px ${className ?? ""}`}>
+    <div data-testid={testId} className={`flex min-w-0 flex-col gap-px ${className ?? ""}`}>
       <span className="text-[10.5px] font-extrabold uppercase tracking-wide text-text-muted">{label}</span>
       <span className="truncate text-xs font-bold text-text-heading" title={title}>
         {children}
@@ -113,7 +118,7 @@ export function QuotationHeader(p: HeaderProps) {
   ];
   if (p.company) metaItems.push(<Meta key="co" label={t("metaCompany")} className="max-w-[200px]" title={p.company}>{p.company}</Meta>);
   if (p.endClient) metaItems.push(<Meta key="ec" label={t("metaEndClient")} className="max-w-[220px]" title={p.endClient}>{p.endClient}</Meta>);
-  if (p.preparedBy) metaItems.push(<Meta key="pb" label={t("metaPreparedBy")}>{p.preparedBy}</Meta>);
+  if (p.preparedBy) metaItems.push(<Meta key="pb" label={t("metaPreparedBy")} testId="quotation-prepared-by">{p.preparedBy}</Meta>);
 
   return (
     <>
@@ -296,7 +301,206 @@ function stripZeros(fixed: string): string {
 
 // ─── Lines ledger (sections from the data, S38-D8) ───────────────────────────
 
-export function QuotationLines({ q, snapshot }: { q: QuotationDto; snapshot: ConfigSnapshot | null }) {
+/** The line price edit controller (38c): present only for an internal user holding APPLY_DISCOUNT (Q-D14). */
+export interface LineEditCtl {
+  /** The line whose popover is open (read-only first: null until the pencil is clicked). */
+  code: string | null;
+  draft: string;
+  /** The server message for the last failed save (400 range, 409, 500), shown in the popover. */
+  error: string | null;
+  saving: boolean;
+  /** Any quotation request in flight: row controls wait. */
+  busy: boolean;
+  onOpen: (code: string) => void;
+  onDraft: (value: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+  onReset: (code: string) => void;
+}
+
+const UndoIcon = () => (
+  <svg {...svgProps} className="h-[13px] w-[13px]">
+    <path d="M1 4v6h6" />
+    <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+  </svg>
+);
+const PencilIcon = () => (
+  <svg {...svgProps} className="h-[13px] w-[13px]">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+  </svg>
+);
+
+const ICON_BTN =
+  "flex h-6 w-6 items-center justify-center rounded-sm text-text-muted hover:bg-bg-hover hover:text-text-heading focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50";
+
+/** The row popover (mockup B rev 3, line edit 2): the allowed range and the validation error live here, never on the row. */
+function LinePopover({ line, currency, edit }: { line: EditableLine; currency: string; edit: LineEditCtl }) {
+  const t = useTranslations("quotation");
+  const ref = useRef<HTMLDivElement>(null);
+  const { onCancel } = edit;
+  useEffect(() => {
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onCancel();
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [onCancel]);
+
+  const range = lineRange(line);
+  const check = linePriceProblem(line, edit.draft);
+  const rangeText = range.max === null ? t("popoverRangeUp", { min: range.min }) : t("popoverRange", { min: range.min, max: range.max });
+  const problemText =
+    check.problem === "invalid"
+      ? t("popoverInvalid")
+      : check.problem === "range"
+        ? range.max === null
+          ? t("popoverRangeErrorUp", { min: range.min })
+          : t("popoverRangeError", { min: range.min, max: range.max })
+        : null;
+  const shownError = problemText ?? edit.error;
+  const unchanged = check.cents !== null && formatMoney(edit.draft) === formatMoney(line.unitPrice);
+  const edited = isEditedLine(line);
+
+  return (
+    <div
+      ref={ref}
+      role="dialog"
+      aria-label={t("popoverLabel", { code: line.code })}
+      data-testid="quotation-line-popover"
+      className="absolute right-0 top-full z-20 mt-1.5 w-[320px] rounded-md border border-border bg-bg-white p-4 text-left shadow-[0_8px_24px_-8px_rgba(27,40,30,.18)]"
+    >
+      <div className="font-mono text-[11.5px] text-text-muted">{line.code}</div>
+      <div className="line-clamp-1 text-[13px] font-extrabold text-text-heading">{line.name}</div>
+      <label className="mb-1.5 mt-3 block text-xs font-extrabold text-text-heading" htmlFor={`line-price-${line.code}`}>
+        {t("popoverUnitPrice")}
+      </label>
+      <div className="flex">
+        <input
+          id={`line-price-${line.code}`}
+          data-testid="quotation-line-input"
+          value={edit.draft}
+          inputMode="decimal"
+          autoFocus
+          aria-invalid={shownError ? true : undefined}
+          onChange={(e) => edit.onDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") edit.onCancel();
+            if (e.key === "Enter" && !check.problem && !unchanged && !edit.busy) edit.onSave();
+          }}
+          className={`${C.input} h-8 rounded-r-none px-2 text-right text-[13px] tabular-nums ${shownError ? C.inErr : C.inOk}`}
+        />
+        <span className="flex h-8 items-center whitespace-nowrap rounded-r-sm border border-l-0 border-border bg-bg-subtle px-2 text-[11.5px] font-bold text-text-muted">
+          {currency}/{priceUnit(line)}
+        </span>
+      </div>
+      {shownError ? (
+        <p role="alert" data-testid="quotation-line-error" className={C.err}>
+          {shownError}
+        </p>
+      ) : (
+        <p data-testid="quotation-line-range" className="mt-1 text-[11px] tabular-nums text-text-muted">
+          {rangeText}
+        </p>
+      )}
+      <div className="mt-3.5 flex items-center gap-2">
+        {edited ? (
+          <button
+            type="button"
+            data-testid="quotation-line-popover-reset"
+            disabled={edit.busy}
+            onClick={() => edit.onReset(line.code)}
+            className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-sm px-2 text-xs font-bold text-primary-dark hover:bg-primary-softer focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50"
+          >
+            <UndoIcon />
+            {t("popoverResetTo", { price: formatMoney(line.defaultPrice) })}
+          </button>
+        ) : null}
+        <span className="flex-1" />
+        <button
+          type="button"
+          data-testid="quotation-line-cancel"
+          onClick={edit.onCancel}
+          className="inline-flex h-8 items-center rounded-sm border border-border bg-bg-white px-3 text-xs font-bold text-text-body hover:bg-bg-hover"
+        >
+          {t("popoverCancel")}
+        </button>
+        <button
+          type="button"
+          data-testid="quotation-line-save"
+          disabled={!!check.problem || unchanged || edit.busy}
+          onClick={edit.onSave}
+          className="inline-flex h-8 items-center rounded-sm border border-primary-dark bg-primary px-3 text-xs font-bold text-white hover:bg-primary-dark disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {t("popoverSave")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The Unit price cell. Always the bold amount plus the muted currency/unit, never the range (Q-D34). Staff with
+ * APPLY_DISCOUNT additionally get the Edited tag, the per-line Reset icon (edited lines) and the pencil that opens the popover.
+ */
+function UnitPriceCell({ line, currency, edit }: { line: QuotationDto["lines"][number]; currency: string; edit: LineEditCtl | null }) {
+  const t = useTranslations("quotation");
+  const amount = (
+    <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
+      <span className="font-extrabold tabular-nums text-text-heading">{formatMoney(line.unitPrice)}</span>
+      <span className="text-[11.5px] text-text-muted">{currency}/{priceUnit(line)}</span>
+    </span>
+  );
+  if (!edit || !isEditableLine(line)) return <div className="text-right">{amount}</div>;
+
+  const edited = isEditedLine(line);
+  const open = edit.code === line.code;
+  const def = formatMoney(line.defaultPrice);
+  return (
+    <div className="relative flex items-center justify-end gap-1.5">
+      <div className="flex items-center justify-end gap-1.5 text-right">
+        {edited ? (
+          <span
+            data-testid="quotation-line-edited"
+            title={t("editedTagTitle", { price: def, currency })}
+            className="inline-flex h-[18px] items-center rounded-[4px] bg-status-pending-bg px-1.5 text-[10.5px] font-extrabold text-status-pending-text"
+          >
+            {t("editedTag")}
+          </span>
+        ) : null}
+        {amount}
+      </div>
+      <div className="flex w-[52px] justify-end gap-0.5">
+        {edited ? (
+          <button
+            type="button"
+            data-testid="quotation-line-reset"
+            disabled={edit.busy}
+            aria-label={t("resetLineLabel", { code: line.code, price: def, currency })}
+            title={t("resetLineTitle", { price: def })}
+            onClick={() => edit.onReset(line.code)}
+            className={ICON_BTN}
+          >
+            <UndoIcon />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          data-testid="quotation-line-edit"
+          disabled={edit.busy}
+          aria-label={t("editPriceLabel", { code: line.code })}
+          onClick={() => edit.onOpen(line.code)}
+          className={`${ICON_BTN} ${open ? "bg-primary-softer text-primary-dark" : ""}`}
+        >
+          <PencilIcon />
+        </button>
+      </div>
+      {open ? <LinePopover line={line} currency={currency} edit={edit} /> : null}
+    </div>
+  );
+}
+
+export function QuotationLines({ q, snapshot, edit = null }: { q: QuotationDto; snapshot: ConfigSnapshot | null; edit?: LineEditCtl | null }) {
   const t = useTranslations("quotation");
   const sections = sectionsOf(q.lines, snapshot);
   // Numbering runs across sections: each section starts after the lines of the ones before it.
@@ -331,12 +535,7 @@ export function QuotationLines({ q, snapshot }: { q: QuotationDto; snapshot: Con
                       {qty.main} <span className="text-text-muted">{qty.muted}</span>
                     </td>
                     <td className={C.td}>
-                      <div className="text-right">
-                        <span className="inline-flex items-baseline gap-1 whitespace-nowrap">
-                          <span className="font-extrabold tabular-nums text-text-heading">{formatMoney(line.unitPrice)}</span>
-                          <span className="text-[11.5px] text-text-muted">{q.currency}/{priceUnit(line)}</span>
-                        </span>
-                      </div>
+                      <UnitPriceCell line={line} currency={q.currency} edit={edit} />
                     </td>
                     <td className={`${C.td} whitespace-nowrap text-right font-semibold tabular-nums text-text-heading`}>{formatMoney(line.amount)}</td>
                   </tr>

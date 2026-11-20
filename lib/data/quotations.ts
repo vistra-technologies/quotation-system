@@ -20,6 +20,7 @@ import { centsToFixed, decimalToCents } from "@/lib/money";
 import type { MissingPrice } from "@/lib/missing-prices";
 import type { SessionData } from "@/lib/session";
 import { checkDiscount, type QuotationInputPatch } from "@/lib/quotation/inputs";
+import { editLinePrice, resetLinePrice, type LinePatch } from "@/lib/quotation/line-edit";
 import { anyLineEdited, buildLines, refreshLines, repriceLines, type LinesResult } from "@/lib/quotation/lines";
 import { renewedValidUntil, validityFrom } from "@/lib/quotation/meta";
 import { computeTotals, linesTotalOf } from "@/lib/quotation/totals";
@@ -32,6 +33,7 @@ const QUOTATION_SELECT = {
   id: true,
   projectId: true,
   externalCompanyId: true,
+  createdByUserId: true,
   quotationNumber: true,
   status: true,
   currency: true,
@@ -55,6 +57,7 @@ export type QuotationOutcome =
   | { kind: "ok"; quotation: QuotationView }
   | { kind: "projectNotFound" }
   | { kind: "noQuotation" }
+  | { kind: "noLine" }
   | { kind: "noCalculation" }
   | { kind: "exists" }
   | { kind: "ordered" }
@@ -120,9 +123,33 @@ async function lockRow(tx: Tx, table: "Quotation" | "Project", id: string) {
   else await tx.$queryRaw`SELECT "id" FROM "Project" WHERE "id" = ${id} FOR UPDATE`;
 }
 
-function viewOf(session: SessionData, row: QuotationRow, projectCurrency: string, calcComputedAt: Date | null): QuotationView {
+/**
+ * The quoting user's display name for "Prepared by" (M-1): `User.name`, else the username, org-scoped. `createdByUserId`
+ * is a plain column (B3-2), so a removed user is simply not found: null, and the page falls back to the project's
+ * creator. One indexed primary-key read per quotation view.
+ */
+async function creatorName(db: Tx | typeof prisma, organizationId: string, userId: string | null): Promise<string | null> {
+  if (!userId) return null;
+  const u = await db.user.findFirst({ where: { id: userId, organizationId }, select: { name: true, username: true } });
+  if (!u) return null;
+  return u.name.trim() !== "" ? u.name : u.username;
+}
+
+async function viewOf(
+  db: Tx | typeof prisma,
+  session: SessionData,
+  row: QuotationRow,
+  projectCurrency: string,
+  calcComputedAt: Date | null,
+): Promise<QuotationView> {
   // Q-D34: the price range is staff-only; an external user never receives it.
-  return serializeQuotation(row, { projectCurrency, calcComputedAt, now: new Date(), showRange: !session.isExternal });
+  return serializeQuotation(row, {
+    projectCurrency,
+    calcComputedAt,
+    now: new Date(),
+    showRange: !session.isExternal,
+    createdByName: await creatorName(db, session.organizationId, row.createdByUserId),
+  });
 }
 
 /** The values written whenever lines or inputs change: totals recomputed from them, never from the client. */
@@ -160,7 +187,7 @@ export async function getQuotation(session: SessionData, projectId: string): Pro
     where: { projectId, organizationId: session.organizationId },
     select: { computedAt: true },
   });
-  return { kind: "ok", quotation: viewOf(session, row, project.currency, calc?.computedAt ?? null) };
+  return { kind: "ok", quotation: await viewOf(prisma, session, row, project.currency, calc?.computedAt ?? null) };
 }
 
 // ─── create ─────────────────────────────────────────────────────────────────────────────────────────────
@@ -211,7 +238,7 @@ async function createOnce(session: SessionData, projectId: string): Promise<Quot
         },
         select: QUOTATION_SELECT,
       });
-      return { kind: "ok", quotation: viewOf(session, row, project.currency, calc.computedAt) };
+      return { kind: "ok", quotation: await viewOf(tx, session, row, project.currency, calc.computedAt) };
     });
   } catch (err) {
     if (typeof err === "object" && err !== null && "code" in err && (err as { code: string }).code === "P2002") {
@@ -258,7 +285,7 @@ async function withLockedQuotation(
 async function finish(session: SessionData, l: Locked, data: Prisma.QuotationUpdateInput): Promise<QuotationOutcome> {
   const row = await l.tx.quotation.update({ where: { id: l.row.id }, data, select: QUOTATION_SELECT });
   const calc = await l.tx.projectCalculation.findFirst({ where: { projectId: row.projectId }, select: { computedAt: true } });
-  return { kind: "ok", quotation: viewOf(session, row, l.project.currency, calc?.computedAt ?? null) };
+  return { kind: "ok", quotation: await viewOf(l.tx, session, row, l.project.currency, calc?.computedAt ?? null) };
 }
 
 /**
@@ -361,3 +388,20 @@ export function updateQuotationInputs(
   });
 }
 
+/**
+ * PATCH lines (Q-D13, Q-D14, Q-D33; 38c): ONE line's unit price set or reset, in the same locked transaction as every
+ * mutation (S38-3). The range check reads the line's stored copy (never live ItemPrice); the amount and the totals are
+ * recomputed here. `pricedAt`, `quantitiesAt` and `validUntil` are untouched (an edit re-prices nothing). A code that
+ * is not on the quotation is "noLine" (404); an out-of-range price is "invalidInput" (400, nothing written).
+ */
+export function updateQuotationLine(session: SessionData, projectId: string, patch: LinePatch): Promise<QuotationOutcome> {
+  return withLockedQuotation(session, projectId, async (l) => {
+    const lines = rowLines(l.row);
+    const result = "reset" in patch ? resetLinePrice(lines, patch.code) : editLinePrice(lines, patch.code, patch.unitPriceCents);
+    if (!result.ok) return result.reason === "noLine" ? { kind: "noLine" } : { kind: "invalidInput", error: result.error };
+    return finish(session, l, {
+      lines: result.lines as unknown as Prisma.InputJsonValue,
+      ...totalsData(result.lines, currentInputs(l.row)),
+    });
+  });
+}

@@ -1,17 +1,17 @@
 /**
- * Quotation API (Stage 38 Batch 3, 38b): `GET|POST|PATCH .../projects/[projectId]/quotation` and
- * `POST .../quotation/refresh | reset-prices | renew`.
+ * Quotation API (Stage 38 Batches 3 and 5, 38b/38c): `GET|POST|PATCH .../projects/[projectId]/quotation`,
+ * `POST .../quotation/refresh | reset-prices | renew` and `PATCH .../quotation/lines` (one line's unit price).
  *
  * Gates (route source): GET / create / refresh = QUOTE; reset-prices = QUOTE, plus APPLY_DISCOUNT once any line is
- * edited (Q-D33); PATCH (money inputs) = APPLY_DISCOUNT; renew = EXTEND_QUOTE (Admin only by default). All also pass
+ * edited (Q-D33); PATCH (money inputs) and PATCH lines (line price edit, internal users only) = APPLY_DISCOUNT; renew =
+ * EXTEND_QUOTE (Admin only by default). All also pass
  * the project ownership filter (an external user sees only their company's projects; a foreign id is 404).
  * Default roles: admin = QUOTE + APPLY_DISCOUNT + EXTEND_QUOTE, member = QUOTE + APPLY_DISCOUNT, distributor = QUOTE,
  * architect = none (the matrix at the bottom derives every 403 from tests/regression/api/permissions.ts).
  *
  * Data: quotations hang off ledgered Test-Org projects and go with them (DRAFT project delete = S38-D7). Prices come
  * from Test-Org inventory: every test records the item price lists it changes and puts exactly those back in
- * `finally` (rule 10). The "edited line" state has no API yet (Batch 5): `rgrSetQuotationLineUnitPrice` writes it
- * directly, scoped to the Test Org / rgr- orgs.
+ * `finally` (rule 10). An "edited line" is made through PATCH .../quotation/lines (Batch 5).
  *
  * ONE-WORKER RULE: every test that writes Test Org item prices lives in THIS file (the quotation tests, the projects
  * "AC3 missingPrices" test and the Summary-notice page test, both moved here), because a file runs on one worker, in
@@ -33,7 +33,7 @@ import { isHydrated } from "../pages/collect";
 import { pillState } from "../journeys/journey-helpers";
 import { ok } from "./design-helpers";
 import { body, priceItems, materialCodes, submittedWall, distributorWall, type PriceRow } from "./quotation-helpers";
-import { countQuotations, rgrSetQuotationLineUnitPrice } from "../../e2e/db-helpers";
+import { countQuotations } from "../../e2e/db-helpers";
 
 covers("GET /api/v1/orgs/[orgSlug]/projects/[projectId]/quotation");
 covers("POST /api/v1/orgs/[orgSlug]/projects/[projectId]/quotation");
@@ -41,6 +41,7 @@ covers("PATCH /api/v1/orgs/[orgSlug]/projects/[projectId]/quotation");
 covers("POST /api/v1/orgs/[orgSlug]/projects/[projectId]/quotation/refresh");
 covers("POST /api/v1/orgs/[orgSlug]/projects/[projectId]/quotation/reset-prices");
 covers("POST /api/v1/orgs/[orgSlug]/projects/[projectId]/quotation/renew");
+covers("PATCH /api/v1/orgs/[orgSlug]/projects/[projectId]/quotation/lines");
 
 const DAY = 24 * 60 * 60 * 1000;
 
@@ -52,7 +53,7 @@ type Totals = { linesTotal: string; subtotal: string; discountAmount: string; di
 type Q = {
   id: string; projectId: string; quotationNumber: number; number: string; status: string; currency: string; projectCurrency: string;
   currencyDiffers: boolean; lines: Line[]; transport: string; otherCharges: string; discountType: string; discount: string;
-  taxPercent: string; totals: Totals; anyLineEdited: boolean; designChanged: boolean; pricedAt: string; quantitiesAt: string; validUntil: string;
+  taxPercent: string; totals: Totals; anyLineEdited: boolean; designChanged: boolean; createdByName: string | null; pricedAt: string; quantitiesAt: string; validUntil: string;
 };
 
 const quotation = async (r: APIResponse, status = 200) => (await body<{ quotation: Q }>(r, status)).quotation;
@@ -82,6 +83,9 @@ test.describe("quotation: create and read (API AC3)", () => {
       expect(raw).not.toContain("materialByRoom");
       const q = (JSON.parse(raw) as { quotation: Q }).quotation;
       expect(q.number).toMatch(/^QT-\d{4}-\d{4,}$/);
+      // M-1: "Prepared by" is the quoting user's full name (User.name, else the username), not the project creator's username
+      const me = await body<{ name: string; username: string }>(await as.member.get(url("/me")), 200);
+      expect(q.createdByName).toBe(me.name.trim() !== "" ? me.name : me.username);
       expect(Number(q.number.split("-")[2])).toBe(q.quotationNumber);
       expect(q).toMatchObject({ projectId, status: "DRAFT", currency: "AED", projectCurrency: "AED", currencyDiffers: false, designChanged: false, anyLineEdited: false });
       expect(q.lines.map((l) => l.code)).toEqual(expect.arrayContaining(codes));
@@ -250,6 +254,8 @@ test.describe("quotation: permissions and the edited-line gates (API AC7, AC7b, 
       for (const l of staff0.lines) expect([l.defaultPrice, l.minPrice], l.code).toEqual([expect.stringMatching(/^\d+\.\d{2}$/), expect.stringMatching(/^\d+\.\d{2}$/)]);
       expect((await as.distributor.patch(qUrl(url, projectId), { data: { transport: "1.00" } })).status()).toBe(403);
       expect((await as.distributor.post(qUrl(url, projectId, "/renew"))).status()).toBe(403);
+      // 38c: line price edits are internal-staff only (APPLY_DISCOUNT); the distributor is refused before anything is read
+      expect((await as.distributor.patch(qUrl(url, projectId, "/lines"), { data: { code: staff0.lines[0].code, reset: true } })).status()).toBe(403);
       expect((await as.architect.get(qUrl(url, projectId))).status()).toBe(403);
 
       // no edited line: Reset all prices is a QUOTE action
@@ -258,7 +264,8 @@ test.describe("quotation: permissions and the edited-line gates (API AC7, AC7b, 
       // API AC7b: one edited line -> QUOTE alone is refused, APPLY_DISCOUNT holders may reset
       const edited = fixed(cents(staff0.lines[0].minPrice!)); // the first code is priced 100.00, min 80.00
       expect(edited).not.toBe(staff0.lines[0].defaultPrice);
-      await rgrSetQuotationLineUnitPrice(projectId, edited);
+      const code0 = staff0.lines[0].code;
+      expect((await quotation(await as.admin.patch(qUrl(url, projectId, "/lines"), { data: { code: code0, unitPrice: edited } }))).anyLineEdited).toBe(true);
       expect((await quotation(await as.admin.get(qUrl(url, projectId)))).anyLineEdited).toBe(true);
       const denied = await as.distributor.post(qUrl(url, projectId, "/reset-prices"));
       expect(await body(denied, 403)).toEqual({ error: "Forbidden: missing permission APPLY_DISCOUNT" });
@@ -275,7 +282,7 @@ test.describe("quotation: permissions and the edited-line gates (API AC7, AC7b, 
 
       // API AC7d, currency change: a fixed discount, an edit, then the project moves to USD
       expect((await quotation(await as.member.patch(qUrl(url, projectId), { data: { discountType: "FIXED", discount: "10.00" } }))).discount).toBe("10.00");
-      await rgrSetQuotationLineUnitPrice(projectId, fixed(cents(staff0.lines[0].minPrice!)));
+      expect((await quotation(await as.admin.patch(qUrl(url, projectId, "/lines"), { data: { code: code0, unitPrice: fixed(cents(staff0.lines[0].minPrice!)) } }))).anyLineEdited).toBe(true);
       const patch = await as.admin.patch(url(`/projects/${projectId}`), { data: { currency: "USD" } });
       expect(patch.status(), await patch.text()).toBe(200);
       const usd = await priceItems(as.admin, url, codes, "USD");
@@ -291,6 +298,103 @@ test.describe("quotation: permissions and the edited-line gates (API AC7, AC7b, 
     const other = await f.project();
     expect(await body(await as.distributor.get(qUrl(url, other.id)), 404)).toEqual({ error: "Project not found" });
     expect((await as.distributor.post(qUrl(url, other.id))).status()).toBe(404);
+  });
+});
+
+test.describe("quotation: line price edits (38c, API AC2, AC3)", () => {
+  test("PATCH lines sets one line within its stored range, recomputes amount and totals, 400 names the range, 404 unknown code, reset restores the stored default", async ({ as, f, url }) => {
+    test.setTimeout(240_000);
+    const projectId = await submittedWall(f, as, url);
+    const codes = await materialCodes(as.admin, url, projectId);
+    expect(codes.length).toBeGreaterThanOrEqual(2);
+    const restores: Array<() => Promise<void>> = [];
+    try {
+      restores.push((await priceItems(as.admin, url, codes, "AED")).restore);
+      const q0 = await quotation(await as.member.post(qUrl(url, projectId)), 201);
+      const [free, capped] = [q0.lines.find((l) => l.code === codes[0])!, q0.lines.find((l) => l.code === codes[1])!];
+      // priceItems: codes[0] = 100.00 / min 80.00 with no upper limit; codes[1] = 110.00 / min 90.00 capped at the max
+      expect([free.allowAbove, capped.allowAbove]).toEqual([true, false]);
+      const lines = qUrl(url, projectId, "/lines");
+
+      // a valid edit: price, amount and totals follow; pricing/quantity timestamps and validUntil do not move
+      const edit = await quotation(await as.member.patch(lines, { data: { code: capped.code, unitPrice: "95.50" } }));
+      const l1 = edit.lines.find((l) => l.code === capped.code)!;
+      expect([l1.unitPrice, l1.defaultPrice, l1.minPrice]).toEqual(["95.50", capped.defaultPrice, capped.minPrice]);
+      expect(l1.amount).toBe(fixed(lineAmount(l1.quantity, 9550)));
+      expect(edit.anyLineEdited).toBe(true);
+      const sum = edit.lines.reduce((s, l) => s + cents(l.amount), 0);
+      expect(edit.totals).toMatchObject({ linesTotal: fixed(sum), grandTotal: fixed(sum) });
+      expect([edit.pricedAt, edit.quantitiesAt, edit.validUntil]).toEqual([q0.pricedAt, q0.quantitiesAt, q0.validUntil]);
+      expect(edit.lines.find((l) => l.code === free.code)).toEqual(free); // the other lines are untouched
+      expect((await quotation(await as.member.get(qUrl(url, projectId)))).lines.find((l) => l.code === capped.code)!.unitPrice).toBe("95.50");
+
+      // bounds are inclusive, the message names the range, nothing is written on a refusal
+      for (const price of ["90.00", "110.00"]) {
+        expect((await quotation(await as.member.patch(lines, { data: { code: capped.code, unitPrice: price } }))).lines.find((l) => l.code === capped.code)!.unitPrice).toBe(price);
+      }
+      for (const price of ["89.99", "110.01"]) {
+        expect(await body(await as.member.patch(lines, { data: { code: capped.code, unitPrice: price } }), 400)).toEqual({ error: "Enter a price from 90 to 110." });
+      }
+      expect(await body(await as.member.patch(lines, { data: { code: free.code, unitPrice: "79.99" } }), 400)).toEqual({ error: "Enter a price of 80 or more." });
+      expect((await quotation(await as.member.patch(lines, { data: { code: free.code, unitPrice: "4200.00" } }))).lines.find((l) => l.code === free.code)!.unitPrice).toBe("4200.00");
+      expect((await quotation(await as.member.get(qUrl(url, projectId)))).lines.find((l) => l.code === capped.code)!.unitPrice).toBe("110.00");
+
+      // unknown code is 404 NO_LINE; both bodies are refused when malformed
+      expect(await body(await as.member.patch(lines, { data: { code: "NOPE-0", unitPrice: "1.00" } }), 404)).toMatchObject({ code: "NO_LINE" });
+      expect(await body(await as.member.patch(lines, { data: { code: "NOPE-0", reset: true } }), 404)).toMatchObject({ code: "NO_LINE" });
+
+      // reset one line: back to its stored default, the other edit stays
+      const reset = await quotation(await as.member.patch(lines, { data: { code: free.code, reset: true } }));
+      expect(reset.lines.find((l) => l.code === free.code)).toEqual(free);
+      expect(reset.lines.find((l) => l.code === capped.code)!.unitPrice).toBe("110.00");
+      expect(reset.anyLineEdited).toBe(false); // 110.00 equals the stored default again
+    } finally {
+      for (const restore of restores.reverse()) await restore();
+    }
+  });
+
+  test("API AC3: a later Inventory price or minimum change does not touch an edited line; Refresh keeps it; the range check keeps using the stored copy; Reset all prices discards it", async ({ as, f, url }) => {
+    test.setTimeout(240_000);
+    const projectId = await submittedWall(f, as, url);
+    const codes = await materialCodes(as.admin, url, projectId);
+    const restores: Array<() => Promise<void>> = [];
+    try {
+      restores.push((await priceItems(as.admin, url, codes, "AED")).restore);
+      const q0 = await quotation(await as.member.post(qUrl(url, projectId)), 201);
+      const target = q0.lines.find((l) => l.code === codes[1])!; // 110.00, min 90.00, capped
+      const lines = qUrl(url, projectId, "/lines");
+      expect((await quotation(await as.member.patch(lines, { data: { code: target.code, unitPrice: "95.00" } }))).anyLineEdited).toBe(true);
+
+      // the live Inventory now says 500.00 / min 400.00 for the same item
+      const inv = await body<{ items: { id: string; code: string; prices: PriceRow[] }[] }>(await as.admin.get(url("/inventory")), 200);
+      const item = inv.items.find((x) => x.code === target.code)!;
+      const prior = item.prices.map(({ currency, price, minPrice, allowAbove }) => ({ currency, price, minPrice, allowAbove }));
+      restores.push(async () => {
+        const r = await as.admin.put(url(`/inventory/${item.id}/prices`), { data: prior });
+        expect(r.status(), await r.text()).toBe(200);
+      });
+      const live = [...prior.filter((p) => p.currency !== "AED"), { currency: "AED", price: "500.00", minPrice: "400.00", allowAbove: false }];
+      const put = await as.admin.put(url(`/inventory/${item.id}/prices`), { data: live });
+      expect(put.status(), await put.text()).toBe(200);
+
+      const after = await quotation(await as.member.get(qUrl(url, projectId)));
+      const kept = after.lines.find((l) => l.code === target.code)!;
+      expect([kept.unitPrice, kept.defaultPrice, kept.minPrice]).toEqual(["95.00", "110.00", "90.00"]);
+      // Refresh in the same currency keeps the edit and the stored range
+      const refreshed = (await quotation(await as.member.post(qUrl(url, projectId, "/refresh")))).lines.find((l) => l.code === target.code)!;
+      expect([refreshed.unitPrice, refreshed.defaultPrice, refreshed.minPrice]).toEqual(["95.00", "110.00", "90.00"]);
+      // the check uses the stored copy: 96 is inside 90 to 110 although the live minimum is 400; 450 is above the stored cap
+      expect((await quotation(await as.member.patch(lines, { data: { code: target.code, unitPrice: "96.00" } }))).lines.find((l) => l.code === target.code)!.unitPrice).toBe("96.00");
+      expect(await body(await as.member.patch(lines, { data: { code: target.code, unitPrice: "450.00" } }), 400)).toEqual({ error: "Enter a price from 90 to 110." });
+      // per-line Reset goes to the STORED default (110.00), not the live 500.00
+      expect((await quotation(await as.member.patch(lines, { data: { code: target.code, reset: true } }))).lines.find((l) => l.code === target.code)!.unitPrice).toBe("110.00");
+      // Reset all prices re-reads Inventory and discards edits: now the live 500.00 / 400.00
+      await quotation(await as.member.patch(lines, { data: { code: target.code, unitPrice: "100.00" } }));
+      const all = (await quotation(await as.admin.post(qUrl(url, projectId, "/reset-prices")))).lines.find((l) => l.code === target.code)!;
+      expect([all.unitPrice, all.defaultPrice, all.minPrice]).toEqual(["500.00", "500.00", "400.00"]);
+    } finally {
+      for (const restore of restores.reverse()) await restore();
+    }
   });
 });
 
@@ -463,6 +567,20 @@ registerNegatives([
     path: () => QPATH(GHOST, "/reset-prices"), unknownId: () => QPATH(GHOST, "/reset-prices"), foreignId: foreignQ("/reset-prices"),
   },
   {
+    key: "PATCH /api/v1/orgs/[orgSlug]/projects/[projectId]/quotation/lines", method: "PATCH", permission: "APPLY_DISCOUNT",
+    path: () => QPATH(GHOST, "/lines"), body: () => ({ code: "X", reset: true }), unknownId: () => QPATH(GHOST, "/lines"), foreignId: foreignQ("/lines"),
+    invalid: [
+      { name: "{} (no code)", body: {}, status: 400 },
+      { name: "an array body", body: [], status: 400 },
+      { name: "code without unitPrice or reset", body: { code: "X" }, status: 400 },
+      { name: "unitPrice and reset together", body: { code: "X", unitPrice: "1.00", reset: true }, status: 400 },
+      { name: "reset false", body: { code: "X", reset: false }, status: 400 },
+      { name: "negative unitPrice", body: { code: "X", unitPrice: -1 }, status: 400 },
+      { name: "3 dp unitPrice", body: { code: "X", unitPrice: "1.005" }, status: 400 },
+      { name: "unknown field", body: { code: "X", unitPrice: "1.00", foo: 1 }, status: 400 },
+    ],
+  },
+  {
     key: "POST /api/v1/orgs/[orgSlug]/projects/[projectId]/quotation/renew", method: "POST", permission: "EXTEND_QUOTE", ...noJson,
     path: () => QPATH(GHOST, "/renew"), unknownId: () => QPATH(GHOST, "/renew"), foreignId: foreignQ("/renew"),
   },
@@ -550,6 +668,119 @@ test.describe("quotation page (UI)", () => {
         expect(await settledProblems(o)).toEqual([]);
       } finally {
         await o.ctx.close();
+      }
+    } finally {
+      await restore();
+    }
+  });
+
+  test("UI AC4 (38c), M-1: row popover edit shows the range only there, the Edited tag and per-line Reset, a distributor sees none of it, Prepared by is the quoting user's name", async ({ browser, run, f, as, url, ledger }) => {
+    test.setTimeout(480_000);
+    const projectId = await distributorWall(f, as, url, run, ledger);
+    const codes = await materialCodes(as.admin, url, projectId);
+    const { restore } = await priceItems(as.admin, url, codes, "AED");
+    try {
+      // The ADMIN quotes the distributor's project: "Prepared by" must be the admin, not the project creator (M-1).
+      const q0 = await quotation(await as.admin.post(qUrl(url, projectId)), 201);
+      const me = await body<{ name: string; username: string }>(await as.admin.get(url("/me")), 200);
+      const adminName = me.name.trim() !== "" ? me.name : me.username;
+      expect(q0.createdByName).toBe(adminName);
+      const capped = q0.lines.find((l) => l.code === codes[1])!; // 110.00, min 90.00, capped at the stored default
+      const rowOf = (page: import("@playwright/test").Page, code: string) => page.locator(`[data-testid="quotation-line"][data-code="${code}"]`);
+
+      const o = await openAs(browser, run, "admin");
+      try {
+        const page = o.page;
+        await page.goto(orgTarget(run, `/projects/${projectId}/quotation`));
+        await expect(page.getByTestId("quotation-number")).toHaveText(q0.number);
+        await expect(page.getByTestId("quotation-prepared-by")).toContainText(adminName);
+
+        const row = rowOf(page, capped.code);
+        // read-only first: a pencil per row, no Edited tag, no Reset icon, no popover, and no range on the row (Q-D34)
+        await expect(page.getByTestId("quotation-line-edit")).toHaveCount(q0.lines.length);
+        await expect(page.getByTestId("quotation-line-edited")).toHaveCount(0);
+        await expect(page.getByTestId("quotation-line-reset")).toHaveCount(0);
+        await expect(page.getByTestId("quotation-line-popover")).toHaveCount(0);
+        await expect(row).not.toContainText(/Range|and up|No upper limit/);
+
+        const pencil = row.getByTestId("quotation-line-edit");
+        await expect.poll(() => isHydrated(pencil)).toBe(true);
+        await pencil.click();
+        const pop = page.getByTestId("quotation-line-popover");
+        await expect(pop).toBeVisible();
+        await expect(pop).toContainText(capped.code);
+        await expect(pop.getByTestId("quotation-line-range")).toHaveText("Range 90 to 110");
+        await expect(row).not.toContainText(/Range \d/); // the range lives in the popover only
+        const input = pop.getByTestId("quotation-line-input");
+        const save = pop.getByTestId("quotation-line-save");
+
+        // out of range: the error names the range, Save is disabled, nothing is sent
+        await input.fill("89");
+        await expect(pop.getByTestId("quotation-line-error")).toHaveText("Enter a price from 90 to 110.");
+        await expect(save).toBeDisabled();
+        await input.fill("abc");
+        await expect(pop.getByTestId("quotation-line-error")).toHaveText("Enter an amount with up to 2 decimal places.");
+        await expect(save).toBeDisabled();
+
+        // a valid price: one PATCH .../lines for this line, totals follow, the Edited tag and Reset icon appear
+        await input.fill("95.50");
+        await expect(save).toBeEnabled();
+        const [res] = await Promise.all([
+          page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().endsWith("/quotation/lines")),
+          save.click(),
+        ]);
+        expect(res.status(), await res.text()).toBe(200);
+        expect(JSON.parse(res.request().postData() ?? "{}")).toEqual({ code: capped.code, unitPrice: "95.50" });
+        const q1 = (JSON.parse(await res.text()) as { quotation: Q }).quotation;
+        await expect(pop).toHaveCount(0);
+        await expect(row.getByTestId("quotation-line-edited")).toHaveText("Edited");
+        await expect(row).toContainText(fmt("95.50"));
+        await expect(row).toContainText(fmt(q1.lines.find((l) => l.code === capped.code)!.amount));
+        await expect(page.getByTestId("totals-grand")).toHaveText(fmt(q1.totals.grandTotal));
+        await expect(page.getByTestId("quotation-line-edited")).toHaveCount(1);
+        await expect(row).not.toContainText(/Range|and up|No upper limit/);
+
+        // the row's Reset icon puts one line back to its stored default
+        const [reset] = await Promise.all([
+          page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().endsWith("/quotation/lines")),
+          row.getByTestId("quotation-line-reset").click(),
+        ]);
+        expect(reset.status(), await reset.text()).toBe(200);
+        expect(JSON.parse(reset.request().postData() ?? "{}")).toEqual({ code: capped.code, reset: true });
+        await expect(page.getByTestId("quotation-line-edited")).toHaveCount(0);
+        await expect(page.getByTestId("quotation-line-reset")).toHaveCount(0);
+        await expect(row).toContainText(fmt(capped.defaultPrice!));
+        await expect(page.getByTestId("totals-grand")).toHaveText(fmt(q0.totals.grandTotal));
+
+        // Cancel closes without writing
+        await pencil.click();
+        await expect(page.getByTestId("quotation-line-popover")).toBeVisible();
+        await page.getByTestId("quotation-line-cancel").click();
+        await expect(page.getByTestId("quotation-line-popover")).toHaveCount(0);
+        expect((await quotation(await as.admin.get(qUrl(url, projectId)))).anyLineEdited).toBe(false);
+        expect(await settledProblems(o)).toEqual([]);
+      } finally {
+        await o.ctx.close();
+      }
+
+      // A distributor (external): the same quotation with an edited line shows no pencil, no Edited tag, no Reset icon
+      expect((await quotation(await as.admin.patch(qUrl(url, projectId, "/lines"), { data: { code: capped.code, unitPrice: "95.50" } }))).anyLineEdited).toBe(true);
+      const dist = await openAs(browser, run, "distributor");
+      try {
+        const page = dist.page;
+        await page.goto(orgTarget(run, `/projects/${projectId}/quotation`));
+        await expect(page.getByTestId("quotation-number")).toHaveText(q0.number);
+        await expect(page.getByTestId("quotation-prepared-by")).toContainText(adminName);
+        const row = rowOf(page, capped.code);
+        await expect(row).toContainText(fmt("95.50"));
+        await expect(page.getByTestId("quotation-line-edit")).toHaveCount(0);
+        await expect(page.getByTestId("quotation-line-edited")).toHaveCount(0);
+        await expect(page.getByTestId("quotation-line-reset")).toHaveCount(0);
+        await expect(page.getByTestId("quotation-line-popover")).toHaveCount(0);
+        await expect(page.getByTestId("quotation-section").first()).not.toContainText(/Range|and up|No upper limit/);
+        expect(await settledProblems(dist)).toEqual([]);
+      } finally {
+        await dist.ctx.close();
       }
     } finally {
       await restore();

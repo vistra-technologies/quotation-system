@@ -17,6 +17,7 @@ export interface QuotationRow {
   id: string;
   projectId: string;
   externalCompanyId: string | null;
+  createdByUserId: string | null;
   quotationNumber: number;
   status: string;
   currency: string;
@@ -63,6 +64,8 @@ export interface ViewContext {
   /** `ProjectCalculation.computedAt`, or null when the project has no calculation. */
   calcComputedAt: Date | null;
   now: Date;
+  /** Who created the quotation: `User.name`, else the username; null when that user no longer exists (M-1). */
+  createdByName?: string | null;
   /**
    * Staff only (Q-D34): when false, each line omits `defaultPrice`, `minPrice` and `allowAbove`, so an external user
    * never receives the org's price floor. `anyLineEdited` stays (the Reset button state).
@@ -99,6 +102,8 @@ export interface QuotationView {
   totals: Record<keyof Totals, string>;
   anyLineEdited: boolean;
   designChanged: boolean;
+  /** The quoting user's full name (M-1: "Prepared by"); null when the user was removed. */
+  createdByName: string | null;
   pricedAt: Date;
   quantitiesAt: Date;
   validUntil: Date;
@@ -134,6 +139,7 @@ export function serializeQuotation(row: QuotationRow, ctx: ViewContext): Quotati
     },
     anyLineEdited: anyLineEdited(lines),
     designChanged: isDesignChanged(ctx.calcComputedAt, row.quantitiesAt),
+    createdByName: ctx.createdByName ?? null,
     pricedAt: row.pricedAt,
     quantitiesAt: row.quantitiesAt,
     validUntil: row.validUntil,

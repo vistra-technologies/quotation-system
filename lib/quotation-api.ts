@@ -31,6 +31,8 @@ export function quotationResponse(outcome: QuotationOutcome, okStatus = 200): Ne
       return apiNotFound("Project not found");
     case "noQuotation":
       return apiNotFound("No quotation found for this project", "NO_QUOTATION");
+    case "noLine":
+      return apiNotFound("No line with that code on this quotation", "NO_LINE");
     case "noCalculation":
       return apiUnprocessable("Submit the design first", "NO_CALCULATION");
     case "exists":

@@ -27,6 +27,7 @@ import {
   editedLineCount,
   formatDate,
   formatMoney,
+  isEditableLine,
   percentLabel,
   sectionsOf,
   type ChargesForm,
@@ -42,6 +43,7 @@ import {
   QuotationKpis,
   QuotationLines,
   QuotationTotals,
+  type LineEditCtl,
   type TotalsEdit,
 } from "./_parts";
 
@@ -71,7 +73,7 @@ export interface QuotationPageProps {
   external: boolean;
 }
 
-type Action = "create" | "refresh" | "reset" | "renew" | "save";
+type Action = "create" | "refresh" | "reset" | "renew" | "save" | "line";
 type Dialog = "refresh" | "currency" | "reset" | "renew" | null;
 
 interface Popup {
@@ -79,7 +81,7 @@ interface Popup {
   title: string;
 }
 
-const TAILS: Record<Exclude<Action, "create" | "save">, string> = { refresh: "/refresh", reset: "/reset-prices", renew: "/renew" };
+const TAILS: Record<Exclude<Action, "create" | "save" | "line">, string> = { refresh: "/refresh", reset: "/reset-prices", renew: "/renew" };
 
 function formFrom(q: QuotationDto): ChargesForm {
   const base = chargesFormOf(q);
@@ -104,6 +106,9 @@ export function QuotationPage(props: QuotationPageProps) {
   const [form, setForm] = useState<ChargesForm | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  // 38c: the line whose price popover is open, its typed price and the server message of a failed save.
+  const [lineEdit, setLineEdit] = useState<{ code: string; draft: string } | null>(null);
+  const [lineError, setLineError] = useState<string | null>(null);
 
   const url = (tail: string) => `/api/v1/orgs/${props.orgSlug}/projects/${props.projectId}/quotation${tail}`;
   const designHref = `${props.base}/projects/${props.projectId}/design`;
@@ -136,11 +141,13 @@ export function QuotationPage(props: QuotationPageProps) {
       }
       const message = apiErrorMessage(body, failure);
       if (action === "save") setSaveError(message);
+      else if (action === "line") setLineError(message);
       else setError(message);
       return null;
     } catch {
       const message = failure;
       if (action === "save") setSaveError(message);
+      else if (action === "line") setLineError(message);
       else setError(message);
       return null;
     } finally {
@@ -181,6 +188,16 @@ export function QuotationPage(props: QuotationPageProps) {
     setQ(next);
     setForm(null);
     toast.show(t("toastSaved"));
+  }
+
+  /** One line, one request (Q-D33): set the typed price, or put the line back to its stored default. */
+  async function saveLine(code: string, body: { unitPrice: string } | { reset: true }) {
+    setLineError(null);
+    const next = await send("line", { method: "PATCH", tail: "/lines", body: { code, ...body } }, t("lineSaveFailed"));
+    if (!next) return;
+    setQ(next);
+    setLineEdit(null);
+    toast.show("reset" in body ? t("toastLineReset") : t("toastLineSaved"));
   }
 
   async function exportPdf() {
@@ -224,7 +241,7 @@ export function QuotationPage(props: QuotationPageProps) {
           projectName: props.projectName,
           projectNumber: props.projectNumber,
           projectLocation: props.projectLocation,
-          preparedBy: props.preparedBy,
+          preparedBy: q.createdByName ?? props.preparedBy,
           company: props.company,
           endClient: props.endClient,
           snapshot: props.snapshot,
@@ -264,6 +281,36 @@ export function QuotationPage(props: QuotationPageProps) {
     };
   }
 
+  // Staff only: an external payload carries no range, so its lines are never editable (Q-D14, S38-9).
+  const lineCtl: LineEditCtl | null =
+    q && props.canApplyDiscount && !props.external
+      ? {
+          code: lineEdit?.code ?? null,
+          draft: lineEdit?.draft ?? "",
+          error: lineError,
+          saving: busy === "line",
+          busy: busy !== null,
+          onOpen: (code) => {
+            const line = q.lines.find((l) => l.code === code);
+            if (!line || !isEditableLine(line)) return;
+            setLineError(null);
+            setLineEdit({ code, draft: formatMoney(line.unitPrice) });
+          },
+          onDraft: (draft) => {
+            setLineError(null);
+            setLineEdit((cur) => (cur ? { ...cur, draft } : cur));
+          },
+          onCancel: () => {
+            setLineEdit(null);
+            setLineError(null);
+          },
+          onSave: () => {
+            if (lineEdit) void saveLine(lineEdit.code, { unitPrice: lineEdit.draft.replace(/,/g, "").trim() });
+          },
+          onReset: (code) => void saveLine(code, { reset: true }),
+        }
+      : null;
+
   const edited = q ? editedLineCount(q.lines) : 0;
   const now = new Date();
 
@@ -279,7 +326,7 @@ export function QuotationPage(props: QuotationPageProps) {
           projectNumber={props.projectNumber}
           company={props.company}
           endClient={props.endClient}
-          preparedBy={props.preparedBy}
+          preparedBy={q.createdByName ?? props.preparedBy}
           canReset={canReset}
           canRenew={props.canExtend}
           refreshDisabled={refreshDisabled}
@@ -304,7 +351,7 @@ export function QuotationPage(props: QuotationPageProps) {
           onRefreshCurrency={() => setDialog("currency")}
         />
         <QuotationKpis q={q} kpis={props.kpis} sectionCount={sectionsOf(q.lines, props.snapshot).length} />
-        <QuotationLines q={q} snapshot={props.snapshot} />
+        <QuotationLines q={q} snapshot={props.snapshot} edit={lineCtl} />
         <QuotationTotals q={q} canEdit={props.canApplyDiscount} edit={totalsEdit} onEdit={() => { setSaveError(null); setForm(formFrom(q)); }} />
       </>
     );

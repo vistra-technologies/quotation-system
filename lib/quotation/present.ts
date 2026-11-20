@@ -9,6 +9,7 @@ import type { Summary } from "@/lib/summary/types";
 import type { ConfigSnapshot } from "@/lib/config-snapshot";
 import type { QuotationLineView, QuotationView } from "./view";
 import type { DiscountType } from "./types";
+import { checkLinePrice } from "./line-edit";
 
 /** The quotation as the page receives it over JSON (the view's `Date` fields are ISO strings). */
 export type QuotationDto = Omit<QuotationView, "pricedAt" | "quantitiesAt" | "validUntil" | "discountAppliedAt" | "createdAt"> & {
@@ -192,4 +193,27 @@ export function chargesPatch(q: ChargesForm, next: ChargesForm): Partial<Charges
 /** "5" for "5.00", "18.5" for "18.50": how a percent reads in a label. */
 export function percentLabel(fixed: string): string {
   return fixed.includes(".") ? fixed.replace(/0+$/, "").replace(/\.$/, "") : fixed;
+}
+
+/** A line's range fields as a staff payload carries them (an external payload has none: such a line is not editable). */
+export type EditableLine = QuotationLineView & { defaultPrice: string; minPrice: string; allowAbove: boolean };
+
+export function isEditableLine(line: QuotationLineView): line is EditableLine {
+  return line.defaultPrice !== undefined && line.minPrice !== undefined && line.allowAbove !== undefined;
+}
+
+/** Edited = the unit price differs from the stored default (staff payloads only). */
+export function isEditedLine(line: QuotationLineView): boolean {
+  return line.defaultPrice !== undefined && line.unitPrice !== line.defaultPrice;
+}
+
+/**
+ * The typed popover price (separators allowed) against the line's stored range, mirroring the server check:
+ * `invalid` (not an amount with at most 2 dp), `range` (outside the stored range), or null when it fits.
+ * `cents` is the parsed value when valid. The API stays the authority.
+ */
+export function linePriceProblem(line: EditableLine, draft: string): { problem: "invalid" | "range" | null; cents: number | null } {
+  const cents = pm(draft);
+  if (cents === null) return { problem: "invalid", cents: null };
+  return { problem: checkLinePrice(line, cents) === null ? null : "range", cents };
 }
