@@ -1992,6 +1992,8 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       await page.getByRole("button", { name: "Clear filters" }).click();
       await expect(row(a1)).toHaveCount(1);
 
+      // a drawer field's visible (custom) combobox: label text -> its container -> last combobox (the native one is empty)
+      const fieldCombo = (label: RegExp) => drawer.getByText(label).locator("xpath=..").getByRole("combobox").last();
       // sort: Code starts ascending (mockup default), so one click = descending, within each Part group
       await page.getByRole("button", { name: /^Code/ }).click();
       const codes = (await page.locator("tr[data-row-id] td:first-child").allTextContents()).map((c) => c.trim()).filter((c) => c.startsWith(p));
@@ -2056,7 +2058,7 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       const renamed = `${a2} renamed`;
       await row(a2).click();
       await drawer.getByRole("button", { name: "Edit" }).click();
-      await drawer.getByLabel("Name", { exact: true }).fill(renamed);
+      await drawer.getByRole("textbox", { name: /^Name/ }).fill(renamed);
       await drawer.getByRole("button", { name: "Save changes" }).click();
       await expect(drawer.getByRole("button", { name: "Edit" })).toBeVisible();
       await expect(drawer).toContainText(renamed);
@@ -2069,7 +2071,7 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       // Change type clears the Part and the Matches rows in the draft; Save persists the new type with no Part/rows
       await row(a1).click();
       await drawer.getByRole("button", { name: "Edit" }).click();
-      const compSel = drawer.getByLabel("Component type");
+      const compSel = fieldCombo(/^Component type$/);
       await compSel.click();
       await page.getByRole("option", { name: type2.name, exact: true }).click();
       await expect(page.getByRole("heading", { name: "Change component type?" })).toBeVisible();
@@ -2096,11 +2098,11 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       // New item: Create item closes the drawer, the toast shows (create only) and the row appears
       await page.getByRole("button", { name: "New item", exact: true }).click();
       await expect(drawer).toBeVisible();
-      await drawer.getByLabel("Code", { exact: true }).fill(n1);
-      await drawer.getByLabel("Name", { exact: true }).fill(`${n1} name`);
-      await drawer.getByLabel("Component type").click();
+      await drawer.getByRole("textbox", { name: /^Code/ }).fill(n1);
+      await drawer.getByRole("textbox", { name: /^Name/ }).fill(`${n1} name`);
+      await fieldCombo(/^Component type$/).click();
       await page.getByRole("option", { name: type.name, exact: true }).click();
-      await drawer.getByLabel("Unit", { exact: true }).click();
+      await fieldCombo(/^Unit\s*\*?$/).click();
       await page.getByRole("option", { name: "pc (Pieces)", exact: true }).click();
       await drawer.getByRole("button", { name: "Create item" }).click();
       await expect(page.getByText("Item added to inventory")).toBeVisible();
