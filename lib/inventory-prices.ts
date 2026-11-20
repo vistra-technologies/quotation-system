@@ -28,6 +28,13 @@ export interface PriceDraft {
 
 export type PriceIssue = "maxInvalid" | "minInvalid" | "minAboveMax";
 
+/** The `inventory` message key of each issue (unit-tested to exist: a wrong key renders nothing, silently). */
+export const PRICE_ISSUE_MESSAGE_KEY = {
+  maxInvalid: "priceMaxInvalid",
+  minInvalid: "priceMinInvalid",
+  minAboveMax: "priceMinAboveMax",
+} as const satisfies Record<PriceIssue, string>;
+
 /** Currencies in display order: the org default first, then the supported list order. */
 export function currencyOrder(defaultCurrency?: string): string[] {
   const rest = SUPPORTED_CURRENCIES.filter((c) => c !== defaultCurrency);

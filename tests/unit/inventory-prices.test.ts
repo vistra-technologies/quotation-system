@@ -13,7 +13,9 @@ import {
   sortPrices,
 } from "../../lib/inventory-prices";
 import type { PriceDraft, StoredPrice } from "../../lib/inventory-prices";
+import { PRICE_ISSUE_MESSAGE_KEY } from "../../lib/inventory-prices";
 import { validateItemPrices } from "../../lib/item-price";
+import messages from "../../messages/en.json";
 import { DEFAULT_SORT, filterItems, sortItems, tabPricedCounts } from "../../lib/inventory-list";
 import type { ListItem, ListType } from "../../lib/inventory-list";
 
@@ -128,4 +130,13 @@ test("sort by Max and Min in the default currency: unpriced rows sort first asce
   assert.equal(priceSortValue([inr], "AED", "max"), -1);
   assert.equal(isPricedIn([inr], "INR"), true);
   assert.equal(DEFAULT_SORT.key, "code");
+});
+
+test("every price issue has a message in the inventory namespace (a missing key renders nothing)", () => {
+  const inventory = messages.inventory as Record<string, string>;
+  for (const [issue, key] of Object.entries(PRICE_ISSUE_MESSAGE_KEY)) {
+    assert.equal(typeof inventory[key], "string", `${issue} -> inventory.${key}`);
+    assert.ok(inventory[key].length > 0);
+  }
+  assert.equal(inventory[PRICE_ISSUE_MESSAGE_KEY.minAboveMax], "Min can't be above max.");
 });

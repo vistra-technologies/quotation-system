@@ -3,7 +3,7 @@
 import { useId } from "react";
 import { useTranslations } from "next-intl";
 import { SelectField } from "@/components/select-field";
-import { currencyOrder, freeCurrencies, sortPrices } from "@/lib/inventory-prices";
+import { currencyOrder, freeCurrencies, PRICE_ISSUE_MESSAGE_KEY, sortPrices } from "@/lib/inventory-prices";
 import type { PriceDraft, PriceIssue, StoredPrice } from "@/lib/inventory-prices";
 import { formatPriceAmount, inventoryPriceBasis } from "@/lib/price-format";
 import { InfoTip } from "./_parts";
@@ -187,7 +187,7 @@ export function PricesEdit({
   const basis = useBasis(measurementUnit, perUnitQuantity);
   const free = freeCurrencies(rows, defaultCurrency);
   const patchRow = (i: number, p: Partial<PriceDraft>) => onChange(rows.map((r, idx) => (idx === i ? { ...r, ...p } : r)));
-  const msg = (issue: PriceIssue | null) => (issue ? t(issue) : null);
+  const msg = (issue: PriceIssue | null) => (issue ? t(PRICE_ISSUE_MESSAGE_KEY[issue]) : null);
 
   return (
     <section aria-labelledby={hid} data-testid="prices-section">

@@ -1986,7 +1986,11 @@ test.describe("Stage 36 B3: Product Pricing admin page, throwaway org B", () => 
 
 // Stage 37 Batch 3 - the Inventory page (list states + modal drawer). Throwaway org B only: its own type and items go
 // with org B at teardown (the org hard-delete cascades every org-scoped table), so no Test-Org data is touched.
+// Stage 38 B2: the Inventory prices test below lives in this block on purpose. Both tests create items in org B, and the
+// Stage 37 test asserts exact tab totals (deltas on "All" and "Unassigned"), so they must not run at the same time:
+// serial mode keeps them in one worker, in this order.
 test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
+  test.describe.configure({ mode: "serial" });
   test("UI AC1-AC3 /admin/inventory: tabs with counts, search + chips, Part groups, sort, read-only drawer then Edit, Matches rows (a used field is not offered), Also matched by (active items only), the modal drawer (scrim and Escape close, page behind inert, focus returns), the discard confirm, a dash-free delete confirm, ?type preselects the tab", async ({ browser, run, orgB }) => {
     test.setTimeout(180_000);
     const B = (p: string) => orgApi(run.orgB.slug, p);
@@ -2199,13 +2203,11 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       for (const id of created) await orgB.delete(B(`/inventory/${id}`)).catch(() => undefined);
     }
   });
-});
 
-// Stage 38 Batch 2 (38a) - Inventory prices: the default-currency list columns, Priced/Unpriced, "N / M priced" tabs and
-// the drawer Prices section (view, validation, one PUT per save). Throwaway org B only: the type and items go with it.
-// The org's default currency is READ (via /me), never written, so this does not race the settings specs.
-test.describe("Stage 38 B2: Inventory prices, throwaway org B", () => {
-  test("UI AC1-AC2 /admin/inventory: Max/Min columns in the default currency (bold plain numbers, no unit text, 'No price', arrow for no upper limit, (i) on Max), Priced/Unpriced and 'N / M priced' tabs, the drawer Prices section (heading unit once, amount + currency only, add/validate/save/remove, discard)", async ({ browser, run, orgB }) => {
+  // Stage 38 Batch 2 (38a) - Inventory prices: the default-currency list columns, Priced/Unpriced, "N / M priced" tabs and
+  // the drawer Prices section (view, validation, one PUT per save). Throwaway org B only: the type and items go with it.
+  // The org's default currency is READ (via /me), never written, so this does not race the settings specs.
+  test("Stage 38 B2: Inventory prices, UI AC1-AC2 /admin/inventory: Max/Min columns in the default currency (bold plain numbers, no unit text, 'No price', arrow for no upper limit, (i) on Max), Priced/Unpriced and 'N / M priced' tabs, the drawer Prices section (heading unit once, amount + currency only, add/validate/save/remove, discard)", async ({ browser, run, orgB }) => {
     test.setTimeout(240_000);
     const B = (p: string) => orgApi(run.orgB.slug, p);
     const cats = (await ok<{ categories: { id: string }[] }>(await orgB.get(B("/component-categories")))).categories;
