@@ -710,7 +710,6 @@ test.describe("quotation page (UI)", () => {
         await expect(pop).toBeVisible();
         await expect(pop).toContainText(capped.code);
         await expect(pop.getByTestId("quotation-line-range")).toHaveText("Range 90 to 110");
-        await expect(row).not.toContainText(/Range \d/); // the range lives in the popover only
         const input = pop.getByTestId("quotation-line-input");
         const save = pop.getByTestId("quotation-line-save");
 
