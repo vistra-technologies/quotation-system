@@ -691,22 +691,24 @@ test.describe("quotation page (UI)", () => {
       const o = await openAs(browser, run, "admin");
       try {
         const page = o.page;
+        // scoped to <main>: a streamed hidden copy of the page can still be in the DOM right after goto (also on test.easeetool.com)
+        const main = page.getByRole("main");
         await page.goto(orgTarget(run, `/projects/${projectId}/quotation`));
-        await expect(page.getByTestId("quotation-number")).toHaveText(q0.number);
-        await expect(page.getByTestId("quotation-prepared-by")).toContainText(adminName);
+        await expect(main.getByTestId("quotation-number")).toHaveText(q0.number);
+        await expect(main.getByTestId("quotation-prepared-by")).toContainText(adminName);
 
-        const row = rowOf(page, capped.code);
+        const row = rowOf(main, capped.code);
         // read-only first: a pencil per row, no Edited tag, no Reset icon, no popover, and no range on the row (Q-D34)
-        await expect(page.getByTestId("quotation-line-edit")).toHaveCount(q0.lines.length);
-        await expect(page.getByTestId("quotation-line-edited")).toHaveCount(0);
-        await expect(page.getByTestId("quotation-line-reset")).toHaveCount(0);
-        await expect(page.getByTestId("quotation-line-popover")).toHaveCount(0);
+        await expect(main.getByTestId("quotation-line-edit")).toHaveCount(q0.lines.length);
+        await expect(main.getByTestId("quotation-line-edited")).toHaveCount(0);
+        await expect(main.getByTestId("quotation-line-reset")).toHaveCount(0);
+        await expect(main.getByTestId("quotation-line-popover")).toHaveCount(0);
         await expect(row).not.toContainText(/Range|and up|No upper limit/);
 
         const pencil = row.getByTestId("quotation-line-edit");
         await expect.poll(() => isHydrated(pencil)).toBe(true);
         await pencil.click();
-        const pop = page.getByTestId("quotation-line-popover");
+        const pop = main.getByTestId("quotation-line-popover");
         await expect(pop).toBeVisible();
         await expect(pop).toContainText(capped.code);
         await expect(pop.getByTestId("quotation-line-range")).toHaveText("Range 90 to 110");
@@ -735,9 +737,16 @@ test.describe("quotation page (UI)", () => {
         await expect(row.getByTestId("quotation-line-edited")).toHaveText("Edited");
         await expect(row).toContainText(fmt("95.50"));
         await expect(row).toContainText(fmt(q1.lines.find((l) => l.code === capped.code)!.amount));
-        await expect(page.getByTestId("totals-grand")).toHaveText(fmt(q1.totals.grandTotal));
-        await expect(page.getByTestId("quotation-line-edited")).toHaveCount(1);
+        await expect(main.getByTestId("totals-grand")).toHaveText(fmt(q1.totals.grandTotal));
+        await expect(main.getByTestId("quotation-line-edited")).toHaveCount(1);
         await expect(row).not.toContainText(/Range|and up|No upper limit/);
+
+        // M-2: a FAILED row-icon Reset (popover closed) shows its error in the page strip; the line stays edited
+        await page.route("**/quotation/lines", (r) => r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "Stubbed failure" }) }));
+        await row.getByTestId("quotation-line-reset").click();
+        await expect(main.getByTestId("quotation-error")).toBeVisible();
+        await expect(row.getByTestId("quotation-line-edited")).toHaveText("Edited");
+        await page.unroute("**/quotation/lines");
 
         // the row's Reset icon puts one line back to its stored default
         const [reset] = await Promise.all([
@@ -746,16 +755,16 @@ test.describe("quotation page (UI)", () => {
         ]);
         expect(reset.status(), await reset.text()).toBe(200);
         expect(JSON.parse(reset.request().postData() ?? "{}")).toEqual({ code: capped.code, reset: true });
-        await expect(page.getByTestId("quotation-line-edited")).toHaveCount(0);
-        await expect(page.getByTestId("quotation-line-reset")).toHaveCount(0);
+        await expect(main.getByTestId("quotation-line-edited")).toHaveCount(0);
+        await expect(main.getByTestId("quotation-line-reset")).toHaveCount(0);
         await expect(row).toContainText(fmt(capped.defaultPrice!));
-        await expect(page.getByTestId("totals-grand")).toHaveText(fmt(q0.totals.grandTotal));
+        await expect(main.getByTestId("totals-grand")).toHaveText(fmt(q0.totals.grandTotal));
 
         // Cancel closes without writing
         await pencil.click();
-        await expect(page.getByTestId("quotation-line-popover")).toBeVisible();
-        await page.getByTestId("quotation-line-cancel").click();
-        await expect(page.getByTestId("quotation-line-popover")).toHaveCount(0);
+        await expect(main.getByTestId("quotation-line-popover")).toBeVisible();
+        await main.getByTestId("quotation-line-cancel").click();
+        await expect(main.getByTestId("quotation-line-popover")).toHaveCount(0);
         expect((await quotation(await as.admin.get(qUrl(url, projectId)))).anyLineEdited).toBe(false);
         expect(await settledProblems(o)).toEqual([]);
       } finally {
@@ -897,8 +906,9 @@ test.describe("quotation page (UI)", () => {
       const arch = await openAs(browser, run, "architect");
       try {
         await arch.page.goto(orgTarget(run, `/projects/${projectId}/quotation`));
-        await expect(arch.page.getByTestId("quotation-no-access")).toContainText("You don't have access to quotations");
-        await expect(arch.page.getByRole("button", { name: "Create quotation" })).toHaveCount(0);
+        const archMain = arch.page.getByRole("main");
+        await expect(archMain.getByTestId("quotation-no-access")).toContainText("You don't have access to quotations");
+        await expect(archMain.getByRole("button", { name: "Create quotation" })).toHaveCount(0);
       } finally {
         await arch.ctx.close();
       }

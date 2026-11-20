@@ -97,7 +97,6 @@ export default async function QuotationRoute({
       projectLocation={project.projectLocation}
       company={project.externalCompany?.name ?? null}
       endClient={project.endClientName}
-      preparedBy={project.createdBy?.username ?? project.createdByName}
       initial={quotation}
       canCreate={designSubmitted && calcOk !== null}
       designSubmitted={designSubmitted}

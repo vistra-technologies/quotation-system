@@ -59,7 +59,6 @@ export interface QuotationPageProps {
   projectLocation: string | null;
   company: string | null;
   endClient: string | null;
-  preparedBy: string | null;
   initial: QuotationDto | null;
   /** The design is submitted and a finished calculation exists: Create is enabled. */
   canCreate: boolean;
@@ -115,7 +114,7 @@ export function QuotationPage(props: QuotationPageProps) {
   const summaryHref = `${props.base}/projects/${props.projectId}/summary`;
 
   /** One request; returns the quotation on success, null when the outcome was shown (popup, error) or a redirect started. */
-  async function send(action: Action, init: { method: string; tail: string; body?: unknown }, failure: string, popupTitle?: string): Promise<QuotationDto | null> {
+  async function send(action: Action, init: { method: string; tail: string; body?: unknown }, failure: string, popupTitle?: string, errorToStrip = false): Promise<QuotationDto | null> {
     setBusy(action);
     setError(null);
     try {
@@ -141,13 +140,13 @@ export function QuotationPage(props: QuotationPageProps) {
       }
       const message = apiErrorMessage(body, failure);
       if (action === "save") setSaveError(message);
-      else if (action === "line") setLineError(message);
+      else if (action === "line" && !errorToStrip) setLineError(message);
       else setError(message);
       return null;
     } catch {
       const message = failure;
       if (action === "save") setSaveError(message);
-      else if (action === "line") setLineError(message);
+      else if (action === "line" && !errorToStrip) setLineError(message);
       else setError(message);
       return null;
     } finally {
@@ -193,7 +192,8 @@ export function QuotationPage(props: QuotationPageProps) {
   /** One line, one request (Q-D33): set the typed price, or put the line back to its stored default. */
   async function saveLine(code: string, body: { unitPrice: string } | { reset: true }) {
     setLineError(null);
-    const next = await send("line", { method: "PATCH", tail: "/lines", body: { code, ...body } }, t("lineSaveFailed"));
+    // The popover shows its own error; a row-icon Reset has no popover open for that line, so its error goes to the page strip (M-2).
+    const next = await send("line", { method: "PATCH", tail: "/lines", body: { code, ...body } }, t("lineSaveFailed"), undefined, lineEdit?.code !== code);
     if (!next) return;
     setQ(next);
     setLineEdit(null);
@@ -241,7 +241,7 @@ export function QuotationPage(props: QuotationPageProps) {
           projectName: props.projectName,
           projectNumber: props.projectNumber,
           projectLocation: props.projectLocation,
-          preparedBy: q.createdByName ?? props.preparedBy,
+          preparedBy: q.createdByName,
           company: props.company,
           endClient: props.endClient,
           snapshot: props.snapshot,
@@ -326,7 +326,7 @@ export function QuotationPage(props: QuotationPageProps) {
           projectNumber={props.projectNumber}
           company={props.company}
           endClient={props.endClient}
-          preparedBy={q.createdByName ?? props.preparedBy}
+          preparedBy={q.createdByName}
           canReset={canReset}
           canRenew={props.canExtend}
           refreshDisabled={refreshDisabled}

@@ -89,6 +89,9 @@ test("model: the header, band, Rate header, rows, totals in page order and the f
 
 test("model: empty details are dropped, a fixed discount has no percent, no min or max anywhere (Q-D34)", () => {
   const q = quotation([line(1, { minPrice: "2400.00", defaultPrice: "2650.00", allowAbove: true })], { discountType: "FIXED", discount: "25000.00" });
+  // M-1 (Batch 5): no quoting user name (removed user) means no "Prepared by" row at all
+  const noName = buildQuotationPdf(q, { ...CTX, preparedBy: null }, LABELS);
+  assert.ok(!noName.band[0].rows.some((r) => r.key === "Prepared by"));
   const m = buildQuotationPdf(q, { ...CTX, projectLocation: null, preparedBy: "  ", endClient: null }, LABELS);
   assert.deepEqual(m.band[0].rows.map((r) => r.key), ["Quotation No.", "Project Name", "Project No."]);
   assert.deepEqual(m.band[1].rows.map((r) => r.key), ["Company"]);
