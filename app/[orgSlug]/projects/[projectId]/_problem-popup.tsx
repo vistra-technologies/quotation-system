@@ -153,6 +153,7 @@ function ProblemRow({
   onClose,
   style,
   onNavigateToPartition,
+  external,
 }: {
   problem: CalculationProblem;
   orgSlug: string;
@@ -161,8 +162,15 @@ function ProblemRow({
   onClose: () => void;
   style: ScopeStyle;
   onNavigateToPartition?: (partitionId: string) => void;
+  external?: boolean;
 }) {
-  const href = resolveGoHref(problem, orgSlug, projectId, isSubdomain);
+  // Stage 38 (Q-D33): an external user has no Inventory page to go to, so no Go link.
+  const href = external ? null : resolveGoHref(problem, orgSlug, projectId, isSubdomain);
+  // Stage 38 (S38-5): a MISSING_PRICE row reads "<item name> has no <CUR> price"; the code is the second line.
+  const message =
+    problem.kind === "MISSING_PRICE" && problem.itemName && problem.currency
+      ? `${problem.itemName} has no ${problem.currency} price`
+      : problem.message;
 
   // Build a human-readable locus string.
   const locus = problem.locus;
@@ -205,7 +213,7 @@ function ProblemRow({
       {/* Content */}
       <div className="min-w-0 flex-1">
         <p className="text-[12.5px] font-bold leading-[1.4] text-text-heading">
-          {problem.message}
+          {message}
         </p>
         {locusLines.length > 0 && href ? (
           <p className="mt-[2px] text-[11px] leading-[1.4] text-text-muted">
@@ -261,6 +269,7 @@ function ProblemGroup({
   isSubdomain,
   onClose,
   onNavigateToPartition,
+  external,
 }: {
   scope: ProblemScope;
   problems: CalculationProblem[];
@@ -269,8 +278,11 @@ function ProblemGroup({
   isSubdomain: boolean;
   onClose: () => void;
   onNavigateToPartition?: (partitionId: string) => void;
+  external?: boolean;
 }) {
   const s = SCOPE_STYLES[scope];
+  // Stage 38 (Q-D33): the external viewer's INVENTORY group is "Missing prices" (they cannot fix an inventory).
+  const label = external && scope === "INVENTORY" ? "Missing prices" : s.label;
 
   return (
     <div>
@@ -292,7 +304,7 @@ function ProblemGroup({
         </div>
         {/* Label */}
         <span className="text-[12.5px] font-extrabold" style={{ color: s.titleColor }}>
-          {s.label}
+          {label}
         </span>
         {/* Count pill */}
         <span
@@ -321,6 +333,7 @@ function ProblemGroup({
             onClose={onClose}
             style={s}
             onNavigateToPartition={onNavigateToPartition}
+            external={external}
           />
         ))}
       </div>
@@ -583,6 +596,11 @@ export interface ProblemPopupProps {
    * The Design page passes it; absent (Summary page) the popup counts the distinct floors among the problems.
    */
   floorCount?: number;
+  /**
+   * Stage 38 (Q-D33): the viewer is an external user (Quotation page). The INVENTORY group is titled "Missing
+   * prices", the subtitle says to ask the admin, and no Go link renders. Absent = the staff wording and links.
+   */
+  external?: boolean;
 }
 
 const SCOPE_ORDER: ProblemScope[] = ["DESIGN", "SELECTION", "INVENTORY", "FORMULA_SET"];
@@ -602,6 +620,7 @@ export function ProblemPopup({
   onClose,
   onNavigateToPartition,
   floorCount,
+  external,
 }: ProblemPopupProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
 
@@ -628,7 +647,11 @@ export function ProblemPopup({
   }
 
   const totalCount = report.problemCount;
-  const subtitle = `${totalCount} ${totalCount === 1 ? "problem" : "problems"} must be fixed`;
+  const missingCurrency = report.problems.find((p) => p.kind === "MISSING_PRICE")?.currency;
+  const subtitle =
+    external && missingCurrency
+      ? `${totalCount} ${totalCount === 1 ? "item has" : "items have"} no ${missingCurrency} price. Ask your admin to add ${totalCount === 1 ? "it" : "them"}.`
+      : `${totalCount} ${totalCount === 1 ? "problem" : "problems"} must be fixed`;
 
   return (
     <div
@@ -702,6 +725,7 @@ export function ProblemPopup({
                 isSubdomain={isSubdomain}
                 onClose={onClose}
                 onNavigateToPartition={onNavigateToPartition}
+                external={external}
               />
             );
           })}

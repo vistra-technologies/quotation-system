@@ -173,7 +173,7 @@ export async function getProjectById(
   // that read the snapshot (Configuration page, B5) opt in.
   options: { includeConfigSnapshot?: boolean } = {},
 ) {
-  const [project, selectionCount, partitionCount] = await Promise.all([
+  const [project, selectionCount, partitionCount, quotationCount] = await Promise.all([
     prisma.project.findFirst({
       where: { id: projectId, ...ownedProjectWhere(session) },
       // configSnapshot: true only when asked for — needed for Configuration page snapshot reads.
@@ -192,10 +192,14 @@ export async function getProjectById(
     prisma.partition.count({
       where: { room: { floor: { projectId, project: { organizationId: session.organizationId } } } },
     }),
+    // Stage 38 Batch 4 (B4-1, Q-D33): wizard step 5 stays open whenever a quotation exists.
+    prisma.quotation.count({
+      where: { projectId, organizationId: session.organizationId },
+    }),
   ]);
 
   if (!project) return null;
-  return { ...project, selectionCount, partitionCount };
+  return { ...project, selectionCount, partitionCount, hasQuotation: quotationCount > 0 };
 }
 
 // ─── Mutations ──────────────────────────────────────────────────────────────

@@ -66,6 +66,7 @@ export default async function ProjectWizardLayout({
       selectionCount={project.selectionCount}
       partitionCount={project.partitionCount}
       designSubmittedAt={project.designSubmittedAt}
+      hasQuotation={project.hasQuotation}
     >
       {children}
     </WizardPageShell>

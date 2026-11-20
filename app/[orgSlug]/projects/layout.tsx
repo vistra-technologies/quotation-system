@@ -25,6 +25,8 @@ export default function ProjectsLayout({ children }: { children: React.ReactNode
     wizard: allMessages.wizard,
     // Stage 10: Toast primitive used on placeholder buttons across project pages.
     toast: allMessages.toast,
+    // Stage 38 Batch 4: the Quotation page client components (quotation-page.tsx, _parts.tsx).
+    quotation: allMessages.quotation,
   };
 
   // S21 padding fix (round 3): this wrapper used to carry the shared

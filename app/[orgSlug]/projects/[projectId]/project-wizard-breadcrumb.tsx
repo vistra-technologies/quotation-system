@@ -19,6 +19,8 @@ interface ProjectWizardBreadcrumbProps {
   partitionCount: number;
   /** Set once "Submit Design" is clicked on the Design page — gates Summary/Quotation. */
   designSubmittedAt: string | null;
+  /** Stage 38 Batch 4 (Q-D33): a stored quotation keeps step 5 open even when the design is unsubmitted again. */
+  hasQuotation: boolean;
 }
 
 /**
@@ -34,7 +36,7 @@ interface ProjectWizardBreadcrumbProps {
  *
  * namespace: "wizard" — wired in app/[orgSlug]/projects/layout.tsx clientMessages.
  */
-export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain, selectionCount, partitionCount, designSubmittedAt }: ProjectWizardBreadcrumbProps) {
+export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain, selectionCount, partitionCount, designSubmittedAt, hasQuotation }: ProjectWizardBreadcrumbProps) {
   const t = useTranslations("wizard");
   const pathname = usePathname();
 
@@ -100,7 +102,7 @@ export function ProjectWizardBreadcrumb({ orgSlug, projectId, isSubdomain, selec
     false,                     // step 1: Configuration — always unlocked (add Selections here)
     selectionCount === 0,      // step 2: Design
     summaryQuotationLocked,    // step 3: Summary
-    summaryQuotationLocked,    // step 4: Quotation
+    summaryQuotationLocked && !hasQuotation, // step 4: Quotation (open while a quotation exists, Q-D33)
   ];
 
   // Derive the active index (highlighted step).

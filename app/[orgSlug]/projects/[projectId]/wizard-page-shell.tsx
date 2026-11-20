@@ -10,6 +10,7 @@ interface WizardPageShellProps {
   selectionCount: number;
   partitionCount: number;
   designSubmittedAt: string | null;
+  hasQuotation: boolean;
   children: React.ReactNode;
 }
 
@@ -33,6 +34,7 @@ export function WizardPageShell({
   selectionCount,
   partitionCount,
   designSubmittedAt,
+  hasQuotation,
   children,
 }: WizardPageShellProps) {
   const pathname = usePathname();
@@ -60,6 +62,7 @@ export function WizardPageShell({
         selectionCount={selectionCount}
         partitionCount={partitionCount}
         designSubmittedAt={designSubmittedAt}
+        hasQuotation={hasQuotation}
       />
       <div
         className={

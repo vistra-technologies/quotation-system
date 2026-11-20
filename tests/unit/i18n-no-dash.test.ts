@@ -7,7 +7,8 @@ import path from "node:path";
  * Q-D25 (Stage 38, Batch 2): no em dash (U+2014) or en dash (U+2013) in any UI string this stage adds or edits.
  * Scope: the three currency option labels, and every string of the namespaces Stage 38a adds or edits
  * (orgSettings, summaryNotice, inventory). Live strings elsewhere are tracked in the backlog, not scanned here.
- * The shared price formatter output is scanned in price-format.test.ts. Batch 4 extends this to the quotation namespace.
+ * The shared price formatter output is scanned in price-format.test.ts. Batch 4 extends this to the quotation namespace,
+ * the quotation page's source files, and the PDF text builder (the latter in quotation-pdf.test.ts).
  */
 const messages = JSON.parse(readFileSync(path.join(__dirname, "../../messages/en.json"), "utf8")) as Record<string, Record<string, unknown>>;
 const DASH = /[–—]/;
@@ -39,4 +40,26 @@ test("no U+2013 / U+2014 in the currency labels or the Stage 38a namespaces", ()
 
 test("the unpriced mark is 'No price'", () => {
   assert.equal(messages.inventory.noPrice, "No price");
+});
+
+// Stage 38 Batch 4 (AC6, Q-D25): the quotation namespace and the literals of the quotation page's own files.
+test("no U+2013 / U+2014 in the quotation namespace", () => {
+  const scanned = strings(messages.quotation, "quotation");
+  assert.ok(scanned.length > 100, "the scan found the namespace");
+  assert.deepEqual(scanned.filter(([, v]) => DASH.test(v)).map(([k]) => k), []);
+});
+
+test("no U+2013 / U+2014 in the quotation page sources or the PDF modules", () => {
+  const root = path.join(__dirname, "../..");
+  const files = [
+    "app/[orgSlug]/projects/[projectId]/quotation/page.tsx",
+    "app/[orgSlug]/projects/[projectId]/quotation/quotation-page.tsx",
+    "app/[orgSlug]/projects/[projectId]/quotation/_parts.tsx",
+    "app/[orgSlug]/projects/[projectId]/quotation/loading.tsx",
+    "lib/quotation/present.ts",
+    "lib/quotation/pdf-model.ts",
+    "lib/quotation/pdf.ts",
+  ];
+  const hits = files.filter((f) => DASH.test(readFileSync(path.join(root, f), "utf8")));
+  assert.deepEqual(hits, []);
 });

@@ -38,6 +38,8 @@ export interface ProjectDetail {
   partitionCount: number;
   /** Set by the Design page's "Submit Design" button — gates Summary/Quotation. */
   designSubmittedAt: string | null;
+  /** Stage 38 Batch 4: the project has a quotation (keeps wizard step 5 open, Q-D33). */
+  hasQuotation: boolean;
   /**
    * Org ComponentType config frozen at project creation (Stage 22 B3/B4/B5).
    * Null for projects created before Stage 22 or in the pre-backfill window —
