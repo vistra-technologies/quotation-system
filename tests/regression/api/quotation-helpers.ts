@@ -71,12 +71,13 @@ export async function submittedWall(f: Factories, as: Record<string, Guarded>, u
 export async function distributorWall(
   f: Factories, as: Record<string, Guarded>, url: (p: string) => string, run: RunState, ledger: Ledger,
 ): Promise<string> {
+  // S31-7: the config codes must be Test-Org dropdown choices BEFORE the project (and its frozen snapshot) exists
+  const cfg = await glassConfig(f);
   const { res, id, body: b } = await createLedgered(as.distributor, { run, ledger }, "project", {
     name: `${run.prefix}dq-${tag()}`, currency: "AED", projectLocation: "Dubai, UAE",
   });
   expect(res.status(), JSON.stringify(b)).toBe(201);
   const projectId = id!;
-  const cfg = await glassConfig(f);
   const fl = await as.admin.post(url("/floors"), { data: { projectId, label: `${run.prefix}F` } });
   const floorId = (await body<{ floor: { id: string } }>(fl, 201)).floor.id;
   const rm = await as.admin.post(url("/rooms"), { data: { floorId, label: `${run.prefix}R` } });
