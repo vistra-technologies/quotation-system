@@ -1409,7 +1409,7 @@ test.describe("Stage 35 B4: visibility UI (Configuration form, Catalog, SuperAdm
       await expect(panel.getByTestId("quick-add-code")).toContainText("H2");
       await expect(panel.getByTestId("quick-add-type")).toContainText(fx.type.name);
       await expect(panel.getByTestId("quick-add-part")).toContainText("Hinge");
-      await expect(panel.getByText(/price/i)).toHaveCount(0); // G0-c: no price field
+      await expect(panel.getByTestId("prices-section")).toBeVisible(); // Stage 38: the reused drawer has a Prices section (G0-c's "no price field" is superseded); nothing is priced until the admin adds a row (asserted below)
       await expect(panel.getByLabel("Pack size")).toHaveValue("1");
 
       // AC3: a 409 duplicate code shows inline and keeps what was typed
@@ -2242,7 +2242,8 @@ test.describe("Stage 37 B3: Inventory list and drawer, throwaway org B", () => {
       await withPage({ browser, run }, "orgB-admin", undefined, async (o) => {
         const page = o.page;
         const drawer = page.getByRole("dialog", { name: /./ });
-        const rowId = (id: string) => page.locator(`tr[data-row-id="${id}"]`);
+        // scoped to main: right after goto a streamed hidden copy of the table can briefly match twice (strict-mode flake)
+        const rowId = (id: string) => page.getByRole("main").locator(`tr[data-row-id="${id}"]`);
         const puts: string[] = [];
         page.on("request", (r) => {
           if (r.method() === "PUT" && r.url().includes("/prices")) puts.push(r.postData() ?? "");

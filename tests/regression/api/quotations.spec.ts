@@ -766,7 +766,11 @@ test.describe("quotation page (UI)", () => {
         await main.getByTestId("quotation-line-cancel").click();
         await expect(main.getByTestId("quotation-line-popover")).toHaveCount(0);
         expect((await quotation(await as.admin.get(qUrl(url, projectId)))).anyLineEdited).toBe(false);
-        expect(await settledProblems(o)).toEqual([]);
+        // the only problems allowed are the two the M-2 stubbed 500 itself produces (the collector rightly flags a 5xx)
+        const stubbed = (p: string) => (p.startsWith("HTTP 500 ") && p.endsWith("/quotation/lines")) || p === "console.error: Failed to load resource: the server responded with a status of 500 (Internal Server Error)";
+        const problems = await settledProblems(o);
+        expect(problems.filter(stubbed)).toHaveLength(2);
+        expect(problems.filter((p) => !stubbed(p))).toEqual([]);
       } finally {
         await o.ctx.close();
       }

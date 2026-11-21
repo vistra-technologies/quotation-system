@@ -20,6 +20,14 @@ const hostOf = (url: string): string | null => {
   }
 };
 const onSuiteHost = (url: string): boolean => suiteHosts().includes(hostOf(url) ?? "");
+/** The suite's own throwaway org B subdomain (`rgr-<run>-b.<base host>`), only for the preview-toolbar allow-list entry. */
+const onThrowawayOrgHost = (url: string): boolean => {
+  const base = process.env.PLAYWRIGHT_BASE_URL;
+  const h = hostOf(url);
+  if (!base || !h) return false;
+  const baseHost = new URL(base).hostname.toLowerCase();
+  return h.endsWith(`.${baseHost}`) && /^rgr-[a-z0-9]+-b$/.test(h.slice(0, -(baseHost.length + 1)));
+};
 
 /** "request failed [kind] url errorText" → its parts (null for any other problem string). */
 function parseFailure(p: string): { kind: string; url: string; error: string } | null {
@@ -57,7 +65,7 @@ export const ALLOWED: { why: string; match: (problem: string) => boolean }[] = [
       if (!f || f.error !== "net::ERR_ABORTED") return false;
       const u = new URL(f.url);
       if (u.protocol === "https:" && u.hostname === "vercel.live") return true;
-      if (!onSuiteHost(f.url)) return false;
+      if (!onSuiteHost(f.url) && !(onThrowawayOrgHost(f.url) && u.pathname.startsWith("/.well-known/vercel/"))) return false;
       if (u.pathname.startsWith("/.well-known/vercel/")) return true;
       return f.kind === "fetch/OPTIONS" && !u.pathname.startsWith("/api/");
     },
